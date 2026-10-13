@@ -112,6 +112,17 @@ impl Directory {
     // Get the path to plugins directory
     // Each plugin has own directory that contains
     // metadata file and plugin wasm
+    /// Declarative content imported from VS Code extensions (`.vsix`).
+    pub fn vsx_directory() -> Option<PathBuf> {
+        let dir = Self::data_local_directory()?.join("vsx");
+        if !dir.exists() {
+            if let Err(err) = std::fs::create_dir_all(&dir) {
+                tracing::error!("{:?}", err);
+            }
+        }
+        Some(dir)
+    }
+
     pub fn plugins_directory() -> Option<PathBuf> {
         if let Some(dir) = Self::data_local_directory() {
             let dir = dir.join("plugins");

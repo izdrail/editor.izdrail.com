@@ -47,6 +47,17 @@ pub fn find_all_volts(extra_plugin_paths: &[PathBuf]) -> Vec<VoltMetadata> {
         })
         .collect();
 
+    // Declarative content imported from VS Code extensions lives apart from
+    // marketplace volts, in `vsx/`.
+    if let Some(vsx) = lapce_core::directory::Directory::vsx_directory() {
+        for dir in lapce_vsix::install::installed_dirs(&vsx) {
+            match load_volt(&dir) {
+                Ok(metadata) => plugins.push(metadata),
+                Err(e) => tracing::error!("Failed to load vsx package: {:?}", e),
+            }
+        }
+    }
+
     for plugin_path in extra_plugin_paths {
         let mut metadata = match load_volt(plugin_path) {
             Ok(metadata) => metadata,

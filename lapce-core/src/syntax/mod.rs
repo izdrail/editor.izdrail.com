@@ -901,6 +901,10 @@ pub struct Syntax {
     pub lens_height: usize,
     pub styles: Option<Spans<Style>>,
     pub lexilla: Option<Arc<lexilla_rs::Snapshot>>,
+    /// Grammar scope from an imported VS Code extension, used when Lexilla
+    /// has no lexer for the file.
+    pub textmate_scope: Option<String>,
+    pub textmate: Option<Arc<lapce_vsix::textmate::Snapshot>>,
     pub folding_ranges: Vec<crate::folding::FoldRange>,
     pub cancel_flag: Arc<AtomicUsize>,
 }
@@ -922,7 +926,9 @@ impl std::fmt::Debug for Syntax {
 impl Syntax {
     pub fn init(path: &Path) -> Syntax {
         let language = LapceLanguage::from_path(path);
-        Syntax::from_language(language)
+        let mut syntax = Syntax::from_language(language);
+        syntax.textmate_scope = crate::textmate::scope_for_path(path);
+        syntax
     }
 
     pub fn plaintext() -> Syntax {
@@ -941,6 +947,8 @@ impl Syntax {
             normal_lines: Vec::new(),
             styles: None,
             lexilla: None,
+            textmate_scope: None,
+            textmate: None,
             folding_ranges: Vec::new(),
             cancel_flag: Arc::new(AtomicUsize::new(0)),
         }
@@ -957,6 +965,10 @@ impl Syntax {
         // per painted line. No tree-sitter grammar loading or full-file spans.
         let _ = edits;
         let snapshot = crate::lexilla::highlight(self.language, &new_text);
+        let textmate = match (&snapshot, &self.textmate_scope) {
+            (None, Some(scope)) => crate::textmate::highlight(scope, &new_text),
+            _ => None,
+        };
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }
@@ -968,6 +980,7 @@ impl Syntax {
         self.rev = new_rev;
         self.folding_ranges = folding_ranges;
         self.lexilla = snapshot;
+        self.textmate = textmate;
         self.styles = None;
         self.normal_lines.clear();
         self.lens = Self::lens_from_normal_lines(

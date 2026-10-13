@@ -1,0 +1,16 @@
+[package]
+name         = "lapce-vsix"
+description  = "Import of declarative VS Code extension content (.vsix) without executing extension code"
+license      = { workspace = true }
+version      = { workspace = true }
+authors      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+anyhow     = { workspace = true }
+serde      = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml       = { workspace = true }
+onig       = { version = "6", default-features = false }
+zip        = { version = "2", default-features = false, features = ["deflate"] }

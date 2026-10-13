@@ -8,6 +8,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 lexilla-rs = { path = "../lexilla-rs" }
+lapce-vsix = { workspace = true }
 directories  = { workspace = true }
 itertools    = { workspace = true }
 once_cell    = { workspace = true }

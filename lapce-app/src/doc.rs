@@ -912,7 +912,14 @@ impl Doc {
                 Some(snapshot) => {
                     lapce_core::lexilla::line_styles(snapshot, &syntax.text, line)
                 }
-                None => Vec::new(),
+                None => match &syntax.textmate {
+                    Some(snapshot) => lapce_core::textmate::line_styles(
+                        snapshot,
+                        &syntax.text,
+                        line,
+                    ),
+                    None => Vec::new(),
+                },
             }
         });
         let styles = Arc::new(styles);

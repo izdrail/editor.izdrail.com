@@ -13,5 +13,6 @@ pub mod syntax;
 pub use floem_editor_core::*;
 
 pub mod lexilla;
+pub mod textmate;
 
 pub mod folding;

@@ -126,6 +126,12 @@ struct Cli {
     #[clap(short, long, action)]
     wait: bool,
 
+    /// Import the declarative content (themes, icon themes, snippets,
+    /// language configuration, TextMate grammars) of a VS Code extension
+    /// from a `.vsix` file, then exit. Extension code is never loaded.
+    #[clap(long, value_name = "FILE", num_args = 1..)]
+    install_vsix: Vec<PathBuf>,
+
     /// Path(s) to plugins to load.
     ///
     /// This is primarily used for plugin development to make it easier to test changes to the
@@ -3787,8 +3793,53 @@ fn window(window_data: WindowData) -> impl View {
     .debug_name("Window")
 }
 
+/// `--install-vsix`: import each file and print what was and was not imported.
+fn install_vsix_files(files: &[PathBuf]) -> i32 {
+    let Some(root) = lapce_core::directory::Directory::vsx_directory() else {
+        eprintln!("cannot locate the data directory");
+        return 1;
+    };
+    let mut failed = false;
+    for file in files {
+        let result = std::fs::read(file)
+            .map_err(anyhow::Error::from)
+            .and_then(|bytes| lapce_vsix::import_vsix(&bytes, &root));
+        match result {
+            Ok(rep) => {
+                println!("{} {}", rep.id, rep.version);
+                println!("  color themes: {}", rep.color_themes.join(", "));
+                println!("  icon themes:  {}", rep.icon_themes.join(", "));
+                println!(
+                    "  grammars: {}, languages: {}, snippets: {}",
+                    rep.grammars.len(),
+                    rep.languages.len(),
+                    rep.snippet_count
+                );
+                if let Some(l) = &rep.license {
+                    println!("  license: {l}");
+                }
+                if rep.has_code {
+                    println!("  contains code, not loaded");
+                }
+                for s in &rep.skipped {
+                    println!("  not imported: {s}");
+                }
+            }
+            Err(e) => {
+                eprintln!("{}: {e:#}", file.display());
+                failed = true;
+            }
+        }
+    }
+    i32::from(failed)
+}
+
 pub fn launch() {
     let cli = Cli::parse();
+
+    if !cli.install_vsix.is_empty() {
+        std::process::exit(install_vsix_files(&cli.install_vsix));
+    }
 
     if !cli.wait {
         logging::panic_hook();

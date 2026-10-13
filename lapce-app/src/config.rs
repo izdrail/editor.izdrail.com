@@ -363,7 +363,27 @@ impl LapceConfig {
 
     /// Retrieve a color value whose key starts with "style."
     pub fn style_color(&self, name: &str) -> Option<Color> {
-        self.color.syntax.get(name).copied()
+        if let Some(c) = self.color.syntax.get(name) {
+            return Some(*c);
+        }
+        // TextMate styles are a space separated scope stack, innermost first.
+        // Like VS Code themes, match each scope by its longest dotted prefix.
+        if !name.contains('.') && !name.contains(' ') {
+            return None;
+        }
+        for scope in name.split(' ') {
+            let mut s = scope;
+            loop {
+                if let Some(c) = self.color.syntax.get(s) {
+                    return Some(*c);
+                }
+                match s.rfind('.') {
+                    Some(i) => s = &s[..i],
+                    None => break,
+                }
+            }
+        }
+        None
     }
 
     pub fn completion_color(
@@ -1073,5 +1093,40 @@ mod real_data_theme_smoke {
         assert_eq!(paths.len(), 2);
         assert!(!LapceConfig::load_plugin_color_themes(&[], &paths).is_empty());
         assert!(!LapceConfig::load_plugin_icon_themes(&[], &paths).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod vsix_import_smoke {
+    use std::str::FromStr;
+
+    use super::*;
+    #[test]
+    #[ignore = "needs LAPCE_VSX_TEST_ROOT: a vsx/ dir produced by --install-vsix"]
+    fn imported_vsix_themes_apply_in_app_config() {
+        let root = PathBuf::from(std::env::var("LAPCE_VSX_TEST_ROOT").unwrap());
+        let paths = lapce_vsix::install::installed_dirs(&root);
+        assert!(!paths.is_empty());
+        let mut config = LapceConfig::load(&LapceWorkspace::default(), &[], &paths);
+        let workspace = LapceWorkspace::default();
+        // Dracula: comment colour is #6272A4, string #F1FA8C
+        config.set_color_theme(&workspace, "Dracula Theme");
+        let comment = config.style_color("comment").expect("comment");
+        assert_eq!(comment, Color::from_str("#6272a4").unwrap());
+        // a TextMate scope stack resolves by dotted-prefix matching
+        let tm = config
+            .style_color(
+                "punctuation.definition.string.rust string.quoted.double.rust",
+            )
+            .expect("tm string");
+        assert_eq!(tm, Color::from_str("#f1fa8c").unwrap());
+        assert_ne!(config.color.syntax.get("keyword"), None);
+        // Material icon theme resolves an icon for a .rs file
+        config.set_icon_theme(&workspace, "Material Icon Theme");
+        let icon = config
+            .icon_theme
+            .resolve_path_to_icon(&[std::path::Path::new("main.rs")])
+            .expect("icon for .rs");
+        assert!(icon.is_file(), "{icon:?}");
     }
 }
