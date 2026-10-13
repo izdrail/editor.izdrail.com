@@ -163,6 +163,10 @@ pub fn lapce_internal_commands() -> IndexMap<String, LapceCommand> {
     IntoStaticStr,
 )]
 pub enum LapceWorkbenchCommand {
+    #[strum(serialize = "experimental_vscode_hello")]
+    #[strum(message = "Experimental VS Code: Run sandbox hello")]
+    ExperimentalVscodeHello,
+
     #[strum(serialize = "enable_modal_editing")]
     #[strum(message = "Enable Modal Editing")]
     EnableModal,

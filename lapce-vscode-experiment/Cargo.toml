@@ -1,0 +1,13 @@
+[package]
+name = "lapce-vscode-experiment"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+rquickjs = { version = "=0.11.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

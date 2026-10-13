@@ -727,6 +727,7 @@ impl WindowTabData {
     ) {
         use LapceWorkbenchCommand::*;
         match cmd {
+            ExperimentalVscodeHello => crate::vscode_experiment::run_demo(self),
             // ==== Modal ====
             EnableModal => {
                 let internal_command = self.common.internal_command;

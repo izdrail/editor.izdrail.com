@@ -48,3 +48,5 @@ pub mod workspace;
 
 #[cfg(windows)]
 extern crate windows_sys as windows;
+
+pub mod vscode_experiment;

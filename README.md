@@ -53,3 +53,11 @@ There is also a [Matrix Space](https://matrix.to/#/#lapce-editor:matrix.org), wh
 ## License
 
 This project is a derivative of Lapce, copyright the Lapce contributors, and is released under the Apache License Version 2.0, the same license as upstream. Upstream copyright and attribution notices are retained. You may contribute to this project, or use the code as you please as long as you adhere to its conditions. You can find a copy of the license text here: [`LICENSE`](LICENSE).
+
+## Experimental VS Code command shim
+
+A deliberately small, opt-in CommonJS command shim is available through
+`Experimental VS Code: Run sandbox hello` in the command palette. It is separate
+from data-only marketplace/VSIX imports and never activates installed extensions.
+Linux x86_64 only, with a seccomp-restricted worker process. See
+[the API surface, usage and risk model](docs/vscode-sandbox-experiment.md).
