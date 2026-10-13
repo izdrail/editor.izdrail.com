@@ -1727,11 +1727,12 @@ impl Document for Doc {
 
         // Folded lines are hidden in this editor's lines before anything is measured. Reading
         // the state here also reruns the screen line calculation whenever a fold changes.
-        let hidden = if matches!(editor_data.kind.get_untracked(), EditorViewKind::Normal) {
-            self.fold_state.with(|state| state.hidden_ranges())
-        } else {
-            Vec::new()
-        };
+        let hidden =
+            if matches!(editor_data.kind.get_untracked(), EditorViewKind::Normal) {
+                self.fold_state.with(|state| state.hidden_ranges())
+            } else {
+                Vec::new()
+            };
         editor.lines().set_hidden_lines(HiddenLines::new(hidden));
 
         compute_screen_lines(

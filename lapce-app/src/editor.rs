@@ -319,8 +319,11 @@ impl EditorData {
             })
         });
         if let Some(header) = header {
-            let offset = doc.buffer.with_untracked(|b| b.line_end_offset(header, true));
-            self.cursor().update(|cursor| cursor.set_offset(offset, false, false));
+            let offset = doc
+                .buffer
+                .with_untracked(|b| b.line_end_offset(header, true));
+            self.cursor()
+                .update(|cursor| cursor.set_offset(offset, false, false));
         }
     }
 

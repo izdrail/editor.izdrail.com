@@ -1,6 +1,4 @@
-use std::{
-    cmp, collections::BTreeMap, path::PathBuf, rc::Rc, sync::Arc,
-};
+use std::{cmp, collections::BTreeMap, path::PathBuf, rc::Rc, sync::Arc};
 
 use floem::{
     Renderer, View, ViewId,
@@ -1796,7 +1794,9 @@ fn editor_gutter_folding_range(
             let on_screen: std::collections::HashSet<usize> =
                 screen_lines.with(|sl| sl.lines.iter().map(|rv| rv.line).collect());
             doc.fold_state.with(|state| {
-                FoldingDisplayItem::for_lines(state, |line| on_screen.contains(&line))
+                FoldingDisplayItem::for_lines(state, |line| {
+                    on_screen.contains(&line)
+                })
             })
         },
         move |item| *item,
@@ -1809,7 +1809,8 @@ fn editor_gutter_folding_range(
             )
             .on_click_stop({
                 move |_| {
-                    doc.get_untracked().update_folds(|state| state.toggle(item.line));
+                    doc.get_untracked()
+                        .update_folds(|state| state.toggle(item.line));
                 }
             })
         },

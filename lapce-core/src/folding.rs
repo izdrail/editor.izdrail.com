@@ -131,7 +131,6 @@ impl FoldProjection {
     }
 }
 
-
 fn range_order(range: &FoldRange) -> (usize, std::cmp::Reverse<usize>) {
     (range.start, std::cmp::Reverse(range.end))
 }
@@ -169,7 +168,9 @@ impl FoldState {
         let folded = self
             .folded
             .iter()
-            .filter_map(|old| ranges.iter().find(|new| new.start == old.start).copied())
+            .filter_map(|old| {
+                ranges.iter().find(|new| new.start == old.start).copied()
+            })
             .collect();
         self.ranges = ranges;
         self.folded = folded;
@@ -260,7 +261,12 @@ impl FoldState {
     /// Blocks before it stay, blocks after it move by the change in line count and blocks
     /// touching it (header, body or the replaced lines) are dropped, which unfolds them.
     /// The next [`Self::set_ranges`] brings the foldable blocks up to date.
-    pub fn apply_edit(&mut self, start_line: usize, old_lines: usize, new_lines: usize) {
+    pub fn apply_edit(
+        &mut self,
+        start_line: usize,
+        old_lines: usize,
+        new_lines: usize,
+    ) {
         let old_end = start_line + old_lines;
         let delta = new_lines as isize - old_lines as isize;
         let adjust = |range: &FoldRange| {
@@ -426,7 +432,9 @@ mod tests {
         assert!(s.reveal(5));
         // Outer and the block containing line 5 are open, siblings stay folded.
         assert!(!s.is_hidden(5));
-        assert!(s.is_folded(1) && s.is_folded(8) && !s.is_folded(0) && !s.is_folded(4));
+        assert!(
+            s.is_folded(1) && s.is_folded(8) && !s.is_folded(0) && !s.is_folded(4)
+        );
         // Revealing a header or visible line changes nothing.
         assert!(!s.reveal(1));
         assert!(!s.reveal(0));
