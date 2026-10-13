@@ -4,12 +4,12 @@
 
 use std::{collections::HashMap, thread, time::Duration, time::Instant};
 
-use lsp_types::request::Request as _;
 use lapce_rpc::{
     RequestId, RpcError,
     core::{CoreNotification, CoreRpc, CoreRpcHandler},
     proxy::{ProxyHandler, ProxyNotification, ProxyRequest, ProxyRpcHandler},
 };
+use lsp_types::request::Request as _;
 
 use super::super::{PluginCatalog, PluginCatalogRpcHandler};
 
@@ -23,11 +23,11 @@ impl ProxyHandler for AnsweringProxy {
 
     fn handle_request(&mut self, id: RequestId, rpc: ProxyRequest) {
         let result = match rpc {
-            ProxyRequest::GetOpenFilesContent {} => {
-                Ok(lapce_rpc::proxy::ProxyResponse::GetOpenFilesContentResponse {
+            ProxyRequest::GetOpenFilesContent {} => Ok(
+                lapce_rpc::proxy::ProxyResponse::GetOpenFilesContentResponse {
                     items: Vec::new(),
-                })
-            }
+                },
+            ),
             _ => Err(RpcError {
                 code: -32601,
                 message: "not supported by the test proxy".into(),
@@ -59,8 +59,7 @@ fn wasi_volt_is_discovered_started_and_answers() {
     let temp = tempfile::tempdir().unwrap();
     let volt_dir = temp.path().join("some_author.test-plugin-one");
     std::fs::create_dir(&volt_dir).unwrap();
-    std::fs::copy(fixture.join("lapce.wasm"), volt_dir.join("lapce.wasm"))
-        .unwrap();
+    std::fs::copy(fixture.join("lapce.wasm"), volt_dir.join("lapce.wasm")).unwrap();
     std::fs::write(
         volt_dir.join("volt.toml"),
         r#"name = "some-useful-plugin"
@@ -108,9 +107,7 @@ language = ["rust"]
     while Instant::now() < deadline && !announced {
         while let Ok(msg) = core_rpc.rx().try_recv() {
             if let CoreRpc::Notification(notification) = msg {
-                if let CoreNotification::VoltInstalled { volt, .. } =
-                    *notification
-                {
+                if let CoreNotification::VoltInstalled { volt, .. } = *notification {
                     assert_eq!(volt.name, "some-useful-plugin");
                     assert!(volt.wasm.is_some());
                     announced = true;

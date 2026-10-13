@@ -151,19 +151,20 @@ fn unpack(reader: impl Read, stage: &Path, allow_wasm: bool) -> Result<()> {
                 || matches!(
                     ext.as_str(),
                     "toml"
-                    | "svg"
-                    | "png"
-                    | "jpg"
-                    | "jpeg"
-                    | "webp"
-                    | "gif"
-                    | "ico"
-                    | "md"
-                    | "txt"
-            ) || matches!(
-                path.file_name().and_then(|s| s.to_str()),
-                Some("LICENSE" | "LICENCE")
-            ),
+                        | "svg"
+                        | "png"
+                        | "jpg"
+                        | "jpeg"
+                        | "webp"
+                        | "gif"
+                        | "ico"
+                        | "md"
+                        | "txt"
+                )
+                || matches!(
+                    path.file_name().and_then(|s| s.to_str()),
+                    Some("LICENSE" | "LICENCE")
+                ),
             "Non-data package file: {}",
             path.display()
         );
@@ -484,8 +485,12 @@ mod tests {
                 .append_data(&mut header, "link", std::io::empty())
                 .unwrap();
             assert!(
-                unpack(builder.into_inner().unwrap().as_slice(), stage.path(), false)
-                    .is_err()
+                unpack(
+                    builder.into_inner().unwrap().as_slice(),
+                    stage.path(),
+                    false
+                )
+                .is_err()
             );
         }
     }
@@ -590,7 +595,12 @@ mod archive_limits {
                 .unwrap();
         }
         assert!(
-            unpack(builder.into_inner().unwrap().as_slice(), stage.path(), false).is_err()
+            unpack(
+                builder.into_inner().unwrap().as_slice(),
+                stage.path(),
+                false
+            )
+            .is_err()
         );
     }
 }

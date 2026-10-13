@@ -79,11 +79,11 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 use tracing::error;
 
+pub use self::catalog::PluginCatalog;
 use self::{
     psp::{ClonableCallback, PluginServerRpcHandler, RpcCallback},
     wasi::start_volt,
 };
-pub use self::catalog::PluginCatalog;
 use crate::buffer::language_id_from_path;
 
 pub type PluginName = String;

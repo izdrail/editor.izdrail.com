@@ -482,9 +482,7 @@ impl PluginCatalog {
                     }
                 });
             }
-            RegisterDebuggerType {
-                debugger_type, ..
-            } => {
+            RegisterDebuggerType { debugger_type, .. } => {
                 tracing::warn!(
                     "plugin registered debugger type {debugger_type}, but debugging is not supported by this editor"
                 );
