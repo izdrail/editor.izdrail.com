@@ -105,3 +105,16 @@ Sources inspected:
 - https://registry.npmjs.org/vscode-langservers-extracted/latest
 - Existing private research/vscode-extensions-lapce/README.md and
   04-options-ranked.md retrieved from https://github.com/izdrail/research.izdrail.com.
+
+## PHP (phpactor)
+
+The stock `php` entry runs `phpactor language-server`. If `phpactor` is on PATH it
+is used as is. If not, and `php` is on PATH, the editor downloads the pinned
+phpactor 2026.10.07.0 phar from the phpactor GitHub release into
+`language-servers/phpactor/` under the editor data directory, checks its SHA-256
+(`b28bf616...bdb16b`), and runs `php phpactor.phar language-server`. A phar that
+fails the hash check is never run. `auto-install = false` disables the download.
+With no `php` binary the server is skipped quietly (one log line, no popup).
+Setting `command` to anything other than `phpactor` (for example an absolute path)
+keeps your own server, with no fallback. Not verified: phpactor's PHP version and
+extension requirements on a given machine.

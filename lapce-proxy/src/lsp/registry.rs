@@ -127,6 +127,38 @@ fn command_exists(command: &str) -> bool {
             .any(|ext| dir.join(format!("{command}{ext}")).is_file())
     })
 }
+/// Pinned phpactor release. Bump all three together after checking the new
+/// asset's digest on the GitHub release page.
+pub const PHPACTOR_VERSION: &str = "2026.10.07.0";
+const PHPACTOR_URL: &str = "https://github.com/phpactor/phpactor/releases/download/2026.10.07.0/phpactor.phar";
+const PHPACTOR_SHA256: &str =
+    "b28bf6166e016d539fc2f2aec18ef918b12590e436a6f1ccbdf30b5bbdbdb16b";
+fn phpactor_phar() -> Option<PathBuf> {
+    Some(
+        Directory::data_local_directory()?
+            .join("language-servers")
+            .join("phpactor")
+            .join(format!("phpactor-{PHPACTOR_VERSION}.phar")),
+    )
+}
+/// The stock registry entry (command `phpactor`, no packages). When that
+/// command is not on PATH the editor falls back to the managed phar. Any other
+/// command, such as a user override, is launched exactly as configured.
+fn is_phpactor_default(server: &Server) -> bool {
+    server.command == "phpactor"
+        && server.packages.is_empty()
+        && server.args == ["language-server"]
+}
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+fn file_sha256(path: &std::path::Path) -> Result<String> {
+    Ok(sha256_hex(&std::fs::read(path)?))
+}
 impl Registry {
     pub fn load() -> Result<Self> {
         let path = Directory::config_directory()
@@ -151,14 +183,26 @@ impl Registry {
                 .then(|| (name.clone(), server.clone()))
         })
     }
-    /// True when a directly configured (non-managed) server command cannot be
-    /// found, so launching it would only fail with a spawn error. Managed npm
-    /// servers are installed on demand and are never reported missing here.
+    /// True when launching this server cannot work and would only produce a
+    /// spawn error: a directly configured command that is not on PATH, or the
+    /// managed phpactor fallback without a usable `php` (or without the phar and
+    /// permission to download it). Managed npm servers install on demand and
+    /// are never reported missing here.
     pub fn is_missing(&self, server: &Server) -> bool {
         if !server.packages.is_empty() || server.command.is_empty() {
             return false;
         }
-        !command_exists(&server.command)
+        if command_exists(&server.command) {
+            return false;
+        }
+        if is_phpactor_default(server) {
+            if !command_exists("php") {
+                return true;
+            }
+            return !self.auto_install
+                && !phpactor_phar().is_some_and(|p| p.is_file());
+        }
+        true
     }
     pub fn command(&self, name: &str, server: &Server) -> Result<Command> {
         ensure!(!server.command.is_empty(), "Server command is empty");
@@ -202,12 +246,59 @@ impl Registry {
                 "Installed package lacks server executable"
             );
             binary
+        } else if !command_exists(&server.command) && is_phpactor_default(server) {
+            let phar = self.ensure_phpactor()?;
+            let mut command = Command::new("php");
+            command.arg(phar).args(&server.args);
+            return Ok(command);
         } else {
             PathBuf::from(&server.command)
         };
         let mut command = Command::new(executable);
         command.args(&server.args);
         Ok(command)
+    }
+    /// Download the pinned phpactor.phar into the managed directory (once) and
+    /// verify its SHA-256 before it is ever executed. A phar already on disk is
+    /// re-hashed, so a damaged or swapped file is replaced, never run.
+    fn ensure_phpactor(&self) -> Result<PathBuf> {
+        let phar = phpactor_phar().context("No data directory")?;
+        if phar.is_file()
+            && file_sha256(&phar).ok().as_deref() == Some(PHPACTOR_SHA256)
+        {
+            return Ok(phar);
+        }
+        ensure!(
+            self.auto_install,
+            "phpactor is not installed and auto-install is disabled"
+        );
+        let dir = phar.parent().context("Invalid phpactor directory")?;
+        std::fs::create_dir_all(dir)?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(180))
+            .user_agent("editor.izdrail.com")
+            .build()?;
+        let response = client.get(PHPACTOR_URL).send()?;
+        ensure!(
+            response.status().is_success(),
+            "phpactor download failed: HTTP {}",
+            response.status()
+        );
+        let bytes = response.bytes()?;
+        ensure!(
+            bytes.len() < 64 * 1024 * 1024,
+            "phpactor download too large"
+        );
+        ensure!(
+            sha256_hex(&bytes) == PHPACTOR_SHA256,
+            "phpactor download failed its SHA-256 check"
+        );
+        let mut tmp = tempfile::Builder::new()
+            .prefix(".phpactor-")
+            .tempfile_in(dir)?;
+        std::io::Write::write_all(&mut tmp, &bytes)?;
+        tmp.persist(&phar)?;
+        Ok(phar)
     }
     fn install(&self, root: &std::path::Path, server: &Server) -> Result<()> {
         let parent = root.parent().context("Invalid managed server directory")?;
@@ -336,6 +427,16 @@ mod tests {
         assert!(registry.is_missing(&server));
         server.packages = vec!["x@1.0.0".into()];
         assert!(!registry.is_missing(&server));
+        let stock = registry.servers["php"].clone();
+        assert!(is_phpactor_default(&stock));
+        let mut own = stock.clone();
+        own.command = "/opt/my-phpactor".into();
+        assert!(!is_phpactor_default(&own));
+        assert!(registry.is_missing(&own));
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
         let mut sh = registry.servers["php"].clone();
         sh.command = "sh".into();
         if cfg!(unix) {
