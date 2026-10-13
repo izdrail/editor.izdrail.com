@@ -373,7 +373,8 @@ fn move_down_last_rvline(
 ) -> (usize, ColPosition) {
     let rope_text = view.rope_text();
 
-    let last_line = rope_text.last_line();
+    // The last line shown, which is above the end of the buffer when the end is folded away.
+    let last_line = view.last_rvline().line;
     let new_offset = rope_text.line_end_offset(last_line, mode != Mode::Normal);
 
     // We should appear after any phantom text at the very end of the line.

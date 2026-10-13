@@ -59,6 +59,7 @@ use std::{
     cell::{Cell, RefCell},
     cmp::Ordering,
     collections::HashMap,
+    ops::Range,
     rc::Rc,
     sync::Arc,
 };
@@ -293,6 +294,78 @@ pub enum LayoutEvent {
     CreatedLayout { font_size: usize, line: usize },
 }
 
+/// Buffer lines that are not displayed, such as the body of a folded block.
+///
+/// The buffer is never changed: hidden lines keep their text and offsets, they simply have no
+/// visual line. A hidden line is mapped to the closest visible line above it (the fold header)
+/// whenever an offset in it has to be placed on screen.
+///
+/// Line `0` is never hidden, so every line has a visible line at or above it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HiddenLines {
+    /// Sorted, non-empty, non-overlapping and non-adjacent.
+    ranges: Vec<Range<usize>>,
+}
+impl HiddenLines {
+    /// Build from arbitrary ranges of buffer lines. They are sorted and merged, empty ranges are
+    /// dropped and line `0` is always kept visible.
+    pub fn new(ranges: impl IntoIterator<Item = Range<usize>>) -> Self {
+        let mut ranges: Vec<Range<usize>> = ranges
+            .into_iter()
+            .map(|r| r.start.max(1)..r.end)
+            .filter(|r| r.start < r.end)
+            .collect();
+        ranges.sort_unstable_by_key(|r| (r.start, r.end));
+        let mut merged: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+        for r in ranges {
+            match merged.last_mut() {
+                Some(last) if r.start <= last.end => last.end = last.end.max(r.end),
+                _ => merged.push(r),
+            }
+        }
+        Self { ranges: merged }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
+
+    pub fn ranges(&self) -> &[Range<usize>] {
+        &self.ranges
+    }
+
+    /// The range containing `line`, if it is hidden.
+    fn range_of(&self, line: usize) -> Option<&Range<usize>> {
+        let idx = self.ranges.partition_point(|r| r.end <= line);
+        self.ranges.get(idx).filter(|r| r.start <= line)
+    }
+
+    pub fn is_hidden(&self, line: usize) -> bool {
+        self.range_of(line).is_some()
+    }
+
+    /// The first line at or after `line` that is visible.
+    /// This can be past the last line of the buffer.
+    pub fn next_visible(&self, line: usize) -> usize {
+        self.range_of(line).map_or(line, |r| r.end)
+    }
+
+    /// The last line at or before `line` that is visible.
+    pub fn prev_visible(&self, line: usize) -> usize {
+        // Line 0 is never hidden, so the start of a range is always at least 1.
+        self.range_of(line).map_or(line, |r| r.start - 1)
+    }
+
+    /// The number of hidden lines strictly before `line`.
+    pub fn hidden_before(&self, line: usize) -> usize {
+        self.ranges
+            .iter()
+            .take_while(|r| r.start < line)
+            .map(|r| r.end.min(line) - r.start)
+            .sum()
+    }
+}
+
 /// The main structure for tracking visual line information.
 pub struct Lines {
     /// This is inside out from the usual way of writing Arc-RefCells due to sometimes wanting to
@@ -306,6 +379,8 @@ pub struct Lines {
     wrap: Cell<ResolvedWrap>,
     font_size_cache_id: Cell<FontSizeCacheId>,
     last_vline: Rc<Cell<Option<VLine>>>,
+    /// Lines with no visual line. Swapped as a whole so iterators can hold a snapshot.
+    hidden: RefCell<Rc<HiddenLines>>,
     pub layout_event: Listener<LayoutEvent>,
 }
 impl Lines {
@@ -317,8 +392,33 @@ impl Lines {
             wrap: Cell::new(ResolvedWrap::None),
             font_size_cache_id: Cell::new(id),
             last_vline: Rc::new(Cell::new(None)),
+            hidden: RefCell::new(Rc::new(HiddenLines::default())),
             layout_event: Listener::new_empty(cx),
         }
+    }
+
+    /// Set which buffer lines are hidden, such as the lines inside folded blocks.
+    ///
+    /// Hidden lines get no visual line, so every visual line conversion and iteration skips
+    /// them. Text layouts stay cached, only the cached last visual line is reset.
+    /// While any line is hidden the lines are never [linear](Self::is_linear), and several
+    /// conversions scan the buffer lines instead of using the cached last visual line.
+    pub fn set_hidden_lines(&self, hidden: HiddenLines) {
+        if **self.hidden.borrow() == hidden {
+            return;
+        }
+        *self.hidden.borrow_mut() = Rc::new(hidden);
+        self.clear_last_vline();
+    }
+
+    /// A snapshot of the currently hidden lines.
+    pub fn hidden_lines(&self) -> Rc<HiddenLines> {
+        self.hidden.borrow().clone()
+    }
+
+    /// The visible buffer line at or above `line`. A hidden line maps to its fold header.
+    pub fn visible_line_of(&self, line: usize) -> usize {
+        self.hidden.borrow().prev_visible(line)
     }
 
     /// The current wrapping style
@@ -364,7 +464,9 @@ impl Lines {
     /// - `is_linear` could be up to some line, which allows us to make at least the earliest parts
     ///   before any wrapping were faster. However, early lines are faster to calculate anyways.
     pub fn is_linear(&self, text_prov: impl TextLayoutProvider) -> bool {
-        self.wrap.get() == ResolvedWrap::None && !text_prov.has_multiline_phantom()
+        self.wrap.get() == ResolvedWrap::None
+            && !text_prov.has_multiline_phantom()
+            && self.hidden.borrow().is_empty()
     }
 
     /// Get the font size that [`Self::font_sizes`] provides
@@ -380,6 +482,15 @@ impl Lines {
         if current_id != self.font_size_cache_id.get() {
             self.last_vline.set(None);
             self.font_size_cache_id.set(current_id);
+        }
+
+        let hidden = self.hidden.borrow().clone();
+        if !hidden.is_empty() {
+            // Not cached: layouts being created update the cached value assuming no hidden
+            // lines, so it is left empty while there are some.
+            let hard_line_count = text_prov.rope_text().num_lines();
+            let count = self.visible_vlines_before(&hidden, hard_line_count);
+            return VLine(count.saturating_sub(1));
         }
 
         if let Some(last_vline) = self.last_vline.get() {
@@ -425,7 +536,7 @@ impl Lines {
     /// Cheap, so not cached
     pub fn last_rvline(&self, text_prov: impl TextLayoutProvider) -> RVLine {
         let rope_text = text_prov.rope_text();
-        let last_line = rope_text.last_line();
+        let last_line = self.hidden.borrow().prev_visible(rope_text.last_line());
         let layouts = self.text_layouts.borrow();
         let font_size = self.font_size(last_line);
 
@@ -436,6 +547,25 @@ impl Lines {
         } else {
             RVLine::new(last_line, 0)
         }
+    }
+
+    /// The number of visual lines that buffer lines `0..end_line` take, skipping hidden lines.
+    fn visible_vlines_before(&self, hidden: &HiddenLines, end_line: usize) -> usize {
+        let layouts = self.text_layouts.borrow();
+        let mut count = 0;
+        let mut line = 0;
+        while line < end_line {
+            if let Some(range) = hidden.range_of(line) {
+                line = range.end;
+                continue;
+            }
+            let font_size = self.font_size(line);
+            count += layouts
+                .get(font_size, line)
+                .map_or(1, |layout| layout.line_count());
+            line += 1;
+        }
+        count
     }
 
     /// 'len' version of [`Lines::last_vline`]
@@ -611,12 +741,13 @@ impl Lines {
         let wrap = self.wrap.get();
         let last_vline = self.last_vline.clone();
         let layout_event = trigger.then_some(self.layout_event);
+        let hidden = self.hidden.borrow().clone();
         self.iter_vlines(text_prov.clone(), false, start)
             .inspect(move |v| {
                 if v.is_first() {
                     // For every (first) vline we initialize the next buffer line's text layout
                     // This ensures it is ready for when re reach it.
-                    let next_line = v.rvline.line + 1;
+                    let next_line = hidden.next_visible(v.rvline.line + 1);
                     let font_size = font_sizes.borrow().font_size(next_line);
                     // `init_iter_vlines` is the reason `get_init_text_layout` is split out.
                     // Being split out lets us avoid attaching lifetimes to the iterator, since it
@@ -684,12 +815,13 @@ impl Lines {
         let wrap = self.wrap.get();
         let last_vline = self.last_vline.clone();
         let layout_event = trigger.then_some(self.layout_event);
+        let hidden = self.hidden.borrow().clone();
         self.iter_rvlines(text_prov.clone(), false, start)
             .inspect(move |v| {
                 if v.is_first() {
                     // For every (first) vline we initialize the next buffer line's text layout
                     // This ensures it is ready for when re reach it.
-                    let next_line = v.rvline.line + 1;
+                    let next_line = hidden.next_visible(v.rvline.line + 1);
                     let font_size = font_sizes.borrow().font_size(next_line);
                     // `init_iter_lines` is the reason `get_init_text_layout` is split out.
                     // Being split out lets us avoid attaching lifetimes to the iterator, since it
@@ -758,6 +890,10 @@ impl Lines {
             .unwrap_or(0);
 
         let line = text_prov.text().line_of_offset(offset);
+        if self.hidden.borrow().is_hidden(line) {
+            // The offset is hidden, so it is shown at the end of the fold header.
+            return (vline, last_col);
+        }
         let line_offset = text_prov.text().offset_of_line(line);
 
         let col = offset - line_offset;
@@ -836,10 +972,19 @@ impl Lines {
     ) -> (RVLine, usize) {
         let rvline = self.rvline_of_offset(text_prov, offset, affinity);
         let info = self.iter_rvlines(text_prov, false, rvline).next().unwrap();
+        let last_col = info.last_col(text_prov, true);
+        if self
+            .hidden
+            .borrow()
+            .is_hidden(text_prov.text().line_of_offset(offset))
+        {
+            // The offset is hidden, so it is shown at the end of the fold header.
+            return (rvline, last_col);
+        }
         let line_offset = text_prov.text().offset_of_line(rvline.line);
 
         let col = offset - line_offset;
-        let col = col.min(info.last_col(text_prov, true));
+        let col = col.min(last_col);
 
         (rvline, col)
     }
@@ -1021,6 +1166,12 @@ fn find_vline_of_offset(
     let rope_text = text_prov.rope_text();
 
     let buffer_line = rope_text.line_of_offset(offset);
+    let hidden = lines.hidden.borrow().clone();
+    if hidden.is_hidden(buffer_line) {
+        // Hidden text is shown on its fold header.
+        let header = hidden.prev_visible(buffer_line);
+        return Some((find_vline_of_line(lines, text_prov, header)?, 0));
+    }
     let line_start_offset = rope_text.offset_of_line(buffer_line);
     let vline = find_vline_of_line(lines, text_prov, buffer_line)?;
 
@@ -1064,6 +1215,11 @@ fn find_rvline_of_offset(
     let rope_text = text_prov.rope_text();
 
     let buffer_line = rope_text.line_of_offset(offset);
+    let hidden = lines.hidden.borrow().clone();
+    if hidden.is_hidden(buffer_line) {
+        // Hidden text is shown on its fold header.
+        return Some(RVLine::new(hidden.prev_visible(buffer_line), 0));
+    }
     let line_start_offset = rope_text.offset_of_line(buffer_line);
 
     let font_size = lines.font_size(buffer_line);
@@ -1150,6 +1306,16 @@ fn find_vline_of_line(
     let rope = text_prov.rope_text();
 
     let last_line = rope.last_line();
+
+    let hidden = lines.hidden.borrow().clone();
+    if !hidden.is_empty() {
+        if line > last_line {
+            return None;
+        }
+        // A hidden line has no visual line of its own, so use its fold header's.
+        let line = hidden.prev_visible(line);
+        return Some(VLine(lines.visible_vlines_before(&hidden, line)));
+    }
 
     if line > last_line / 2 {
         // Often the last vline will already be cached, which lets us half the search time.
@@ -1267,12 +1433,48 @@ fn find_vline_init_info(
         return None;
     }
 
+    let hidden = lines.hidden.borrow().clone();
+    if !hidden.is_empty() {
+        return find_vline_init_info_hidden(lines, text_prov, &hidden, vline);
+    }
+
     if vline.get() > last_vline.get() / 2 {
         let last_rvline = lines.last_rvline(text_prov);
         find_vline_init_info_rv_backward(lines, text_prov, (last_vline, last_rvline), vline)
     } else {
         find_vline_init_info_forward(lines, text_prov, (VLine(0), 0), vline)
     }
+}
+
+/// [`find_vline_init_info`] when some lines are hidden: scans from the start, skipping them.
+fn find_vline_init_info_hidden(
+    lines: &Lines,
+    text_prov: &impl TextLayoutProvider,
+    hidden: &HiddenLines,
+    vline: VLine,
+) -> Option<(usize, RVLine)> {
+    let last_line = text_prov.rope_text().last_line();
+    let layouts = lines.text_layouts.borrow();
+    let mut cur_vline = 0;
+    let mut line = 0;
+    while line <= last_line {
+        if let Some(range) = hidden.range_of(line) {
+            line = range.end;
+            continue;
+        }
+        let font_size = lines.font_size(line);
+        let count = layouts
+            .get(font_size, line)
+            .map_or(1, |layout| layout.line_count());
+        if vline.get() < cur_vline + count {
+            let rvline = RVLine::new(line, vline.get() - cur_vline);
+            let offset = rvline_offset(&layouts, text_prov, font_size, rvline);
+            return Some((offset, rvline));
+        }
+        cur_vline += count;
+        line += 1;
+    }
+    None
 }
 
 // TODO(minor): should we package (VLine, buffer line) into a struct since we use it for these
@@ -1680,6 +1882,8 @@ struct VisualLinesRelative<T: TextLayoutProvider> {
     backwards: bool,
     /// Whether there is a one-to-one mapping between buffer lines and visual lines.
     linear: bool,
+    /// Lines to skip over.
+    hidden: Rc<HiddenLines>,
 
     is_first_iter: bool,
 }
@@ -1690,6 +1894,14 @@ impl<T: TextLayoutProvider> VisualLinesRelative<T> {
         backwards: bool,
         start: RVLine,
     ) -> VisualLinesRelative<T> {
+        let hidden = lines.hidden.borrow().clone();
+        // Start on the fold header if the start is inside a fold.
+        let start = if hidden.is_hidden(start.line) {
+            RVLine::new(hidden.prev_visible(start.line), 0)
+        } else {
+            start
+        };
+
         // Empty iterator if we're past the end of the possible lines
         if start > lines.last_rvline(&text_prov) {
             return VisualLinesRelative::empty(lines, text_prov, backwards);
@@ -1710,6 +1922,7 @@ impl<T: TextLayoutProvider> VisualLinesRelative<T> {
             offset,
             backwards,
             linear,
+            hidden,
             is_first_iter: true,
         }
     }
@@ -1724,6 +1937,7 @@ impl<T: TextLayoutProvider> VisualLinesRelative<T> {
             offset: 0,
             backwards,
             linear: true,
+            hidden: Rc::new(HiddenLines::default()),
             is_first_iter: true,
         }
     }
@@ -1756,6 +1970,29 @@ impl<T: TextLayoutProvider> Iterator for VisualLinesRelative<T> {
 
             self.rvline = new_rel_vline;
             self.offset = offset;
+
+            if !self.hidden.is_empty() && self.hidden.is_hidden(self.rvline.line) {
+                if self.backwards {
+                    // We stepped back into a fold, so land on the last visual line of its header.
+                    let line = self.hidden.prev_visible(self.rvline.line);
+                    let font_size = self.font_sizes.font_size(line);
+                    let line_index = layouts
+                        .get(font_size, line)
+                        .map_or(0, |layout| layout.line_count() - 1);
+                    self.rvline = RVLine::new(line, line_index);
+                    self.offset =
+                        rvline_offset(&layouts, &self.text_prov, font_size, self.rvline);
+                } else {
+                    // We stepped into a fold, so continue after it.
+                    let line = self.hidden.next_visible(self.rvline.line);
+                    if line > self.text_prov.rope_text().last_line() {
+                        self.is_done = true;
+                        return None;
+                    }
+                    self.rvline = RVLine::new(line, 0);
+                    self.offset = self.text_prov.rope_text().offset_of_line(line);
+                }
+            }
 
             if self.rvline.line > self.text_prov.rope_text().last_line() {
                 self.is_done = true;
@@ -2056,7 +2293,7 @@ pub fn hit_position_aff(this: &TextLayout, idx: usize, before: bool) -> HitPosit
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+    use std::{borrow::Cow, cell::RefCell, collections::HashMap, ops::Range, rc::Rc, sync::Arc};
 
     use floem_editor_core::{
         buffer::rope_text::{RopeText, RopeTextRef, RopeTextVal},
@@ -3600,5 +3837,249 @@ mod tests {
             &Rope::from("aaaa\r\nbb bb cc\r\ncc dddd eeee ff\r\nff gggg"),
             "simple multiline (CRLF)",
         );
+    }
+
+    #[test]
+    fn hidden_lines_set() {
+        use super::HiddenLines;
+
+        // Sorted, merged, line zero kept visible, empty ranges dropped.
+        let hidden = HiddenLines::new([7..9, 0..2, 3..3, 1..3, 9..10, 5..6]);
+        assert_eq!(hidden.ranges(), &[1..3, 5..6, 7..10]);
+        assert!(HiddenLines::new([2..2, 5..1]).is_empty());
+
+        assert!(!hidden.is_hidden(0));
+        assert!(hidden.is_hidden(1) && hidden.is_hidden(2));
+        assert!(!hidden.is_hidden(3) && !hidden.is_hidden(4));
+        assert!(hidden.is_hidden(5) && !hidden.is_hidden(6));
+        assert!(hidden.is_hidden(9) && !hidden.is_hidden(10));
+
+        assert_eq!(hidden.next_visible(0), 0);
+        assert_eq!(hidden.next_visible(1), 3);
+        assert_eq!(hidden.next_visible(5), 6);
+        assert_eq!(hidden.next_visible(8), 10);
+        assert_eq!(hidden.prev_visible(2), 0);
+        assert_eq!(hidden.prev_visible(4), 4);
+        assert_eq!(hidden.prev_visible(5), 4);
+        assert_eq!(hidden.prev_visible(9), 6);
+
+        assert_eq!(hidden.hidden_before(1), 0);
+        assert_eq!(hidden.hidden_before(2), 1);
+        assert_eq!(hidden.hidden_before(6), 3);
+        assert_eq!(hidden.hidden_before(100), 6);
+    }
+
+    /// Compare lines with some lines hidden against the same lines unhidden.
+    ///
+    /// The unhidden lines are the oracle: the hidden lines must be exactly the unhidden visual
+    /// lines of the visible buffer lines, in the same order, with the same offsets.
+    fn check_hidden(text: &Rope, width: f32, init: bool, ranges: &[Range<usize>]) {
+        let (text_prov, lines) = make_lines(text, width, init);
+        let config = ConfigId::new(0, 0);
+        // Make sure every layout exists so the unhidden numbers are the real wrapped ones.
+        lines.init_all(0, config, &text_prov, false);
+        let last_line = RopeTextRef::new(text).last_line();
+
+        // (rvline, offset) of every unhidden visual line.
+        let all: Vec<_> = lines
+            .iter_rvlines(&text_prov, false, RVLine::default())
+            .map(|info| (info.rvline, info.interval.start, info.interval.end))
+            .collect();
+        let unhidden_vline = |rv: RVLine| lines.vline_of_rvline(&text_prov, rv);
+
+        // Layouts only exist for the lines we initialized above, so if `init` is false the
+        // hidden side below has to cope with the same cache. Both sides share these layouts.
+        let hidden = super::HiddenLines::new(ranges.iter().cloned());
+        lines.set_hidden_lines(hidden.clone());
+        let expected: Vec<_> = all
+            .iter()
+            .filter(|(rv, ..)| !hidden.is_hidden(rv.line))
+            .cloned()
+            .collect();
+        assert!(!expected.is_empty());
+
+        let n = expected.len();
+        assert_eq!(lines.num_vlines(&text_prov), n, "{ranges:?}");
+        assert_eq!(lines.last_vline(&text_prov), VLine(n - 1));
+        assert_eq!(lines.last_rvline(&text_prov), expected[n - 1].0);
+
+        let fwd: Vec<_> = lines.iter_vlines(&text_prov, false, VLine(0)).collect();
+        assert_eq!(fwd.len(), n, "{ranges:?} forward");
+        for (i, (info, (rv, start, end))) in fwd.iter().zip(&expected).enumerate() {
+            assert_eq!(info.vline, VLine(i));
+            assert_eq!(info.rvline, *rv);
+            assert_eq!((info.interval.start, info.interval.end), (*start, *end));
+            // vline <-> offset/rvline conversions
+            assert_eq!(lines.offset_of_vline(&text_prov, VLine(i)), *start);
+            assert_eq!(lines.vline_of_rvline(&text_prov, *rv), VLine(i));
+            assert_eq!(
+                lines.rvline_of_offset(&text_prov, *start, CursorAffinity::Forward),
+                *rv
+            );
+            assert_eq!(
+                lines.vline_of_offset(&text_prov, *start, CursorAffinity::Forward),
+                VLine(i)
+            );
+            let _ = unhidden_vline;
+        }
+
+        let back: Vec<_> = lines
+            .iter_vlines(&text_prov, true, VLine(n - 1))
+            .map(|info| (info.vline, info.rvline))
+            .collect();
+        let mut want_back: Vec<_> = expected
+            .iter()
+            .enumerate()
+            .map(|(i, (rv, ..))| (VLine(i), *rv))
+            .collect();
+        want_back.reverse();
+        assert_eq!(back, want_back, "{ranges:?} backward");
+
+        // Starting in the middle, in both directions.
+        let mid = n / 2;
+        let from_mid: Vec<_> = lines
+            .iter_vlines(&text_prov, false, VLine(mid))
+            .map(|info| info.rvline)
+            .collect();
+        assert_eq!(
+            from_mid,
+            expected[mid..].iter().map(|e| e.0).collect::<Vec<_>>()
+        );
+
+        let rv_fwd: Vec<_> = lines
+            .iter_rvlines(&text_prov, false, RVLine::default())
+            .map(|info| info.rvline)
+            .collect();
+        assert_eq!(rv_fwd, expected.iter().map(|e| e.0).collect::<Vec<_>>());
+        // Starting inside a fold begins on its header.
+        if let Some(r) = hidden.ranges().first().filter(|r| r.start <= last_line) {
+            let started: Vec<_> = lines
+                .iter_rvlines(&text_prov, false, RVLine::new(r.start, 0))
+                .map(|info| info.rvline.line)
+                .collect();
+            let header = r.start - 1;
+            assert_eq!(started.first(), Some(&header));
+        }
+        let init_iter: Vec<_> = lines
+            .iter_vlines_init(&text_prov, 0, config, VLine(0), false)
+            .map(|info| (info.vline, info.rvline))
+            .collect();
+        assert_eq!(
+            init_iter,
+            fwd.iter().map(|i| (i.vline, i.rvline)).collect::<Vec<_>>()
+        );
+
+        // Every buffer line, including hidden ones and the offsets inside them.
+        let rope = RopeTextRef::new(text);
+        for line in 0..=last_line {
+            let header = hidden.prev_visible(line);
+            let first = expected.iter().position(|e| e.0 == RVLine::new(header, 0)).unwrap();
+            assert_eq!(lines.vline_of_line(&text_prov, line), VLine(first), "line {line}");
+            assert_eq!(lines.rvline_of_line(&text_prov, line), RVLine::new(header, 0));
+            let offset = rope.offset_of_line(line);
+            assert_eq!(
+                lines.rvline_of_offset(&text_prov, offset, CursorAffinity::Backward),
+                RVLine::new(header, 0)
+            );
+            assert_eq!(
+                lines.vline_of_offset(&text_prov, offset, CursorAffinity::Backward),
+                VLine(first)
+            );
+            if hidden.is_hidden(line) {
+                // Hidden offsets are placed at the end of the header.
+                let (rv, col) =
+                    lines.rvline_col_of_offset(&text_prov, offset, CursorAffinity::Forward);
+                assert_eq!(rv, RVLine::new(header, 0));
+                let info = lines.iter_rvlines(&text_prov, false, rv).next().unwrap();
+                assert_eq!(col, info.last_col(&text_prov, true));
+                let (vline, vcol) =
+                    lines.vline_col_of_offset(&text_prov, offset, CursorAffinity::Forward);
+                assert_eq!((vline, vcol), (VLine(first), col));
+            }
+        }
+
+        // Out of bounds stays out of bounds.
+        assert!(lines
+            .iter_vlines(&text_prov, false, VLine(n))
+            .next()
+            .is_none());
+
+        // Unhiding gives the original lines back, including the cached last vline.
+        lines.set_hidden_lines(super::HiddenLines::default());
+        assert_eq!(lines.num_vlines(&text_prov), all.len());
+        let again: Vec<_> = lines
+            .iter_rvlines(&text_prov, false, RVLine::default())
+            .map(|info| (info.rvline, info.interval.start, info.interval.end))
+            .collect();
+        assert_eq!(again, all);
+    }
+
+    #[test]
+    fn hidden_lines_unwrapped() {
+        let text = Rope::from("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n");
+        for init in [false, true] {
+            // Nothing hidden is the identity.
+            check_hidden(&text, 10000., init, &[]);
+            // One fold, a fold touching the end of the file, adjacent and overlapping folds.
+            check_hidden(&text, 10000., init, &[2..5]);
+            check_hidden(&text, 10000., init, &[7..9]);
+            check_hidden(&text, 10000., init, &[1..3, 3..6]);
+            check_hidden(&text, 10000., init, &[1..4, 2..3, 6..9]);
+            // Hiding everything except line zero.
+            check_hidden(&text, 10000., init, &[1..9]);
+            // Past the end of the buffer is harmless.
+            check_hidden(&text, 10000., init, &[6..100]);
+        }
+    }
+
+    #[test]
+    fn hidden_lines_known_values() {
+        let text = Rope::from("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n");
+        let (text_prov, lines) = make_lines(&text, 10000., true);
+        lines.set_hidden_lines(super::HiddenLines::new([2..5, 7..9]));
+
+        // Visible: 0, 1, 5, 6
+        assert!(!lines.is_linear(&text_prov));
+        assert_eq!(lines.last_vline(&text_prov), VLine(3));
+        assert_eq!(lines.offset_of_vline(&text_prov, VLine(2)), 15);
+        assert_eq!(lines.vline_of_line(&text_prov, 3), VLine(1));
+        assert_eq!(lines.vline_of_line(&text_prov, 5), VLine(2));
+        assert_eq!(lines.vline_of_line(&text_prov, 8), VLine(3));
+        assert_eq!(
+            lines.rvline_of_offset(&text_prov, 9, CursorAffinity::Backward),
+            RVLine::new(1, 0)
+        );
+        assert_eq!(
+            lines.vline_of_offset(&text_prov, 24, CursorAffinity::Backward),
+            VLine(3)
+        );
+        let seen: Vec<_> = lines
+            .iter_rvlines_over(&text_prov, false, RVLine::default(), 6)
+            .map(|info| info.rvline.line)
+            .collect();
+        assert_eq!(seen, vec![0, 1, 5]);
+    }
+
+    #[test]
+    fn hidden_lines_wrapped() {
+        // The long lines wrap at this width.
+        let text = Rope::from(
+            "aaaa bbbb cccc dddd eeee\nbb\ncccc dddd eeee ffff gggg hhhh\nd\neeee ffff gggg hhhh iiii\nf\ng\n",
+        );
+        let (text_prov, lines) = make_lines(&text, 40., true);
+        assert!(
+            lines.num_vlines(&text_prov) > 7,
+            "test text must wrap, got {} vlines",
+            lines.num_vlines(&text_prov)
+        );
+        for init in [false, true] {
+            check_hidden(&text, 40., init, &[]);
+            check_hidden(&text, 40., init, &[1..3]);
+            check_hidden(&text, 40., init, &[2..4]);
+            check_hidden(&text, 40., init, &[1..2, 3..5]);
+            check_hidden(&text, 40., init, &[3..8]);
+            check_hidden(&text, 40., init, &[5..7]);
+            check_hidden(&text, 40., init, &[1..8]);
+        }
     }
 }
