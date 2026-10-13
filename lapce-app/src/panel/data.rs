@@ -58,6 +58,8 @@ pub enum PanelSection {
     Changes,
     Installed,
     Available,
+    VsxInstalled,
+    VsxSearch,
     Process,
     Variable,
     StackFrame,

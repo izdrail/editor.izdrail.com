@@ -107,6 +107,7 @@ pub struct PluginData {
     pub all: RwSignal<im::HashMap<VoltID, AvailableVoltData>>,
     pub disabled: RwSignal<HashSet<VoltID>>,
     pub workspace_disabled: RwSignal<HashSet<VoltID>>,
+    pub vsx: crate::vsx_market::VsxMarket,
     pub common: Rc<CommonData>,
 }
 
@@ -188,10 +189,12 @@ impl PluginData {
             all: cx.create_rw_signal(im::HashMap::new()),
             disabled,
             workspace_disabled,
+            vsx: crate::vsx_market::VsxMarket::new(cx),
             common,
         };
 
         plugin.load_available_volts("", 0, core_rpc.clone());
+        plugin.vsx_search("");
 
         {
             let plugin = plugin.clone();
@@ -242,6 +245,7 @@ impl PluginData {
                 plugin.available.loading.set(false);
                 plugin.available.volts.update(|v| v.clear());
                 plugin.load_available_volts(&query, 0, core_rpc.clone());
+                plugin.vsx_search(&query);
                 query
             });
         }

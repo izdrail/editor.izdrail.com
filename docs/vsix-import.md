@@ -53,5 +53,14 @@ with `main`/`browser` code install their declarative content and are marked
 "contains code, not loaded". The shim in `lapce-vscode-experiment` is a separate
 opt-in experiment and is not used by installs.
 
-Not done yet: a graphical browse/install panel, update checks, version
-pinning, search paging beyond the first 20 hits.
+## Open VSX marketplace (plugin panel)
+
+The plugin panel has two new sections above "Available Themes & Icons":
+"Open VSX Marketplace" (results for the panel's existing search box, with
+Install buttons) and "Installed from Open VSX" (imported extensions with
+Uninstall). Installing reloads the config so new themes show up in the theme
+picker. Each installed row says "Contains code, not loaded" or "Declarative
+content only". The existing plugins.lapce.dev lists are unchanged.
+
+Not done yet: update checks, version pinning, paging past the first 30 hits,
+extension icons and readmes, enable/disable per extension.

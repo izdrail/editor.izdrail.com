@@ -29,6 +29,7 @@ pub mod markdown;
 pub mod palette;
 pub mod panel;
 pub mod plugin;
+pub mod vsx_market;
 pub mod proxy;
 pub mod rename;
 pub mod settings;

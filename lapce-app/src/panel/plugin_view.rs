@@ -80,6 +80,16 @@ pub fn plugin_panel(
             window_tab_data.panel.section_open(PanelSection::Installed),
         )
         .add(
+            "Installed from Open VSX",
+            crate::vsx_market::vsx_installed_view(plugin.clone()),
+            window_tab_data.panel.section_open(PanelSection::VsxInstalled),
+        )
+        .add(
+            "Open VSX Marketplace",
+            crate::vsx_market::vsx_search_view(plugin.clone()),
+            window_tab_data.panel.section_open(PanelSection::VsxSearch),
+        )
+        .add(
             "Available Themes & Icons",
             available_view(plugin.clone(), core_rpc),
             window_tab_data.panel.section_open(PanelSection::Available),
