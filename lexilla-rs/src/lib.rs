@@ -8,6 +8,11 @@ use std::{
 unsafe extern "C" {
     fn lx_new(name: *const c_char, text: *const c_char, n: usize) -> *mut c_void;
     fn lx_free(session: *mut c_void);
+    fn lx_property(
+        session: *mut c_void,
+        key: *const c_char,
+        value: *const c_char,
+    ) -> i32;
     fn lx_words(session: *mut c_void, index: i32, words: *const c_char) -> i32;
     fn lx_lex(
         session: *mut c_void,
@@ -26,7 +31,33 @@ pub enum Error {
     InvalidName,
     UnavailableLexer,
     Keywords,
+    Property,
     Lexing(i32),
+}
+
+/// Supported, typed lexical settings. Unknown property names cannot cross the ABI.
+#[derive(Debug, Clone, Copy)]
+pub enum Property {
+    Scss(bool),
+    Javascript(bool),
+}
+impl Property {
+    fn pairs(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::Scss(true) => &[("lexer.css.scss.language", "1")],
+            Self::Scss(false) => &[("lexer.css.scss.language", "0")],
+            Self::Javascript(true) => &[
+                ("lexer.cpp.allow.dollars", "1"),
+                ("lexer.cpp.enable.preprocessor", "0"),
+                ("lexer.cpp.backquoted.strings", "1"),
+            ],
+            Self::Javascript(false) => &[
+                ("lexer.cpp.allow.dollars", "0"),
+                ("lexer.cpp.enable.preprocessor", "1"),
+                ("lexer.cpp.backquoted.strings", "0"),
+            ],
+        }
+    }
 }
 
 struct Session(*mut c_void);
@@ -44,6 +75,25 @@ pub struct Snapshot {
 }
 impl Snapshot {
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
+        Self::lex_with_properties(name, text, keywords, &[])
+    }
+
+    pub fn lex_with_properties(
+        name: &str,
+        text: &str,
+        keywords: &[&str],
+        properties: &[Property],
+    ) -> Result<Self, Error> {
+        // Reject settings for the wrong language, even if a legacy lexer accepts
+        // arbitrary property names without reporting an error.
+        if properties.iter().any(|p| {
+            !matches!(
+                (name, p),
+                ("css", Property::Scss(_)) | ("cpp", Property::Javascript(_))
+            )
+        }) {
+            return Err(Error::Property);
+        }
         let name = CString::new(name).map_err(|_| Error::InvalidName)?;
         // SAFETY: both buffers remain valid through the call. C++ copies text.
         let raw = unsafe { lx_new(name.as_ptr(), text.as_ptr().cast(), text.len()) };
@@ -51,6 +101,18 @@ impl Snapshot {
             return Err(Error::UnavailableLexer);
         }
         let session = Session(raw);
+        for property in properties {
+            for (key, value) in property.pairs() {
+                let key = CString::new(*key).map_err(|_| Error::Property)?;
+                let value = CString::new(*value).map_err(|_| Error::Property)?;
+                // -1 also means unchanged; validated keys above are authoritative.
+                if unsafe { lx_property(session.0, key.as_ptr(), value.as_ptr()) }
+                    < -1
+                {
+                    return Err(Error::Property);
+                }
+            }
+        }
         for (index, words) in keywords.iter().enumerate() {
             let words = CString::new(*words).map_err(|_| Error::Keywords)?;
             if unsafe { lx_words(session.0, index as i32, words.as_ptr()) } < -1 {
@@ -81,6 +143,33 @@ impl Snapshot {
             }
         }
         Ok(Self { styles, scopes })
+    }
+
+    /// Overlay a byte-aligned region, translating style IDs by theme scope.
+    /// The caller chooses the region; lexer-local style IDs never leak across
+    /// language boundaries. Unmapped identifiers remain uncoloured.
+    pub fn overlay(&mut self, offset: usize, other: &Self, skip_default: bool) {
+        for (i, &style) in other.styles.iter().enumerate() {
+            if offset + i >= self.len() {
+                break;
+            }
+            if skip_default && style == 0 {
+                continue;
+            }
+            let scope = other.scope(style);
+            let target = self
+                .scopes
+                .iter()
+                .position(|s| *s == scope)
+                .unwrap_or_else(|| {
+                    // At most the small fixed theme-scope set is used by the adapter.
+                    let index =
+                        (240..256).find(|&i| self.scopes[i].is_none()).unwrap_or(0);
+                    self.scopes[index] = scope;
+                    index
+                });
+            self.styles[offset + i] = target as u8;
+        }
     }
 
     pub fn scope(&self, style: u8) -> Option<&'static str> {
@@ -242,6 +331,62 @@ mod concurrency_tests {
             .collect();
         for worker in workers {
             worker.join().unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
+mod web_regressions {
+    use super::*;
+    #[test]
+    fn properties_are_typed_language_checked_and_session_local() {
+        let t = "$accent: red; // sass\nbody { color: $accent; }";
+        let css = Snapshot::lex("css", t, &[]).unwrap();
+        let sass =
+            Snapshot::lex_with_properties("css", t, &[], &[Property::Scss(true)])
+                .unwrap();
+        assert_ne!(css.styles(), sass.styles());
+        assert_eq!(css.styles(), Snapshot::lex("css", t, &[]).unwrap().styles());
+        assert_eq!(
+            Snapshot::lex_with_properties("php", "", &[], &[Property::Scss(true)])
+                .unwrap_err(),
+            Error::Property
+        );
+        let t = "const $name = `hello ${world}`;";
+        let js = Snapshot::lex_with_properties(
+            "cpp",
+            t,
+            &["const"],
+            &[Property::Javascript(true)],
+        )
+        .unwrap();
+        assert_eq!(
+            js.scope(js.styles()[t.find("hello").unwrap()]),
+            Some("string")
+        );
+    }
+    #[test]
+    fn php_scanners_share_comment_and_function_fixes() {
+        for lexer in ["php", "laravel"] {
+            let t = "<?php // hi ?> <p>λ</p>\n<?php /* a /* b */ strlen('x');";
+            let s = Snapshot::lex(lexer, t, &["", "strlen"]).unwrap();
+            let scope = |word: &str| s.scope(s.styles()[t.find(word).unwrap()]);
+            assert_eq!(scope("// hi"), Some("comment"));
+            assert_eq!(scope("?>"), Some("operator"));
+            assert_ne!(scope("<p>"), Some("comment"));
+            assert_eq!(scope("strlen"), Some("function"));
+            for text in [
+                "<?php 'x\\",
+                "<?php \"x\\",
+                "<?php /*",
+                "<?php // ?>",
+                "<?php <<<'X'\nλ",
+            ] {
+                assert_eq!(
+                    Snapshot::lex(lexer, text, &[]).unwrap().len(),
+                    text.len()
+                );
+            }
         }
     }
 }

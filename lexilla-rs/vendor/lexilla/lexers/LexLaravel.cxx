@@ -177,7 +177,7 @@ const LexicalClass lexicalClasses[] = {
 	11, "SCE_LARAVEL_OPERATOR",        "operator",              "Operator",
 	12, "SCE_LARAVEL_NUMBER",          "literal numeric",       "Number",
 	13, "SCE_LARAVEL_WORD",            "keyword",               "PHP keywords",
-	14, "SCE_LARAVEL_WORD2",           "identifier",            "PHP builtin functions",
+	14, "SCE_LARAVEL_WORD2",           "function",            "PHP builtin functions",
 	15, "SCE_LARAVEL_WORD3",           "identifier type",            "PHP builtin types",
 	16, "SCE_LARAVEL_WORD4",           "identifier",            "PHP other keywords",
 	17, "SCE_LARAVEL_IDENTIFIER",      "identifier",            "Identifier",
@@ -301,7 +301,7 @@ static void GrabString(char *s, Accessor &styler, Sci_Position start, Sci_Positi
 static void ScanLineComment(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
-		if (c == '\n' || c == '\r')
+		if (c == '\n' || c == '\r' || (c == '?' && styler.SafeGetCharAt(pos + 1, '\0') == '>'))
 			break;
 		pos++;
 	}
@@ -309,22 +309,13 @@ static void ScanLineComment(Accessor &styler, Sci_Position &pos, Sci_Position ma
 }
 
 static void ScanBlockComment(Accessor &styler, Sci_Position &pos, Sci_Position max, bool isDoc) {
-	int level = 1;
 	while (pos < max) {
-		const int c = styler.SafeGetCharAt(pos, '\0');
-		const int n = styler.SafeGetCharAt(pos + 1, '\0');
-		if (c == '/' && n == '*') {
-			level++;
-			pos += 2;
-		} else if (c == '*' && n == '/') {
-			level--;
-			pos += 2;
-			if (level == 0)
-				break;
-		} else {
-			pos++;
-		}
-	}
+        if (styler.SafeGetCharAt(pos, '\0') == '*' && styler.SafeGetCharAt(pos + 1, '\0') == '/') {
+            pos += 2;
+            break; // PHP block comments do not nest.
+        }
+        pos++;
+    }
 	styler.ColourTo(pos - 1, isDoc ? SCE_LARAVEL_DOCCOMMENT : SCE_LARAVEL_COMMENT);
 }
 
@@ -332,7 +323,7 @@ static void ScanSingleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
-			pos += 2;
+			pos = std::min(pos + 2, max);
 		} else if (c == '\'') {
 			pos++;
 			break;
@@ -347,7 +338,7 @@ static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
-			pos += 2;
+			pos = std::min(pos + 2, max);
 		} else if (c == '"') {
 			pos++;
 			break;
@@ -768,11 +759,6 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		if (options.colourLaravel) {
 			/* 1) User-provided facades win. */
 			if (keywords[WL_LARAVEL_FACADES].InList(s)) {
-				styler.ColourTo(identEnd - 1, SCE_LARAVEL_FACADE);
-				return;
-			}
-			/* 2) Heuristic: PascalCase before "::" is a facade. */
-			if (nextIsDoubleColon && isupper(static_cast<unsigned char>(s[0]))) {
 				styler.ColourTo(identEnd - 1, SCE_LARAVEL_FACADE);
 				return;
 			}

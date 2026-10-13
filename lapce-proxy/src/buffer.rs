@@ -230,6 +230,7 @@ pub fn language_id_from_path(path: &Path) -> Option<&'static str> {
                     }
                     "cs" | "csx" => "csharp",
                     "css" => "css",
+                    "twig" => "twig",
                     "d" | "di" | "dlang" => "dlang",
                     "diff" | "patch" => "diff",
                     "dart" => "dart",

@@ -17,3 +17,9 @@ pub mod lexilla;
 pub mod textmate;
 
 pub mod folding;
+
+pub mod project_profile;
+
+pub mod web_metadata;
+
+pub mod web_templates;

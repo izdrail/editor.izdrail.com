@@ -2044,8 +2044,8 @@ impl EditorData {
         use crate::{
             completion::ScoredCompletionItem,
             completion_sources::{
-                CompletionSource, MAX_SCAN_BYTES, buffer_words, language_items,
-                leading_indent, php_variable_items, snippet_items, word_items,
+                CompletionSource, MAX_SCAN_BYTES, buffer_words, leading_indent,
+                php_variable_items, profile_items, snippet_items, word_items,
             },
         };
         let doc = self.doc();
@@ -2067,10 +2067,11 @@ impl EditorData {
                 if lang == Some("php") {
                     words.extend(php_variable_items(&text));
                 }
-                let laravel = lang == Some("php")
-                    && lapce_core::lexilla::is_laravel_project(path);
-                let keywords =
-                    lang.map(|l| language_items(l, laravel)).unwrap_or_default();
+                let project = lapce_core::project_profile::detect(path);
+                let before_cursor = buffer.slice_to_cow(0..offset);
+                let keywords = lang
+                    .map(|l| profile_items(l, &project, &before_cursor))
+                    .unwrap_or_default();
 
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);

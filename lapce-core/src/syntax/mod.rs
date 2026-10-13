@@ -905,7 +905,8 @@ pub struct Syntax {
     /// has no lexer for the file.
     pub textmate_scope: Option<String>,
     /// The file is inside a Laravel project (selects the `laravel` PHP lexer).
-    pub laravel: bool,
+    pub project: crate::project_profile::ProjectProfile,
+    pub project_path: Option<std::path::PathBuf>,
     pub textmate: Option<Arc<lapce_vsix::textmate::Snapshot>>,
     pub folding_ranges: Vec<crate::folding::FoldRange>,
     pub cancel_flag: Arc<AtomicUsize>,
@@ -930,8 +931,8 @@ impl Syntax {
         let language = LapceLanguage::from_path(path);
         let mut syntax = Syntax::from_language(language);
         syntax.textmate_scope = crate::textmate::scope_for_path(path);
-        syntax.laravel = matches!(language, LapceLanguage::Php | LapceLanguage::Blade)
-            && crate::lexilla::is_laravel_project(path);
+        syntax.project = crate::project_profile::detect(path);
+        syntax.project_path = Some(path.to_owned());
         syntax
     }
 
@@ -952,7 +953,8 @@ impl Syntax {
             styles: None,
             lexilla: None,
             textmate_scope: None,
-            laravel: false,
+            project: Default::default(),
+            project_path: None,
             textmate: None,
             folding_ranges: Vec::new(),
             cancel_flag: Arc::new(AtomicUsize::new(0)),
@@ -969,8 +971,10 @@ impl Syntax {
         // states. The UI accepts only the matching revision, then extracts runs
         // per painted line. No tree-sitter grammar loading or full-file spans.
         let _ = edits;
-        let snapshot =
-            crate::lexilla::highlight_in(self.language, &new_text, self.laravel);
+        if let Some(path) = &self.project_path {
+            self.project = crate::project_profile::detect(path);
+        }
+        let snapshot = crate::lexilla::highlight_profile(self.language, &new_text, &self.project);
         let textmate = match (&snapshot, &self.textmate_scope) {
             (None, Some(scope)) => crate::textmate::highlight(scope, &new_text),
             _ => None,

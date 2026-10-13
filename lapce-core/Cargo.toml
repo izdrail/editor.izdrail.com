@@ -7,6 +7,7 @@ edition      = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+serde_json = { workspace = true }
 lexilla-rs = { path = "../lexilla-rs" }
 lapce-vsix = { workspace = true }
 directories  = { workspace = true }

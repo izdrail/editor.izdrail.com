@@ -426,6 +426,8 @@ pub enum LapceLanguage {
     Toml,
     #[strum(message = "Tsx")]
     Tsx,
+    #[strum(message = "Twig")]
+    Twig,
     #[strum(message = "TypeScript")]
     Typescript,
     #[strum(message = "Typst")]
@@ -1603,6 +1605,14 @@ const LANGUAGES: &[SyntaxProperties] = &[
             code_glance: (&["source_file", "program"], &["source_file"]),
             sticky_headers: &[],
         },
+    },
+    SyntaxProperties {
+        id: LapceLanguage::Twig,
+        indent: Indent::space(4),
+        files: &[],
+        extensions: &["twig"],
+        comment: comment_properties!(),
+        tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
         id: LapceLanguage::Typescript,

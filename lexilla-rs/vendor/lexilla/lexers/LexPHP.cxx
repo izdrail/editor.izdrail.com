@@ -136,7 +136,7 @@ const LexicalClass lexicalClasses[] = {
 	11, "SCE_PHP_OPERATOR",        "operator",              "Operator",
 	12, "SCE_PHP_NUMBER",          "literal numeric",       "Number",
 	13, "SCE_PHP_WORD",            "keyword",               "Keywords",
-	14, "SCE_PHP_WORD2",           "identifier",            "Builtin functions",
+	14, "SCE_PHP_WORD2",           "function",            "Builtin functions",
 	15, "SCE_PHP_WORD3",           "identifier type",            "Builtin types",
 	16, "SCE_PHP_WORD4",           "identifier",            "Other keywords",
 	17, "SCE_PHP_IDENTIFIER",      "identifier",            "Identifier",
@@ -235,7 +235,7 @@ static void GrabString(char *s, Accessor &styler, Sci_Position start, Sci_Positi
 static void ScanLineComment(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
-		if (c == '\n' || c == '\r')
+		if (c == '\n' || c == '\r' || (c == '?' && styler.SafeGetCharAt(pos + 1, '\0') == '>'))
 			break;
 		pos++;
 	}
@@ -244,22 +244,13 @@ static void ScanLineComment(Accessor &styler, Sci_Position &pos, Sci_Position ma
 
 /* pos points just past the opening "/*". */
 static void ScanBlockComment(Accessor &styler, Sci_Position &pos, Sci_Position max, bool isDoc) {
-	int level = 1;
 	while (pos < max) {
-		const int c = styler.SafeGetCharAt(pos, '\0');
-		const int n = styler.SafeGetCharAt(pos + 1, '\0');
-		if (c == '/' && n == '*') {
-			level++;
-			pos += 2;
-		} else if (c == '*' && n == '/') {
-			level--;
-			pos += 2;
-			if (level == 0)
-				break;
-		} else {
-			pos++;
-		}
-	}
+        if (styler.SafeGetCharAt(pos, '\0') == '*' && styler.SafeGetCharAt(pos + 1, '\0') == '/') {
+            pos += 2;
+            break; // PHP block comments do not nest.
+        }
+        pos++;
+    }
 	styler.ColourTo(pos - 1, isDoc ? SCE_PHP_DOCCOMMENT : SCE_PHP_COMMENT);
 }
 
@@ -268,7 +259,7 @@ static void ScanSingleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
-			pos += 2;
+			pos = std::min(pos + 2, max);
 		} else if (c == '\'') {
 			pos++;
 			break;
@@ -284,7 +275,7 @@ static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
-			pos += 2;
+			pos = std::min(pos + 2, max);
 		} else if (c == '"') {
 			pos++;
 			break;

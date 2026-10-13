@@ -28,53 +28,9 @@ pub const LARAVEL_WORD_LISTS: &[&str] = &[
     "all avg chunk count create delete distinct doesntExist doesntHave exists find findOrFail findMany first firstOrCreate firstOrFail firstOrNew firstWhere forceDelete from get groupBy has having inRandomOrder insert join latest leftJoin limit lockForUpdate max min offset oldest orderBy orderByDesc orWhere paginate pluck query rightJoin select selectRaw simplePaginate skip sum take toSql update updateOrCreate upsert value when whereBetween whereDate whereHas whereIn whereNotIn whereNotNull whereNull whereRaw with withCount withTrashed without onlyTrashed restore hasMany hasOne belongsTo belongsToMany morphTo morphMany morphOne hasManyThrough hasOneThrough",
 ];
 
-/// Per-directory cache of the Laravel project check (the check reads files).
-static LARAVEL_CACHE: std::sync::Mutex<
-    Option<
-        std::collections::HashMap<std::path::PathBuf, (std::time::Instant, bool)>,
-    >,
-> = std::sync::Mutex::new(None);
-
-/// True when `file` sits inside a Laravel project: an `artisan` file, or a
-/// `composer.json` mentioning `laravel/framework`, in the nearest ancestor that
-/// has either. Cached per directory for a short time.
+/// Compatibility entry point. Syntax and completion use the full profile.
 pub fn is_laravel_project(file: &std::path::Path) -> bool {
-    let Some(dir) = file.parent() else {
-        return false;
-    };
-    let now = std::time::Instant::now();
-    if let Ok(mut guard) = LARAVEL_CACHE.lock() {
-        let cache = guard.get_or_insert_with(Default::default);
-        if let Some((at, v)) = cache.get(dir) {
-            if now.duration_since(*at) < std::time::Duration::from_secs(60) {
-                return *v;
-            }
-        }
-    }
-    let result = detect_laravel(dir);
-    if let Ok(mut guard) = LARAVEL_CACHE.lock() {
-        let cache = guard.get_or_insert_with(Default::default);
-        if cache.len() > 512 {
-            cache.clear();
-        }
-        cache.insert(dir.to_path_buf(), (now, result));
-    }
-    result
-}
-
-fn detect_laravel(dir: &std::path::Path) -> bool {
-    for ancestor in dir.ancestors().take(12) {
-        if ancestor.join("artisan").is_file() {
-            return true;
-        }
-        let composer = ancestor.join("composer.json");
-        if composer.is_file() {
-            return std::fs::read_to_string(&composer)
-                .map(|t| t.len() < 1 << 20 && t.contains("laravel/framework"))
-                .unwrap_or(false);
-        }
-    }
-    false
+    crate::project_profile::detect(file).laravel
 }
 
 /// Word lists for the standalone `php` lexer: keywords, builtin functions,
@@ -97,8 +53,26 @@ pub fn highlight_in(
     text: &Rope,
     laravel: bool,
 ) -> Option<Arc<Snapshot>> {
+    let project = crate::project_profile::ProjectProfile {
+        laravel,
+        ..Default::default()
+    };
+    highlight_profile(language, text, &project)
+}
+
+pub fn highlight_profile(
+    language: LapceLanguage,
+    text: &Rope,
+    project: &crate::project_profile::ProjectProfile,
+) -> Option<Arc<Snapshot>> {
     use LapceLanguage::*;
+    let laravel = project.laravel;
     let source = text.to_string();
+    if language == Twig {
+        return crate::web_templates::twig(&source).map(Arc::new);
+    }
+    let php_lists = crate::web_metadata::php_lists(project);
+    let php_refs: Vec<&str> = php_lists.iter().map(String::as_str).collect();
     let (lexer, keywords): (&str, &[&str]) = match language {
         C | Cpp => (
             "cpp",
@@ -129,8 +103,8 @@ pub fn highlight_in(
         // Outside a Laravel project the framework word lists stay empty.
         Blade if laravel => ("blade", LARAVEL_WORD_LISTS),
         Blade => ("blade", PHP_WORD_LISTS),
-        Php if laravel && is_pure_php(&source) => ("laravel", LARAVEL_WORD_LISTS),
-        Php if is_pure_php(&source) => ("php", PHP_WORD_LISTS),
+        Php if laravel && is_pure_php(&source) => ("laravel", &php_refs),
+        Php if is_pure_php(&source) => ("php", &php_refs),
         Html | Php => (
             "hypertext",
             &[
@@ -141,7 +115,7 @@ pub fn highlight_in(
                 "abstract as break case catch class const continue default do echo else elseif empty endfor endforeach endif extends false final finally for foreach function global if implements include include_once interface isset list namespace new null private protected public require require_once return static switch throw trait true try unset use var while yield",
             ],
         ),
-        Css => ("css", &[]),
+        Css | Scss => ("css", &[]),
         Json | Json5 => ("json", &["false null true"]),
         Bash => (
             "bash",
@@ -166,8 +140,18 @@ pub fn highlight_in(
         Xml => ("xml", &[]),
         _ => return None,
     };
-    match Snapshot::lex(lexer, &source, keywords) {
-        Ok(snapshot) => Some(Arc::new(snapshot)),
+    let properties = match language {
+        Scss => vec![lexilla_rs::Property::Scss(true)],
+        Javascript | Typescript => vec![lexilla_rs::Property::Javascript(true)],
+        _ => Vec::new(),
+    };
+    match Snapshot::lex_with_properties(lexer, &source, keywords, &properties) {
+        Ok(mut snapshot) => {
+            if matches!(language, Blade | Html | Php) {
+                crate::web_templates::embed_web(&source, &mut snapshot);
+            }
+            Some(Arc::new(snapshot))
+        }
         Err(error) => {
             tracing::warn!(?error, lexer, "Lexilla highlighting failed");
             None
@@ -310,9 +294,9 @@ mod tests {
         assert_eq!(php_scope_at(&snap, t, "final", 0), Some("keyword"));
         assert_eq!(php_scope_at(&snap, t, "function", 0), Some("keyword"));
         assert_eq!(php_scope_at(&snap, t, "string $first", 0), Some("type"));
-        // comments, including nested block comment and doc comment
+        // PHP comments end at the first closer, not at a nesting level.
         assert_eq!(php_scope_at(&snap, t, "/* outer", 0), Some("comment"));
-        assert_eq!(php_scope_at(&snap, t, "still", 0), Some("comment"));
+        assert_ne!(php_scope_at(&snap, t, "still", 0), Some("comment"));
         assert_eq!(php_scope_at(&snap, t, "/** doc", 0), Some("comment"));
         assert_eq!(php_scope_at(&snap, t, "// line", 0), Some("comment"));
         // #[Attribute] is not a comment
@@ -387,9 +371,9 @@ mod tests {
         let snap =
             Snapshot::lex("laravel", t, LARAVEL_WORD_LISTS).expect("laravel lexer");
         assert_eq!(snap.len(), t.len());
-        // facades (PascalCase before ::) and the facade list
+        // Only explicitly listed facades, never every PascalCase static call.
         assert_eq!(lv(&snap, t, "Route", 0), Some("type"));
-        assert_eq!(lv(&snap, t, "User", 0), Some("type"));
+        assert_ne!(lv(&snap, t, "User", 0), Some("type"));
         assert_eq!(lv(&snap, t, "Artisan", 0), Some("type"));
         // route methods and Eloquent methods after ::/->  (only after ::)
         assert_eq!(lv(&snap, t, "middleware('auth')->get", 0), Some("function"));

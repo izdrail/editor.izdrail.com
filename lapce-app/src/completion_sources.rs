@@ -384,3 +384,102 @@ mod loaded_tests {
         assert_eq!(items[0].label, "foreach");
     }
 }
+
+/// Profile-aware static declarations, with explicit baseline/version provenance.
+/// A builtin fallback is not a resolved type or a complete project index.
+pub fn profile_items(
+    language_id: &str,
+    profile: &lapce_core::project_profile::ProjectProfile,
+    before_cursor: &str,
+) -> Vec<CompletionItem> {
+    let mut items = if language_id == "php" {
+        language_items(language_id, profile.laravel)
+    } else {
+        Vec::new()
+    };
+    let twig_kind = if language_id == "twig" {
+        lapce_core::web_templates::completion_kind(before_cursor)
+    } else {
+        None
+    };
+    if language_id == "twig" && twig_kind.is_none() {
+        return items;
+    }
+    // Avoid API words in PHP strings/comments and member-access contexts. Static
+    // global-function fallback cannot infer the object's receiver type.
+    if language_id == "php"
+        && !lapce_core::web_templates::php_completion_context(before_cursor)
+    {
+        return Vec::new();
+    }
+    let mut seen: std::collections::HashSet<String> =
+        items.iter().map(|i| i.label.clone()).collect();
+    let symbols: Vec<_> = if language_id == "php" {
+        lapce_core::web_metadata::php_symbols(profile).collect()
+    } else if language_id == "twig" {
+        lapce_core::web_metadata::symbols()
+            .iter()
+            .filter(|s| s.framework == "twig" && Some(s.kind.as_str()) == twig_kind)
+            .collect()
+    } else {
+        return items;
+    };
+    for symbol in symbols {
+        if !seen.insert(symbol.name.clone()) {
+            continue;
+        }
+        items.push(CompletionItem {
+            label: symbol.name.clone(),
+            kind: Some(if symbol.kind == "class" {
+                CompletionItemKind::CLASS
+            } else {
+                CompletionItemKind::FUNCTION
+            }),
+            detail: Some(format!(
+                "{} {} baseline{}",
+                symbol.framework,
+                symbol.version,
+                symbol
+                    .signature
+                    .as_ref()
+                    .map(|s| format!(": {s}"))
+                    .unwrap_or_default()
+            )),
+            documentation: Some(lsp_types::Documentation::String(
+                symbol.doc_url.clone(),
+            )),
+            insert_text: Some(symbol.name.clone()),
+            ..Default::default()
+        });
+    }
+    items
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    #[test]
+    fn wordpress_and_twig_sources_are_context_separate() {
+        let p = lapce_core::project_profile::ProjectProfile {
+            wordpress: true,
+            ..Default::default()
+        };
+        assert!(
+            profile_items("php", &p, "<?php get_")
+                .iter()
+                .any(|i| i.label == "get_post_meta"
+                    && i.detail.as_deref().unwrap().contains("6.8.3"))
+        );
+        assert!(
+            !profile_items("php", &p, "<?php get_")
+                .iter()
+                .any(|i| i.label == "upper")
+        );
+        assert!(profile_items("php", &p, "<?php 'get_").is_empty());
+        assert!(profile_items("php", &p, "<?php $x->get_").is_empty());
+        let t = profile_items("twig", &p, "{{ x|up");
+        assert!(t.iter().any(|i| i.label == "upper"));
+        assert!(!t.iter().any(|i| i.label == "get_post_meta"));
+        assert!(profile_items("twig", &p, "<div>up").is_empty());
+    }
+}
