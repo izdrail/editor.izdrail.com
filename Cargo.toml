@@ -26,7 +26,7 @@ path = "lapce-ai/src/main.rs"
 
 [workspace]
 members = ["lapce-ai", "lapce-vscode-experiment", "lapce-app", "lapce-proxy", "lapce-rpc", "lapce-core", "lapce-vsix"]
-exclude = ["lexilla-rs"]
+exclude = ["lexilla-rs", "vendor"]
 
 [workspace.package]
 version      = "0.4.6"
@@ -93,6 +93,16 @@ features = ["editor", "serde", "default-image-formats", "rfd-async-std"]
 git = "https://github.com/lapce/floem"
 rev = "31fa8f444c37f4c314f47d88c23ffdbc25f2ab53"
 features = ["serde"]
+
+# Floem 31fa8f4 plus a hidden-line API in the editor Lines layer (code folding).
+# vendor/floem is that exact upstream revision with the changes in later commits.
+[patch."https://github.com/lapce/floem"]
+floem                     = { path = "vendor/floem" }
+floem-editor-core         = { path = "vendor/floem/editor-core" }
+floem_reactive            = { path = "vendor/floem/reactive" }
+floem_renderer            = { path = "vendor/floem/renderer" }
+floem_tiny_skia_renderer  = { path = "vendor/floem/tiny_skia" }
+floem_vger_renderer       = { path = "vendor/floem/vger" }
 
 [patch.crates-io]
 # Temporarily patch lsp-types with a version that adds message-type debug
