@@ -1,6 +1,6 @@
 ## Building from source
 
-It is easy to build Lapce from source on a GNU/Linux distribution. Cargo handles the build process, all you need to do, is ensure the correct dependencies are installed.
+It is easy to build this editor from source on a GNU/Linux distribution. Cargo handles the build process, all you need to do, is ensure the correct dependencies are installed.
 
 1. Install the Rust compiler and Cargo using [`rustup.rs`](https://rustup.rs/). If you already have the toolchain, ensure you are using latest Rust version.
 
@@ -21,12 +21,12 @@ sudo xbps-install -S base-devel clang libxkbcommon-devel vulkan-loader wayland-d
 
 3. Clone this repository (this command will clone to your home directory):
 ```sh
-git clone https://github.com/lapce/lapce.git ~/lapce
+git clone https://github.com/izdrail/editor.izdrail.com.git ~/editor
 ```
 
 4. `cd` into the repository, and run the build command with the release flag
 ```sh
-cd ~/lapce
+cd ~/editor
 ```
 
 ```sh
