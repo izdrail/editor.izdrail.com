@@ -9,6 +9,16 @@ use crate::tracing::*;
 pub(super) fn logging() -> (Handle<Targets>, Option<WorkerGuard>) {
     use tracing_subscriber::{filter, fmt, prelude::*, reload};
 
+    let debug_mode = lapce_core::diagnostics::is_debug();
+    if debug_mode {
+        if let Some(dir) = Directory::logs_directory() {
+            lapce_core::diagnostics::prune_logs(
+                &dir,
+                lapce_core::diagnostics::MAX_LOGS_TOTAL_BYTES,
+            );
+        }
+    }
+
     let (log_file, guard) = match Directory::logs_directory()
         .and_then(|dir| {
             tracing_appender::rolling::Builder::new()
@@ -25,11 +35,20 @@ pub(super) fn logging() -> (Handle<Targets>, Option<WorkerGuard>) {
         None => (None, None),
     };
 
-    let log_file_filter_targets = filter::Targets::new()
-        .with_target("lapce_app", LevelFilter::DEBUG)
-        .with_target("lapce_proxy", LevelFilter::DEBUG)
-        .with_target("lapce_core", LevelFilter::DEBUG)
-        .with_default(LevelFilter::from_level(TraceLevel::INFO));
+    let log_file_filter_targets = if debug_mode {
+        filter::Targets::new()
+            .with_target("lapce_app", LevelFilter::TRACE)
+            .with_target("lapce_proxy", LevelFilter::TRACE)
+            .with_target("lapce_core", LevelFilter::TRACE)
+            .with_target("lapce_rpc", LevelFilter::TRACE)
+            .with_default(LevelFilter::DEBUG)
+    } else {
+        filter::Targets::new()
+            .with_target("lapce_app", LevelFilter::DEBUG)
+            .with_target("lapce_proxy", LevelFilter::DEBUG)
+            .with_target("lapce_core", LevelFilter::DEBUG)
+            .with_default(LevelFilter::from_level(TraceLevel::INFO))
+    };
     let (log_file_filter, reload_handle) =
         reload::Subscriber::new(log_file_filter_targets);
 
@@ -65,6 +84,7 @@ pub(super) fn logging() -> (Handle<Targets>, Option<WorkerGuard>) {
 
 pub(super) fn panic_hook() {
     std::panic::set_hook(Box::new(move |info| {
+        lapce_core::diagnostics::record_panic("lapce", info);
         let thread = std::thread::current();
         let thread = thread.name().unwrap_or("main");
         let backtrace = backtrace::Backtrace::new();

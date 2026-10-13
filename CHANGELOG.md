@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Features/Changes
+- Added `--debug` / `LAPCE_DEBUG=1`: verbose trace logging, `crash.log` panic reports with backtraces, and language server stderr/crash logging (see docs/debugging.md)
 - Added document highlight for LSPs which support this feature
 - (Un)confirmed state of the editor is properly (re)stored
 - Implemented Folder/File choosing in remotes

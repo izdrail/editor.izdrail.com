@@ -142,6 +142,7 @@ pub fn start_remote(
 
     debug!("remote proxy path: {remote_proxy_path}");
 
+    let debug_flag = lapce_core::diagnostics::is_debug().then_some("--debug");
     let mut child = match platform {
         // Force cmd.exe usage to resolve %envvar% variables
         Windows => remote
@@ -149,6 +150,7 @@ pub fn start_remote(
             .args(["cmd", "/c"])
             .arg(&remote_proxy_file)
             .arg("--proxy")
+            .args(debug_flag)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?,
@@ -156,6 +158,7 @@ pub fn start_remote(
             .command_builder()
             .arg(&remote_proxy_file)
             .arg("--proxy")
+            .args(debug_flag)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?,
@@ -243,6 +246,10 @@ pub fn start_remote(
         }
     }
 
+    tracing::warn!(
+        "remote proxy connection closed (the remote lapce-proxy exited or the link dropped); \
+         remote crash details are in the remote host's logs directory when run with --debug"
+    );
     Ok(())
 }
 

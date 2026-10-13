@@ -124,6 +124,12 @@ struct Cli {
     #[clap(short, long, action)]
     wait: bool,
 
+    /// Enable debug mode: verbose trace logging to the logs directory and
+    /// crash reports (message + backtrace) in `crash.log`. Same as setting
+    /// `LAPCE_DEBUG=1`.
+    #[clap(long, action)]
+    debug: bool,
+
     /// Import the declarative content (themes, icon themes, snippets,
     /// language configuration, TextMate grammars) of a VS Code extension
     /// from a `.vsix` file, then exit. Extension code is never loaded.
@@ -3960,11 +3966,23 @@ pub fn launch() {
         std::process::exit(install_vsix_files(&cli.install_vsix));
     }
 
-    if !cli.wait {
+    if cli.debug {
+        lapce_core::diagnostics::enable_debug();
+    }
+    let debug_mode = lapce_core::diagnostics::is_debug();
+
+    if !cli.wait || debug_mode {
         logging::panic_hook();
     }
 
     let (reload_handle, _guard) = logging::logging();
+    if debug_mode {
+        tracing::info!(
+            "debug mode enabled; logs: {:?}, crash log: {:?}",
+            Directory::logs_directory(),
+            lapce_core::diagnostics::crash_log_path()
+        );
+    }
     trace!(TraceLevel::INFO, "Starting up Lapce..");
 
     #[cfg(feature = "vendored-fonts")]

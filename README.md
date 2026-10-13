@@ -21,6 +21,7 @@ editor.izdrail.com is a native code editor written in Rust with a [Floem](https:
 ### Editing
 * Modal (Vim-like) editing, toggleable with `Core > Modal`
 * Rope-based buffer, built-in terminal, git and search panels, remote workspaces
+* Debug mode (`--debug` or `LAPCE_DEBUG=1`): verbose logs, crash reports with backtraces and language server crash details ([docs/debugging.md](docs/debugging.md))
 * Local code folding (groundwork, see [docs/local-folding.md](docs/local-folding.md))
 * Syntax highlighting with Lexilla ([docs/lexilla-highlighting.md](docs/lexilla-highlighting.md)), including dedicated PHP and Laravel lexers ([docs/php-lexers.md](docs/php-lexers.md)), plus TextMate grammars imported from `.vsix` files for languages Lexilla has no lexer for
 

@@ -85,12 +85,19 @@ impl Client {
         if let Some(root) = root {
             command.current_dir(root);
         }
+        let program = command.get_program().to_string_lossy().into_owned();
+        tracing::debug!(server = name, %program, "starting language server");
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
+            .map_err(|err| {
+                tracing::error!(server = name, %program, %err, "cannot launch language server");
+                err
+            })
             .context("Cannot launch language server")?;
+        tracing::debug!(server = name, pid = child.id(), "language server started");
         let stdin =
             Arc::new(Mutex::new(child.stdin.take().context("No server stdin")?));
         let stdout = child.stdout.take().context("No server stdout")?;
@@ -99,6 +106,7 @@ impl Client {
         let responses = pending.clone();
         let writer = stdin.clone();
         let name = name.to_owned();
+        let stderr_name = name.clone();
         let reader_core = core.clone();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
@@ -186,9 +194,18 @@ impl Client {
             for (_, sender) in responses.lock().drain() {
                 let _ = sender.send(Err(error(&why)));
             }
-            tracing::warn!(%why, "LSP transport closed");
+            tracing::warn!(server = %name, %why, "LSP transport closed (server crashed or exited)");
         });
         std::thread::spawn(move || {
+            if lapce_core::diagnostics::is_debug() {
+                // Debug mode: keep server stderr in the log, one capped line at a time.
+                for line in BufReader::new(stderr).lines().map_while(|l| l.ok()) {
+                    let line: String = line.chars().take(2000).collect();
+                    tracing::debug!(server = %stderr_name, "stderr: {line}");
+                }
+                tracing::debug!(server = %stderr_name, "stderr closed");
+                return;
+            }
             // Drain stderr without retaining unbounded log text.
             let mut stderr = stderr;
             let mut chunk = [0; 4096];

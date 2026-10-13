@@ -35,6 +35,11 @@ struct Cli {
     #[clap(short, long, action, hide = true)]
     proxy: bool,
 
+    /// Enable debug mode: verbose trace logging to `lapce-proxy.<date>.log`
+    /// and crash reports in `crash.log` in the logs directory.
+    #[clap(long, action)]
+    debug: bool,
+
     /// Paths to file(s) and/or folder(s) to open.
     /// When path is a file (that exists or not),
     /// it accepts `path:line:column` syntax
@@ -42,6 +47,40 @@ struct Cli {
     #[clap(value_parser = cli::parse_file_line_column)]
     #[clap(value_hint = clap::ValueHint::AnyPath)]
     paths: Vec<PathObject>,
+}
+
+mod debug_logging {
+    use lapce_core::{diagnostics, directory::Directory};
+    use tracing_subscriber::{filter::LevelFilter, prelude::*};
+
+    /// In debug mode, write trace logs to a file (stdout carries RPC, so
+    /// never log there) and install the crash-report panic hook. No-op
+    /// otherwise.
+    pub fn init() -> Option<tracing_appender::non_blocking::WorkerGuard> {
+        if !diagnostics::is_debug() {
+            return None;
+        }
+        diagnostics::install_panic_hook("lapce-proxy");
+        let dir = Directory::logs_directory()?;
+        diagnostics::prune_logs(&dir, diagnostics::MAX_LOGS_TOTAL_BYTES);
+        let appender = tracing_appender::rolling::Builder::new()
+            .max_log_files(10)
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("lapce-proxy")
+            .filename_suffix("log")
+            .build(dir)
+            .ok()?;
+        let (writer, guard) = tracing_appender::non_blocking(appender);
+        let layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_thread_names(true)
+            .with_writer(writer)
+            .with_filter(LevelFilter::TRACE);
+        // Another subscriber may already be set (in-process proxy); ignore.
+        tracing_subscriber::registry().with(layer).try_init().ok()?;
+        tracing::info!("proxy debug mode enabled (pid {})", std::process::id());
+        Some(guard)
+    }
 }
 
 pub fn mainloop() {
@@ -52,6 +91,10 @@ pub fn mainloop() {
         std::process::exit(lapce_ai::run());
     }
     let cli = Cli::parse();
+    if cli.debug {
+        lapce_core::diagnostics::enable_debug();
+    }
+    let _log_guard = debug_logging::init();
     if !cli.proxy {
         if let Err(e) = cli::try_open_in_existing_process(&cli.paths) {
             error!("failed to open path(s): {e}");
