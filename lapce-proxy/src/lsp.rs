@@ -401,6 +401,7 @@ pub enum Job {
     },
     Resolve {
         id: PluginId,
+        method: String,
         item: Value,
         callback: Box<dyn FnOnce(std::result::Result<Value, RpcError>) + Send>,
     },
@@ -428,12 +429,12 @@ impl Manager {
                 HashMap::new();
             while let Ok(job) = receiver.recv() {
                 let (buffer, request) = match job {
-                    Job::Resolve { id, item, callback } => {
+                    Job::Resolve { id, method, item, callback } => {
                         let client = clients.values().find(|client| client.id == id);
                         callback(
                             client
                                 .map(|client| {
-                                    client.request("completionItem/resolve", item)
+                                    client.request(&method, item)
                                 })
                                 .unwrap_or_else(|| {
                                     Err(error("Language server no longer available"))

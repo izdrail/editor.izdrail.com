@@ -1,4 +1,4 @@
-//! Bounded data-only package installation. No executable plugin path is used.
+//! Bounded package installation for data-only themes and executable WASI volts.
 use anyhow::{Context, Result, bail, ensure};
 use lapce_core::directory::Directory;
 use lapce_rpc::plugin::{VoltInfo, VoltMetadata};
@@ -95,7 +95,6 @@ fn fetch(
 }
 
 pub fn download_volt(volt: &VoltInfo) -> Result<VoltMetadata> {
-    ensure!(!volt.wasm, "Only color and icon themes can be installed");
     identifier(&volt.author)?;
     identifier(&volt.name)?;
     ensure!(
@@ -117,7 +116,7 @@ pub fn download_volt(volt: &VoltInfo) -> Result<VoltMetadata> {
     install_archive(volt, &archive, &root)
 }
 
-fn unpack(reader: impl Read, stage: &Path) -> Result<()> {
+fn unpack(reader: impl Read, stage: &Path, allow_wasm: bool) -> Result<()> {
     let mut archive =
         tar::Archive::new(reader.take(MAX_EXTRACTED + 16 * 1024 * 1024));
     let mut size = 0u64;
@@ -148,9 +147,10 @@ fn unpack(reader: impl Read, stage: &Path) -> Result<()> {
             .unwrap_or("")
             .to_ascii_lowercase();
         ensure!(
-            matches!(
-                ext.as_str(),
-                "toml"
+            (allow_wasm && ext == "wasm")
+                || matches!(
+                    ext.as_str(),
+                    "toml"
                     | "svg"
                     | "png"
                     | "jpg"
@@ -185,10 +185,19 @@ fn validate(stage: &Path, volt: &VoltInfo) -> Result<VoltMetadata> {
     let raw = fs::read_to_string(stage.join("volt.toml"))?;
     let manifest: toml::Value = toml::from_str(&raw)?;
     // Inspect raw TOML, before load_volt can erase a missing WASM path.
-    ensure!(
-        manifest.get("wasm").is_none(),
-        "Executable WASM declarations are forbidden"
-    );
+    if volt.wasm {
+        let declared = manifest
+            .get("wasm")
+            .and_then(|v| v.as_str())
+            .context("Executable package does not declare a WASM module")?;
+        // The module must be a real file inside the package.
+        resource(stage, declared)?;
+    } else {
+        ensure!(
+            manifest.get("wasm").is_none(),
+            "Executable WASM declarations are forbidden"
+        );
+    }
     let meta: VoltMetadata = toml::from_str(&raw)?;
     ensure!(
         meta.name == volt.name
@@ -234,7 +243,10 @@ fn validate(stage: &Path, volt: &VoltInfo) -> Result<VoltMetadata> {
             themes += 1;
         }
     }
-    ensure!(themes > 0, "Package contains no usable color/icon theme");
+    ensure!(
+        themes > 0 || volt.wasm,
+        "Package contains no usable color/icon theme"
+    );
     if let Some(icon) = &meta.icon {
         resource(stage, icon)?;
     }
@@ -246,7 +258,6 @@ fn install_archive(
     bytes: &[u8],
     root: &Path,
 ) -> Result<VoltMetadata> {
-    ensure!(!volt.wasm, "Executable plugins cannot be installed");
     identifier(&volt.author)?;
     identifier(&volt.name)?;
     fs::create_dir_all(root)?;
@@ -270,9 +281,9 @@ fn install_archive(
     let stage = staging.path().join("new");
     fs::create_dir(&stage)?;
     if bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
-        unpack(zstd::Decoder::new(bytes)?, &stage)?;
+        unpack(zstd::Decoder::new(bytes)?, &stage, volt.wasm)?;
     } else if bytes.starts_with(&[0x1f, 0x8b]) {
-        unpack(flate2::read::GzDecoder::new(bytes), &stage)?;
+        unpack(flate2::read::GzDecoder::new(bytes), &stage, volt.wasm)?;
     } else {
         bail!("Unsupported theme archive");
     }
@@ -388,7 +399,26 @@ mod tests {
         fs::create_dir(&local).unwrap();
         fs::write(local.join("volt.toml"), manifest("wasm = 'missing.wasm'"))
             .unwrap();
-        assert!(super::super::load_volt(&local).is_err());
+        // load_volt tolerates a missing module: the wasm path resolves to None.
+        let meta = super::super::load_volt(&local).unwrap();
+        assert!(meta.wasm.is_none());
+    }
+    #[test]
+    fn executable_volt_with_wasm_module_installs() {
+        let root = tempfile::tempdir().unwrap();
+        let mut executable = info();
+        executable.wasm = true;
+        let bytes = archive(&[
+            ("volt.toml", &manifest("wasm = 'run.wasm'")),
+            ("run.wasm", "pretend wasm bytes"),
+            ("theme.toml", THEME),
+        ]);
+        let meta = install_archive(&executable, &bytes, root.path()).unwrap();
+        let wasm = meta.wasm.expect("wasm module path resolves");
+        assert!(Path::new(&wasm).is_file());
+        assert!(wasm.ends_with("run.wasm"));
+        // Reinstall over the existing package works too.
+        install_archive(&executable, &bytes, root.path()).unwrap();
     }
     #[test]
     fn failed_update_keeps_old_package_and_releases_lock() {
@@ -454,7 +484,7 @@ mod tests {
                 .append_data(&mut header, "link", std::io::empty())
                 .unwrap();
             assert!(
-                unpack(builder.into_inner().unwrap().as_slice(), stage.path())
+                unpack(builder.into_inner().unwrap().as_slice(), stage.path(), false)
                     .is_err()
             );
         }
@@ -548,7 +578,7 @@ mod archive_limits {
         header.set_cksum();
         let mut bytes = header.as_bytes().to_vec();
         bytes.extend([0u8; 1024]);
-        assert!(unpack(bytes.as_slice(), stage.path()).is_err());
+        assert!(unpack(bytes.as_slice(), stage.path(), false).is_err());
         let mut builder = tar::Builder::new(Vec::new());
         for _ in 0..2 {
             let mut header = tar::Header::new_gnu();
@@ -560,7 +590,7 @@ mod archive_limits {
                 .unwrap();
         }
         assert!(
-            unpack(builder.into_inner().unwrap().as_slice(), stage.path()).is_err()
+            unpack(builder.into_inner().unwrap().as_slice(), stage.path(), false).is_err()
         );
     }
 }

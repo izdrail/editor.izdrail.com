@@ -39,6 +39,7 @@ use parking_lot::Mutex;
 
 use crate::{
     buffer::{Buffer, get_mod_time, load_file},
+    plugin::{PluginCatalog, PluginCatalogRpcHandler, remove_volt},
     terminal::{Terminal, TerminalSender},
     watcher::{FileWatcher, Notify, WatchToken},
 };
@@ -50,6 +51,7 @@ pub struct Dispatcher {
     workspace: Option<PathBuf>,
     pub proxy_rpc: ProxyRpcHandler,
     core_rpc: CoreRpcHandler,
+    catalog_rpc: PluginCatalogRpcHandler,
     buffers: HashMap<PathBuf, Buffer>,
     terminals: HashMap<TermId, TerminalSender>,
     file_watcher: FileWatcher,
@@ -68,7 +70,9 @@ impl ProxyHandler for Dispatcher {
                 workspace,
                 window_id,
                 tab_id,
-                ..
+                disabled_volts,
+                extra_plugin_paths,
+                plugin_configurations,
             } => {
                 self.window_id = window_id;
                 self.tab_id = tab_id;
@@ -89,6 +93,19 @@ impl ProxyHandler for Dispatcher {
                     self.file_watcher
                         .watch(workspace, true, WORKSPACE_EVENT_TOKEN);
                 }
+
+                let plugin_rpc = self.catalog_rpc.clone();
+                let workspace = self.workspace.clone();
+                thread::spawn(move || {
+                    let mut plugin = PluginCatalog::new(
+                        workspace,
+                        disabled_volts,
+                        extra_plugin_paths,
+                        plugin_configurations,
+                        plugin_rpc.clone(),
+                    );
+                    plugin_rpc.mainloop(&mut plugin);
+                });
 
                 self.core_rpc.notification(CoreNotification::ProxyStatus {
                     status: lapce_rpc::proxy::ProxyStatus::Connected,
@@ -141,6 +158,7 @@ impl ProxyHandler for Dispatcher {
             }
             Shutdown {} => {
                 self.ai.cancel();
+                self.catalog_rpc.shutdown();
                 if let Some(lsp) = self.lsp.take() {
                     lsp.send(crate::lsp::Job::Shutdown);
                 }
@@ -152,10 +170,18 @@ impl ProxyHandler for Dispatcher {
             Update { path, delta, rev } => {
                 self.ai.cancel();
                 let buffer = self.buffers.get_mut(&path).unwrap();
+                let old_text = buffer.rope.clone();
                 buffer.update(&delta, rev);
                 if let Some(lsp) = &self.lsp {
                     lsp.send(crate::lsp::Job::Sync(buffer.clone()));
                 }
+                self.catalog_rpc.did_change_text_document(
+                    &path,
+                    rev,
+                    delta,
+                    old_text,
+                    buffer.rope.clone(),
+                );
             }
             NewTerminal { term_id, profile } => {
                 let mut terminal = match Terminal::new(term_id, profile, 50, 10) {
@@ -273,6 +299,8 @@ impl ProxyHandler for Dispatcher {
                 position,
             } => {
                 let core = self.core_rpc.clone();
+                self.catalog_rpc
+                    .completion(request_id, &path, input.clone(), position);
                 self.lsp_request(
                     path,
                     "textDocument/completion",
@@ -298,9 +326,64 @@ impl ProxyHandler for Dispatcher {
                     },
                 );
             }
-            SignatureHelp { .. }
-            | UpdatePluginConfigs { .. }
-            | DapStart { .. }
+            SignatureHelp {
+                request_id,
+                path,
+                position,
+            } => {
+                let core = self.core_rpc.clone();
+                self.catalog_rpc
+                    .signature_help(request_id, &path, position);
+                self.lsp_request(
+                    path,
+                    "textDocument/signatureHelp",
+                    serde_json::json!({"position": position}),
+                    move |result| {
+                        if let Ok((plugin_id, value)) = result {
+                            if let Ok(Some(resp)) = serde_json::from_value::<
+                                Option<lsp_types::SignatureHelp>,
+                            >(value)
+                            {
+                                core.signature_help_response(
+                                    request_id,
+                                    resp,
+                                    plugin_id,
+                                );
+                            }
+                        }
+                    },
+                );
+            }
+            UpdatePluginConfigs { configs } => {
+                if let Err(err) = self.catalog_rpc.update_plugin_configs(configs)
+                {
+                    tracing::error!("{:?}", err);
+                }
+            }
+            InstallVolt { volt } => {
+                if let Err(err) = self.catalog_rpc.install_volt(volt) {
+                    tracing::error!("{:?}", err);
+                }
+            }
+            ReloadVolt { volt } => {
+                if let Err(err) = self.catalog_rpc.reload_volt(volt) {
+                    tracing::error!("{:?}", err);
+                }
+            }
+            RemoveVolt { volt } => {
+                if let Err(err) = remove_volt(self.catalog_rpc.clone(), volt) {
+                    tracing::error!("{:?}", err);
+                }
+            }
+            DisableVolt { volt } => {
+                self.catalog_rpc.stop_volt(volt);
+            }
+            EnableVolt { volt } => {
+                if let Err(err) = self.catalog_rpc.enable_volt(volt) {
+                    tracing::error!("{:?}", err);
+                }
+            }
+            DapStart { .. }
             | DapProcessId { .. }
             | DapContinue { .. }
             | DapPause { .. }
@@ -311,11 +394,6 @@ impl ProxyHandler for Dispatcher {
             | DapDisconnect { .. }
             | DapRestart { .. }
             | DapSetBreakpoints { .. }
-            | InstallVolt { .. }
-            | ReloadVolt { .. }
-            | RemoveVolt { .. }
-            | DisableVolt { .. }
-            | EnableVolt { .. }
             | LspCancel { .. } => {}
         }
     }
@@ -331,6 +409,12 @@ impl ProxyHandler for Dispatcher {
                 if let Some(lsp) = &self.lsp {
                     lsp.send(crate::lsp::Job::Sync(buffer.clone()));
                 }
+                self.catalog_rpc.did_open_document(
+                    &path,
+                    buffer.language_id.to_string(),
+                    buffer.rev as i32,
+                    content.clone(),
+                );
                 self.buffers.insert(path, buffer);
                 self.respond_rpc(
                     id,
@@ -530,6 +614,8 @@ impl ProxyHandler for Dispatcher {
                         if let Some(lsp) = &self.lsp {
                             lsp.send(crate::lsp::Job::Save(path.clone()));
                         }
+                        self.catalog_rpc
+                            .did_save_text_document(&path, buffer.rope.clone());
                         ProxyResponse::SaveResponse {}
                     })
                     .map_err(|e| RpcError {
@@ -764,12 +850,60 @@ impl ProxyHandler for Dispatcher {
                 completion_item,
             } => {
                 let proxy = self.proxy_rpc.clone();
+                let catalog_rpc = self.catalog_rpc.clone();
+                let completion_item = *completion_item;
+                let item_value =
+                    serde_json::to_value(&completion_item).unwrap_or_default();
+                let fallback = move || {
+                    catalog_rpc.completion_resolve(
+                        plugin_id,
+                        completion_item,
+                        move |result| {
+                            proxy.handle_response(
+                                id,
+                                result.map(|item| {
+                                    ProxyResponse::CompletionResolveResponse {
+                                        item: Box::new(item),
+                                    }
+                                }),
+                            );
+                        },
+                    );
+                };
                 if let Some(lsp) = &self.lsp {
-                    lsp.send(crate::lsp::Job::Resolve { id:plugin_id, item:serde_json::to_value(completion_item).unwrap_or_default(), callback:Box::new(move |result| {
-                        proxy.handle_response(id, result.and_then(|value| serde_json::from_value(value).map(|item| ProxyResponse::CompletionResolveResponse { item:Box::new(item) }).map_err(|error| RpcError { code:-32603, message:error.to_string() })));
-                    }) });
+                    let proxy = self.proxy_rpc.clone();
+                    let mut fallback = Some(fallback);
+                    lsp.send(crate::lsp::Job::Resolve {
+                        id: plugin_id,
+                        method: "completionItem/resolve".to_string(),
+                        item: item_value,
+                        callback: Box::new(move |result| {
+                            match result {
+                                Ok(value) => {
+                                    proxy.handle_response(
+                                        id,
+                                        serde_json::from_value(value)
+                                            .map(|item| {
+                                                ProxyResponse::CompletionResolveResponse {
+                                                    item: Box::new(item),
+                                                }
+                                            })
+                                            .map_err(|error| RpcError {
+                                                code: -32603,
+                                                message: error.to_string(),
+                                            }),
+                                    );
+                                }
+                                Err(_) => {
+                                    if let Some(fallback) = fallback.take() {
+                                        fallback();
+                                    }
+                                }
+                            }
+                        }),
+                    });
                 } else {
-                    self.respond_rpc(id, Err(language_services_disabled()));
+                    fallback();
                 }
             }
             GetHover {
@@ -777,33 +911,35 @@ impl ProxyHandler for Dispatcher {
                 path,
                 position,
             } => {
-                let proxy = self.proxy_rpc.clone();
+                let merge = FirstOk::new(
+                    self.proxy_rpc.clone(),
+                    id,
+                    move |hover| ProxyResponse::HoverResponse { request_id, hover },
+                );
+                let merged = merge.clone();
+                self.catalog_rpc.hover(&path, position, move |_, result| {
+                    merged.deliver(result)
+                });
                 self.lsp_request(
                     path,
                     "textDocument/hover",
                     serde_json::json!({"position":position}),
                     move |result| {
-                        proxy.handle_response(
-                            id,
-                            result.and_then(|(_, value)| {
-                                let hover = serde_json::from_value::<
-                                    Option<lsp_types::Hover>,
-                                >(value)
-                                .map_err(|error| RpcError {
-                                    code: -32603,
-                                    message: error.to_string(),
-                                })?;
-                                Ok(ProxyResponse::HoverResponse {
-                                    request_id,
-                                    hover: hover.unwrap_or(lsp_types::Hover {
-                                        contents: lsp_types::HoverContents::Array(
-                                            Vec::new(),
-                                        ),
-                                        range: None,
-                                    }),
-                                })
-                            }),
-                        );
+                        merge.deliver(result.and_then(|(_, value)| {
+                            let hover = serde_json::from_value::<
+                                Option<lsp_types::Hover>,
+                            >(value)
+                            .map_err(|error| RpcError {
+                                code: -32603,
+                                message: error.to_string(),
+                            })?;
+                            Ok(hover.unwrap_or(lsp_types::Hover {
+                                contents: lsp_types::HoverContents::Array(
+                                    Vec::new(),
+                                ),
+                                range: None,
+                            }))
+                        }));
                     },
                 );
             }
@@ -812,33 +948,37 @@ impl ProxyHandler for Dispatcher {
                 path,
                 position,
             } => {
-                let proxy = self.proxy_rpc.clone();
+                let merge = FirstOk::new(
+                    self.proxy_rpc.clone(),
+                    id,
+                    move |definition| ProxyResponse::GetDefinitionResponse {
+                        request_id,
+                        definition,
+                    },
+                );
+                let merged = merge.clone();
+                self.catalog_rpc.get_definition(&path, position, move |_, result| {
+                    merged.deliver(result)
+                });
                 self.lsp_request(
                     path,
                     "textDocument/definition",
                     serde_json::json!({"position":position}),
                     move |result| {
-                        proxy.handle_response(
-                            id,
-                            result.and_then(|(_, value)| {
-                                let definition =
-                                    serde_json::from_value::<
-                                        Option<lsp_types::GotoDefinitionResponse>,
-                                    >(value)
-                                    .map_err(|error| RpcError {
-                                        code: -32603,
-                                        message: error.to_string(),
-                                    })?;
-                                Ok(ProxyResponse::GetDefinitionResponse {
-                                    request_id,
-                                    definition: definition.unwrap_or(
-                                        lsp_types::GotoDefinitionResponse::Array(
-                                            Vec::new(),
-                                        ),
-                                    ),
-                                })
-                            }),
-                        );
+                        merge.deliver(result.and_then(|(_, value)| {
+                            let definition = serde_json::from_value::<
+                                Option<lsp_types::GotoDefinitionResponse>,
+                            >(value)
+                            .map_err(|error| RpcError {
+                                code: -32603,
+                                message: error.to_string(),
+                            })?;
+                            Ok(definition.unwrap_or(
+                                lsp_types::GotoDefinitionResponse::Array(
+                                    Vec::new(),
+                                ),
+                            ))
+                        }));
                     },
                 );
             }
@@ -908,27 +1048,472 @@ impl ProxyHandler for Dispatcher {
                     );
                 });
             }
+            GetReferences { path, position } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |references| {
+                    ProxyResponse::GetReferencesResponse { references }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_references(&path, position, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/references",
+                    serde_json::json!({"position": position, "context": {"includeDeclaration": true}}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::Location>>>(value)
+                                .map(|r| r.unwrap_or_default())
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetTypeDefinition {
+                request_id,
+                path,
+                position,
+            } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |definition| {
+                    ProxyResponse::GetTypeDefinition { request_id, definition }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_type_definition(&path, position, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/typeDefinition",
+                    serde_json::json!({"position": position}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<lsp_types::request::GotoTypeDefinitionResponse>>(value)
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })?
+                                .ok_or_else(|| RpcError { code: -32603, message: "no type definition".into() })
+                        }));
+                    },
+                );
+            }
+            ShowCallHierarchy { path, position } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |items| {
+                    ProxyResponse::ShowCallHierarchyResponse { items }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.show_call_hierarchy(&path, position, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "callHierarchy/prepare",
+                    serde_json::json!({"position": position}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::CallHierarchyItem>>>(value)
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            CallHierarchyIncoming {
+                path,
+                call_hierarchy_item,
+            } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |items| {
+                    ProxyResponse::CallHierarchyIncomingResponse { items }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.call_hierarchy_incoming(
+                    &path,
+                    call_hierarchy_item.clone(),
+                    move |_, result| merged.deliver(result),
+                );
+                self.lsp_request(
+                    path,
+                    "callHierarchy/incomingCalls",
+                    serde_json::json!({"item": call_hierarchy_item}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::CallHierarchyIncomingCall>>>(value)
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetInlayHints { path } => {
+                let range = {
+                    let buffer = self.buffers.get(&path).unwrap();
+                    lsp_types::Range {
+                        start: lsp_types::Position::new(0, 0),
+                        end: buffer.offset_to_position(buffer.len()),
+                    }
+                };
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |hints| {
+                    ProxyResponse::GetInlayHints { hints }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_inlay_hints(&path, range, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/inlayHint",
+                    serde_json::json!({"range": range}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::InlayHint>>>(value)
+                                .map(|r| r.unwrap_or_default())
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetSemanticTokens { path } => {
+                let Some(buffer) = self.buffers.get(&path) else {
+                    self.respond_rpc(id, Err(language_services_disabled()));
+                    return;
+                };
+                let text = buffer.rope.clone();
+                let rev = buffer.rev;
+                let len = buffer.len();
+                let local_path = path.clone();
+                let proxy_rpc = self.proxy_rpc.clone();
+                let catalog_rpc = self.catalog_rpc.clone();
+
+                let handle_tokens =
+                    move |result: Result<Vec<lapce_rpc::style::LineStyle>, RpcError>| match result {
+                        Ok(styles) => {
+                            proxy_rpc.handle_response(
+                                id,
+                                Ok(ProxyResponse::GetSemanticTokens {
+                                    styles: lapce_rpc::style::SemanticStyles {
+                                        rev,
+                                        path: local_path,
+                                        styles,
+                                        len,
+                                    },
+                                }),
+                            );
+                        }
+                        Err(e) => {
+                            proxy_rpc.handle_response(id, Err(e));
+                        }
+                    };
+
+                let proxy_rpc = self.proxy_rpc.clone();
+                self.catalog_rpc.get_semantic_tokens(
+                    &path,
+                    move |plugin_id, result| match result {
+                        Ok(result) => {
+                            catalog_rpc.format_semantic_tokens(
+                                plugin_id,
+                                result,
+                                text,
+                                Box::new(handle_tokens),
+                            );
+                        }
+                        Err(e) => {
+                            proxy_rpc.handle_response(id, Err(e));
+                        }
+                    },
+                );
+            }
+            GetCodeActions {
+                path,
+                position,
+                diagnostics,
+            } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |(plugin_id, resp)| {
+                    ProxyResponse::GetCodeActionsResponse { plugin_id, resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_code_actions(
+                    &path,
+                    position,
+                    diagnostics.clone(),
+                    move |plugin_id, result| {
+                        merged.deliver(result.map(|resp| (plugin_id, resp)))
+                    },
+                );
+                self.lsp_request(
+                    path,
+                    "textDocument/codeAction",
+                    serde_json::json!({
+                        "range": {"start": position, "end": position},
+                        "context": {"diagnostics": diagnostics},
+                    }),
+                    move |result| {
+                        merge.deliver(result.and_then(|(plugin_id, value)| {
+                            serde_json::from_value::<Option<lsp_types::CodeActionResponse>>(value)
+                                .map(|resp| (plugin_id, resp.unwrap_or_default()))
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetDocumentSymbols { path } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |resp| {
+                    ProxyResponse::GetDocumentSymbols { resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_document_symbols(&path, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/documentSymbol",
+                    serde_json::json!({}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<lsp_types::DocumentSymbolResponse>>(value)
+                                .map(|resp| resp.unwrap_or(lsp_types::DocumentSymbolResponse::Nested(Vec::new())))
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetWorkspaceSymbols { query } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |symbols| {
+                    ProxyResponse::GetWorkspaceSymbols { symbols }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_workspace_symbols(query.clone(), move |_, result| {
+                    merged.deliver(result)
+                });
+                let path = match self.workspace.clone() {
+                    Some(workspace) => workspace,
+                    None => {
+                        merge.deliver(Err(RpcError {
+                            code: -32602,
+                            message: "no workspace open".into(),
+                        }));
+                        return;
+                    }
+                };
+                self.lsp_request(
+                    path,
+                    "workspace/symbol",
+                    serde_json::json!({"query": query}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::SymbolInformation>>>(value)
+                                .map(|r| r.unwrap_or_default())
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetDocumentFormatting { path } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |edits| {
+                    ProxyResponse::GetDocumentFormatting { edits }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_document_formatting(&path, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/formatting",
+                    serde_json::json!({"options": {"tabSize": 4, "insertSpaces": true}}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::TextEdit>>>(value)
+                                .map(|r| r.unwrap_or_default())
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            PrepareRename { path, position } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |resp| {
+                    ProxyResponse::PrepareRename { resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.prepare_rename(&path, position, move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/prepareRename",
+                    serde_json::json!({"position": position}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<lsp_types::PrepareRenameResponse>>(value)
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })?
+                                .ok_or_else(|| RpcError { code: -32603, message: "nothing to rename".into() })
+                        }));
+                    },
+                );
+            }
+            Rename {
+                path,
+                position,
+                new_name,
+            } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |edit| {
+                    ProxyResponse::Rename { edit }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.rename(&path, position, new_name.clone(), move |_, result| {
+                    merged.deliver(result)
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/rename",
+                    serde_json::json!({"position": position, "newName": new_name}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<lsp_types::WorkspaceEdit>>(value)
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })?
+                                .ok_or_else(|| RpcError { code: -32603, message: "rename not possible".into() })
+                        }));
+                    },
+                );
+            }
+            GetSelectionRange { positions, path } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |ranges| {
+                    ProxyResponse::GetSelectionRange { ranges }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_selection_range(
+                    path.as_path(),
+                    positions.clone(),
+                    move |_, result| merged.deliver(result),
+                );
+                self.lsp_request(
+                    path,
+                    "textDocument/selectionRange",
+                    serde_json::json!({"positions": positions}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(_, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::SelectionRange>>>(value)
+                                .map(|r| r.unwrap_or_default())
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            CodeActionResolve {
+                action_item,
+                plugin_id,
+            } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |item| {
+                    ProxyResponse::CodeActionResolveResponse {
+                        item: Box::new(item),
+                    }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.action_resolve(
+                    *action_item.clone(),
+                    plugin_id,
+                    move |result| merged.deliver(result),
+                );
+                if let Some(lsp) = &self.lsp {
+                    lsp.send(crate::lsp::Job::Resolve {
+                        id: plugin_id,
+                        method: "codeAction/resolve".to_string(),
+                        item: serde_json::to_value(&action_item).unwrap_or_default(),
+                        callback: Box::new(move |result| {
+                            merge.deliver(result.and_then(|value| {
+                                serde_json::from_value::<lsp_types::CodeAction>(value)
+                                    .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                            }));
+                        }),
+                    });
+                } else {
+                    merge.deliver(Err(language_services_disabled()));
+                }
+            }
+            GetCodeLens { path } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |(plugin_id, resp)| {
+                    ProxyResponse::GetCodeLensResponse { plugin_id, resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_code_lens(&path, move |plugin_id, result| {
+                    merged.deliver(result.map(|resp| (plugin_id, resp)))
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/codeLens",
+                    serde_json::json!({}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(plugin_id, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::CodeLens>>>(value)
+                                .map(|resp| (plugin_id, resp))
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            LspFoldingRange { path } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |(plugin_id, resp)| {
+                    ProxyResponse::LspFoldingRangeResponse { plugin_id, resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_lsp_folding_range(&path, move |plugin_id, result| {
+                    merged.deliver(result.map(|resp| (plugin_id, resp)))
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/foldingRange",
+                    serde_json::json!({}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(plugin_id, value)| {
+                            serde_json::from_value::<Option<Vec<lsp_types::FoldingRange>>>(value)
+                                .map(|resp| (plugin_id, resp))
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GetCodeLensResolve { code_lens, path } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |(plugin_id, resp)| {
+                    ProxyResponse::GetCodeLensResolveResponse { plugin_id, resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.get_code_lens_resolve(
+                    &path,
+                    &code_lens,
+                    move |plugin_id, result| {
+                        merged.deliver(result.map(|resp| (plugin_id, resp)))
+                    },
+                );
+                self.lsp_request(
+                    path,
+                    "codeLens/resolve",
+                    serde_json::to_value(&code_lens).unwrap_or_default(),
+                    move |result| {
+                        merge.deliver(result.and_then(|(plugin_id, value)| {
+                            serde_json::from_value::<lsp_types::CodeLens>(value)
+                                .map(|resp| (plugin_id, resp))
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
+            GotoImplementation { path, position } => {
+                let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |(plugin_id, resp)| {
+                    ProxyResponse::GotoImplementationResponse { plugin_id, resp }
+                });
+                let merged = merge.clone();
+                self.catalog_rpc.go_to_implementation(&path, position, move |plugin_id, result| {
+                    merged.deliver(result.map(|resp| (plugin_id, resp)))
+                });
+                self.lsp_request(
+                    path,
+                    "textDocument/implementation",
+                    serde_json::json!({"position": position}),
+                    move |result| {
+                        merge.deliver(result.and_then(|(plugin_id, value)| {
+                            serde_json::from_value::<Option<lsp_types::request::GotoImplementationResponse>>(value)
+                                .map(|resp| (plugin_id, resp))
+                                .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+                        }));
+                    },
+                );
+            }
             GetSignature { .. }
-            | GetReferences { .. }
-            | GetTypeDefinition { .. }
-            | ShowCallHierarchy { .. }
-            | CallHierarchyIncoming { .. }
-            | GetInlayHints { .. }
-            | GetSemanticTokens { .. }
-            | GetCodeActions { .. }
-            | GetDocumentSymbols { .. }
-            | GetWorkspaceSymbols { .. }
-            | GetDocumentFormatting { .. }
-            | PrepareRename { .. }
-            | Rename { .. }
-            | GetSelectionRange { .. }
-            | CodeActionResolve { .. }
             | DapVariable { .. }
             | DapGetScopes { .. }
-            | GetCodeLens { .. }
-            | LspFoldingRange { .. }
-            | GetCodeLensResolve { .. }
-            | GotoImplementation { .. }
             | GetDocumentHighlights { .. } => {
                 self.respond_rpc(id, Err(language_services_disabled()));
             }
@@ -936,20 +1521,74 @@ impl ProxyHandler for Dispatcher {
     }
 }
 
-/// Stable, immediate rejection for old clients of the removed services.
+/// Stable, immediate rejection for the services this editor does not have.
 fn language_services_disabled() -> RpcError {
     RpcError {
         code: -32601,
-        message: "Language servers, executable plugins and debugging are not available in this editor".to_owned(),
+        message: "Debugging and signature help are not available in this editor"
+            .to_owned(),
+    }
+}
+
+/// Responds to a proxy request with the first successful result from two
+/// async sources - the built-in language server manager and the plugin
+/// catalog. If both fail, the first error is returned.
+struct FirstOk<T> {
+    proxy_rpc: ProxyRpcHandler,
+    id: RequestId,
+    wrap: Box<dyn Fn(T) -> ProxyResponse + Send + Sync>,
+    state: Mutex<(bool, Option<RpcError>)>,
+}
+
+impl<T: Send + 'static> FirstOk<T> {
+    fn new(
+        proxy_rpc: ProxyRpcHandler,
+        id: RequestId,
+        wrap: impl Fn(T) -> ProxyResponse + Send + Sync + 'static,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            proxy_rpc,
+            id,
+            wrap: Box::new(wrap),
+            state: Mutex::new((false, None)),
+        })
+    }
+
+    fn deliver(&self, result: Result<T, RpcError>) {
+        let mut state = self.state.lock();
+        let (responded, first_err) = &mut *state;
+        if *responded {
+            return;
+        }
+        match result {
+            Ok(value) => {
+                *responded = true;
+                drop(state);
+                self.proxy_rpc.handle_response(self.id, Ok((self.wrap)(value)));
+            }
+            Err(err) => match first_err.take() {
+                Some(first) => {
+                    *responded = true;
+                    drop(state);
+                    self.proxy_rpc.handle_response(self.id, Err(first));
+                }
+                None => {
+                    *first_err = Some(err);
+                }
+            },
+        }
     }
 }
 
 impl Dispatcher {
     pub fn new(core_rpc: CoreRpcHandler, proxy_rpc: ProxyRpcHandler) -> Self {
         let file_watcher = FileWatcher::new();
+        let catalog_rpc =
+            PluginCatalogRpcHandler::new(core_rpc.clone(), proxy_rpc.clone());
 
         Self {
             workspace: None,
+            catalog_rpc,
             proxy_rpc,
             core_rpc,
             buffers: HashMap::new(),
@@ -988,7 +1627,10 @@ impl Dispatcher {
     ) {
         let buffer = self.get_buffer_or_insert(path.clone()).clone();
         let Some(lsp) = &self.lsp else {
-            callback(Err(language_services_disabled()));
+            callback(Err(RpcError {
+                code: -32601,
+                message: "language server manager not running".into(),
+            }));
             return;
         };
         let Ok(uri) = Url::from_file_path(&path) else {

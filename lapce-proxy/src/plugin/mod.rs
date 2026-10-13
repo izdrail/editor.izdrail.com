@@ -1,20 +1,1341 @@
-//! Data-only theme packages. Executable plugins, LSP, PSP, WASI and DAP are removed.
-use anyhow::Result;
-use lapce_core::directory::Directory;
-use lapce_rpc::plugin::VoltMetadata;
+//! Plugin host: data-only theme packages plus executable WASI plugins.
+//!
+//! Debugging (DAP) is intentionally not part of this editor.
+
+pub mod catalog;
+pub mod data_only;
+pub mod lsp;
+pub mod psp;
+pub mod wasi;
+
+pub use data_only::download_volt;
+pub use wasi::load_volt;
+
 use std::{
-    fs,
-    io::Read,
+    borrow::Cow,
+    collections::HashMap,
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
-mod data_only;
-pub use data_only::download_volt;
+use anyhow::{Result, anyhow};
+use crossbeam_channel::{Receiver, Sender};
+use dyn_clone::DynClone;
+use lapce_core::directory::Directory;
+use lapce_rpc::{
+    RequestId, RpcError,
+    core::CoreRpcHandler,
+    plugin::{PluginId, VoltInfo, VoltMetadata},
+    proxy::ProxyRpcHandler,
+    style::LineStyle,
+};
+use lapce_xi_rope::{Rope, RopeDelta};
+use lsp_types::{
+    CallHierarchyClientCapabilities, CallHierarchyIncomingCall,
+    CallHierarchyIncomingCallsParams, CallHierarchyItem, CallHierarchyPrepareParams,
+    ClientCapabilities, CodeAction, CodeActionCapabilityResolveSupport,
+    CodeActionClientCapabilities, CodeActionContext, CodeActionKind,
+    CodeActionKindLiteralSupport, CodeActionLiteralSupport, CodeActionParams,
+    CodeActionResponse, CodeLens, CodeLensParams, CompletionClientCapabilities,
+    CompletionItem, CompletionItemCapability,
+    CompletionItemCapabilityResolveSupport, CompletionParams, CompletionResponse,
+    Diagnostic, DocumentFormattingParams, DocumentSymbolClientCapabilities,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
+    FoldingRangeClientCapabilities, FoldingRangeParams, FormattingOptions,
+    GotoCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverClientCapabilities, HoverParams, InlayHint, InlayHintClientCapabilities,
+    InlayHintParams, InlineCompletionClientCapabilities, InlineCompletionParams,
+    InlineCompletionResponse, InlineCompletionTriggerKind, Location, MarkupKind,
+    MessageActionItemCapabilities, ParameterInformationSettings,
+    PartialResultParams, Position, PrepareRenameResponse,
+    PublishDiagnosticsClientCapabilities, Range, ReferenceContext, ReferenceParams,
+    RenameParams, SelectionRange, SelectionRangeParams, SemanticTokens,
+    SemanticTokensClientCapabilities, SemanticTokensParams,
+    ShowMessageRequestClientCapabilities, SignatureHelp,
+    SignatureHelpClientCapabilities, SignatureHelpParams,
+    SignatureInformationSettings, SymbolInformation, TextDocumentClientCapabilities,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+    TextDocumentSyncClientCapabilities, TextEdit, Url,
+    VersionedTextDocumentIdentifier, WindowClientCapabilities,
+    WorkDoneProgressParams, WorkspaceClientCapabilities, WorkspaceEdit,
+    WorkspaceSymbolClientCapabilities, WorkspaceSymbolParams,
+    request::{
+        CallHierarchyIncomingCalls, CallHierarchyPrepare, CodeActionRequest,
+        CodeActionResolveRequest, CodeLensRequest, CodeLensResolve, Completion,
+        DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition,
+        GotoImplementation, GotoImplementationResponse, GotoTypeDefinition,
+        GotoTypeDefinitionParams, GotoTypeDefinitionResponse, HoverRequest,
+        InlayHintRequest, InlineCompletionRequest, PrepareRenameRequest, References,
+        Rename, Request, ResolveCompletionItem, SelectionRangeRequest,
+        SemanticTokensFullRequest, SignatureHelpRequest, WorkspaceSymbolRequest,
+    },
+};
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Map, Value};
+use tracing::error;
 
-pub fn volt_icon(volt: &VoltMetadata) -> Option<Vec<u8>> {
-    let dir = volt.dir.as_ref()?;
-    let icon = dir.join(volt.icon.as_ref()?);
-    std::fs::read(icon).ok()
+use self::{
+    psp::{ClonableCallback, PluginServerRpcHandler, RpcCallback},
+    wasi::start_volt,
+};
+pub use self::catalog::PluginCatalog;
+use crate::buffer::language_id_from_path;
+
+pub type PluginName = String;
+
+#[allow(clippy::large_enum_variant)]
+pub enum PluginCatalogRpc {
+    ServerRequest {
+        plugin_id: Option<PluginId>,
+        request_sent: Option<Arc<AtomicUsize>>,
+        method: Cow<'static, str>,
+        params: Value,
+        language_id: Option<String>,
+        path: Option<PathBuf>,
+        check: bool,
+        f: Box<dyn ClonableCallback<Value, RpcError>>,
+    },
+    ServerNotification {
+        plugin_id: Option<PluginId>,
+        method: Cow<'static, str>,
+        params: Value,
+        language_id: Option<String>,
+        path: Option<PathBuf>,
+        check: bool,
+    },
+    FormatSemanticTokens {
+        plugin_id: PluginId,
+        tokens: SemanticTokens,
+        text: Rope,
+        f: Box<dyn RpcCallback<Vec<LineStyle>, RpcError>>,
+    },
+    DidOpenTextDocument {
+        document: TextDocumentItem,
+    },
+    DidChangeTextDocument {
+        language_id: String,
+        document: VersionedTextDocumentIdentifier,
+        delta: RopeDelta,
+        text: Rope,
+        new_text: Rope,
+    },
+    DidSaveTextDocument {
+        language_id: String,
+        path: PathBuf,
+        text_document: TextDocumentIdentifier,
+        text: Rope,
+    },
+    Handler(PluginCatalogNotification),
+    RemoveVolt {
+        volt: VoltInfo,
+        f: Box<dyn ClonableCallback<Value, RpcError>>,
+    },
+    Shutdown,
+}
+
+#[allow(clippy::large_enum_variant)]
+pub enum PluginCatalogNotification {
+    UpdatePluginConfigs(HashMap<String, HashMap<String, serde_json::Value>>),
+    UnactivatedVolts(Vec<VoltMetadata>),
+    PluginServerLoaded(PluginServerRpcHandler),
+    InstallVolt(VoltInfo),
+    StopVolt(VoltInfo),
+    EnableVolt(VoltInfo),
+    ReloadVolt(VoltMetadata),
+    RegisterDebuggerType {
+        debugger_type: String,
+        program: String,
+        args: Option<Vec<String>>,
+    },
+    Shutdown,
+}
+
+#[derive(Clone)]
+pub struct PluginCatalogRpcHandler {
+    core_rpc: CoreRpcHandler,
+    proxy_rpc: ProxyRpcHandler,
+    plugin_tx: Sender<PluginCatalogRpc>,
+    plugin_rx: Arc<Mutex<Option<Receiver<PluginCatalogRpc>>>>,
+    #[allow(dead_code)]
+    id: Arc<AtomicU64>,
+    #[allow(dead_code, clippy::type_complexity)]
+    pending: Arc<Mutex<HashMap<u64, Sender<Result<Value, RpcError>>>>>,
+}
+
+impl PluginCatalogRpcHandler {
+    pub fn new(core_rpc: CoreRpcHandler, proxy_rpc: ProxyRpcHandler) -> Self {
+        let (plugin_tx, plugin_rx) = crossbeam_channel::unbounded();
+        Self {
+            core_rpc,
+            proxy_rpc,
+            plugin_tx,
+            plugin_rx: Arc::new(Mutex::new(Some(plugin_rx))),
+            id: Arc::new(AtomicU64::new(0)),
+            pending: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn handle_response(&self, id: RequestId, result: Result<Value, RpcError>) {
+        if let Some(chan) = { self.pending.lock().remove(&id) } {
+            if let Err(err) = chan.send(result) {
+                tracing::error!("{:?}", err);
+            }
+        }
+    }
+
+    pub fn mainloop(&self, plugin: &mut PluginCatalog) {
+        let plugin_rx = self.plugin_rx.lock().take().unwrap();
+        for msg in plugin_rx {
+            match msg {
+                PluginCatalogRpc::ServerRequest {
+                    plugin_id,
+                    request_sent,
+                    method,
+                    params,
+                    language_id,
+                    path,
+                    check,
+                    f,
+                } => {
+                    plugin.handle_server_request(
+                        plugin_id,
+                        request_sent,
+                        method,
+                        params,
+                        language_id,
+                        path,
+                        check,
+                        f,
+                    );
+                }
+                PluginCatalogRpc::ServerNotification {
+                    plugin_id,
+                    method,
+                    params,
+                    language_id,
+                    path,
+                    check,
+                } => {
+                    plugin.handle_server_notification(
+                        plugin_id,
+                        method,
+                        params,
+                        language_id,
+                        path,
+                        check,
+                    );
+                }
+                PluginCatalogRpc::Handler(notification) => {
+                    plugin.handle_notification(notification);
+                }
+                PluginCatalogRpc::FormatSemanticTokens {
+                    plugin_id,
+                    tokens,
+                    text,
+                    f,
+                } => {
+                    plugin.format_semantic_tokens(plugin_id, tokens, text, f);
+                }
+                PluginCatalogRpc::DidOpenTextDocument { document } => {
+                    plugin.handle_did_open_text_document(document);
+                }
+                PluginCatalogRpc::DidSaveTextDocument {
+                    language_id,
+                    path,
+                    text_document,
+                    text,
+                } => {
+                    plugin.handle_did_save_text_document(
+                        language_id,
+                        path,
+                        text_document,
+                        text,
+                    );
+                }
+                PluginCatalogRpc::DidChangeTextDocument {
+                    language_id,
+                    document,
+                    delta,
+                    text,
+                    new_text,
+                } => {
+                    plugin.handle_did_change_text_document(
+                        language_id,
+                        document,
+                        delta,
+                        text,
+                        new_text,
+                    );
+                }
+                PluginCatalogRpc::Shutdown => {
+                    return;
+                }
+                PluginCatalogRpc::RemoveVolt { volt, f } => {
+                    plugin.shutdown_volt(volt, f);
+                }
+            }
+        }
+    }
+
+    pub fn shutdown(&self) {
+        if let Err(err) =
+            self.catalog_notification(PluginCatalogNotification::Shutdown)
+        {
+            tracing::error!("{:?}", err);
+        }
+        if let Err(err) = self.plugin_tx.send(PluginCatalogRpc::Shutdown) {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    fn catalog_notification(
+        &self,
+        notification: PluginCatalogNotification,
+    ) -> Result<()> {
+        self.plugin_tx
+            .send(PluginCatalogRpc::Handler(notification))
+            .map_err(|e| anyhow!(e.to_string()))?;
+        Ok(())
+    }
+
+    fn send_request_to_all_plugins<P, Resp>(
+        &self,
+        method: &'static str,
+        params: P,
+        language_id: Option<String>,
+        path: Option<PathBuf>,
+        cb: impl FnOnce(PluginId, Result<Resp, RpcError>) + Clone + Send + 'static,
+    ) where
+        P: Serialize,
+        Resp: DeserializeOwned,
+    {
+        let got_success = Arc::new(AtomicBool::new(false));
+        let request_sent = Arc::new(AtomicUsize::new(0));
+        let err_received = Arc::new(AtomicUsize::new(0));
+        self.send_request(
+            None,
+            Some(request_sent.clone()),
+            method,
+            params,
+            language_id,
+            path,
+            true,
+            move |plugin_id, result| {
+                if got_success.load(Ordering::Acquire) {
+                    return;
+                }
+                let result = match result {
+                    Ok(value) => {
+                        if let Ok(item) = serde_json::from_value::<Resp>(value) {
+                            got_success.store(true, Ordering::Release);
+                            Ok(item)
+                        } else {
+                            Err(RpcError {
+                                code: 0,
+                                message: "deserialize error".to_string(),
+                            })
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+                if result.is_ok() {
+                    cb(plugin_id, result)
+                } else {
+                    let rx = err_received.fetch_add(1, Ordering::Relaxed) + 1;
+                    if request_sent.load(Ordering::Acquire) == rx {
+                        cb(plugin_id, result)
+                    }
+                }
+            },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn send_request<P: Serialize>(
+        &self,
+        plugin_id: Option<PluginId>,
+        request_sent: Option<Arc<AtomicUsize>>,
+        method: impl Into<Cow<'static, str>>,
+        params: P,
+        language_id: Option<String>,
+        path: Option<PathBuf>,
+        check: bool,
+        f: impl FnOnce(PluginId, Result<Value, RpcError>) + Send + DynClone + 'static,
+    ) {
+        let params = serde_json::to_value(params).unwrap();
+        let rpc = PluginCatalogRpc::ServerRequest {
+            plugin_id,
+            request_sent,
+            method: method.into(),
+            params,
+            language_id,
+            path,
+            check,
+            f: Box::new(f),
+        };
+        if let Err(err) = self.plugin_tx.send(rpc) {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn send_notification<P: Serialize>(
+        &self,
+        plugin_id: Option<PluginId>,
+        method: impl Into<Cow<'static, str>>,
+        params: P,
+        language_id: Option<String>,
+        path: Option<PathBuf>,
+        check: bool,
+    ) {
+        let params = serde_json::to_value(params).unwrap();
+        let rpc = PluginCatalogRpc::ServerNotification {
+            plugin_id,
+            method: method.into(),
+            params,
+            language_id,
+            path,
+            check,
+        };
+        if let Err(err) = self.plugin_tx.send(rpc) {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    pub fn format_semantic_tokens(
+        &self,
+        plugin_id: PluginId,
+        tokens: SemanticTokens,
+        text: Rope,
+        f: Box<dyn RpcCallback<Vec<LineStyle>, RpcError>>,
+    ) {
+        if let Err(err) =
+            self.plugin_tx.send(PluginCatalogRpc::FormatSemanticTokens {
+                plugin_id,
+                tokens,
+                text,
+                f,
+            })
+        {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    pub fn did_save_text_document(&self, path: &Path, text: Rope) {
+        let text_document =
+            TextDocumentIdentifier::new(Url::from_file_path(path).unwrap());
+        let language_id = language_id_from_path(path).unwrap_or("").to_string();
+        if let Err(err) =
+            self.plugin_tx.send(PluginCatalogRpc::DidSaveTextDocument {
+                language_id,
+                text_document,
+                path: path.into(),
+                text,
+            })
+        {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    pub fn did_change_text_document(
+        &self,
+        path: &Path,
+        rev: u64,
+        delta: RopeDelta,
+        text: Rope,
+        new_text: Rope,
+    ) {
+        let document = VersionedTextDocumentIdentifier::new(
+            Url::from_file_path(path).unwrap(),
+            rev as i32,
+        );
+        let language_id = language_id_from_path(path).unwrap_or("").to_string();
+        if let Err(err) =
+            self.plugin_tx
+                .send(PluginCatalogRpc::DidChangeTextDocument {
+                    language_id,
+                    document,
+                    delta,
+                    text,
+                    new_text,
+                })
+        {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    pub fn get_definition(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<GotoDefinitionResponse, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = GotoDefinition::METHOD;
+        let params = GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_type_definition(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<GotoTypeDefinitionResponse, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = GotoTypeDefinition::METHOD;
+        let params = GotoTypeDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn call_hierarchy_incoming(
+        &self,
+        path: &Path,
+        item: CallHierarchyItem,
+        cb: impl FnOnce(
+            PluginId,
+            Result<Option<Vec<CallHierarchyIncomingCall>>, RpcError>,
+        ) + Clone
+        + Send
+        + 'static,
+    ) {
+        let method = CallHierarchyIncomingCalls::METHOD;
+        let params = CallHierarchyIncomingCallsParams {
+            item,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn show_call_hierarchy(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<Option<Vec<CallHierarchyItem>>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = CallHierarchyPrepare::METHOD;
+        let params = CallHierarchyPrepareParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_references(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<Vec<Location>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = References::METHOD;
+        let params = ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: ReferenceContext {
+                include_declaration: false,
+            },
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_lsp_folding_range(
+        &self,
+        path: &Path,
+        cb: impl FnOnce(
+            PluginId,
+            std::result::Result<Option<Vec<FoldingRange>>, RpcError>,
+        ) + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = FoldingRangeRequest::METHOD;
+        let params = FoldingRangeParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn go_to_implementation(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<Option<GotoImplementationResponse>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = GotoImplementation::METHOD;
+        let params = GotoTypeDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_code_actions(
+        &self,
+        path: &Path,
+        position: Position,
+        diagnostics: Vec<Diagnostic>,
+        cb: impl FnOnce(PluginId, Result<CodeActionResponse, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = CodeActionRequest::METHOD;
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri },
+            range: Range {
+                start: position,
+                end: position,
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_code_lens(
+        &self,
+        path: &Path,
+        cb: impl FnOnce(PluginId, Result<Option<Vec<CodeLens>>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = CodeLensRequest::METHOD;
+        let params = CodeLensParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_code_lens_resolve(
+        &self,
+        path: &Path,
+        code_lens: &CodeLens,
+        cb: impl FnOnce(PluginId, Result<CodeLens, RpcError>) + Clone + Send + 'static,
+    ) {
+        let method = CodeLensResolve::METHOD;
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+
+        self.send_request_to_all_plugins(
+            method,
+            code_lens,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_inlay_hints(
+        &self,
+        path: &Path,
+        range: Range,
+        cb: impl FnOnce(PluginId, Result<Vec<InlayHint>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = InlayHintRequest::METHOD;
+        let params = InlayHintParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            range,
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_inline_completions(
+        &self,
+        path: &Path,
+        position: Position,
+        trigger_kind: InlineCompletionTriggerKind,
+        cb: impl FnOnce(PluginId, Result<InlineCompletionResponse, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = InlineCompletionRequest::METHOD;
+        let params = InlineCompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            context: lsp_types::InlineCompletionContext {
+                trigger_kind,
+                selected_completion_info: None,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_document_symbols(
+        &self,
+        path: &Path,
+        cb: impl FnOnce(PluginId, Result<DocumentSymbolResponse, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = DocumentSymbolRequest::METHOD;
+        let params = DocumentSymbolParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_workspace_symbols(
+        &self,
+        query: String,
+        cb: impl FnOnce(PluginId, Result<Vec<SymbolInformation>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let method = WorkspaceSymbolRequest::METHOD;
+        let params = WorkspaceSymbolParams {
+            query,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+        self.send_request_to_all_plugins(method, params, None, None, cb);
+    }
+
+    pub fn get_document_formatting(
+        &self,
+        path: &Path,
+        cb: impl FnOnce(PluginId, Result<Vec<TextEdit>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = Formatting::METHOD;
+        let params = DocumentFormattingParams {
+            text_document: TextDocumentIdentifier { uri },
+            options: FormattingOptions {
+                tab_size: 4,
+                insert_spaces: true,
+                ..Default::default()
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn prepare_rename(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<PrepareRenameResponse, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = PrepareRenameRequest::METHOD;
+        let params = TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri },
+            position,
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn rename(
+        &self,
+        path: &Path,
+        position: Position,
+        new_name: String,
+        cb: impl FnOnce(PluginId, Result<WorkspaceEdit, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = Rename::METHOD;
+        let params = RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            new_name,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_semantic_tokens(
+        &self,
+        path: &Path,
+        cb: impl FnOnce(PluginId, Result<SemanticTokens, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = SemanticTokensFullRequest::METHOD;
+        let params = SemanticTokensParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn get_selection_range(
+        &self,
+        path: &Path,
+        positions: Vec<Position>,
+        cb: impl FnOnce(PluginId, Result<Vec<SelectionRange>, RpcError>)
+        + Clone
+        + Send
+        + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = SelectionRangeRequest::METHOD;
+        let params = SelectionRangeParams {
+            text_document: TextDocumentIdentifier { uri },
+            positions,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: Default::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn hover(
+        &self,
+        path: &Path,
+        position: Position,
+        cb: impl FnOnce(PluginId, Result<Hover, RpcError>) + Clone + Send + 'static,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = HoverRequest::METHOD;
+        let params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            cb,
+        );
+    }
+
+    pub fn completion(
+        &self,
+        request_id: usize,
+        path: &Path,
+        input: String,
+        position: Position,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = Completion::METHOD;
+        let params = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        };
+
+        let core_rpc = self.core_rpc.clone();
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+
+        self.send_request_to_all_plugins(
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            move |plugin_id, result| match result {
+                Ok(value) => {
+                    if let Ok(resp) =
+                        serde_json::from_value::<CompletionResponse>(value)
+                    {
+                        core_rpc
+                            .completion_response(request_id, input, resp, plugin_id);
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("{:?}", err);
+                }
+            },
+        );
+    }
+
+    pub fn completion_resolve(
+        &self,
+        plugin_id: PluginId,
+        item: CompletionItem,
+        cb: impl FnOnce(Result<CompletionItem, RpcError>) + Send + Clone + 'static,
+    ) {
+        let method = ResolveCompletionItem::METHOD;
+        self.send_request(
+            Some(plugin_id),
+            None,
+            method,
+            item,
+            None,
+            None,
+            true,
+            move |_, result| {
+                let result = match result {
+                    Ok(value) => {
+                        if let Ok(item) =
+                            serde_json::from_value::<CompletionItem>(value)
+                        {
+                            Ok(item)
+                        } else {
+                            Err(RpcError {
+                                code: 0,
+                                message: "completion item deserialize error"
+                                    .to_string(),
+                            })
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+                cb(result)
+            },
+        );
+    }
+
+    pub fn signature_help(
+        &self,
+        request_id: usize,
+        path: &Path,
+        position: Position,
+    ) {
+        let uri = Url::from_file_path(path).unwrap();
+        let method = SignatureHelpRequest::METHOD;
+        let params = SignatureHelpParams {
+            // TODO: We could provide more information about the signature for the LSP to work with
+            context: None,
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        let core_rpc = self.core_rpc.clone();
+        let language_id =
+            Some(language_id_from_path(path).unwrap_or("").to_string());
+        self.send_request(
+            None,
+            None,
+            method,
+            params,
+            language_id,
+            Some(path.to_path_buf()),
+            true,
+            move |plugin_id, result| match result {
+                Ok(value) => {
+                    if let Ok(resp) = serde_json::from_value::<SignatureHelp>(value)
+                    {
+                        core_rpc
+                            .signature_help_response(request_id, resp, plugin_id);
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("{:?}", err);
+                }
+            },
+        );
+    }
+
+    pub fn action_resolve(
+        &self,
+        item: CodeAction,
+        plugin_id: PluginId,
+        cb: impl FnOnce(Result<CodeAction, RpcError>) + Send + Clone + 'static,
+    ) {
+        let method = CodeActionResolveRequest::METHOD;
+        self.send_request(
+            Some(plugin_id),
+            None,
+            method,
+            item,
+            None,
+            None,
+            true,
+            move |_, result| {
+                let result = match result {
+                    Ok(value) => {
+                        if let Ok(item) = serde_json::from_value::<CodeAction>(value)
+                        {
+                            Ok(item)
+                        } else {
+                            Err(RpcError {
+                                code: 0,
+                                message: "code_action item deserialize error"
+                                    .to_string(),
+                            })
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+                cb(result)
+            },
+        );
+    }
+
+    pub fn did_open_document(
+        &self,
+        path: &Path,
+        language_id: String,
+        version: i32,
+        text: String,
+    ) {
+        match Url::from_file_path(path) {
+            Ok(path) => {
+                if let Err(err) =
+                    self.plugin_tx.send(PluginCatalogRpc::DidOpenTextDocument {
+                        document: TextDocumentItem::new(
+                            path,
+                            language_id,
+                            version,
+                            text,
+                        ),
+                    })
+                {
+                    tracing::error!("{:?}", err);
+                }
+            }
+            Err(_) => {
+                tracing::error!("Failed to parse URL from file path: {path:?}");
+            }
+        }
+    }
+
+    pub fn unactivated_volts(&self, volts: Vec<VoltMetadata>) -> Result<()> {
+        self.catalog_notification(PluginCatalogNotification::UnactivatedVolts(volts))
+    }
+
+    pub fn plugin_server_loaded(
+        &self,
+        plugin: PluginServerRpcHandler,
+    ) -> Result<()> {
+        self.catalog_notification(PluginCatalogNotification::PluginServerLoaded(
+            plugin,
+        ))
+    }
+
+    pub fn update_plugin_configs(
+        &self,
+        configs: HashMap<String, HashMap<String, serde_json::Value>>,
+    ) -> Result<()> {
+        self.catalog_notification(PluginCatalogNotification::UpdatePluginConfigs(
+            configs,
+        ))
+    }
+
+    pub fn install_volt(&self, volt: VoltInfo) -> Result<()> {
+        self.catalog_notification(PluginCatalogNotification::InstallVolt(volt))
+    }
+
+    pub fn stop_volt(&self, volt: VoltInfo) {
+        let rpc = PluginCatalogRpc::RemoveVolt {
+            volt,
+            f: Box::new(|_id: PluginId, rs: Result<Value, RpcError>| {
+                if let Err(e) = rs {
+                    // maybe should send notification
+                    error!("{:?}", e);
+                }
+            }),
+        };
+        if let Err(err) = self.plugin_tx.send(rpc) {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    pub fn remove_volt(&self, volt: VoltMetadata) {
+        let catalog_rpc = self.clone();
+        let volt_clone = volt.clone();
+        let rpc = PluginCatalogRpc::RemoveVolt {
+            volt: volt.info(),
+            f: Box::new(|_id: PluginId, rs: Result<Value, RpcError>| {
+                if let Err(e) = rs {
+                    // maybe should send notification
+                    error!("{:?}", e);
+                } else if let Err(e) = remove_volt(catalog_rpc, volt_clone) {
+                    error!("{:?}", e);
+                }
+            }),
+        };
+        if let Err(err) = self.plugin_tx.send(rpc) {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    pub fn reload_volt(&self, volt: VoltMetadata) -> Result<()> {
+        self.catalog_notification(PluginCatalogNotification::ReloadVolt(volt))
+    }
+
+    pub fn enable_volt(&self, volt: VoltInfo) -> Result<()> {
+        self.catalog_notification(PluginCatalogNotification::EnableVolt(volt))
+    }
+
+    pub fn register_debugger_type(
+        &self,
+        debugger_type: String,
+        program: String,
+        args: Option<Vec<String>>,
+    ) {
+        if let Err(err) = self.catalog_notification(
+            PluginCatalogNotification::RegisterDebuggerType {
+                debugger_type,
+                program,
+                args,
+            },
+        ) {
+            tracing::error!("{:?}", err);
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "method", content = "params")]
+pub enum PluginNotification {
+    StartLspServer {
+        exec_path: String,
+        language_id: String,
+        options: Option<Value>,
+        system_lsp: Option<bool>,
+    },
+    DownloadFile {
+        url: String,
+        path: PathBuf,
+    },
+    LockFile {
+        path: PathBuf,
+    },
+    MakeFileExecutable {
+        path: PathBuf,
+    },
 }
 
 pub fn find_all_volts(extra_plugin_paths: &[PathBuf]) -> Vec<VoltMetadata> {
@@ -81,83 +1402,204 @@ pub fn find_all_volts(extra_plugin_paths: &[PathBuf]) -> Vec<VoltMetadata> {
     plugins
 }
 
-/// Returns an instance of "VoltMetadata" or an error if there is no file in the path,
-/// the contents of the file cannot be read into a string, or the content read cannot
-/// be converted to an instance of "VoltMetadata".
-///
-/// # Examples
-///
-/// ```
-/// use std::fs::File;
-/// use std::io::Write;
-/// use lapce_proxy::plugin::load_volt;
-/// use lapce_rpc::plugin::VoltMetadata;
-///
-/// let parent_path = std::env::current_dir().unwrap();
-/// let mut file = File::create(parent_path.join("volt.toml")).unwrap();
-/// let _ = writeln!(file, "name = \"plugin\" \n version = \"0.1\"");
-/// let _ = writeln!(file, "display-name = \"Plugin\" \n author = \"Author\"");
-/// let _ = writeln!(file, "description = \"Useful plugin\"");///
-/// let volt_metadata = match load_volt(&parent_path) {
-///     Ok(volt_metadata) => volt_metadata,
-///     Err(error) => panic!("{}", error),
-/// };
-/// assert_eq!(
-///     volt_metadata,
-///     VoltMetadata {
-///         name: "plugin".to_string(),
-///         version: "0.1".to_string(),
-///         display_name: "Plugin".to_string(),
-///         author: "Author".to_string(),
-///         description: "Useful plugin".to_string(),
-///         icon: None,
-///         repository: None,
-///         wasm: None,
-///         color_themes: None,
-///         icon_themes: None,
-///         dir: parent_path.canonicalize().ok(),
-///         activation: None,
-///         config: None
-///     }
-/// );
-/// let _ = std::fs::remove_file(parent_path.join("volt.toml"));
-/// ```
-pub fn load_volt(path: &Path) -> Result<VoltMetadata> {
-    let path = path.canonicalize()?;
-    let mut file = fs::File::open(path.join("volt.toml"))?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    let manifest: toml::Value = toml::from_str(&contents)?;
-    anyhow::ensure!(
-        manifest.get("wasm").is_none(),
-        "Executable packages are not data-only themes"
-    );
-    let mut meta: VoltMetadata = toml::from_str(&contents)?;
+pub fn volt_icon(volt: &VoltMetadata) -> Option<Vec<u8>> {
+    let dir = volt.dir.as_ref()?;
+    let icon = dir.join(volt.icon.as_ref()?);
+    std::fs::read(icon).ok()
+}
 
-    meta.dir = Some(path.clone());
-    meta.wasm = meta.wasm.as_ref().and_then(|wasm| {
-        Some(path.join(wasm).canonicalize().ok()?.to_str()?.to_string())
-    });
-    // FIXME: This does `meta.color_themes = Some([])` in case, for example,
-    // it cannot find matching files, but in that case it should do `meta.color_themes = None`
-    meta.color_themes = meta.color_themes.as_ref().map(|themes| {
-        themes
-            .iter()
-            .filter_map(|theme| {
-                Some(path.join(theme).canonicalize().ok()?.to_str()?.to_string())
-            })
-            .collect()
-    });
-    // FIXME: This does `meta.icon_themes = Some([])` in case, for example,
-    // it cannot find matching files, but in that case it should do `meta.icon_themes = None`
-    meta.icon_themes = meta.icon_themes.as_ref().map(|themes| {
-        themes
-            .iter()
-            .filter_map(|theme| {
-                Some(path.join(theme).canonicalize().ok()?.to_str()?.to_string())
-            })
-            .collect()
-    });
+pub fn install_volt(
+    catalog_rpc: PluginCatalogRpcHandler,
+    workspace: Option<PathBuf>,
+    configurations: Option<HashMap<String, serde_json::Value>>,
+    volt: VoltInfo,
+) -> Result<()> {
+    let download_volt_result = download_volt(&volt);
+    if download_volt_result.is_err() {
+        catalog_rpc
+            .core_rpc
+            .volt_installing(volt, "Could not download Plugin".to_string());
+    }
+    let meta = download_volt_result?;
+    let local_catalog_rpc = catalog_rpc.clone();
+    let local_meta = meta.clone();
 
-    Ok(meta)
+    if let Err(err) =
+        start_volt(workspace, configurations, local_catalog_rpc, local_meta)
+    {
+        tracing::error!("{:?}", err);
+    }
+    let icon = volt_icon(&meta);
+    catalog_rpc.core_rpc.volt_installed(meta, icon);
+    Ok(())
+}
+
+pub fn remove_volt(
+    catalog_rpc: PluginCatalogRpcHandler,
+    volt: VoltMetadata,
+) -> Result<()> {
+    std::thread::spawn(move || -> Result<()> {
+        let path = volt.dir.as_ref().ok_or_else(|| {
+            catalog_rpc
+                .core_rpc
+                .volt_removing(volt.clone(), "Plugin Directory not set".to_string());
+            anyhow::anyhow!("don't have dir")
+        })?;
+        let mut rs = Ok(());
+        // Try to remove dir
+        // This is due to some operating systems not releasing immediately, such as Windows.
+        for _ in 0..2 {
+            rs = std::fs::remove_dir_all(path);
+            if rs.is_err() {
+                std::thread::sleep(Duration::from_millis(500));
+            } else {
+                break;
+            }
+        }
+        if let Err(e) = rs {
+            error!("remove_dir_all {:?}", e);
+            eprintln!("Could not delete plugin folder: {e}");
+            catalog_rpc.core_rpc.volt_removing(
+                volt.clone(),
+                "Could not remove Plugin Directory".to_string(),
+            );
+        } else {
+            catalog_rpc.core_rpc.volt_removed(volt.info(), false);
+        }
+        Ok(())
+    });
+    Ok(())
+}
+
+fn client_capabilities() -> ClientCapabilities {
+    // https://github.com/rust-lang/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#server-status
+    let mut experimental = Map::new();
+    experimental.insert("serverStatusNotification".into(), true.into());
+    let command_vec = ["rust-analyzer.runSingle", "rust-analyzer.debugSingle"]
+        .map(Value::from)
+        .to_vec();
+
+    let mut commands = Map::new();
+    experimental.insert("serverStatusNotification".into(), true.into());
+    commands.insert("commands".into(), command_vec.into());
+    experimental.insert("commands".into(), commands.into());
+    ClientCapabilities {
+        text_document: Some(TextDocumentClientCapabilities {
+            synchronization: Some(TextDocumentSyncClientCapabilities {
+                did_save: Some(true),
+                dynamic_registration: Some(true),
+                ..Default::default()
+            }),
+            completion: Some(CompletionClientCapabilities {
+                completion_item: Some(CompletionItemCapability {
+                    snippet_support: Some(true),
+                    resolve_support: Some(CompletionItemCapabilityResolveSupport {
+                        properties: vec!["additionalTextEdits".to_string()],
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            signature_help: Some(SignatureHelpClientCapabilities {
+                signature_information: Some(SignatureInformationSettings {
+                    documentation_format: Some(vec![
+                        MarkupKind::Markdown,
+                        MarkupKind::PlainText,
+                    ]),
+                    parameter_information: Some(ParameterInformationSettings {
+                        label_offset_support: Some(true),
+                    }),
+                    active_parameter_support: Some(true),
+                }),
+                ..Default::default()
+            }),
+            hover: Some(HoverClientCapabilities {
+                content_format: Some(vec![
+                    MarkupKind::Markdown,
+                    MarkupKind::PlainText,
+                ]),
+                ..Default::default()
+            }),
+            inlay_hint: Some(InlayHintClientCapabilities {
+                ..Default::default()
+            }),
+            code_action: Some(CodeActionClientCapabilities {
+                data_support: Some(true),
+                resolve_support: Some(CodeActionCapabilityResolveSupport {
+                    properties: vec!["edit".to_string()],
+                }),
+                code_action_literal_support: Some(CodeActionLiteralSupport {
+                    code_action_kind: CodeActionKindLiteralSupport {
+                        value_set: vec![
+                            CodeActionKind::EMPTY.as_str().to_string(),
+                            CodeActionKind::QUICKFIX.as_str().to_string(),
+                            CodeActionKind::REFACTOR.as_str().to_string(),
+                            CodeActionKind::REFACTOR_EXTRACT.as_str().to_string(),
+                            CodeActionKind::REFACTOR_INLINE.as_str().to_string(),
+                            CodeActionKind::REFACTOR_REWRITE.as_str().to_string(),
+                            CodeActionKind::SOURCE.as_str().to_string(),
+                            CodeActionKind::SOURCE_ORGANIZE_IMPORTS
+                                .as_str()
+                                .to_string(),
+                            "quickassist".to_string(),
+                            "source.fixAll".to_string(),
+                        ],
+                    },
+                }),
+                ..Default::default()
+            }),
+            semantic_tokens: Some(SemanticTokensClientCapabilities {
+                ..Default::default()
+            }),
+            type_definition: Some(GotoCapability {
+                // Note: This is explicitly specified rather than left to the Default because
+                // of a bug in lsp-types https://github.com/gluon-lang/lsp-types/pull/244
+                link_support: Some(false),
+                ..Default::default()
+            }),
+            definition: Some(GotoCapability {
+                ..Default::default()
+            }),
+            publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
+                ..Default::default()
+            }),
+            inline_completion: Some(InlineCompletionClientCapabilities {
+                ..Default::default()
+            }),
+            call_hierarchy: Some(CallHierarchyClientCapabilities {
+                dynamic_registration: Some(true),
+            }),
+            document_symbol: Some(DocumentSymbolClientCapabilities {
+                hierarchical_document_symbol_support: Some(true),
+                ..Default::default()
+            }),
+            folding_range: Some(FoldingRangeClientCapabilities {
+                dynamic_registration: Some(false),
+                range_limit: None,
+                line_folding_only: Some(false),
+                folding_range_kind: None,
+                folding_range: None,
+            }),
+            ..Default::default()
+        }),
+        window: Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            show_message: Some(ShowMessageRequestClientCapabilities {
+                message_action_item: Some(MessageActionItemCapabilities {
+                    additional_properties_support: Some(true),
+                }),
+            }),
+            ..Default::default()
+        }),
+        workspace: Some(WorkspaceClientCapabilities {
+            symbol: Some(WorkspaceSymbolClientCapabilities {
+                ..Default::default()
+            }),
+            configuration: Some(false),
+            workspace_folders: Some(true),
+            ..Default::default()
+        }),
+        experimental: Some(experimental.into()),
+        ..Default::default()
+    }
 }

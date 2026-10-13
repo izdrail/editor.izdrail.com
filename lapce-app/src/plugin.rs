@@ -215,13 +215,7 @@ impl PluginData {
                     let volts = find_all_volts(&extra_plugin_paths);
                     let volts = volts
                         .into_iter()
-                        .filter_map(|meta| {
-                            if meta.wasm.is_none() {
-                                Some((volt_icon(&meta), meta))
-                            } else {
-                                None
-                            }
-                        })
+                        .map(|meta| (volt_icon(&meta), meta))
                         .collect::<Vec<_>>();
                     send(volts);
                 })
@@ -304,7 +298,7 @@ impl PluginData {
             let send = create_ext_action(
                 self.common.scope,
                 move |info: Option<VoltInfo>| {
-                    if let Some(info) = info.filter(|info: &VoltInfo| !info.wasm) {
+                    if let Some(info) = info {
                         latest.set(info);
                     }
                 },
@@ -494,7 +488,7 @@ impl PluginData {
                 .json()?;
             let count = page.plugins.len();
             offset += count;
-            plugins.extend(page.plugins.into_iter().filter(|info| !info.wasm));
+            plugins.extend(page.plugins);
             if count == 0 || offset >= page.total {
                 return Ok(VoltsInfo {
                     total: plugins.len(),
@@ -562,6 +556,15 @@ impl PluginData {
                 }
             },
         );
+        if info.wasm {
+            // The proxy downloads, installs and starts the plugin, then
+            // reports back with CoreNotification::VoltInstalled.
+            if let Some(signal) = installing {
+                signal.set(false);
+            }
+            self.common.proxy.install_volt(info);
+            return;
+        }
         std::thread::spawn(move || {
             let result = download_volt(&info).map(|meta| {
                 let icon = volt_icon(&meta);
@@ -581,6 +584,9 @@ impl PluginData {
         self.disabled.update(|d| {
             d.remove(&id);
         });
+        if !self.plugin_disabled(&id) {
+            self.common.proxy.enable_volt(volt.clone());
+        }
         let db: Arc<LapceDb> = use_context().unwrap();
         db.save_disabled_volts(self.disabled.get_untracked().into_iter().collect());
         self.common
@@ -593,6 +599,7 @@ impl PluginData {
         self.disabled.update(|d| {
             d.insert(id);
         });
+        self.common.proxy.disable_volt(volt.clone());
         let db: Arc<LapceDb> = use_context().unwrap();
         db.save_disabled_volts(self.disabled.get_untracked().into_iter().collect());
         self.common

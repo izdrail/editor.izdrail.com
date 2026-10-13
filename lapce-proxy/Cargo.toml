@@ -36,6 +36,7 @@ url                = { workspace = true }
 zstd               = { workspace = true }
 
 lsp-types = { workspace = true }
+psp-types = { workspace = true }
 
 lapce-xi-rope     = { workspace = true }
 lapce-core        = { workspace = true }
@@ -59,8 +60,20 @@ grep-matcher  = "0.1"
 grep-regex    = "0.1"
 
 # wasm
+wasmtime      = "14.0.0"
+wasmtime-wasi = "14.0.0"
+wasi-common   = "14.0.0"
 
+dyn-clone    = "1.0.16"
+jsonrpc-lite = "0.6.0"
+
+[dependencies.wasi-experimental-http-wasmtime]
+git = "https://github.com/lapce/wasi-experimental-http"
+rev = "21419eb785cb583ead180f25a9685fa16de7f326"
 
 [target.'cfg(target_os = "macos")'.dependencies.locale_config]
 git    = "https://github.com/lapce/locale_config.git"
 branch = "lapce"
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

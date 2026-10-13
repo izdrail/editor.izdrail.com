@@ -38,6 +38,7 @@ authors      = ["Dongdong Zhou <dzhou121@gmail.com>"]
 
 [workspace.dependencies]
 lapce-vsix        = { path = "lapce-vsix" }
+psp-types = { git = "https://github.com/lapce/psp-types", rev = "f7fea28f59e7b2d6faa1034a21679ad49b3524ad" }
 anyhow            = { version = "1.0" }
 backtrace         = { version = "0.3" }
 chrono            = { version = "0.4" }
