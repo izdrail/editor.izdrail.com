@@ -8,27 +8,26 @@ use lsp_types::{
     TextEdit,
 };
 
-/// Where a completion item came from. The order is the blend priority:
-/// LSP first, then snippets, then buffer words.
+/// Where a completion item came from. The order is the popup priority:
+/// LSP, then snippets, then lexer word lists, then buffer words.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum CompletionSource {
     #[default]
     Lsp,
     Snippet,
-    /// Language keywords, builtin functions and types.
+    /// Lexer word lists: language keywords, builtins, Laravel facades etc.
     Keyword,
     Word,
 }
 
 impl CompletionSource {
-    /// Added to the fuzzy score so that, for similar matches, LSP beats
-    /// snippets and snippets beat plain words.
-    pub fn bonus(self) -> u32 {
+    /// Sort tier, lower is shown first.
+    pub fn tier(self) -> u8 {
         match self {
-            CompletionSource::Lsp => 24,
-            CompletionSource::Snippet => 12,
-            CompletionSource::Keyword => 6,
-            CompletionSource::Word => 0,
+            CompletionSource::Lsp => 0,
+            CompletionSource::Snippet => 1,
+            CompletionSource::Keyword => 2,
+            CompletionSource::Word => 3,
         }
     }
 }
@@ -84,21 +83,41 @@ pub fn buffer_words(text: &str) -> Vec<String> {
 }
 
 /// Keywords, builtin functions and types of a language, for the popup.
-/// Only PHP has lists today (the same ones the PHP lexer highlights).
-pub fn language_items(language_id: &str) -> Vec<CompletionItem> {
+/// Only PHP has lists today (the same ones the PHP lexer highlights). In a
+/// Laravel project the Laravel lexer lists are added on top.
+pub fn language_items(language_id: &str, laravel: bool) -> Vec<CompletionItem> {
     if language_id != "php" {
         return Vec::new();
     }
-    let lists = lapce_core::lexilla::PHP_WORD_LISTS;
+    let lists = if laravel {
+        lapce_core::lexilla::LARAVEL_WORD_LISTS
+    } else {
+        lapce_core::lexilla::PHP_WORD_LISTS
+    };
     let kinds = [
         (0, CompletionItemKind::KEYWORD, "keyword"),
         (1, CompletionItemKind::FUNCTION, "builtin function"),
         (2, CompletionItemKind::CLASS, "builtin type"),
         (3, CompletionItemKind::CONSTANT, "builtin constant"),
+        (4, CompletionItemKind::CLASS, "Laravel facade"),
+        (5, CompletionItemKind::METHOD, "Laravel route method"),
+        (6, CompletionItemKind::FUNCTION, "Artisan command"),
+        (7, CompletionItemKind::FUNCTION, "Laravel helper"),
+        (8, CompletionItemKind::METHOD, "Eloquent / query builder"),
     ];
+    let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for (i, kind, detail) in kinds {
         for w in lists.get(i).copied().unwrap_or("").split_whitespace() {
+            // The popup replaces an identifier, so a word with other
+            // characters (`make:model`) would be inserted wrongly.
+            if !w.chars().all(is_ident) {
+                continue;
+            }
+            // Lists overlap (`get`, `delete`, `value`): first list wins.
+            if !seen.insert(w) {
+                continue;
+            }
             out.push(CompletionItem {
                 label: w.to_string(),
                 kind: Some(kind),
@@ -283,13 +302,53 @@ mod tests {
 
     #[test]
     fn php_language_items_come_from_the_lexer_lists() {
-        let items = language_items("php");
+        let items = language_items("php", false);
         let has =
             |l: &str, k| items.iter().any(|i| i.label == l && i.kind == Some(k));
         assert!(has("foreach", CompletionItemKind::KEYWORD));
         assert!(has("json_encode", CompletionItemKind::FUNCTION));
         assert!(has("string", CompletionItemKind::CLASS));
-        assert!(language_items("rust").is_empty());
+        assert!(language_items("rust", false).is_empty());
+        assert!(language_items("rust", true).is_empty());
+        // No Laravel words outside Laravel projects.
+        assert!(
+            !items
+                .iter()
+                .any(|i| i.label == "Route" || i.label == "orderBy")
+        );
+    }
+
+    #[test]
+    fn laravel_language_items_cover_every_laravel_list() {
+        let items = language_items("php", true);
+        let kind = |l: &str| {
+            items
+                .iter()
+                .find(|i| i.label == l)
+                .unwrap_or_else(|| panic!("missing {l}"))
+        };
+        assert_eq!(kind("Route").detail.as_deref(), Some("Laravel facade"));
+        assert_eq!(
+            kind("apiResource").detail.as_deref(),
+            Some("Laravel route method")
+        );
+        assert_eq!(kind("migrate").detail.as_deref(), Some("Artisan command"));
+        assert_eq!(kind("abort_if").detail.as_deref(), Some("Laravel helper"));
+        assert_eq!(
+            kind("orderBy").detail.as_deref(),
+            Some("Eloquent / query builder")
+        );
+        // PHP words are still there.
+        assert_eq!(kind("foreach").kind, Some(CompletionItemKind::KEYWORD));
+        // Colon commands cannot be inserted over an identifier.
+        assert!(!items.iter().any(|i| i.label.contains(':')));
+        // Every label is offered once, even when two lists share a word.
+        let mut labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+        let n = labels.len();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(labels.len(), n);
+        assert_eq!(kind("get").detail.as_deref(), Some("Laravel route method"));
     }
 
     #[test]

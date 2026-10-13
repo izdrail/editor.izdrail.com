@@ -5,6 +5,7 @@ pub mod code_action;
 pub mod code_lens;
 pub mod command;
 pub mod completion;
+pub mod completion_rank;
 pub mod completion_sources;
 pub mod config;
 pub mod db;

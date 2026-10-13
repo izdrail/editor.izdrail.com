@@ -16,6 +16,9 @@ use lsp_types::{
 use nucleo::Utf32Str;
 
 use crate::{
+    completion_rank::{
+        Rank, compare, dedupe_across_sources, has_prefix_ignore_case,
+    },
     completion_sources::{CompletionSource, MIN_WORD_INPUT},
     config::LapceConfig,
     editor::EditorData,
@@ -183,52 +186,27 @@ impl CompletionData {
     }
 
     /// LSP items plus the local sources. Local items are only offered once
-    /// something has been typed, and buffer words need a little more.
+    /// something has been typed, and buffer words need a little more. A label
+    /// offered by several sources is kept only for the highest-priority one.
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
-        let mut items = self.lsp_items();
+        let items = self.lsp_items();
         if self.input.is_empty() {
             return items;
         }
         let typed = self.input.chars().count();
-        let seen: std::collections::HashSet<String> = items
-            .iter()
-            .map(|i| i.item.label.clone())
-            .chain(
-                self.local_items
-                    .iter()
-                    .filter(|i| {
-                        matches!(
-                            i.source,
-                            CompletionSource::Snippet | CompletionSource::Keyword
-                        )
-                    })
-                    .map(|i| i.item.label.clone()),
-            )
-            .collect();
-        for local in &self.local_items {
-            match local.source {
-                CompletionSource::Word | CompletionSource::Keyword => {
-                    // A word the server or a snippet already offers adds nothing.
-                    if typed < MIN_WORD_INPUT || seen.contains(&local.item.label) {
-                        continue;
-                    }
-                }
-                // Same label as an LSP *snippet* is a duplicate, anything else
-                // is a different insertion and stays.
-                CompletionSource::Snippet => {
-                    if items.iter().any(|i| {
-                        i.item.label == local.item.label
-                            && i.item.insert_text_format
-                                == Some(InsertTextFormat::SNIPPET)
-                    }) {
-                        continue;
-                    }
-                }
-                CompletionSource::Lsp => {}
-            }
-            items.push_back(local.clone());
-        }
-        items
+        let mut all: Vec<ScoredCompletionItem> = items.into_iter().collect();
+        all.extend(
+            self.local_items
+                .iter()
+                .filter(|l| {
+                    matches!(l.source, CompletionSource::Snippet)
+                        || typed >= MIN_WORD_INPUT
+                })
+                .cloned(),
+        );
+        dedupe_across_sources(all, |i| i.item.label.as_str(), |i| i.source.tier())
+            .into_iter()
+            .collect()
     }
 
     pub fn filter_items(&mut self) {
@@ -272,7 +250,19 @@ impl CompletionData {
                                 }
                             }
                             let mut item = i.clone();
-                            item.score = score;
+                            let filter_text =
+                                i.item.filter_text.as_ref().unwrap_or(&i.item.label);
+                            let prefix = if has_prefix_ignore_case(
+                                filter_text,
+                                &self.input,
+                            ) {
+                                64
+                            } else {
+                                0
+                            };
+                            let preselect =
+                                if i.item.preselect == Some(true) { 8 } else { 0 };
+                            item.score = score + prefix + preselect;
                             item.label_score = score;
                             item.indices =
                                 indices.into_iter().map(|i| i as usize).collect();
@@ -291,17 +281,9 @@ impl CompletionData {
                     .collect()
             })
             .unwrap();
-        // Blend the sources: fuzzy score, a bonus for a prefix match and a
-        // source priority (LSP, then snippets, then buffer words). LSP
-        // `sortText` and the label length break ties.
-        let input_lower = self.input.to_lowercase();
-        items.sort_by(|a, b| {
-            blended_score(b, &input_lower)
-                .cmp(&blended_score(a, &input_lower))
-                .then_with(|| b.label_score.cmp(&a.label_score))
-                .then_with(|| sort_text(a).cmp(sort_text(b)))
-                .then_with(|| a.item.label.len().cmp(&b.item.label.len()))
-        });
+        // Source priority first (LSP, snippets, lexer lists, buffer words),
+        // then match quality, `sortText` and label length.
+        items.sort_by(|a, b| compare(&rank_of(a), &rank_of(b)));
         self.filtered_items = items;
     }
 
@@ -407,21 +389,14 @@ fn sort_text(i: &ScoredCompletionItem) -> &str {
     i.item.sort_text.as_deref().unwrap_or(&i.item.label)
 }
 
-/// Rank used to blend items from different sources.
-pub fn blended_score(i: &ScoredCompletionItem, input_lower: &str) -> u32 {
-    let filter = i
-        .item
-        .filter_text
-        .as_deref()
-        .unwrap_or(&i.item.label)
-        .to_lowercase();
-    let prefix = if filter.starts_with(input_lower) {
-        64
-    } else {
-        0
-    };
-    let preselect = if i.item.preselect == Some(true) { 8 } else { 0 };
-    i.score + prefix + preselect + i.source.bonus()
+fn rank_of(i: &ScoredCompletionItem) -> Rank<'_> {
+    Rank {
+        tier: i.source.tier(),
+        score: i.score,
+        label_score: i.label_score,
+        sort_text: sort_text(i),
+        label_len: i.item.label.len(),
+    }
 }
 
 /// Get the text of the completion lens for the given completion item.  
@@ -524,22 +499,16 @@ mod blend_tests {
     }
 
     #[test]
-    fn same_match_quality_ranks_lsp_then_snippet_then_word() {
-        let l = item("print", CompletionSource::Lsp, 100);
-        let s = item("print", CompletionSource::Snippet, 100);
-        let w = item("print", CompletionSource::Word, 100);
-        let (l, s, w) = (
-            blended_score(&l, "pri"),
-            blended_score(&s, "pri"),
-            blended_score(&w, "pri"),
-        );
-        assert!(l > s && s > w);
-    }
-
-    #[test]
-    fn strong_prefix_word_beats_weak_scattered_lsp_match() {
-        let word = item("println_count", CompletionSource::Word, 90);
-        let lsp = item("xpxrxixnxt", CompletionSource::Lsp, 40);
-        assert!(blended_score(&word, "print") > blended_score(&lsp, "print"));
+    fn items_sort_by_source_then_score() {
+        let mut v = vec![
+            item("a", CompletionSource::Word, 500),
+            item("b", CompletionSource::Keyword, 400),
+            item("c", CompletionSource::Snippet, 300),
+            item("d", CompletionSource::Lsp, 20),
+            item("e", CompletionSource::Lsp, 90),
+        ];
+        v.sort_by(|a, b| compare(&rank_of(a), &rank_of(b)));
+        let labels: Vec<_> = v.iter().map(|i| i.item.label.as_str()).collect();
+        assert_eq!(labels, ["e", "d", "c", "b", "a"]);
     }
 }

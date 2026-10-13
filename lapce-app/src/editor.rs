@@ -1970,7 +1970,10 @@ impl EditorData {
                 if lang == Some("php") {
                     words.extend(php_variable_items(&text));
                 }
-                let keywords = lang.map(language_items).unwrap_or_default();
+                let laravel = lang == Some("php")
+                    && lapce_core::lexilla::is_laravel_project(path);
+                let keywords =
+                    lang.map(|l| language_items(l, laravel)).unwrap_or_default();
 
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);
