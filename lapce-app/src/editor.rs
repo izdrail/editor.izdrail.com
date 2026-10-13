@@ -2083,7 +2083,9 @@ impl EditorData {
                 let snippets = match lang {
                     Some(lang) => {
                         let loaded = lapce_core::textmate::loaded();
-                        snippet_items(&loaded.snippets_for(lang), &indent, range)
+                        let mut all = loaded.snippets_for(lang);
+                        all.extend(crate::builtin_snippets::for_context(lang, &project));
+                        snippet_items(&all, &indent, range)
                     }
                     None => Vec::new(),
                 };

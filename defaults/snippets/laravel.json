@@ -1,0 +1,160 @@
+{
+ "Route get": {
+  "prefix": "route-get",
+  "body": [
+   "Route::get('${1:/path}', [${2:Controller}::class, '${3:index}'])->name('${4:name}');"
+  ],
+  "description": "Laravel route to a controller method"
+ },
+ "Route resource": {
+  "prefix": "route-resource",
+  "body": [
+   "Route::resource('${1:photos}', ${2:PhotoController}::class);"
+  ],
+  "description": "Laravel resource routes"
+ },
+ "Route group": {
+  "prefix": "route-group",
+  "body": [
+   "Route::middleware(['${1:auth}'])->prefix('${2:admin}')->group(function () {",
+   "\t$0",
+   "});"
+  ],
+  "description": "Laravel route group"
+ },
+ "Eloquent model": {
+  "prefix": "lv-model",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Models;",
+   "",
+   "use Illuminate\\\\Database\\\\Eloquent\\\\Model;",
+   "",
+   "class ${1:Post} extends Model",
+   "{",
+   "\tprotected \\$fillable = [${2:'title'}];",
+   "",
+   "\t$0",
+   "}"
+  ],
+  "description": "Eloquent model class"
+ },
+ "Controller": {
+  "prefix": "lv-controller",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Http\\\\Controllers;",
+   "",
+   "use Illuminate\\\\Http\\\\Request;",
+   "",
+   "class ${1:Post}Controller extends Controller",
+   "{",
+   "\tpublic function index()",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Controller with index action"
+ },
+ "Migration": {
+  "prefix": "lv-migration",
+  "body": [
+   "use Illuminate\\\\Database\\\\Migrations\\\\Migration;",
+   "use Illuminate\\\\Database\\\\Schema\\\\Blueprint;",
+   "use Illuminate\\\\Support\\\\Facades\\\\Schema;",
+   "",
+   "return new class extends Migration",
+   "{",
+   "\tpublic function up(): void",
+   "\t{",
+   "\t\tSchema::create('${1:table}', function (Blueprint \\$table) {",
+   "\t\t\t\\$table->id();",
+   "\t\t\t$0",
+   "\t\t\t\\$table->timestamps();",
+   "\t\t});",
+   "\t}",
+   "",
+   "\tpublic function down(): void",
+   "\t{",
+   "\t\tSchema::dropIfExists('${1:table}');",
+   "\t}",
+   "};"
+  ],
+  "description": "Create-table migration"
+ },
+ "Validate request": {
+  "prefix": "lv-validate",
+  "body": [
+   "\\$validated = \\$request->validate([",
+   "\t'${1:field}' => '${2:required|string|max:255}',",
+   "]);"
+  ],
+  "description": "Request validation"
+ },
+ "Eloquent relation hasMany": {
+  "prefix": "lv-hasmany",
+  "body": [
+   "public function ${1:comments}()",
+   "{",
+   "\treturn \\$this->hasMany(${2:Comment}::class);",
+   "}"
+  ],
+  "description": "hasMany relation"
+ },
+ "Eloquent relation belongsTo": {
+  "prefix": "lv-belongsto",
+  "body": [
+   "public function ${1:user}()",
+   "{",
+   "\treturn \\$this->belongsTo(${2:User}::class);",
+   "}"
+  ],
+  "description": "belongsTo relation"
+ },
+ "Form request": {
+  "prefix": "lv-formrequest",
+  "body": [
+   "public function rules(): array",
+   "{",
+   "\treturn [",
+   "\t\t'${1:field}' => ['required'],",
+   "\t];",
+   "}"
+  ],
+  "description": "FormRequest rules method"
+ },
+ "Factory definition": {
+  "prefix": "lv-factory",
+  "body": [
+   "public function definition(): array",
+   "{",
+   "\treturn [",
+   "\t\t'${1:name}' => fake()->${2:name}(),",
+   "\t];",
+   "}"
+  ],
+  "description": "Model factory definition"
+ },
+ "Feature test": {
+  "prefix": "lv-test",
+  "body": [
+   "public function test_${1:example}(): void",
+   "{",
+   "\t\\$response = \\$this->get('${2:/}');",
+   "",
+   "\t\\$response->assertStatus(${3:200});",
+   "}"
+  ],
+  "description": "Feature test method"
+ },
+ "Log info": {
+  "prefix": "lv-log",
+  "body": [
+   "\\\\Log::info('${1:message}', [${2:}]);"
+  ],
+  "description": "Log::info call"
+ }
+}

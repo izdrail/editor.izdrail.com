@@ -31,6 +31,9 @@ Independent stdio LSP client: completion (with resolve), hover, go to definition
 ### Executable plugins (WASI)
 Lapce-style WASI plugins run in the proxy's plugin catalog: they can provide language features (completion, hover, code actions, formatting, ...), spawn their own language servers and react to editor events. Editor requests fan out to both the built-in language server client and plugins. See [docs/wasi-plugins.md](docs/wasi-plugins.md).
 
+### Snippet packs
+Laravel, WordPress, Symfony and Twig snippets, offered by project type. See [docs/snippet-packs.md](docs/snippet-packs.md).
+
 ### Emmet
 Expand HTML abbreviations (`ul>li.item*3`) with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
 

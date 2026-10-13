@@ -1,0 +1,126 @@
+{
+ "add_action": {
+  "prefix": "wp-action",
+  "body": [
+   "add_action('${1:init}', '${2:callback}'${3:, 10, 1});"
+  ],
+  "description": "WordPress action hook"
+ },
+ "add_filter": {
+  "prefix": "wp-filter",
+  "body": [
+   "add_filter('${1:the_content}', '${2:callback}'${3:, 10, 1});"
+  ],
+  "description": "WordPress filter hook"
+ },
+ "Plugin header": {
+  "prefix": "wp-plugin",
+  "body": [
+   "<?php",
+   "/**",
+   " * Plugin Name: ${1:My Plugin}",
+   " * Description: ${2:Description}",
+   " * Version: 1.0.0",
+   " * Author: ${3:Author}",
+   " * Text Domain: ${4:my-plugin}",
+   " */",
+   "",
+   "if (!defined('ABSPATH')) {",
+   "\texit;",
+   "}",
+   "",
+   "$0"
+  ],
+  "description": "Plugin main file header"
+ },
+ "Custom post type": {
+  "prefix": "wp-cpt",
+  "body": [
+   "add_action('init', function () {",
+   "\tregister_post_type('${1:book}', [",
+   "\t\t'label'  => __('${2:Books}', '${3:textdomain}'),",
+   "\t\t'public' => true,",
+   "\t\t'supports' => ['title', 'editor', 'thumbnail'],",
+   "\t\t'show_in_rest' => true,",
+   "\t]);",
+   "});"
+  ],
+  "description": "register_post_type"
+ },
+ "WP_Query loop": {
+  "prefix": "wp-query",
+  "body": [
+   "\\$query = new WP_Query([",
+   "\t'post_type'      => '${1:post}',",
+   "\t'posts_per_page' => ${2:10},",
+   "]);",
+   "",
+   "if (\\$query->have_posts()) {",
+   "\twhile (\\$query->have_posts()) {",
+   "\t\t\\$query->the_post();",
+   "\t\t$0",
+   "\t}",
+   "\twp_reset_postdata();",
+   "}"
+  ],
+  "description": "WP_Query with the loop"
+ },
+ "Enqueue assets": {
+  "prefix": "wp-enqueue",
+  "body": [
+   "add_action('wp_enqueue_scripts', function () {",
+   "\twp_enqueue_style('${1:handle}', get_stylesheet_directory_uri() . '/${2:style.css}', [], '${3:1.0.0}');",
+   "\twp_enqueue_script('${1:handle}', get_stylesheet_directory_uri() . '/${4:main.js}', [], '${3:1.0.0}', true);",
+   "});"
+  ],
+  "description": "Enqueue style and script"
+ },
+ "Shortcode": {
+  "prefix": "wp-shortcode",
+  "body": [
+   "add_shortcode('${1:name}', function (\\$atts = [], \\$content = null) {",
+   "\t\\$atts = shortcode_atts(['${2:key}' => '${3:default}'], \\$atts);",
+   "\tob_start();",
+   "\t$0",
+   "\treturn ob_get_clean();",
+   "});"
+  ],
+  "description": "add_shortcode"
+ },
+ "REST route": {
+  "prefix": "wp-rest",
+  "body": [
+   "add_action('rest_api_init', function () {",
+   "\tregister_rest_route('${1:myplugin/v1}', '/${2:items}', [",
+   "\t\t'methods'             => 'GET',",
+   "\t\t'callback'            => function (WP_REST_Request \\$request) {",
+   "\t\t\treturn rest_ensure_response([$0]);",
+   "\t\t},",
+   "\t\t'permission_callback' => '__return_true',",
+   "\t]);",
+   "});"
+  ],
+  "description": "register_rest_route"
+ },
+ "Escaped output": {
+  "prefix": "wp-esc",
+  "body": [
+   "echo esc_html(${1:\\$value});"
+  ],
+  "description": "esc_html output"
+ },
+ "Nonce field": {
+  "prefix": "wp-nonce",
+  "body": [
+   "wp_nonce_field('${1:action}', '${2:_wpnonce}');"
+  ],
+  "description": "wp_nonce_field"
+ },
+ "Translate": {
+  "prefix": "wp-i18n",
+  "body": [
+   "__('${1:text}', '${2:textdomain}')"
+  ],
+  "description": "Translatable string"
+ }
+}

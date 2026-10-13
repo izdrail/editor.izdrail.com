@@ -1,0 +1,119 @@
+{
+ "Controller": {
+  "prefix": "sf-controller",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Controller;",
+   "",
+   "use Symfony\\\\Bundle\\\\FrameworkBundle\\\\Controller\\\\AbstractController;",
+   "use Symfony\\\\Component\\\\HttpFoundation\\\\Response;",
+   "use Symfony\\\\Component\\\\Routing\\\\Attribute\\\\Route;",
+   "",
+   "class ${1:Home}Controller extends AbstractController",
+   "{",
+   "\t#[Route('${2:/}', name: '${3:app_home}')]",
+   "\tpublic function index(): Response",
+   "\t{",
+   "\t\treturn \\$this->render('${4:home/index.html.twig}');",
+   "\t}",
+   "}"
+  ],
+  "description": "Controller with a Route attribute"
+ },
+ "Route attribute": {
+  "prefix": "sf-route",
+  "body": [
+   "#[Route('${1:/path}', name: '${2:app_name}', methods: ['${3:GET}'])]"
+  ],
+  "description": "Route attribute"
+ },
+ "Doctrine entity": {
+  "prefix": "sf-entity",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Entity;",
+   "",
+   "use Doctrine\\\\ORM\\\\Mapping as ORM;",
+   "",
+   "#[ORM\\\\Entity]",
+   "class ${1:Product}",
+   "{",
+   "\t#[ORM\\\\Id]",
+   "\t#[ORM\\\\GeneratedValue]",
+   "\t#[ORM\\\\Column]",
+   "\tprivate ?int \\$id = null;",
+   "",
+   "\t$0",
+   "}"
+  ],
+  "description": "Doctrine entity"
+ },
+ "Doctrine column": {
+  "prefix": "sf-column",
+  "body": [
+   "#[ORM\\\\Column(length: ${1:255})]",
+   "private ?string \\$${2:name} = null;"
+  ],
+  "description": "Doctrine string column"
+ },
+ "Service constructor": {
+  "prefix": "sf-service",
+  "body": [
+   "public function __construct(",
+   "\tprivate readonly ${1:Service} \\$${2:service},",
+   ") {",
+   "}"
+  ],
+  "description": "Constructor property promotion"
+ },
+ "Console command": {
+  "prefix": "sf-command",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Command;",
+   "",
+   "use Symfony\\\\Component\\\\Console\\\\Attribute\\\\AsCommand;",
+   "use Symfony\\\\Component\\\\Console\\\\Command\\\\Command;",
+   "use Symfony\\\\Component\\\\Console\\\\Input\\\\InputInterface;",
+   "use Symfony\\\\Component\\\\Console\\\\Output\\\\OutputInterface;",
+   "",
+   "#[AsCommand(name: '${1:app:do-thing}', description: '${2:Description}')]",
+   "class ${3:DoThing}Command extends Command",
+   "{",
+   "\tprotected function execute(InputInterface \\$input, OutputInterface \\$output): int",
+   "\t{",
+   "\t\t$0",
+   "\t\treturn Command::SUCCESS;",
+   "\t}",
+   "}"
+  ],
+  "description": "Console command"
+ },
+ "Form type": {
+  "prefix": "sf-formtype",
+  "body": [
+   "public function buildForm(FormBuilderInterface \\$builder, array \\$options): void",
+   "{",
+   "\t\\$builder",
+   "\t\t->add('${1:name}', ${2:TextType}::class)",
+   "\t;",
+   "}"
+  ],
+  "description": "FormType buildForm"
+ },
+ "Event subscriber": {
+  "prefix": "sf-subscriber",
+  "body": [
+   "public static function getSubscribedEvents(): array",
+   "{",
+   "\treturn [",
+   "\t\t${1:KernelEvents::REQUEST} => '${2:onRequest}',",
+   "\t];",
+   "}"
+  ],
+  "description": "EventSubscriber events"
+ }
+}

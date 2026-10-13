@@ -1,0 +1,82 @@
+{
+ "for": {
+  "prefix": "for",
+  "body": [
+   "{% for ${1:item} in ${2:items} %}",
+   "\t$0",
+   "{% endfor %}"
+  ],
+  "description": "Twig for loop"
+ },
+ "if": {
+  "prefix": "if",
+  "body": [
+   "{% if ${1:condition} %}",
+   "\t$0",
+   "{% endif %}"
+  ],
+  "description": "Twig if"
+ },
+ "ifelse": {
+  "prefix": "ifelse",
+  "body": [
+   "{% if ${1:condition} %}",
+   "\t$2",
+   "{% else %}",
+   "\t$0",
+   "{% endif %}"
+  ],
+  "description": "Twig if/else"
+ },
+ "extends": {
+  "prefix": "extends",
+  "body": [
+   "{% extends '${1:base.html.twig}' %}"
+  ],
+  "description": "Twig extends"
+ },
+ "block": {
+  "prefix": "block",
+  "body": [
+   "{% block ${1:body} %}",
+   "\t$0",
+   "{% endblock %}"
+  ],
+  "description": "Twig block"
+ },
+ "include": {
+  "prefix": "include",
+  "body": [
+   "{% include '${1:partial.html.twig}' %}"
+  ],
+  "description": "Twig include"
+ },
+ "set": {
+  "prefix": "set",
+  "body": [
+   "{% set ${1:name} = ${2:value} %}"
+  ],
+  "description": "Twig set"
+ },
+ "path": {
+  "prefix": "path",
+  "body": [
+   "{{ path('${1:route_name}') }}"
+  ],
+  "description": "Symfony path()"
+ },
+ "asset": {
+  "prefix": "asset",
+  "body": [
+   "{{ asset('${1:build/app.css}') }}"
+  ],
+  "description": "Symfony asset()"
+ },
+ "trans": {
+  "prefix": "trans",
+  "body": [
+   "{{ '${1:key}'|trans }}"
+  ],
+  "description": "Translation filter"
+ }
+}
