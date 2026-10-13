@@ -749,3 +749,9 @@ mode = "v"
 key = "shift+c"
 command = "delete_to_end_and_insert"
 mode = "n"
+
+[[keymaps]]
+key = "ctrl+alt+m"
+command = "emmet_expand"
+mode = "i"
+when = "editor_focus && !list_focus"

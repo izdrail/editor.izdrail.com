@@ -2315,6 +2315,35 @@ impl EditorData {
         Ok(())
     }
 
+    /// Expands the Emmet-style abbreviation before the caret (HTML), keeping
+    /// the current line's indentation on every generated line.
+    pub fn expand_emmet(&self) -> bool {
+        let offset = self.cursor().get_untracked().offset();
+        let doc = self.doc();
+        let (line_start, before) = doc.buffer.with_untracked(|b| {
+            let line = b.line_of_offset(offset);
+            let start = b.offset_of_line(line);
+            (start, b.slice_to_cow(start..offset).to_string())
+        });
+        let Some((char_idx, abbr)) =
+            crate::emmet::abbreviation_before_cursor(&before)
+        else {
+            return false;
+        };
+        let indent = doc.buffer.with_untracked(|b| b.indent_unit().to_string());
+        let Some(expanded) = crate::emmet::expand_html(&abbr, &indent) else {
+            return false;
+        };
+        let base: String = before.chars().take_while(|c| c.is_whitespace()).collect();
+        let snippet = expanded.replace('\n', &format!("\n{base}"));
+        // `char_idx` counts chars; convert to a byte offset within the line.
+        let byte_idx: usize = before.chars().take(char_idx).map(char::len_utf8).sum();
+        let start = line_start + byte_idx;
+        let selection = Selection::region(start, offset);
+        self.completion_apply_snippet(&snippet, &selection, Vec::new(), start)
+            .is_ok()
+    }
+
     pub fn completion_apply_snippet(
         &self,
         snippet: &str,

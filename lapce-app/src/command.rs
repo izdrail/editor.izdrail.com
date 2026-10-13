@@ -552,6 +552,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Previous Editor Tab")]
     PreviousEditorTab,
 
+    #[strum(serialize = "emmet_expand")]
+    #[strum(message = "Emmet: Expand Abbreviation")]
+    EmmetExpand,
+
     #[strum(serialize = "toggle_inlay_hints")]
     #[strum(message = "Toggle Inlay Hints")]
     ToggleInlayHints,

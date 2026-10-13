@@ -952,6 +952,13 @@ impl WindowTabData {
                 self.main_split.export_theme();
             }
             ToggleInlayHints => {}
+            EmmetExpand => {
+                if let Some(editor_data) =
+                    self.main_split.active_editor.get_untracked()
+                {
+                    editor_data.expand_emmet();
+                }
+            }
 
             // ==== Window ====
             ReloadWindow => {
