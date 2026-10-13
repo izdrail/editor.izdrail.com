@@ -1,0 +1,93 @@
+id	name	tags
+0	SCE_C_DEFAULT	default
+1	SCE_C_COMMENT	comment
+2	SCE_C_COMMENTLINE	comment line
+3	SCE_C_COMMENTDOC	comment documentation
+4	SCE_C_NUMBER	literal numeric
+5	SCE_C_WORD	keyword
+6	SCE_C_STRING	literal string
+7	SCE_C_CHARACTER	literal string character
+8	SCE_C_UUID	literal uuid
+9	SCE_C_PREPROCESSOR	preprocessor
+10	SCE_C_OPERATOR	operator
+11	SCE_C_IDENTIFIER	identifier
+12	SCE_C_STRINGEOL	error literal string
+13	SCE_C_VERBATIM	literal string multiline raw
+14	SCE_C_REGEX	literal regex
+15	SCE_C_COMMENTLINEDOC	comment documentation line
+16	SCE_C_WORD2	identifier
+17	SCE_C_COMMENTDOCKEYWORD	comment documentation keyword
+18	SCE_C_COMMENTDOCKEYWORDERROR	error comment documentation keyword
+19	SCE_C_GLOBALCLASS	identifier
+20	SCE_C_STRINGRAW	literal string multiline raw
+21	SCE_C_TRIPLEVERBATIM	literal string multiline raw
+22	SCE_C_HASHQUOTEDSTRING	literal string
+23	SCE_C_PREPROCESSORCOMMENT	comment preprocessor
+24	SCE_C_PREPROCESSORCOMMENTDOC	comment preprocessor documentation
+25	SCE_C_USERLITERAL	literal
+26	SCE_C_TASKMARKER	comment taskmarker
+27	SCE_C_ESCAPESEQUENCE	literal string escapesequence
+28		
+29		
+30		
+31		
+32		
+33		
+34		
+35		
+36		
+37		
+38		
+39		
+40		
+41		
+42		
+43		
+44		
+45		
+46		
+47		
+48		
+49		
+50		
+51		
+52		
+53		
+54		
+55		
+56		
+57		
+58		
+59		
+60		
+61		
+62		
+63		
+64		inactive default
+65		inactive comment
+66		inactive comment line
+67		inactive comment documentation
+68		inactive literal numeric
+69		inactive keyword
+70		inactive literal string
+71		inactive literal string character
+72		inactive literal uuid
+73		inactive preprocessor
+74		inactive operator
+75		inactive identifier
+76		inactive error literal string
+77		inactive literal string multiline raw
+78		inactive literal regex
+79		inactive comment documentation line
+80		inactive identifier
+81		inactive comment documentation keyword
+82		inactive error comment documentation keyword
+83		inactive identifier
+84		inactive literal string multiline raw
+85		inactive literal string multiline raw
+86		inactive literal string
+87		inactive comment preprocessor
+88		inactive comment preprocessor documentation
+89		inactive literal
+90		inactive comment taskmarker
+91		inactive literal string escapesequence

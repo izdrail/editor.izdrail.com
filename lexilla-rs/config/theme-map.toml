@@ -1,0 +1,22 @@
+# Example mapping from lexer-specific style IDs to Lapce theme token categories.
+# This is a PROPOSED adapter schema, not a native Lapce config file.
+[lexers.cpp.styles]
+"0" = "default"
+"1" = "comment"
+"2" = "comment"
+"3" = "comment"
+"4" = "number"
+"5" = "keyword"
+"6" = "string"
+"7" = "string"
+"9" = "keyword"
+"10" = "operator"
+"11" = "default"
+"12" = "error"
+"16" = "default"
+"19" = "type"
+"20" = "string"
+"27" = "string.escape"
+[lexers.cpp.secondary]
+base_offset = 64
+opacity = 0.55

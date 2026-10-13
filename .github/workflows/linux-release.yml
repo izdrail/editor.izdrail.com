@@ -1,0 +1,70 @@
+name: Linux release
+
+# Runs only when a version tag is pushed (for example v0.1.0). It builds the
+# Linux x86_64 binary and attaches it to the GitHub Release for that tag,
+# creating the release if it does not exist yet. Nothing here creates tags.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and attach Linux x86_64 binary
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-22.04' }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang libxkbcommon-x11-dev pkg-config libvulkan-dev libwayland-dev xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev cmake
+
+      - name: Install Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal
+          rustup default 1.98.0
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          dir="lapce-${GITHUB_REF_NAME}-linux-x86_64"
+          mkdir "$dir"
+          cp target/release/lapce target/release/lapce-proxy "$dir/"
+          strip "$dir"/lapce "$dir"/lapce-proxy
+          cat > "$dir/README.txt" <<EOT
+          Lapce ${GITHUB_REF_NAME} (${GITHUB_REPOSITORY}), Linux x86_64 release build.
+          Run ./lapce. lapce-proxy must sit next to it for remote use.
+          Runtime libs (Debian/Ubuntu): sudo apt install libxkbcommon-x11-0 libvulkan1 libwayland-client0 libxcb-shape0 libxcb-xfixes0
+          EOT
+          tar cJf "${dir}.tar.xz" "$dir"
+          sha256sum "${dir}.tar.xz" > "${dir}.tar.xz.sha256"
+          echo "ARTIFACT=${dir}.tar.xz" >> "$GITHUB_ENV"
+
+      - name: Attach to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ARTIFACT" "$ARTIFACT.sha256" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ARTIFACT" "$ARTIFACT.sha256" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+          fi

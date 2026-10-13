@@ -1,0 +1,3 @@
+cpp: bytes=12583050 setup_s=0.028559 lex_median_s=0.182893 throughput_MiB_s=65.61 runs=3800250 extraction_s=0.053443 samples_s=[0.181240259, 0.181356456, 0.182892869, 0.183987078, 0.184970727]
+python: bytes=12582942 setup_s=0.025808 lex_median_s=0.170313 throughput_MiB_s=70.46 runs=3323796 extraction_s=0.047846 samples_s=[0.168180186, 0.169572863, 0.170312867, 0.171871573, 0.18709355]
+hypertext: bytes=12583048 setup_s=0.026814 lex_median_s=0.240667 throughput_MiB_s=49.86 runs=3465670 extraction_s=0.049337 samples_s=[0.239677953, 0.240286582, 0.240667033, 0.241107219, 0.24487026]

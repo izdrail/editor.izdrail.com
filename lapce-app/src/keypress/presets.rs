@@ -1,0 +1,147 @@
+//! Presets are overlays: common + OS + compact + selected preset + user overrides.
+//! They never replace the Vim Normal/Visual/operator maps or terminal controls.
+pub const NAMES: &[&str] = &[
+    "compact-65",
+    "vscode",
+    "phpstorm",
+    "notepad-plus-plus",
+    "lapce",
+];
+pub const COMPACT: &str =
+    include_str!("../../../defaults/keymap-presets/compact.toml");
+
+pub fn selected(name: &str) -> Option<&'static str> {
+    match name {
+        "lapce" => None,
+        "vscode" => {
+            Some(include_str!("../../../defaults/keymap-presets/vscode.toml"))
+        }
+        "phpstorm" => Some(include_str!(
+            "../../../defaults/keymap-presets/phpstorm.toml"
+        )),
+        "notepad-plus-plus" => Some(include_str!(
+            "../../../defaults/keymap-presets/notepad-plus-plus.toml"
+        )),
+        // A typo or an older config must leave essential commands usable.
+        _ => Some(include_str!(
+            "../../../defaults/keymap-presets/compact-65.toml"
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        command::lapce_internal_commands,
+        keypress::{keymap::KeyMapPress, loader::KeyMapLoader},
+    };
+    use lapce_core::mode::Modes;
+
+    fn loaded(name: &str, modal: bool) -> KeyMapLoader {
+        let mut loader = KeyMapLoader::new();
+        loader
+            .load_from_str(super::super::DEFAULT_KEYMAPS_COMMON, modal)
+            .unwrap();
+        loader
+            .load_from_str(super::super::DEFAULT_KEYMAPS_NONMACOS, modal)
+            .unwrap();
+        if let Some(preset) = selected(name) {
+            loader.load_from_str(COMPACT, modal).unwrap();
+            loader.load_from_str(preset, modal).unwrap();
+        }
+        loader
+    }
+
+    #[test]
+    fn presets_use_valid_commands_modes_conditions_and_keys() {
+        let commands = lapce_internal_commands();
+        for name in NAMES.iter().copied().filter(|name| *name != "lapce") {
+            for text in [COMPACT, selected(name).unwrap()] {
+                let mut loader = KeyMapLoader::new();
+                loader.load_from_str(text, true).unwrap();
+                let (_, command_maps) = loader.finalize();
+                for (command, maps) in command_maps {
+                    assert!(commands.contains_key(&command), "{name}: {command}");
+                    for map in maps {
+                        assert!(!map.key.is_empty());
+                        assert!(map.modes == Modes::INSERT || map.modes.is_empty());
+                        assert!(matches!(
+                            map.when.as_deref(),
+                            Some(
+                                "editor_focus && !list_focus"
+                                    | "file_explorer_focus"
+                            )
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_preset_has_fn_free_navigation_and_editing() {
+        for name in NAMES.iter().copied().filter(|name| *name != "lapce") {
+            let (_, commands) = loaded(name, false).finalize();
+            for (key, command) in [
+                ("ctrl+alt+a", "line_start_non_blank"),
+                ("ctrl+alt+e", "line_end"),
+                ("ctrl+alt+u", "page_up"),
+                ("ctrl+alt+d", "page_down"),
+                ("ctrl+alt+b", "document_start"),
+                ("ctrl+alt+f", "document_end"),
+                ("ctrl+alt+backspace", "delete_forward"),
+                ("ctrl+alt+w", "delete_word_forward"),
+            ] {
+                assert!(
+                    commands[command]
+                        .iter()
+                        .any(|map| map.key == KeyMapPress::parse(key)),
+                    "{name}: {command}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn selected_preset_wins_and_user_override_remains_last() {
+        for (name, key, command) in [
+            ("vscode", "ctrl+d", "select_next_current"),
+            ("phpstorm", "ctrl+d", "duplicate_line_down"),
+            ("phpstorm", "ctrl+y", "delete_line"),
+            ("notepad-plus-plus", "ctrl+shift+l", "delete_line"),
+        ] {
+            let mut loader = loaded(name, false);
+            let (keys, _) = loaded(name, false).finalize();
+            assert_eq!(
+                keys[&KeyMapPress::parse(key)].last().unwrap().command,
+                command
+            );
+            loader.load_from_str(&format!("[[keymaps]]\nkey = \"{key}\"\ncommand = \"undo\"\nmode = \"i\"\nwhen = \"editor_focus && !list_focus\"\n"), false).unwrap();
+            let (keys, _) = loader.finalize();
+            assert_eq!(
+                keys[&KeyMapPress::parse(key)].last().unwrap().command,
+                "undo"
+            );
+        }
+    }
+
+    #[test]
+    fn vim_normal_bindings_survive_and_lapce_opt_out_is_available() {
+        let (_, baseline) = loaded("lapce", true).finalize();
+        for name in NAMES {
+            let (_, commands) = loaded(name, true).finalize();
+            for (command, maps) in &baseline {
+                for map in maps.iter().filter(|map| {
+                    !map.modes.is_empty()
+                        && !map.modes.contains(Modes::INSERT)
+                        && !map.modes.contains(Modes::TERMINAL)
+                }) {
+                    assert!(commands[command].contains(map), "{name}: {command}");
+                }
+            }
+        }
+        assert!(selected("lapce").is_none());
+        assert_eq!(selected("typo"), selected("compact-65"));
+    }
+}

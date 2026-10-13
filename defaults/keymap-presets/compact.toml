@@ -1,0 +1,137 @@
+# Compact-keyboard alternatives shared by every preset. No Fn keys required.
+
+[[keymaps]]
+key = "ctrl+alt+h"
+command = "left"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+h"
+command = "left"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+l"
+command = "right"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+l"
+command = "right"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+k"
+command = "up"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+k"
+command = "up"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+j"
+command = "down"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+j"
+command = "down"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+a"
+command = "line_start_non_blank"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+a"
+command = "line_start_non_blank"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+e"
+command = "line_end"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+e"
+command = "line_end"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+u"
+command = "page_up"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+d"
+command = "page_down"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+b"
+command = "document_start"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+b"
+command = "document_start"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+f"
+command = "document_end"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+shift+f"
+command = "document_end"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+backspace"
+command = "delete_forward"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+w"
+command = "delete_word_forward"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+x"
+command = "delete_line"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+r"
+command = "file_explorer.rename"
+when = "file_explorer_focus"
+
+[[keymaps]]
+key = "ctrl+alt+backspace"
+command = "file_explorer.trash"
+when = "file_explorer_focus"

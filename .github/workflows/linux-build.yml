@@ -1,0 +1,76 @@
+name: Linux build
+
+# Builds the Linux x86_64 release binary on every branch push and publishes it
+# as a downloadable workflow artifact. Releases are created by linux-release.yml
+# when a version tag is pushed.
+on:
+  push:
+    tags-ignore: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: Linux x86_64 release binary
+    # CI_RUNNER can point at a self-hosted runner; default is a GitHub-hosted one.
+    # Ubuntu 22.04 keeps the binary runnable on glibc >= 2.35.
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-22.04' }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang libxkbcommon-x11-dev pkg-config libvulkan-dev libwayland-dev xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev cmake
+
+      - name: Install Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal
+          rustup default 1.98.0
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          short=$(git rev-parse --short=8 HEAD)
+          dir="lapce-linux-x86_64-${short}"
+          mkdir "$dir"
+          cp target/release/lapce target/release/lapce-proxy "$dir/"
+          strip "$dir"/lapce "$dir"/lapce-proxy
+          cat > "$dir/README.txt" <<EOT
+          Lapce (${GITHUB_REPOSITORY} ${short}), Linux x86_64 release build.
+          Run ./lapce. lapce-proxy must sit next to it for remote use.
+          Runtime libs (Debian/Ubuntu): sudo apt install libxkbcommon-x11-0 libvulkan1 libwayland-client0 libxcb-shape0 libxcb-xfixes0
+          EOT
+          tar cJf "${dir}.tar.xz" "$dir"
+          sha256sum "${dir}.tar.xz" | tee "${dir}.tar.xz.sha256"
+          echo "ARTIFACT=${dir}.tar.xz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lapce-linux-x86_64
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+          if-no-files-found: error
+          retention-days: 30

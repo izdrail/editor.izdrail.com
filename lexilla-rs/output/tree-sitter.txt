@@ -1,0 +1,1 @@
+tree-sitter C++ fresh full parse: bytes=12583050 median_s=1.524461 MiB_s=7.87 samples_s=[1.479582043, 1.524460529, 1.611707346]

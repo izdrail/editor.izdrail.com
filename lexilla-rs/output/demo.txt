@@ -1,0 +1,261 @@
+lexer=cpp bytes=149
+0..20 style=9 text="#include <iostream>\n"
+20..45 style=2 text="// A comment: café 🌍\n"
+45..48 style=5 text="int"
+48..49 style=0 text=" "
+49..53 style=11 text="main"
+53..55 style=10 text="()"
+55..56 style=0 text=" "
+56..57 style=10 text="{"
+57..62 style=0 text="\n    "
+62..67 style=5 text="const"
+67..68 style=0 text=" "
+68..72 style=5 text="char"
+72..73 style=0 text=" "
+73..74 style=10 text="*"
+74..81 style=11 text="message"
+81..82 style=0 text=" "
+82..83 style=10 text="="
+83..84 style=0 text=" "
+84..91 style=6 text="\"hello\""
+91..92 style=10 text=";"
+92..97 style=0 text="\n    "
+97..100 style=11 text="std"
+100..102 style=10 text="::"
+102..106 style=11 text="cout"
+106..107 style=0 text=" "
+107..109 style=10 text="<<"
+109..110 style=0 text=" "
+110..117 style=11 text="message"
+117..118 style=0 text=" "
+118..120 style=10 text="<<"
+120..121 style=0 text=" "
+121..123 style=4 text="42"
+123..124 style=0 text=" "
+124..126 style=10 text="<<"
+126..127 style=0 text=" "
+127..131 style=7 text="'\\n'"
+131..132 style=10 text=";"
+132..137 style=0 text="\n    "
+137..143 style=5 text="return"
+143..144 style=0 text=" "
+144..145 style=4 text="0"
+145..146 style=10 text=";"
+146..147 style=0 text="\n"
+147..148 style=10 text="}"
+148..149 style=0 text="\n"
+interface calls: Version=2, Length=2, GetCharRange=3, StyleAt=150, LineFromPosition=4, LineStart=54, GetLevel=7, SetLevel=8, StartStyling=1, SetStyles=1, CodePage=2, LineEnd=18, GetRelativePosition=1, GetCharacterAndWidth=149
+partial relex equals full lex: PASS
+
+id	name	tags
+0	SCE_C_DEFAULT	default
+1	SCE_C_COMMENT	comment
+2	SCE_C_COMMENTLINE	comment line
+3	SCE_C_COMMENTDOC	comment documentation
+4	SCE_C_NUMBER	literal numeric
+5	SCE_C_WORD	keyword
+6	SCE_C_STRING	literal string
+7	SCE_C_CHARACTER	literal string character
+8	SCE_C_UUID	literal uuid
+9	SCE_C_PREPROCESSOR	preprocessor
+10	SCE_C_OPERATOR	operator
+11	SCE_C_IDENTIFIER	identifier
+12	SCE_C_STRINGEOL	error literal string
+13	SCE_C_VERBATIM	literal string multiline raw
+14	SCE_C_REGEX	literal regex
+15	SCE_C_COMMENTLINEDOC	comment documentation line
+16	SCE_C_WORD2	identifier
+17	SCE_C_COMMENTDOCKEYWORD	comment documentation keyword
+18	SCE_C_COMMENTDOCKEYWORDERROR	error comment documentation keyword
+19	SCE_C_GLOBALCLASS	identifier
+20	SCE_C_STRINGRAW	literal string multiline raw
+21	SCE_C_TRIPLEVERBATIM	literal string multiline raw
+22	SCE_C_HASHQUOTEDSTRING	literal string
+23	SCE_C_PREPROCESSORCOMMENT	comment preprocessor
+24	SCE_C_PREPROCESSORCOMMENTDOC	comment preprocessor documentation
+25	SCE_C_USERLITERAL	literal
+26	SCE_C_TASKMARKER	comment taskmarker
+27	SCE_C_ESCAPESEQUENCE	literal string escapesequence
+28		
+29		
+30		
+31		
+32		
+33		
+34		
+35		
+36		
+37		
+38		
+39		
+40		
+41		
+42		
+43		
+44		
+45		
+46		
+47		
+48		
+49		
+50		
+51		
+52		
+53		
+54		
+55		
+56		
+57		
+58		
+59		
+60		
+61		
+62		
+63		
+64		inactive default
+65		inactive comment
+66		inactive comment line
+67		inactive comment documentation
+68		inactive literal numeric
+69		inactive keyword
+70		inactive literal string
+71		inactive literal string character
+72		inactive literal uuid
+73		inactive preprocessor
+74		inactive operator
+75		inactive identifier
+76		inactive error literal string
+77		inactive literal string multiline raw
+78		inactive literal regex
+79		inactive comment documentation line
+80		inactive identifier
+81		inactive comment documentation keyword
+82		inactive error comment documentation keyword
+83		inactive identifier
+84		inactive literal string multiline raw
+85		inactive literal string multiline raw
+86		inactive literal string
+87		inactive comment preprocessor
+88		inactive comment preprocessor documentation
+89		inactive literal
+90		inactive comment taskmarker
+91		inactive literal string escapesequence
+
+cpp: bytes=12583050 setup_s=0.028559 lex_median_s=0.182893 throughput_MiB_s=65.61 runs=3800250 extraction_s=0.053443 samples_s=[0.181240259, 0.181356456, 0.182892869, 0.183987078, 0.184970727]
+lexer=python bytes=159
+0..23 style=1 text="# A comment: café 🌍"
+23..24 style=0 text="\n"
+24..27 style=5 text="def"
+27..28 style=0 text=" "
+28..33 style=9 text="greet"
+33..34 style=10 text="("
+34..38 style=11 text="name"
+38..40 style=10 text="):"
+40..45 style=0 text="\n    "
+45..77 style=7 text="\"\"\"A multiline\n    docstring.\"\"\""
+77..82 style=0 text="\n    "
+82..87 style=11 text="value"
+87..88 style=0 text=" "
+88..89 style=10 text="="
+89..90 style=0 text=" "
+90..99 style=16 text="f\"hello {"
+99..103 style=11 text="name"
+103..105 style=16 text="}\""
+105..110 style=0 text="\n    "
+110..112 style=5 text="if"
+112..113 style=0 text=" "
+113..116 style=14 text="len"
+116..117 style=10 text="("
+117..121 style=11 text="name"
+121..122 style=10 text=")"
+122..123 style=0 text=" "
+123..124 style=10 text=">"
+124..125 style=0 text=" "
+125..126 style=2 text="2"
+126..127 style=10 text=":"
+127..136 style=0 text="\n        "
+136..142 style=5 text="return"
+142..143 style=0 text=" "
+143..148 style=11 text="value"
+148..149 style=0 text=" "
+149..150 style=10 text="+"
+150..151 style=0 text=" "
+151..154 style=14 text="str"
+154..155 style=10 text="("
+155..157 style=2 text="42"
+157..158 style=10 text=")"
+158..159 style=0 text="\n"
+interface calls: Version=2, Length=2, GetCharRange=6, StyleAt=7, LineFromPosition=6, LineStart=108, SetLevel=8, StartStyling=1, SetStyles=1, DecorationSetCurrentIndicator=1, DecorationFillRange=1, CodePage=2, LineEnd=9, GetRelativePosition=1, GetCharacterAndWidth=159
+partial relex equals full lex: PASS
+
+python: bytes=12582942 setup_s=0.025808 lex_median_s=0.170313 throughput_MiB_s=70.46 runs=3323796 extraction_s=0.047846 samples_s=[0.168180186, 0.169572863, 0.170312867, 0.171871573, 0.18709355]
+lexer=hypertext bytes=236
+0..2 style=21 text="<!"
+2..14 style=26 text="doctype html"
+14..15 style=21 text=">"
+15..16 style=0 text="\n"
+16..28 style=1 text="<html><body>"
+28..29 style=0 text="\n"
+29..34 style=18 text="<?php"
+34..35 style=118 text="\n"
+35..62 style=125 text="// embedded PHP: café 🌍"
+62..63 style=118 text="\n"
+63..71 style=121 text="function"
+71..77 style=118 text=" greet"
+77..78 style=127 text="("
+78..83 style=123 text="$name"
+83..84 style=127 text=")"
+84..85 style=118 text=" "
+85..86 style=127 text="{"
+86..91 style=118 text="\n    "
+91..97 style=121 text="return"
+97..98 style=118 text=" "
+98..106 style=119 text="\"hello \""
+106..107 style=118 text=" "
+107..108 style=127 text="."
+108..109 style=118 text=" "
+109..114 style=123 text="$name"
+114..115 style=118 text=" "
+115..116 style=127 text="."
+116..117 style=118 text=" "
+117..119 style=122 text="42"
+119..120 style=127 text=";"
+120..121 style=118 text="\n"
+121..122 style=127 text="}"
+122..123 style=118 text="\n"
+123..127 style=121 text="echo"
+127..133 style=118 text=" greet"
+133..134 style=127 text="("
+134..141 style=119 text="\"world\""
+141..143 style=127 text=");"
+143..144 style=118 text="\n"
+144..146 style=18 text="?>"
+146..147 style=0 text="\n"
+147..155 style=1 text="<script>"
+155..160 style=47 text="const"
+160..161 style=41 text=" "
+161..162 style=46 text="x"
+162..163 style=41 text=" "
+163..164 style=50 text="="
+164..165 style=41 text=" "
+165..177 style=48 text="\"javascript\""
+177..178 style=50 text=";"
+178..179 style=41 text=" "
+179..197 style=43 text="// embedded script"
+197..198 style=41 text="\n"
+198..203 style=46 text="alert"
+203..204 style=50 text="("
+204..205 style=46 text="x"
+205..206 style=41 text=" "
+206..207 style=50 text="+"
+207..208 style=41 text=" "
+208..209 style=45 text="1"
+209..211 style=50 text=");"
+211..220 style=1 text="</script>"
+220..221 style=0 text="\n"
+221..235 style=1 text="</body></html>"
+235..236 style=0 text="\n"
+interface calls: Version=1, Length=1, GetCharRange=4, LineFromPosition=1, GetLevel=1, SetLineState=12, StartStyling=1, SetStyles=1, CodePage=1
+partial relex equals full lex: PASS
+
+hypertext: bytes=12583048 setup_s=0.026814 lex_median_s=0.240667 throughput_MiB_s=49.86 runs=3465670 extraction_s=0.049337 samples_s=[0.239677953, 0.240286582, 0.240667033, 0.241107219, 0.24487026]

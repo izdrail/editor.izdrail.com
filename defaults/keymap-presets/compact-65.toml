@@ -1,0 +1,109 @@
+# Compatibility subset for existing Lapce commands, not full editor emulation.
+
+[[keymaps]]
+key = "ctrl+s"
+command = "save"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+o"
+command = "open_file"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+n"
+command = "new_file"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+z"
+command = "undo"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+c"
+command = "clipboard_copy"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+x"
+command = "clipboard_cut"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+v"
+command = "clipboard_paste"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+a"
+command = "select_all"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+f"
+command = "search"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+p"
+command = "palette"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+shift+p"
+command = "palette.command"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+d"
+command = "select_next_current"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+l"
+command = "select_current_line"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+shift+k"
+command = "delete_line"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+y"
+command = "redo"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+h"
+command = "focus_replace_editor"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+g"
+command = "palette.line"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+/"
+command = "toggle_line_comment"
+mode = "i"
+when = "editor_focus && !list_focus"
