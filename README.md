@@ -12,7 +12,7 @@
 </div>
 <br/>
 
-editor.izdrail.com is a native code editor written in Rust with a [Floem](https://github.com/lapce/floem) UI and [wgpu](https://github.com/gfx-rs/wgpu) rendering. It is a derivative of [Lapce](https://github.com/lapce/lapce) (Apache License 2.0, copyright the Lapce contributors), with its own highlighting engine, language server client, VS Code extension import and keymap presets. Executable plugins (WASI) are not part of this editor.
+editor.izdrail.com is a native code editor written in Rust with a [Floem](https://github.com/lapce/floem) UI and [wgpu](https://github.com/gfx-rs/wgpu) rendering. It is a derivative of [Lapce](https://github.com/lapce/lapce) (Apache License 2.0, copyright the Lapce contributors), with its own highlighting engine, language server client, WASI plugin host, VS Code extension import and keymap presets. Debugging (DAP) is not part of this editor.
 
 ![](extra/images/screenshot.png)
 
@@ -28,11 +28,14 @@ editor.izdrail.com is a native code editor written in Rust with a [Floem](https:
 ### Language server client
 Independent stdio LSP client: completion (with resolve), hover, go to definition and diagnostics. A global `language-servers.toml` registry seeds TypeScript/JavaScript, Python, HTML, CSS and JSON (npm-managed) and Rust, Go and PHP (command-managed, must be installed). Custom servers are supported. See [docs/language-servers.md](docs/language-servers.md).
 
+### Executable plugins (WASI)
+Lapce-style WASI plugins run in the proxy's plugin catalog: they can provide language features (completion, hover, code actions, formatting, ...), spawn their own language servers and react to editor events. Editor requests fan out to both the built-in language server client and plugins. See [docs/wasi-plugins.md](docs/wasi-plugins.md).
+
 ### Completion popup
 LSP results, imported snippets and buffer words in one fuzzy-ranked popup, in that priority order. See [docs/completion-popup.md](docs/completion-popup.md).
 
 ### Themes and icons marketplace
-Install colour themes and icon themes from the registry in the Themes & Icons panel. Only validated data packages are installed (HTTPS-only, size-bounded, no executable files). See [docs/data-only-marketplace.md](docs/data-only-marketplace.md).
+Install colour themes and icon themes from the registry in the Themes & Icons panel. Theme/icon packages are validated data packages (HTTPS-only, size-bounded, no executable files); executable WASI plugins install through the same hardened pipeline. See [docs/data-only-marketplace.md](docs/data-only-marketplace.md).
 
 ### VS Code extension import
 `lapce --install-vsix FILE...` imports the declarative parts of `.vsix` files: colour themes, icon themes, snippets, language configuration and TextMate grammars. Extension code (`main`) is never executed; such extensions are marked "contains code, not loaded". Packages from [Open VSX](https://open-vsx.org) work; check each extension's licence. See [docs/vsix-import.md](docs/vsix-import.md).

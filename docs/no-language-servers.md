@@ -1,8 +1,9 @@
 # Historical phase-1 note
 
-The independent stdio LSP client is now restored. See [language-servers.md](language-servers.md)
-for the current execution boundary, registry and verification limits. WASI/PSP/DAP
-remain removed. The text below documents the original phase-1 strip.
+The independent stdio LSP client and the WASI/PSP plugin host are now restored.
+See [language-servers.md](language-servers.md) and [wasi-plugins.md](wasi-plugins.md)
+for the current execution boundary, registry and verification limits. DAP
+remains removed. The text below documents the original phase-1 strip.
 
 # Editor without language servers (phase 1)
 
