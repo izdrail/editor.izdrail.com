@@ -2177,6 +2177,15 @@ impl WindowTabData {
             }
             CoreNotification::PublishDiagnostics { diagnostics } => {
                 let path = path_from_url(&diagnostics.uri);
+                if let Some(version) = diagnostics.version {
+                    if self.main_split.docs.with_untracked(|docs| {
+                        docs.get(&path).is_some_and(|doc| {
+                            i32::try_from(doc.rev()).ok() != Some(version)
+                        })
+                    }) {
+                        return;
+                    }
+                }
                 let diagnostics: im::Vector<Diagnostic> = diagnostics
                     .diagnostics
                     .clone()

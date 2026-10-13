@@ -1320,6 +1320,20 @@ impl MainSplitData {
 
             let doc = editor.doc();
             let (content, _) = (doc.content.get_untracked(), doc.is_pristine());
+            if let DocContent::File { path, .. } = &content {
+                let still_open = self.editors.with_editors_untracked(|editors| {
+                    editors.values().any(|editor| {
+                        editor.doc().content.get_untracked().path() == Some(path)
+                    })
+                });
+                if !still_open {
+                    self.common.proxy.notification(
+                        lapce_rpc::proxy::ProxyNotification::CloseLanguageDocument {
+                            path: path.clone(),
+                        },
+                    );
+                }
+            }
             if let DocContent::Scratch { name, .. } = content {
                 let doc_exists = self.editors.with_editors_untracked(|editors| {
                     editors.iter().any(|(_, editor_data)| {

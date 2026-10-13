@@ -55,6 +55,7 @@ pub struct Dispatcher {
     file_watcher: FileWatcher,
     window_id: usize,
     tab_id: usize,
+    lsp: Option<crate::lsp::Manager>,
 }
 
 impl ProxyHandler for Dispatcher {
@@ -70,6 +71,13 @@ impl ProxyHandler for Dispatcher {
                 self.window_id = window_id;
                 self.tab_id = tab_id;
                 self.workspace = workspace;
+                if let Some(old) = self.lsp.take() {
+                    old.send(crate::lsp::Job::Shutdown);
+                }
+                self.lsp = Some(crate::lsp::Manager::new(
+                    self.workspace.clone(),
+                    self.core_rpc.clone(),
+                ));
                 self.file_watcher.notify(FileWatchNotifier::new(
                     self.workspace.clone(),
                     self.core_rpc.clone(),
@@ -89,6 +97,11 @@ impl ProxyHandler for Dispatcher {
 
                 if let Some(dirs) = dirs {
                     self.core_rpc.home_dir(dirs.home_dir().into());
+                }
+            }
+            CloseLanguageDocument { path } => {
+                if let Some(lsp) = &self.lsp {
+                    lsp.send(crate::lsp::Job::Close(path));
                 }
             }
             OpenPaths { paths } => {
@@ -118,10 +131,16 @@ impl ProxyHandler for Dispatcher {
                     }
                 } else {
                     self.buffers.remove(&path);
+                    if let Some(lsp) = &self.lsp {
+                        lsp.send(crate::lsp::Job::Close(path.clone()));
+                    }
                     self.core_rpc.open_file_changed(path, FileChanged::Delete);
                 }
             }
             Shutdown {} => {
+                if let Some(lsp) = self.lsp.take() {
+                    lsp.send(crate::lsp::Job::Shutdown);
+                }
                 for (_, sender) in self.terminals.iter() {
                     sender.send(Msg::Shutdown);
                 }
@@ -130,6 +149,9 @@ impl ProxyHandler for Dispatcher {
             Update { path, delta, rev } => {
                 let buffer = self.buffers.get_mut(&path).unwrap();
                 buffer.update(&delta, rev);
+                if let Some(lsp) = &self.lsp {
+                    lsp.send(crate::lsp::Job::Sync(buffer.clone()));
+                }
             }
             NewTerminal { term_id, profile } => {
                 let mut terminal = match Terminal::new(term_id, profile, 50, 10) {
@@ -240,8 +262,39 @@ impl ProxyHandler for Dispatcher {
                 }
             }
             // Compatibility notifications cannot start plugins or external servers.
-            Completion { .. }
-            | SignatureHelp { .. }
+            Completion {
+                request_id,
+                path,
+                input,
+                position,
+            } => {
+                let core = self.core_rpc.clone();
+                self.lsp_request(
+                    path,
+                    "textDocument/completion",
+                    serde_json::json!({"position":position}),
+                    move |result| {
+                        if let Ok((plugin_id, value)) = result {
+                            if let Ok(resp) = serde_json::from_value::<
+                                Option<lsp_types::CompletionResponse>,
+                            >(value)
+                            {
+                                core.completion_response(
+                                    request_id,
+                                    input,
+                                    resp.unwrap_or_else(|| {
+                                        lsp_types::CompletionResponse::Array(
+                                            Vec::new(),
+                                        )
+                                    }),
+                                    plugin_id,
+                                );
+                            }
+                        }
+                    },
+                );
+            }
+            SignatureHelp { .. }
             | UpdatePluginConfigs { .. }
             | DapStart { .. }
             | DapProcessId { .. }
@@ -271,6 +324,9 @@ impl ProxyHandler for Dispatcher {
                 let content = buffer.rope.to_string();
                 let read_only = buffer.read_only;
                 self.file_watcher.watch(&path, false, OPEN_FILE_EVENT_TOKEN);
+                if let Some(lsp) = &self.lsp {
+                    lsp.send(crate::lsp::Job::Sync(buffer.clone()));
+                }
                 self.buffers.insert(path, buffer);
                 self.respond_rpc(
                     id,
@@ -466,7 +522,12 @@ impl ProxyHandler for Dispatcher {
                 let buffer = self.buffers.get_mut(&path).unwrap();
                 let result = buffer
                     .save(rev, create_parents)
-                    .map(|_r| ProxyResponse::SaveResponse {})
+                    .map(|_r| {
+                        if let Some(lsp) = &self.lsp {
+                            lsp.send(crate::lsp::Job::Save(path.clone()));
+                        }
+                        ProxyResponse::SaveResponse {}
+                    })
                     .map_err(|e| RpcError {
                         code: 0,
                         message: e.to_string(),
@@ -694,11 +755,91 @@ impl ProxyHandler for Dispatcher {
                 let resp = ProxyResponse::ReferencesResolveResponse { items };
                 self.proxy_rpc.handle_response(id, Ok(resp));
             }
-            CompletionResolve { .. }
-            | GetHover { .. }
-            | GetSignature { .. }
+            CompletionResolve {
+                plugin_id,
+                completion_item,
+            } => {
+                let proxy = self.proxy_rpc.clone();
+                if let Some(lsp) = &self.lsp {
+                    lsp.send(crate::lsp::Job::Resolve { id:plugin_id, item:serde_json::to_value(completion_item).unwrap_or_default(), callback:Box::new(move |result| {
+                        proxy.handle_response(id, result.and_then(|value| serde_json::from_value(value).map(|item| ProxyResponse::CompletionResolveResponse { item:Box::new(item) }).map_err(|error| RpcError { code:-32603, message:error.to_string() })));
+                    }) });
+                } else {
+                    self.respond_rpc(id, Err(language_services_disabled()));
+                }
+            }
+            GetHover {
+                request_id,
+                path,
+                position,
+            } => {
+                let proxy = self.proxy_rpc.clone();
+                self.lsp_request(
+                    path,
+                    "textDocument/hover",
+                    serde_json::json!({"position":position}),
+                    move |result| {
+                        proxy.handle_response(
+                            id,
+                            result.and_then(|(_, value)| {
+                                let hover = serde_json::from_value::<
+                                    Option<lsp_types::Hover>,
+                                >(value)
+                                .map_err(|error| RpcError {
+                                    code: -32603,
+                                    message: error.to_string(),
+                                })?;
+                                Ok(ProxyResponse::HoverResponse {
+                                    request_id,
+                                    hover: hover.unwrap_or(lsp_types::Hover {
+                                        contents: lsp_types::HoverContents::Array(
+                                            Vec::new(),
+                                        ),
+                                        range: None,
+                                    }),
+                                })
+                            }),
+                        );
+                    },
+                );
+            }
+            GetDefinition {
+                request_id,
+                path,
+                position,
+            } => {
+                let proxy = self.proxy_rpc.clone();
+                self.lsp_request(
+                    path,
+                    "textDocument/definition",
+                    serde_json::json!({"position":position}),
+                    move |result| {
+                        proxy.handle_response(
+                            id,
+                            result.and_then(|(_, value)| {
+                                let definition =
+                                    serde_json::from_value::<
+                                        Option<lsp_types::GotoDefinitionResponse>,
+                                    >(value)
+                                    .map_err(|error| RpcError {
+                                        code: -32603,
+                                        message: error.to_string(),
+                                    })?;
+                                Ok(ProxyResponse::GetDefinitionResponse {
+                                    request_id,
+                                    definition: definition.unwrap_or(
+                                        lsp_types::GotoDefinitionResponse::Array(
+                                            Vec::new(),
+                                        ),
+                                    ),
+                                })
+                            }),
+                        );
+                    },
+                );
+            }
+            GetSignature { .. }
             | GetReferences { .. }
-            | GetDefinition { .. }
             | GetTypeDefinition { .. }
             | ShowCallHierarchy { .. }
             | CallHierarchyIncoming { .. }
@@ -747,7 +888,51 @@ impl Dispatcher {
             file_watcher,
             window_id: 1,
             tab_id: 1,
+            lsp: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_lsp(
+        &mut self,
+        root: PathBuf,
+        registry: crate::lsp::registry::Registry,
+    ) {
+        self.lsp = Some(crate::lsp::Manager::with_registry(
+            Some(root),
+            self.core_rpc.clone(),
+            Ok(registry),
+        ));
+    }
+    fn lsp_request(
+        &mut self,
+        path: PathBuf,
+        method: &str,
+        mut params: serde_json::Value,
+        callback: impl FnOnce(
+            Result<(lapce_rpc::plugin::PluginId, serde_json::Value), RpcError>,
+        ) + Send
+        + 'static,
+    ) {
+        let buffer = self.get_buffer_or_insert(path.clone()).clone();
+        let Some(lsp) = &self.lsp else {
+            callback(Err(language_services_disabled()));
+            return;
+        };
+        let Ok(uri) = Url::from_file_path(&path) else {
+            callback(Err(RpcError {
+                code: -32602,
+                message: "Invalid file URI".into(),
+            }));
+            return;
+        };
+        params["textDocument"] = serde_json::json!({"uri":uri});
+        lsp.send(crate::lsp::Job::Request {
+            buffer,
+            method: method.to_string(),
+            params,
+            callback: Box::new(callback),
+        });
     }
 
     fn respond_rpc(&self, id: RequestId, result: Result<ProxyResponse, RpcError>) {

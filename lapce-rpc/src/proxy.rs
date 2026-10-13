@@ -249,6 +249,9 @@ pub enum ProxyNotification {
     OpenFileChanged {
         path: PathBuf,
     },
+    CloseLanguageDocument {
+        path: PathBuf,
+    },
     OpenPaths {
         paths: Vec<PathObject>,
     },
