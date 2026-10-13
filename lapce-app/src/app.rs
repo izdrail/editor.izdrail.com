@@ -19,7 +19,7 @@ use floem::{
     IntoView, View,
     action::show_context_menu,
     event::{Event, EventListener, EventPropagation},
-    ext_event::{create_ext_action, create_signal_from_channel},
+    ext_event::create_signal_from_channel,
     menu::{Menu, MenuItem},
     peniko::{
         Color,
@@ -105,13 +105,11 @@ use crate::{
     text_input::TextInputBuilder,
     title::{title, window_controls_view},
     tracing::*,
-    update::ReleaseInfo,
     window::{TabsInfo, WindowData, WindowInfo},
     window_tab::{Focus, WindowTabData},
     workspace::{LapceWorkspace, LapceWorkspaceType},
 };
 
-mod grammars;
 mod logging;
 
 #[derive(Parser)]
@@ -171,7 +169,6 @@ pub struct AppData {
     pub app_command: Listener<AppCommand>,
     pub app_terminated: RwSignal<bool>,
     /// The latest release information
-    pub latest_release: RwSignal<Arc<Option<ReleaseInfo>>>,
     pub watcher: Arc<notify::RecommendedWatcher>,
     pub tracing_handle: Handle<Targets>,
     pub config: RwSignal<Arc<LapceConfig>>,
@@ -469,7 +466,6 @@ impl AppData {
             app_view_id,
             info,
             self.window_scale,
-            self.latest_release.read_only(),
             self.plugin_paths.clone(),
             self.app_command,
         );
@@ -3939,9 +3935,6 @@ pub fn launch() {
         }
     }
 
-    #[cfg(feature = "updater")]
-    crate::update::cleanup();
-
     if let Err(err) = lapce_proxy::register_lapce_path() {
         tracing::error!("{:?}", err);
     }
@@ -3959,7 +3952,6 @@ pub fn launch() {
     provide_context(db.clone());
 
     let window_scale = scope.create_rw_signal(1.0);
-    let latest_release = scope.create_rw_signal(Arc::new(None));
     let app_command = Listener::new_empty(scope);
 
     let plugin_paths = Arc::new(cli.plugin_path);
@@ -4002,7 +3994,6 @@ pub fn launch() {
         window_scale,
         app_terminated: scope.create_rw_signal(false),
         watcher: Arc::new(watcher),
-        latest_release,
         app_command,
         tracing_handle: reload_handle,
         config,
@@ -4024,30 +4015,7 @@ pub fn launch() {
 
     // Lexilla is linked statically; no runtime grammar/query downloads.
 
-    #[cfg(feature = "updater")]
-    {
-        let (tx, rx) = sync_channel(1);
-        let notification = create_signal_from_channel(rx);
-        let latest_release = app_data.latest_release;
-        create_effect(move |_| {
-            if let Some(release) = notification.get() {
-                latest_release.set(Arc::new(Some(release)));
-            }
-        });
-        std::thread::Builder::new()
-            .name("LapceUpdater".to_owned())
-            .spawn(move || {
-                loop {
-                    if let Ok(release) = crate::update::get_latest_release() {
-                        if let Err(err) = tx.send(release) {
-                            tracing::error!("{:?}", err);
-                        }
-                    }
-                    std::thread::sleep(std::time::Duration::from_secs(60 * 60));
-                }
-            })
-            .unwrap();
-    }
+    // No self-update: the fork has no update channel yet (see docs/updates.md).
 
     {
         let (tx, rx) = sync_channel(1);

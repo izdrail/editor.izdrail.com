@@ -192,7 +192,6 @@ pub struct WindowTabData {
     pub status_height: RwSignal<f64>,
     pub proxy: ProxyData,
     pub set_config: WriteSignal<Arc<LapceConfig>>,
-    pub update_in_progress: RwSignal<bool>,
     pub progresses: RwSignal<IndexMap<ProgressToken, WorkProgress>>,
     pub messages: RwSignal<Vec<(String, ShowMessageParams)>>,
     pub common: Rc<CommonData>,
@@ -577,7 +576,6 @@ impl WindowTabData {
             status_height,
             proxy,
             set_config,
-            update_in_progress: cx.create_rw_signal(false),
             progresses: cx.create_rw_signal(IndexMap::new()),
             messages: cx.create_rw_signal(Vec::new()),
             common,
@@ -1379,50 +1377,6 @@ impl WindowTabData {
             // ==== UI ====
             ShowAbout => {
                 self.about_data.open();
-            }
-
-            // ==== Updating ====
-            RestartToUpdate => {
-                if let Some(release) = self
-                    .common
-                    .window_common
-                    .latest_release
-                    .get_untracked()
-                    .as_ref()
-                {
-                    let release = release.clone();
-                    let update_in_progress = self.update_in_progress;
-                    if release.version != *meta::VERSION {
-                        if let Ok(process_path) = env::current_exe() {
-                            update_in_progress.set(true);
-                            let send = create_ext_action(
-                                self.common.scope,
-                                move |_started| {
-                                    update_in_progress.set(false);
-                                },
-                            );
-                            std::thread::Builder::new().name("RestartToUpdate".to_owned()).spawn(move || {
-                                let do_update = || -> anyhow::Result<()> {
-                                    let src =
-                                        crate::update::download_release(&release)?;
-
-                                    let path =
-                                        crate::update::extract(&src, &process_path)?;
-
-                                    crate::update::restart(&path)?;
-
-                                    Ok(())
-                                };
-
-                                if let Err(err) = do_update() {
-                                    error!("Failed to update: {err}");
-                                }
-
-                                send(false);
-                            }).unwrap();
-                        }
-                    }
-                }
             }
 
             // ==== Movement ====
