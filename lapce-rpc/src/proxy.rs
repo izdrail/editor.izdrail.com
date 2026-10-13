@@ -137,6 +137,8 @@ pub enum ProxyRequest {
         path: PathBuf,
         position: Position,
         trigger_kind: InlineCompletionTriggerKind,
+        #[serde(default)]
+        ai_request: String,
     },
     GetSemanticTokens {
         path: PathBuf,
@@ -237,6 +239,7 @@ pub enum ProxyRequest {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "method", content = "params")]
 pub enum ProxyNotification {
+    CancelInlineCompletion {},
     Initialize {
         workspace: Option<PathBuf>,
         disabled_volts: Vec<VoltID>,
@@ -1108,6 +1111,7 @@ impl ProxyRpcHandler {
         path: PathBuf,
         position: Position,
         trigger_kind: InlineCompletionTriggerKind,
+        ai_request: String,
         f: impl ProxyCallback + 'static,
     ) {
         self.request_async(
@@ -1115,6 +1119,7 @@ impl ProxyRpcHandler {
                 path,
                 position,
                 trigger_kind,
+                ai_request,
             },
             f,
         );

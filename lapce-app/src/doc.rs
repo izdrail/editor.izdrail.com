@@ -1962,9 +1962,8 @@ impl DocumentPhantom for Doc {
         // can
         let (inline_completion_line, inline_completion_col) =
             self.inline_completion_pos.get_untracked();
-        let inline_completion_text = config
-            .editor
-            .enable_inline_completion
+        let inline_completion_text = (config.editor.enable_inline_completion
+            || config.ai_autocomplete.enabled)
             .then_some(())
             .and(self.inline_completion.get_untracked())
             .filter(|_| line == inline_completion_line)

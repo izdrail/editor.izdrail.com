@@ -30,6 +30,7 @@ use self::{
 };
 use crate::workspace::{LapceWorkspace, LapceWorkspaceType};
 
+pub mod ai;
 pub mod color;
 pub mod color_theme;
 pub mod core;
@@ -99,6 +100,8 @@ pub struct LapceConfig {
     pub core: CoreConfig,
     pub ui: UIConfig,
     pub editor: EditorConfig,
+    #[serde(default)]
+    pub ai_autocomplete: ai::AiConfig,
     pub terminal: TerminalConfig,
     #[serde(default)]
     pub color_theme: ColorThemeConfig,

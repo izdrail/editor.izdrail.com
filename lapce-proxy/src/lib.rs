@@ -45,6 +45,12 @@ struct Cli {
 }
 
 pub fn mainloop() {
+    if matches!(
+        std::env::args().nth(1).as_deref(),
+        Some("--ai-worker" | "--ai-download")
+    ) {
+        std::process::exit(lapce_ai::run());
+    }
     let cli = Cli::parse();
     if !cli.proxy {
         if let Err(e) = cli::try_open_in_existing_process(&cli.paths) {

@@ -225,6 +225,7 @@ pub struct EditorData {
     pub sticky_header_height: RwSignal<f64>,
     pub common: Rc<CommonData>,
     pub sticky_header_info: RwSignal<StickyHeaderInfo>,
+    ai_generation: RwSignal<u64>,
 }
 
 impl PartialEq for EditorData {
@@ -264,6 +265,7 @@ impl EditorData {
             sticky_header_height: cx.create_rw_signal(0.0),
             common,
             sticky_header_info: cx.create_rw_signal(StickyHeaderInfo::default()),
+            ai_generation: cx.create_rw_signal(0),
         }
     }
 
@@ -1612,6 +1614,10 @@ impl EditorData {
     }
 
     pub fn cancel_inline_completion(&self) {
+        self.ai_generation.update(|g| *g = g.wrapping_add(1));
+        self.common.proxy.notification(
+            lapce_rpc::proxy::ProxyNotification::CancelInlineCompletion {},
+        );
         if self
             .common
             .inline_completion
@@ -1629,6 +1635,16 @@ impl EditorData {
 
     /// Update the current inline completion
     fn update_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
+        // Local AI is deliberately manual-only. Inherited edit hooks must not invoke it.
+        if trigger_kind != InlineCompletionTriggerKind::Invoked {
+            return;
+        }
+        let ai = self.common.config.get_untracked().ai_autocomplete.clone();
+        if !ai.enabled {
+            self.cancel_inline_completion();
+            return;
+        }
+
         if self.get_mode() != Mode::Insert {
             self.cancel_inline_completion();
             return;
@@ -1671,10 +1687,76 @@ impl EditorData {
             });
         }
 
+        self.ai_generation.update(|g| *g = g.wrapping_add(1));
+        let generation = self.ai_generation.get_untracked();
+        let generation_signal = self.ai_generation;
+        let rev = doc.rev();
+        let editor = self.clone();
+        let root = match lapce_core::directory::Directory::data_local_directory() {
+            Some(p) => p.join("ai-models"),
+            None => return,
+        };
+        let installed = std::fs::read(root.join("installed.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<lapce_ai::Installed>(&b).ok());
+        let model = if ai.model_path.is_empty() {
+            match installed.as_ref() {
+                Some(i) => i.model.clone(),
+                None => return,
+            }
+        } else {
+            std::path::PathBuf::from(&ai.model_path)
+        };
+        let tokenizer = if ai.tokenizer_path.is_empty() {
+            match installed.as_ref() {
+                Some(i) => i.tokenizer.clone(),
+                None => return,
+            }
+        } else {
+            std::path::PathBuf::from(&ai.tokenizer_path)
+        };
+        // Bound UTF-8 context before tokenization; no entire-repository context.
+        let (prefix, suffix) = doc.buffer.with_untracked(|b| {
+            let rope = b.text();
+            let start = rope
+                .next_codepoint_offset(offset.saturating_sub(16384))
+                .unwrap_or(0)
+                .min(offset);
+            let end = rope
+                .prev_codepoint_offset((offset + 8193).min(rope.len()))
+                .unwrap_or(rope.len())
+                .max(offset);
+            (
+                rope.slice_to_cow(start..offset).into_owned(),
+                rope.slice_to_cow(offset..end).into_owned(),
+            )
+        });
+        let request = lapce_ai::Request {
+            model,
+            tokenizer,
+            prefix,
+            suffix,
+            prefix_tokens: ai.prefix_tokens,
+            suffix_tokens: ai.suffix_tokens,
+            max_tokens: ai.max_tokens,
+        };
+        let ai_request = match serde_json::to_string(&request) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
         let path2 = path.clone();
         let send = create_ext_action(
             self.scope,
             move |items: Vec<lsp_types::InlineCompletionItem>| {
+                if generation_signal.get_untracked() != generation
+                    || doc.rev() != rev
+                    || editor.doc().buffer_id != doc.buffer_id
+                    || editor.cursor().with_untracked(|c| c.offset()) != offset
+                    || !editor.common.config.get_untracked().ai_autocomplete.enabled
+                {
+                    return;
+                }
+
                 let items = doc.buffer.with_untracked(|buffer| {
                     items
                         .into_iter()
@@ -1694,6 +1776,7 @@ impl EditorData {
             path,
             position,
             trigger_kind,
+            ai_request,
             move |res| {
                 if let Ok(ProxyResponse::GetInlineCompletions {
                     completions: items,
@@ -1707,6 +1790,9 @@ impl EditorData {
                         }
                     };
                     send(items);
+                } else {
+                    tracing::warn!("Local AI completion failed (check model installation and paths)");
+                    send(Vec::new());
                 }
             },
         );

@@ -10,6 +10,7 @@ default-run  = "lapce"
 [dependencies]
 lapce-app   = { path = "./lapce-app" }
 lapce-proxy = { path = "./lapce-proxy" }
+lapce-ai = { path = "./lapce-ai" }
 
 [[bin]]
 name = "lapce"
@@ -19,8 +20,12 @@ path = "lapce-app/src/bin/lapce.rs"
 name = "lapce-proxy"
 path = "lapce-proxy/src/bin/lapce-proxy.rs"
 
+[[bin]]
+name = "lapce-ai"
+path = "lapce-ai/src/main.rs"
+
 [workspace]
-members = ["lapce-vscode-experiment", "lapce-app", "lapce-proxy", "lapce-rpc", "lapce-core", "lapce-vsix"]
+members = ["lapce-ai", "lapce-vscode-experiment", "lapce-app", "lapce-proxy", "lapce-rpc", "lapce-core", "lapce-vsix"]
 exclude = ["lexilla-rs"]
 
 [workspace.package]

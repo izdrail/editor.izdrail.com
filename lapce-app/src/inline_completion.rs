@@ -195,7 +195,8 @@ impl InlineCompletionData {
         doc: &Doc,
         cursor_offset: usize,
     ) {
-        if !config.editor.enable_inline_completion {
+        if !config.editor.enable_inline_completion && !config.ai_autocomplete.enabled
+        {
             doc.clear_inline_completion();
             return;
         }

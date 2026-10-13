@@ -56,12 +56,14 @@ pub struct Dispatcher {
     window_id: usize,
     tab_id: usize,
     lsp: Option<crate::lsp::Manager>,
+    ai: lapce_ai::process::Worker,
 }
 
 impl ProxyHandler for Dispatcher {
     fn handle_notification(&mut self, rpc: ProxyNotification) {
         use ProxyNotification::*;
         match rpc {
+            CancelInlineCompletion {} => self.ai.cancel(),
             Initialize {
                 workspace,
                 window_id,
@@ -138,6 +140,7 @@ impl ProxyHandler for Dispatcher {
                 }
             }
             Shutdown {} => {
+                self.ai.cancel();
                 if let Some(lsp) = self.lsp.take() {
                     lsp.send(crate::lsp::Job::Shutdown);
                 }
@@ -147,6 +150,7 @@ impl ProxyHandler for Dispatcher {
                 self.proxy_rpc.shutdown();
             }
             Update { path, delta, rev } => {
+                self.ai.cancel();
                 let buffer = self.buffers.get_mut(&path).unwrap();
                 buffer.update(&delta, rev);
                 if let Some(lsp) = &self.lsp {
@@ -838,13 +842,78 @@ impl ProxyHandler for Dispatcher {
                     },
                 );
             }
+            GetInlineCompletions {
+                position,
+                trigger_kind,
+                ai_request,
+                ..
+            } => {
+                if trigger_kind != lsp_types::InlineCompletionTriggerKind::Invoked {
+                    self.respond_rpc(
+                        id,
+                        Ok(ProxyResponse::GetInlineCompletions {
+                            completions: lsp_types::InlineCompletionResponse::Array(
+                                vec![],
+                            ),
+                        }),
+                    );
+                    return;
+                }
+                let request =
+                    match serde_json::from_str::<lapce_ai::Request>(&ai_request) {
+                        Ok(request) => request,
+                        Err(e) => {
+                            self.respond_rpc(
+                                id,
+                                Err(RpcError {
+                                    code: -32602,
+                                    message: e.to_string(),
+                                }),
+                            );
+                            return;
+                        }
+                    };
+                let proxy = self.proxy_rpc.clone();
+                self.ai.complete(request, move |result| {
+                    proxy.handle_response(
+                        id,
+                        result
+                            .map(|completion| {
+                                let items = if completion.text.is_empty() {
+                                    vec![]
+                                } else {
+                                    vec![lsp_types::InlineCompletionItem {
+                                        insert_text: completion.text,
+                                        filter_text: None,
+                                        range: Some(lsp_types::Range::new(
+                                            position, position,
+                                        )),
+                                        command: None,
+                                        insert_text_format: Some(
+                                            lsp_types::InsertTextFormat::PLAIN_TEXT,
+                                        ),
+                                    }]
+                                };
+                                ProxyResponse::GetInlineCompletions {
+                                    completions:
+                                        lsp_types::InlineCompletionResponse::Array(
+                                            items,
+                                        ),
+                                }
+                            })
+                            .map_err(|message| RpcError {
+                                code: -32603,
+                                message,
+                            }),
+                    );
+                });
+            }
             GetSignature { .. }
             | GetReferences { .. }
             | GetTypeDefinition { .. }
             | ShowCallHierarchy { .. }
             | CallHierarchyIncoming { .. }
             | GetInlayHints { .. }
-            | GetInlineCompletions { .. }
             | GetSemanticTokens { .. }
             | GetCodeActions { .. }
             | GetDocumentSymbols { .. }
@@ -889,6 +958,9 @@ impl Dispatcher {
             window_id: 1,
             tab_id: 1,
             lsp: None,
+            ai: lapce_ai::process::Worker::new(
+                std::env::current_exe().expect("proxy executable"),
+            ),
         }
     }
 

@@ -29,9 +29,9 @@ use serde_json::Value;
 use crate::{
     command::CommandExecuted,
     config::{
-        DropdownInfo, LapceConfig, color::LapceColor, core::CoreConfig,
-        editor::EditorConfig, icon::LapceIcons, terminal::TerminalConfig,
-        ui::UIConfig,
+        DropdownInfo, LapceConfig, ai::AiConfig, color::LapceColor,
+        core::CoreConfig, editor::EditorConfig, icon::LapceIcons,
+        terminal::TerminalConfig, ui::UIConfig,
     },
     keypress::KeyPressFocus,
     main_split::Editors,
@@ -170,6 +170,12 @@ impl SettingsData {
                     into_settings_map(&config.editor),
                 ),
                 (
+                    "AI Autocomplete",
+                    &AiConfig::FIELDS[..],
+                    &AiConfig::DESCS[..],
+                    into_settings_map(&config.ai_autocomplete),
+                ),
+                (
                     "UI",
                     &UIConfig::FIELDS[..],
                     &UIConfig::DESCS[..],
@@ -216,7 +222,7 @@ impl SettingsData {
                         "{kind}: {}",
                         name.replace('_', " ").to_title_case()
                     );
-                    let kind = kind.to_lowercase();
+                    let kind = kind.to_lowercase().replace(' ', "-");
                     let filter_text = format!("{kind} {name} {desc}").to_lowercase();
                     let filter_text =
                         format!("{filter_text}{}", filter_text.replace(' ', ""));
@@ -334,6 +340,7 @@ pub fn settings_view(
     let view_settings_data = settings_data.clone();
     let plugin_kinds = settings_data.plugin_kinds;
 
+    let ai_common = common.clone();
     let search_editor = editors.make_local(cx, common);
     let search_editor_id = search_editor.id();
     let doc = search_editor.doc_signal();
@@ -502,6 +509,7 @@ pub fn settings_view(
                     .request_focus(|| {})
             })
             .style(|s| s.padding_horiz(50.0).padding_vert(20.0)),
+            ai_download_view(ai_common),
             container({
                 scroll({
                     dyn_stack(
@@ -1405,4 +1413,67 @@ fn dropdown_scroll(
             .inset_left(x)
             .inset_top(y)
     })
+}
+
+/// Explicit model management lives alongside the AI settings, not a startup fetch.
+fn ai_download_view(common: Rc<CommonData>) -> impl View {
+    use std::{
+        io::{BufRead, BufReader},
+        process::{Command, Stdio},
+        sync::Mutex,
+    };
+    let state = create_rw_signal(
+        "Qwen2.5-Coder 1.5B BASE Q4_K_M | 986 MB | QuantFactory | Apache-2.0"
+            .to_string(),
+    );
+    let busy = create_rw_signal(false);
+    let child = Arc::new(Mutex::new(None::<std::process::Child>));
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let progress = floem::ext_event::create_signal_from_channel(rx);
+    create_effect(move |_| {
+        if let Some(message) = progress.get() {
+            if message.starts_with("Ready")
+                || message.starts_with("Error")
+                || message == "Cancelled"
+            {
+                busy.set(false);
+            }
+            state.set(message);
+        }
+    });
+    let cancel_child = child.clone();
+    let cancel_tx = tx.clone();
+    let config = common.config;
+    stack((
+        label(move ||state.get()).style(|s|s.max_width_pct(100.0)),
+        label(|| "Download from Hugging Face (explicit network request; no source code upload). Source and licence details: docs/ai-autocomplete.md".to_string()),
+        label(||"Download Qwen base model (about 1 GB)".to_string()).on_click_stop(move |_| {
+            if busy.get_untracked() {return;}
+            busy.set(true);state.set("Starting download...".into());
+            let child=child.clone();let tx=tx.clone();
+            std::thread::spawn(move || {
+                let run=(||->anyhow::Result<()> {
+                    let root=lapce_core::directory::Directory::data_local_directory().ok_or_else(||anyhow::anyhow!("No data directory"))?.join("ai-models");
+                    let mut process=Command::new(std::env::current_exe()?).arg("--ai-download").arg(root).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
+                    let output=process.stdout.take().unwrap();*child.lock().unwrap()=Some(process);
+                    for line in BufReader::new(output).lines() {
+                        let event:lapce_ai::DownloadEvent=serde_json::from_str(&line?)?;
+                        let message=match event.state.as_str() {
+                            "ready"=>"Ready: Qwen base installed".to_string(),
+                            "error"=>format!("Error: {}",event.message),
+                            "verifying"=>"Verifying SHA-256...".to_string(),
+                            _=>format!("Downloading: {} / {} MB",event.bytes/1_000_000,event.total/1_000_000),
+                        };let _=tx.send(message);
+                    }
+                    if let Some(mut c)=child.lock().unwrap().take() {if !c.wait()?.success() {anyhow::bail!("Download stopped; retry to resume");}}
+                    Ok(())
+                })();
+                if let Err(e)=run {let _=tx.send(format!("Error: {e}"));}
+            });
+        }).style(|s|s.padding(8.0).border(1.0).cursor(CursorStyle::Pointer)),
+        label(||"Cancel download".to_string()).on_click_stop(move |_| {
+            if let Some(c)=cancel_child.lock().unwrap().as_mut() {let _=c.kill();}
+            let _=cancel_tx.send("Cancelled".to_string());
+        }).style(|s|s.padding(8.0).cursor(CursorStyle::Pointer)),
+    )).style(move |s|s.flex_col().gap(8.0).padding_horiz(50.0).padding_bottom(15.0).font_size(config.get().ui.font_size() as f32))
 }
