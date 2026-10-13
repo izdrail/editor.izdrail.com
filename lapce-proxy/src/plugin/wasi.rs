@@ -32,7 +32,11 @@ use parking_lot::Mutex;
 use psp_types::{Notification, Request};
 use serde_json::Value;
 use wasi_experimental_http_wasmtime::{HttpCtx, HttpState};
-use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::{
+    FsPerms, WasiCtxBuilder,
+    cli::{IsTerminal, StdinStream, StdoutStream},
+    p1::WasiP1Ctx,
+};
 
 use super::{
     PluginCatalogRpcHandler, client_capabilities, find_all_volts,
@@ -47,6 +51,9 @@ use crate::plugin::psp::PluginServerRpcHandler;
 #[derive(Default)]
 pub struct WasiPipe {
     buffer: VecDeque<u8>,
+    /// Woken when bytes are written, so an async reader parked on an empty
+    /// pipe resumes instead of seeing a (permanent) end of stream.
+    waker: Option<std::task::Waker>,
 }
 
 impl WasiPipe {
@@ -68,6 +75,9 @@ impl Read for WasiPipe {
 impl Write for WasiPipe {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend(buf);
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -78,6 +88,72 @@ impl Write for WasiPipe {
 impl Seek for WasiPipe {
     fn seek(&mut self, _pos: std::io::SeekFrom) -> std::io::Result<u64> {
         Err(std::io::Error::other("can not seek in a pipe"))
+    }
+}
+
+/// Adapts the shared in-memory pipe to the WASI stdin/stdout stream traits.
+/// Reading an empty pipe waits for the host to write; writes never block.
+#[derive(Clone)]
+struct SharedPipe(Arc<RwLock<WasiPipe>>);
+
+impl IsTerminal for SharedPipe {
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+
+impl StdinStream for SharedPipe {
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncRead + Send + Sync> {
+        Box::new(self.clone())
+    }
+}
+
+impl StdoutStream for SharedPipe {
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncWrite + Send + Sync> {
+        Box::new(self.clone())
+    }
+}
+
+impl tokio::io::AsyncRead for SharedPipe {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let mut pipe = self.0.write().unwrap();
+        if pipe.buffer.is_empty() {
+            // Returning Ready with 0 bytes would latch end-of-stream in the
+            // WASI stream adapter; park until the host writes.
+            pipe.waker = Some(cx.waker().clone());
+            return std::task::Poll::Pending;
+        }
+        let amt = std::cmp::min(buf.remaining(), pipe.buffer.len());
+        let bytes: Vec<u8> = pipe.buffer.drain(..amt).collect();
+        buf.put_slice(&bytes);
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+impl tokio::io::AsyncWrite for SharedPipe {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        self.0.write().unwrap().buffer.extend(buf);
+        std::task::Poll::Ready(Ok(buf.len()))
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
     }
 }
 
@@ -370,8 +446,8 @@ pub fn start_volt(
             .as_ref()
             .ok_or_else(|| anyhow!("no wasm in plugin"))?,
     )?;
-    let mut linker = wasmtime::Linker::new(&engine);
-    wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
+    let mut linker = wasmtime::Linker::<WasiP1Ctx>::new(&engine);
+    wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |s| s)?;
     HttpState::new()?.add_to_linker(&mut linker, |_| HttpCtx {
         allowed_hosts: Some(vec!["insecure:allow-all".to_string()]),
         max_concurrent_requests: Some(100),
@@ -409,33 +485,21 @@ pub fn start_volt(
     let stdout = Arc::new(RwLock::new(WasiPipe::new()));
     let stderr = Arc::new(RwLock::new(WasiPipe::new()));
     let wasi = WasiCtxBuilder::new()
-        .inherit_env()?
-        .env("VOLT_OS", std::env::consts::OS)?
-        .env("VOLT_ARCH", std::env::consts::ARCH)?
-        .env("VOLT_LIBC", volt_libc)?
+        .inherit_env()
+        .env("VOLT_OS", std::env::consts::OS)
+        .env("VOLT_ARCH", std::env::consts::ARCH)
+        .env("VOLT_LIBC", volt_libc)
         .env(
             "VOLT_URI",
             Url::from_directory_path(volt_path)
                 .map_err(|_| anyhow!("can't convert folder path to uri"))?
                 .as_ref(),
-        )?
-        .stdin(Box::new(wasi_common::pipe::ReadPipe::from_shared(
-            stdin.clone(),
-        )))
-        .stdout(Box::new(wasi_common::pipe::WritePipe::from_shared(
-            stdout.clone(),
-        )))
-        .stderr(Box::new(wasi_common::pipe::WritePipe::from_shared(
-            stderr.clone(),
-        )))
-        .preopened_dir(
-            wasmtime_wasi::Dir::open_ambient_dir(
-                volt_path,
-                wasmtime_wasi::ambient_authority(),
-            )?,
-            "/",
-        )?
-        .build();
+        )
+        .stdin(SharedPipe(stdin.clone()))
+        .stdout(SharedPipe(stdout.clone()))
+        .stderr(SharedPipe(stderr.clone()))
+        .preopened_dir(volt_path, "/", FsPerms::ReadWrite)?
+        .build_p1();
     let mut store = wasmtime::Store::new(&engine, wasi);
 
     let (io_tx, io_rx) = crossbeam_channel::unbounded();
