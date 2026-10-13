@@ -21,9 +21,9 @@ env:
 jobs:
   linux:
     name: Linux x86_64 release binary
-    # CI_RUNNER can point at a self-hosted runner; default is a GitHub-hosted one.
+    # GitHub-hosted runner only; no self-hosted runners for this repo.
     # Ubuntu 22.04 keeps the binary runnable on glibc >= 2.35.
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-22.04' }}
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4

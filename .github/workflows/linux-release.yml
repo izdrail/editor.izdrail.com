@@ -16,7 +16,7 @@ env:
 jobs:
   release:
     name: Build and attach Linux x86_64 binary
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-22.04' }}
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
