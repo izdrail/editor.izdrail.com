@@ -5,6 +5,7 @@ pub mod icons;
 pub mod install;
 pub mod jsonc;
 pub mod langconfig;
+pub mod openvsx;
 pub mod manifest;
 pub mod snippets;
 pub mod textmate;

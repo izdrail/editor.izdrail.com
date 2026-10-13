@@ -130,6 +130,23 @@ struct Cli {
     #[clap(long, value_name = "FILE", num_args = 1..)]
     install_vsix: Vec<PathBuf>,
 
+    /// Search the Open VSX registry (open-vsx.org) for extensions, then exit.
+    #[clap(long, value_name = "QUERY")]
+    ext_search: Option<String>,
+
+    /// Download and import extensions from Open VSX by `publisher.name`,
+    /// then exit. Extension code is never loaded.
+    #[clap(long, value_name = "ID", num_args = 1..)]
+    ext_install: Vec<String>,
+
+    /// Remove imported extensions by `publisher.name`, then exit.
+    #[clap(long, value_name = "ID", num_args = 1..)]
+    ext_uninstall: Vec<String>,
+
+    /// List imported extensions, then exit.
+    #[clap(long, action)]
+    ext_list: bool,
+
     /// Path(s) to plugins to load.
     ///
     /// This is primarily used for plugin development to make it easier to test changes to the
@@ -3830,8 +3847,114 @@ fn install_vsix_files(files: &[PathBuf]) -> i32 {
     i32::from(failed)
 }
 
+/// Print what an import brought in (shared by `--install-vsix` and `--ext-install`).
+fn print_import_report(rep: &lapce_vsix::ImportReport) {
+    println!("{} {}", rep.id, rep.version);
+    println!("  color themes: {}", rep.color_themes.join(", "));
+    println!("  icon themes:  {}", rep.icon_themes.join(", "));
+    println!(
+        "  grammars: {}, languages: {}, snippets: {}",
+        rep.grammars.len(),
+        rep.languages.len(),
+        rep.snippet_count
+    );
+    if let Some(l) = &rep.license {
+        println!("  license: {l}");
+    }
+    if rep.has_code {
+        println!("  contains code, not loaded");
+    }
+    for s in &rep.skipped {
+        println!("  not imported: {s}");
+    }
+}
+
+/// `--ext-search/--ext-install/--ext-uninstall/--ext-list` against Open VSX.
+fn extension_commands(cli: &Cli) -> i32 {
+    use lapce_vsix::openvsx;
+    let Some(root) = lapce_core::directory::Directory::vsx_directory() else {
+        eprintln!("cannot locate the data directory");
+        return 1;
+    };
+    let mut failed = false;
+    if let Some(q) = &cli.ext_search {
+        match openvsx::Client::open_vsx().and_then(|c| c.search(q, 20, 0)) {
+            Ok(r) => {
+                println!("{} results on open-vsx.org (showing {})", r.total, r.extensions.len());
+                for e in &r.extensions {
+                    println!(
+                        "{} {}  {}  {} downloads{}",
+                        e.id(),
+                        e.version,
+                        e.title(),
+                        e.download_count,
+                        if e.deprecated { "  [deprecated]" } else { "" }
+                    );
+                    if let Some(d) = e.description.as_deref().filter(|d| !d.is_empty()) {
+                        println!("    {d}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("search failed: {e:#}");
+                failed = true;
+            }
+        }
+    }
+    for id in &cli.ext_install {
+        match openvsx::Client::open_vsx().and_then(|c| c.install(id, &root)) {
+            Ok(rep) => print_import_report(&rep),
+            Err(e) => {
+                eprintln!("{id}: {e:#}");
+                failed = true;
+            }
+        }
+    }
+    for id in &cli.ext_uninstall {
+        match openvsx::uninstall(id, &root) {
+            Ok(true) => println!("removed {id}"),
+            Ok(false) => {
+                eprintln!("{id}: not installed");
+                failed = true;
+            }
+            Err(e) => {
+                eprintln!("{id}: {e:#}");
+                failed = true;
+            }
+        }
+    }
+    if cli.ext_list {
+        let list = openvsx::list_installed(&root);
+        if list.is_empty() {
+            println!("no extensions installed");
+        }
+        for e in list {
+            println!(
+                "{} {}  {}  themes: {}, icon themes: {}, grammars: {}, snippets: {}{}",
+                e.id,
+                e.version,
+                e.display_name,
+                e.color_themes,
+                e.icon_themes,
+                e.grammars,
+                e.snippets,
+                if e.has_code { "  [contains code, not loaded]" } else { "" }
+            );
+        }
+    }
+    i32::from(failed)
+}
+
 pub fn launch() {
     let cli = Cli::parse();
+
+    if cli.ext_search.is_some()
+        || cli.ext_list
+        || !cli.ext_install.is_empty()
+        || !cli.ext_uninstall.is_empty()
+    {
+        std::process::exit(extension_commands(&cli));
+    }
 
     if !cli.install_vsix.is_empty() {
         std::process::exit(install_vsix_files(&cli.install_vsix));

@@ -33,3 +33,25 @@ are fine; check each extension's licence.
 - Icon mappings keyed by multi-dot extension or by `languageIds` are skipped.
 - Snippets and language configuration are imported but not yet applied by the editor UI.
 - Grammars apply only where Lexilla has no lexer for the file.
+
+## Open VSX marketplace (command line)
+
+Extensions come from the Open VSX registry (https://open-vsx.org) only, never
+the Microsoft Marketplace.
+
+```
+lapce --ext-search dracula                 # search, 20 hits
+lapce --ext-install dracula-theme.theme-dracula
+lapce --ext-list                           # what is imported
+lapce --ext-uninstall dracula-theme.theme-dracula
+```
+
+`--ext-install` fetches the latest version, checks it against the sha256 the
+registry publishes, and runs the same import as `--install-vsix`. Only file
+URLs on open-vsx.org are followed and downloads are capped at 100 MB. Extensions
+with `main`/`browser` code install their declarative content and are marked
+"contains code, not loaded". The shim in `lapce-vscode-experiment` is a separate
+opt-in experiment and is not used by installs.
+
+Not done yet: a graphical browse/install panel, update checks, version
+pinning, search paging beyond the first 20 hits.

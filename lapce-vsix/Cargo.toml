@@ -14,3 +14,5 @@ serde_json = { workspace = true }
 toml       = { workspace = true }
 onig       = { version = "6", default-features = false }
 zip        = { version = "2", default-features = false, features = ["deflate"] }
+reqwest    = { workspace = true }
+sha2       = "0.10"
