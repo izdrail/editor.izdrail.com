@@ -4,6 +4,7 @@ pub const NAMES: &[&str] = &[
     "compact-65",
     "vscode",
     "phpstorm",
+    "sublime",
     "notepad-plus-plus",
     "lapce",
 ];
@@ -19,6 +20,9 @@ pub fn selected(name: &str) -> Option<&'static str> {
         "phpstorm" => Some(include_str!(
             "../../../defaults/keymap-presets/phpstorm.toml"
         )),
+        "sublime" => {
+            Some(include_str!("../../../defaults/keymap-presets/sublime.toml"))
+        }
         "notepad-plus-plus" => Some(include_str!(
             "../../../defaults/keymap-presets/notepad-plus-plus.toml"
         )),
@@ -109,6 +113,8 @@ mod tests {
             ("vscode", "ctrl+d", "select_next_current"),
             ("phpstorm", "ctrl+d", "duplicate_line_down"),
             ("phpstorm", "ctrl+y", "delete_line"),
+            ("sublime", "ctrl+shift+d", "duplicate_line_down"),
+            ("sublime", "ctrl+r", "palette.symbol"),
             ("notepad-plus-plus", "ctrl+shift+l", "delete_line"),
         ] {
             let mut loader = loaded(name, false);

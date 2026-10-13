@@ -44,7 +44,7 @@ Install colour themes and icon themes from the registry in the Themes & Icons pa
 An opt-in, deliberately small CommonJS command shim runs in a seccomp-restricted worker process (Linux x86_64 only). It is reached from the command palette (`Experimental VS Code: Run sandbox hello`) and never activates installed extensions. See [docs/vscode-sandbox-experiment.md](docs/vscode-sandbox-experiment.md).
 
 ### Keymap presets
-`Settings > Core > Keymap Preset`: `compact-65` (default, no Fn layer needed), `vscode`, `phpstorm`, `notepad-plus-plus` and `lapce` (original defaults). Your `keymaps.toml` always wins. See [docs/keymap-presets.md](docs/keymap-presets.md).
+`Settings > Core > Keymap Preset`: `compact-65` (default, no Fn layer needed), `vscode`, `phpstorm`, `sublime`, `notepad-plus-plus` and `lapce` (original defaults). Your `keymaps.toml` always wins. See [docs/keymap-presets.md](docs/keymap-presets.md).
 
 ## Install
 

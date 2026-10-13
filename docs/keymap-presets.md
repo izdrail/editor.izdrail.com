@@ -1,7 +1,7 @@
 # Keymap presets and compact keyboards
 
 Settings > Core > Keymap Preset selects `compact-65` (default), `vscode`,
-`phpstorm`, `notepad-plus-plus` or `lapce` (unchanged upstream defaults).
+`phpstorm`, `sublime`, `notepad-plus-plus` or `lapce` (unchanged upstream defaults).
 The persisted setting is `[core] keymap-preset = "compact-65"` in settings.toml.
 Changes follow the existing settings reload path; user keymaps.toml is loaded last
 and remains the final override. Unknown preset strings fall back to compact-65.
@@ -79,3 +79,14 @@ Sources inspected:
   Ctrl+D duplicates selection, Ctrl+Q toggles comment).
 - Fork defaults, keypress loader/matcher, settings reload and pinned Floem command
   implementation inspected locally at the 3ea06f14 base.
+
+## Sublime Text preset
+
+`sublime` (Settings > Core > Keymap Preset) maps Ctrl+P go to file, Ctrl+Shift+P
+command palette, Ctrl+R go to symbol, Ctrl+Shift+R workspace symbol, Ctrl+G go to
+line, Ctrl+D select next occurrence, Ctrl+L select line, Ctrl+Shift+D duplicate
+line, Ctrl+Shift+K delete line, Ctrl+J join lines, Ctrl+Shift+Up/Down move line,
+Ctrl+[ / Ctrl+] outdent/indent, Ctrl+/ comment, Ctrl+H replace. Multi-cursor,
+bookmarks and Goto Anything suffixes (`:line`, `@symbol`) are not emulated.
+This build was not compiled here (no Rust toolchain in the patch workspace); run
+`cargo test -p lapce-app presets` before merging.

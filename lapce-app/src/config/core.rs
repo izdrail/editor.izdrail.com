@@ -8,7 +8,7 @@ pub struct CoreConfig {
     pub modal: bool,
     #[serde(default = "default_keymap_preset")]
     #[field_names(
-        desc = "Keyboard preset (compact-65, vscode, phpstorm, notepad-plus-plus, lapce). User keymaps override it."
+        desc = "Keyboard preset (compact-65, vscode, phpstorm, sublime, notepad-plus-plus, lapce). User keymaps override it."
     )]
     pub keymap_preset: String,
     #[field_names(desc = "Set the color theme of Lapce")]
