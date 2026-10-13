@@ -5,7 +5,7 @@ name: Linux build
 # when a version tag is pushed.
 on:
   push:
-    tags-ignore: ["**"]
+    branches: ["**"]
   workflow_dispatch:
 
 permissions:
