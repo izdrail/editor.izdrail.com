@@ -46,11 +46,19 @@ uninstalling a volt stops its running plugin.
 
 ## Trust boundary
 
-A WASI plugin is code: it can read files under its preopened directory, run
-processes through `executeProcess`, spawn language servers and make HTTP
-requests. Only install plugins you trust. The sandbox limits ambient
-authority to the plugin's own directory; everything else goes through the
-host functions above.
+A WASI plugin is code you run. Be plain about what it can do:
+
+- It can make HTTP requests to **any host** (the HTTP host functions are
+  configured allow-all).
+- It **inherits the editor's environment variables**, plus the `VOLT_*` ones.
+- It can **execute processes** on your machine through `executeProcess`, and
+  start language servers.
+- Only the **filesystem** is confined: the plugin sees its own directory,
+  preopened at `/`.
+
+So the sandbox limits file access, not network, environment or process
+execution. Only install plugins you trust, and do not keep secrets in the
+environment the editor is started from.
 
 ## Verification
 
