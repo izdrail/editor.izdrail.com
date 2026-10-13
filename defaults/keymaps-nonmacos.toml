@@ -308,3 +308,28 @@ command = "palette.workspace_symbol"
 [[keymaps]]
 key = "ctrl+g"
 command = "palette.line"
+
+[[keymaps]]
+key = "ctrl+shift+["
+command = "fold"
+when = "editor_focus"
+
+[[keymaps]]
+key = "ctrl+shift+]"
+command = "unfold"
+when = "editor_focus"
+
+[[keymaps]]
+key = "ctrl+k ctrl+l"
+command = "toggle_fold"
+when = "editor_focus"
+
+[[keymaps]]
+key = "ctrl+k ctrl+0"
+command = "fold_all"
+when = "editor_focus"
+
+[[keymaps]]
+key = "ctrl+k ctrl+j"
+command = "unfold_all"
+when = "editor_focus"

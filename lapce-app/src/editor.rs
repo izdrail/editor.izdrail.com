@@ -246,7 +246,7 @@ impl EditorData {
         let cx = cx.create_child();
 
         let confirmed = confirmed.unwrap_or_else(|| cx.create_rw_signal(false));
-        EditorData {
+        let data = EditorData {
             scope: cx,
             editor_tab_id: cx.create_rw_signal(editor_tab_id),
             diff_editor_id: cx.create_rw_signal(diff_editor_id),
@@ -266,6 +266,61 @@ impl EditorData {
             common,
             sticky_header_info: cx.create_rw_signal(StickyHeaderInfo::default()),
             ai_generation: cx.create_rw_signal(0),
+        };
+        data.reveal_cursor_in_folds();
+        data
+    }
+
+    /// Unfold whatever hides the caret. Search, go to definition, goto line and horizontal
+    /// movement can all land in folded text, and a caret that is not shown is never wanted.
+    /// Fold commands move the caret to the fold header first, so they are not undone here.
+    fn reveal_cursor_in_folds(&self) {
+        let editor = self.clone();
+        self.scope.create_effect(move |_| {
+            let offset = editor.cursor().with(|c| c.offset());
+            if !matches!(editor.kind.get_untracked(), EditorViewKind::Normal) {
+                return;
+            }
+            let doc = editor.doc();
+            let line = doc.buffer.with_untracked(|b| b.line_of_offset(offset));
+            if doc.fold_state.with_untracked(|state| state.is_hidden(line))
+                && doc.update_folds(|state| state.reveal(line))
+            {
+                // The lines moved, so run everything that follows the caret again.
+                editor.cursor().update(|_| {});
+            }
+        });
+    }
+
+    /// Fold, unfold and toggle the block at the caret, or all blocks.
+    fn run_fold_command(&self, cmd: &FocusCommand) {
+        if !matches!(self.kind.get_untracked(), EditorViewKind::Normal) {
+            return;
+        }
+        let doc = self.doc();
+        let offset = self.cursor().get_untracked().offset();
+        let line = doc.buffer.with_untracked(|b| b.line_of_offset(offset));
+        let changed = doc.update_folds(|state| match cmd {
+            FocusCommand::Fold => state.fold(line).is_some(),
+            FocusCommand::Unfold => state.unfold(line),
+            FocusCommand::ToggleFold => state.toggle(line),
+            FocusCommand::FoldAll => state.fold_all(),
+            FocusCommand::UnfoldAll => state.unfold_all(),
+            _ => false,
+        });
+        if !changed {
+            return;
+        }
+        // A caret inside newly hidden lines goes to the end of the fold header.
+        let header = doc.fold_state.with_untracked(|state| {
+            state.is_hidden(line).then(|| {
+                let projection = state.projection();
+                projection.buffer_line(projection.visible_line(line))
+            })
+        });
+        if let Some(header) = header {
+            let offset = doc.buffer.with_untracked(|b| b.line_end_offset(header, true));
+            self.cursor().update(|cursor| cursor.set_offset(offset, false, false));
         }
     }
 
@@ -1037,6 +1092,13 @@ impl EditorData {
             }
             FocusCommand::GotoDefinition => {
                 self.go_to_definition();
+            }
+            FocusCommand::Fold
+            | FocusCommand::Unfold
+            | FocusCommand::ToggleFold
+            | FocusCommand::FoldAll
+            | FocusCommand::UnfoldAll => {
+                self.run_fold_command(cmd);
             }
             FocusCommand::ShowCodeActions => {
                 self.show_code_actions(false);

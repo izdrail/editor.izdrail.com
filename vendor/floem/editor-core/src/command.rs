@@ -372,6 +372,21 @@ pub enum FocusCommand {
     #[strum(message = "Go to Definition")]
     #[strum(serialize = "goto_definition")]
     GotoDefinition,
+    #[strum(message = "Fold")]
+    #[strum(serialize = "fold")]
+    Fold,
+    #[strum(message = "Unfold")]
+    #[strum(serialize = "unfold")]
+    Unfold,
+    #[strum(message = "Toggle Fold")]
+    #[strum(serialize = "toggle_fold")]
+    ToggleFold,
+    #[strum(message = "Fold All")]
+    #[strum(serialize = "fold_all")]
+    FoldAll,
+    #[strum(message = "Unfold All")]
+    #[strum(serialize = "unfold_all")]
+    UnfoldAll,
     #[strum(message = "Go to Type Definition")]
     #[strum(serialize = "goto_type_definition")]
     GotoTypeDefinition,

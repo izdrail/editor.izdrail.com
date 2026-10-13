@@ -5,7 +5,6 @@ use floem::{
     reactive::{Memo, SignalGet, SignalWith},
     text::{Attrs, AttrsList, FamilyOwned, TextLayout},
 };
-use im::HashMap;
 use lapce_core::{buffer::rope_text::RopeText, mode::Mode};
 use serde::{Deserialize, Serialize};
 
@@ -211,176 +210,28 @@ impl View for EditorGutterView {
     }
 }
 
-#[derive(Default, Clone)]
-pub struct FoldingRanges(pub Vec<FoldingRange>);
-
-#[derive(Default, Clone)]
-pub struct FoldedRanges(pub Vec<FoldedRange>);
-
-impl FoldingRanges {
-    pub fn get_folded_range(&self) -> FoldedRanges {
-        let mut range = Vec::new();
-        let mut limit_line = 0;
-        for item in &self.0 {
-            if item.start.line < limit_line && limit_line > 0 {
-                continue;
-            }
-            if item.status.is_folded() {
-                range.push(crate::editor::gutter::FoldedRange {
-                    start: item.start,
-                    end: item.end,
-                });
-                limit_line = item.end.line;
-            }
-        }
-
-        FoldedRanges(range)
-    }
-    pub fn to_display_items(&self) -> Vec<FoldingDisplayItem> {
-        let mut folded = HashMap::new();
-        let mut unfold_start: HashMap<u32, FoldingDisplayItem> = HashMap::new();
-        let mut unfold_end = HashMap::new();
-        let mut limit_line = 0;
-        for item in &self.0 {
-            if item.start.line < limit_line && limit_line > 0 {
-                continue;
-            }
-            match item.status {
-                FoldingRangeStatus::Fold => {
-                    folded.insert(
-                        item.start.line,
-                        FoldingDisplayItem::Folded(item.start),
-                    );
-                    limit_line = item.end.line;
-                }
-                FoldingRangeStatus::Unfold => {
-                    unfold_start.insert(
-                        item.start.line,
-                        FoldingDisplayItem::UnfoldStart(item.start),
-                    );
-                    unfold_end.insert(
-                        item.end.line,
-                        FoldingDisplayItem::UnfoldEnd(item.end),
-                    );
-                    limit_line = 0;
-                }
-            };
-        }
-        for (key, val) in unfold_end {
-            unfold_start.insert(key, val);
-        }
-        for (key, val) in folded {
-            unfold_start.insert(key, val);
-        }
-
-        unfold_start.into_iter().map(|x| x.1).collect()
-    }
-}
-
-impl FoldedRanges {
-    pub fn contain_line(&self, start_index: usize, line: u32) -> (bool, usize) {
-        if start_index >= self.0.len() {
-            return (false, start_index);
-        }
-        let mut last_index = start_index;
-        for range in self.0[start_index..].iter() {
-            if range.start.line >= line {
-                return (false, last_index);
-            } else if range.start.line < line && range.end.line > line {
-                return (true, last_index);
-            } else if range.end.line < line {
-                last_index += 1;
-            }
-        }
-        (false, last_index)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FoldedRange {
-    pub start: FoldingPosition,
-    pub end: FoldingPosition,
-}
-
-#[derive(Debug, Clone)]
-pub struct FoldingRange {
-    pub start: FoldingPosition,
-    pub end: FoldingPosition,
-    pub status: FoldingRangeStatus,
-    pub collapsed_text: Option<String>,
-}
-
-impl FoldingRange {
-    pub fn from_lsp(value: lsp_types::FoldingRange) -> Self {
-        let lsp_types::FoldingRange {
-            start_line,
-            start_character,
-            end_line,
-            end_character,
-            collapsed_text,
-            ..
-        } = value;
-        let status = FoldingRangeStatus::Unfold;
-        Self {
-            start: FoldingPosition {
-                line: start_line,
-                character: start_character,
-                // kind: kind.clone().map(|x| FoldingRangeKind::from(x)),
-            },
-            end: FoldingPosition {
-                line: end_line,
-                character: end_character,
-                // kind: kind.map(|x| FoldingRangeKind::from(x)),
-            },
-            status,
-            collapsed_text,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
-pub struct FoldingPosition {
-    pub line: u32,
-    pub character: Option<u32>,
-    // pub kind: Option<FoldingRangeKind>,
-}
-
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub enum FoldingRangeStatus {
-    Fold,
-    #[default]
-    Unfold,
-}
-
-impl FoldingRangeStatus {
-    pub fn click(&mut self) {
-        // match self {
-        //     FoldingRangeStatus::Fold => {
-        //         *self = FoldingRangeStatus::Unfold;
-        //     }
-        //     FoldingRangeStatus::Unfold => {
-        //         *self = FoldingRangeStatus::Fold;
-        //     }
-        // }
-    }
-    pub fn is_folded(&self) -> bool {
-        *self == Self::Fold
-    }
-}
+/// A fold marker in the gutter: the header line of a foldable block.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum FoldingDisplayItem {
-    UnfoldStart(FoldingPosition),
-    Folded(FoldingPosition),
-    UnfoldEnd(FoldingPosition),
+pub struct FoldingDisplayItem {
+    pub line: usize,
+    pub folded: bool,
 }
 
 impl FoldingDisplayItem {
-    pub fn position(&self) -> FoldingPosition {
-        match self {
-            FoldingDisplayItem::UnfoldStart(x) => *x,
-            FoldingDisplayItem::Folded(x) => *x,
-            FoldingDisplayItem::UnfoldEnd(x) => *x,
-        }
+    /// Markers for the block headers in `lines` (buffer lines that are on screen).
+    pub fn for_lines(
+        state: &lapce_core::folding::FoldState,
+        lines: impl Fn(usize) -> bool,
+    ) -> Vec<FoldingDisplayItem> {
+        state
+            .ranges()
+            .iter()
+            .filter(|range| !state.is_hidden(range.start) && lines(range.start))
+            .map(|range| FoldingDisplayItem {
+                line: range.start,
+                folded: state.is_folded(range.start),
+            })
+            .collect()
     }
 }
 

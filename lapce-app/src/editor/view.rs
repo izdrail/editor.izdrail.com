@@ -1,5 +1,5 @@
 use std::{
-    cmp, collections::BTreeMap, ops::DerefMut, path::PathBuf, rc::Rc, sync::Arc,
+    cmp, collections::BTreeMap, path::PathBuf, rc::Rc, sync::Arc,
 };
 
 use floem::{
@@ -1700,10 +1700,10 @@ fn editor_gutter_folding_view(
     let config = window_tab_data.common.config;
     let view = container(
         svg(move || {
-            let icon_str = match folding_display_item {
-                FoldingDisplayItem::UnfoldStart(_) => LapceIcons::FOLD_DOWN,
-                FoldingDisplayItem::Folded(_) => LapceIcons::FOLD,
-                FoldingDisplayItem::UnfoldEnd(_) => LapceIcons::FOLD_UP,
+            let icon_str = if folding_display_item.folded {
+                LapceIcons::FOLD
+            } else {
+                LapceIcons::FOLD_DOWN
             };
             config.get().ui_svg(icon_str)
         })
@@ -1729,8 +1729,8 @@ fn editor_gutter_folding_view(
             })
     });
     container(view).style(move |s| {
-        let line = folding_display_item.position().line;
-        let line_info = screen_lines.with(|s| s.info_for_line(line as usize));
+        let line = folding_display_item.line;
+        let line_info = screen_lines.with(|s| s.info_for_line(line));
         let line_y = line_info.clone().map(|l| l.y).unwrap_or(-100.0);
         let rect = viewport.get();
         let config = config.get();
@@ -1790,7 +1790,15 @@ fn editor_gutter_folding_range(
 ) -> impl View {
     let config = window_tab_data.common.config;
     dyn_stack(
-        move || doc.get().folding_ranges.get().to_display_items(),
+        move || {
+            let doc = doc.get();
+            // Only headers that are on screen get a view.
+            let on_screen: std::collections::HashSet<usize> =
+                screen_lines.with(|sl| sl.lines.iter().map(|rv| rv.line).collect());
+            doc.fold_state.with(|state| {
+                FoldingDisplayItem::for_lines(state, |line| on_screen.contains(&line))
+            })
+        },
         move |item| *item,
         move |item| {
             editor_gutter_folding_view(
@@ -1801,31 +1809,7 @@ fn editor_gutter_folding_range(
             )
             .on_click_stop({
                 move |_| {
-                    doc.get_untracked().folding_ranges.update(|x| match item {
-                        FoldingDisplayItem::UnfoldStart(pos)
-                        | FoldingDisplayItem::Folded(pos) => {
-                            x.0.iter_mut().find_map(|mut range| {
-                                let range = range.deref_mut();
-                                if range.start == pos {
-                                    range.status.click();
-                                    Some(())
-                                } else {
-                                    None
-                                }
-                            });
-                        }
-                        FoldingDisplayItem::UnfoldEnd(pos) => {
-                            x.0.iter_mut().find_map(|mut range| {
-                                let range = range.deref_mut();
-                                if range.end == pos {
-                                    range.status.click();
-                                    Some(())
-                                } else {
-                                    None
-                                }
-                            });
-                        }
-                    })
+                    doc.get_untracked().update_folds(|state| state.toggle(item.line));
                 }
             })
         },
@@ -1833,11 +1817,7 @@ fn editor_gutter_folding_range(
     .style(move |s| {
         let config = config.get();
         let width = config.ui.icon_size() as f32;
-        // hide for now
-        s.width(width)
-            .height_full()
-            .margin_left(-width / 2.0)
-            .hide()
+        s.width(width).height_full().margin_left(-width / 2.0)
     })
     .debug_name("Folding Range Stack")
 }

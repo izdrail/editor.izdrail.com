@@ -32,6 +32,7 @@ use floem::{
         phantom_text::{PhantomText, PhantomTextKind, PhantomTextLine},
         text::{Document, DocumentPhantom, PreeditData, Styling, SystemClipboard},
         view::{ScreenLines, ScreenLinesBase},
+        visual_line::HiddenLines,
     },
 };
 use itertools::Itertools;
@@ -45,6 +46,7 @@ use lapce_core::{
     command::EditCommand,
     cursor::{Cursor, CursorAffinity},
     editor::{Action, EditConf, EditType},
+    folding::FoldState,
     indent::IndentStyle,
     language::LapceLanguage,
     line_ending::LineEnding,
@@ -76,7 +78,7 @@ use smallvec::SmallVec;
 use crate::{
     command::{CommandKind, LapceCommand},
     config::{LapceConfig, color::LapceColor},
-    editor::{EditorData, compute_screen_lines, gutter::FoldingRanges},
+    editor::{EditorData, EditorViewKind, compute_screen_lines},
     find::{Find, FindProgress, FindResult},
     history::DocumentHistory,
     keypress::KeyPressFocus,
@@ -236,7 +238,9 @@ pub struct Doc {
 
     pub code_lens: RwSignal<AllCodeLens>,
 
-    pub folding_ranges: RwSignal<FoldingRanges>,
+    /// Foldable blocks and which of them are folded. Shared by every editor of this document,
+    /// except diff views, which always show every line.
+    pub fold_state: RwSignal<FoldState>,
 
     /// Stores information about different versions of the document from source control.
     histories: RwSignal<im::HashMap<String, DocumentHistory>>,
@@ -308,7 +312,7 @@ impl Doc {
             common,
             code_lens: cx.create_rw_signal(im::HashMap::new()),
             document_symbol_data: cx.create_rw_signal(None),
-            folding_ranges: cx.create_rw_signal(FoldingRanges::default()),
+            fold_state: cx.create_rw_signal(FoldState::default()),
             get_highlights_status: cx
                 .create_rw_signal(DocumentHighlightsStatus::Ready),
             highlights: cx.create_rw_signal(None),
@@ -362,7 +366,7 @@ impl Doc {
             common,
             code_lens: cx.create_rw_signal(im::HashMap::new()),
             document_symbol_data: cx.create_rw_signal(None),
-            folding_ranges: cx.create_rw_signal(FoldingRanges::default()),
+            fold_state: cx.create_rw_signal(FoldState::default()),
             get_highlights_status: cx
                 .create_rw_signal(DocumentHighlightsStatus::Ready),
             highlights: cx.create_rw_signal(None),
@@ -416,7 +420,7 @@ impl Doc {
             common,
             code_lens: cx.create_rw_signal(im::HashMap::new()),
             document_symbol_data: cx.create_rw_signal(None),
-            folding_ranges: cx.create_rw_signal(FoldingRanges::default()),
+            fold_state: cx.create_rw_signal(FoldState::default()),
             get_highlights_status: cx
                 .create_rw_signal(DocumentHighlightsStatus::Ready),
             highlights: cx.create_rw_signal(None),
@@ -657,6 +661,7 @@ impl Doc {
         let rev = self.rev() - deltas.len() as u64;
         batch(|| {
             for (i, (_, delta, inval)) in deltas.iter().enumerate() {
+                self.apply_fold_edit(inval);
                 self.update_styles(delta);
                 self.update_inlay_hints(delta);
                 self.update_diagnostics(delta);
@@ -1159,31 +1164,35 @@ impl Doc {
     }
 
     /// Publish local ranges only after the syntax worker has accepted this revision.
-    /// Edits clear fold state rather than preserving it on unrelated new blocks.
+    /// Until then the fold state keeps following edits through [`Self::apply_fold_edit`].
     pub fn get_folding_range(&self) {
         let ranges = self.syntax.with_untracked(|syntax| {
             (syntax.rev == self.rev()).then(|| syntax.folding_ranges.clone())
         });
-        self.folding_ranges.set(FoldingRanges(
-            ranges
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|range| {
-                    Some(crate::editor::gutter::FoldingRange {
-                        start: crate::editor::gutter::FoldingPosition {
-                            line: u32::try_from(range.start).ok()?,
-                            character: None,
-                        },
-                        end: crate::editor::gutter::FoldingPosition {
-                            line: u32::try_from(range.end).ok()?,
-                            character: None,
-                        },
-                        status: crate::editor::gutter::FoldingRangeStatus::Unfold,
-                        collapsed_text: None,
-                    })
-                })
-                .collect(),
-        ));
+        if let Some(ranges) = ranges {
+            self.fold_state.update(|state| state.set_ranges(ranges));
+        }
+    }
+
+    /// Keep folds attached to their blocks across an edit. Blocks the edit touches unfold.
+    fn apply_fold_edit(&self, inval: &InvalLines) {
+        if self.fold_state.with_untracked(|state| state.is_empty()) {
+            return;
+        }
+        self.fold_state.update(|state| {
+            state.apply_edit(inval.start_line, inval.inval_count, inval.new_count)
+        });
+    }
+
+    /// Fold or unfold. `f` returns whether anything changed.
+    pub fn update_folds(&self, f: impl FnOnce(&mut FoldState) -> bool) -> bool {
+        // Work on a copy so nothing is notified when nothing changed.
+        let mut state = self.fold_state.get_untracked();
+        let changed = f(&mut state);
+        if changed {
+            self.fold_state.set(state);
+        }
+        changed
     }
 
     /// Get the current completion lens text
@@ -1715,6 +1724,15 @@ impl Document for Doc {
                 base,
             };
         };
+
+        // Folded lines are hidden in this editor's lines before anything is measured. Reading
+        // the state here also reruns the screen line calculation whenever a fold changes.
+        let hidden = if matches!(editor_data.kind.get_untracked(), EditorViewKind::Normal) {
+            self.fold_state.with(|state| state.hidden_ranges())
+        } else {
+            Vec::new()
+        };
+        editor.lines().set_hidden_lines(HiddenLines::new(hidden));
 
         compute_screen_lines(
             self.common.config,

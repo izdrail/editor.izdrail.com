@@ -1,8 +1,7 @@
 # Local folding groundwork
 
-This patch adds range detection and a tested buffer/visible-line projection. It
-is not a complete folding UI. The gutter remains hidden and no shortcuts are
-added, because the pinned Floem editor does not support hidden buffer lines.
+Indentation-based code folding: range detection, a tested buffer/visible-line
+projection, hidden-line support in the editor layer, gutter markers and commands.
 
 `Syntax::parse` no longer builds tree-sitter trees after the Lexilla change.
 The tree-sitter dependency and old code remain but there is no live syntax tree
@@ -21,36 +20,43 @@ comments do not get ranges, while indented continuations can get ranges.
 buffer lines to visible lines and back. It is a line-level model, not a wrapped
 visual-line implementation. The caller must retain nested fold state separately.
 
-## Why the old gutter cannot simply be enabled
+## How folding works now
 
-The base already contains a hidden folding gutter, a no-op click handler,
-commented-out LSP range requests and commented-out paint filtering. These
-limitations also occur on the parent of the server-removal commit. They were not
-introduced solely by removing the LSP runtime.
+**Hidden lines in the editor layer.** `vendor/floem` is the pinned Floem revision plus
+`Lines::set_hidden_lines(HiddenLines)`. Hidden buffer lines have no visual line: last
+vline/rvline, buffer-line/offset to vline/rvline, vline to offset and forward/backward
+iteration all skip them. Paint, hit testing, selection, caret, vertical movement, viewport
+height and scroll-to-caret already derive from those conversions, so they follow without
+separate code. An offset inside a hidden line is placed on the fold header (first visual
+line, caret at its end). Buffer text, offsets, selections, copy and save are untouched.
+While anything is hidden the lines are not "linear" and several conversions scan the
+buffer lines (O(lines) per call, only while a fold exists) instead of using the cached
+last visual line. Moving down from the last shown line stays on it when the end of the
+file is folded.
 
-Only skipping painted rows leaves the editor's point-to-offset calculation,
-selection painting, caret placement, vertical movement, viewport sizing and
-scroll-to-caret using unfolded positions. It is not working folding.
+**Fold state** is `lapce_core::folding::FoldState` (pure data, unit tested): the foldable
+blocks, the folded ones (nested folds are kept when an outer block toggles), fold/unfold/
+toggle/fold all/unfold all/reveal, edit handling and the hidden line ranges. It is stored
+per document in `Doc::fold_state` and applied to every normal editor of the document when
+screen lines are computed (`Doc::compute_screen_lines`). Diff editors never hide lines.
 
-## Remaining implementation
+**Edits.** Blocks before an edit stay, blocks after it move by the change in line count,
+blocks the edit touches (header, body) unfold. Foldable blocks are recomputed by the syntax
+worker; folds whose header still starts a block are kept.
 
-1. Add a hidden-line/projection API to the pinned Floem `Lines` layer, with
-   consistent forward/backward wrapped-line iteration, buffer-to-visual mapping,
-   visual-to-buffer mapping, final visual-line count and layout-cache invalidation.
-2. Have all paint, hit testing, selection/caret, movement, scrolling and viewport
-   code use that mapping. Preserve original buffer offsets, selection, copy and
-   save data. Hidden targets from search/goto-definition must unfold their parents.
-3. Connect document fold state to that API. Keep nested state when an outer fold
-   toggles, move a cursor out of newly hidden content, and unfold/reset safely on
-   edits. Consider keeping fold state per editor rather than per document.
-4. Enable the gutter and implement fold/unfold current block and fold/unfold all
-   commands, then give them collision-checked default shortcuts.
-5. Visually test nested blocks, wrapping, split editors, diff views, search, EOF,
-   scroll after large folds, caret/selection and mouse clicks below folded regions.
+**Reveal.** When the caret ends up inside folded text (search, go to definition, go to
+line, left/right movement) the blocks hiding it unfold. Fold commands move a caret that
+would be hidden to the end of the header first.
 
-## Verified
+**Commands** `fold`, `unfold`, `toggle_fold`, `fold_all`, `unfold_all` (editor focus):
+Linux/Windows `ctrl+shift+[`, `ctrl+shift+]`, `ctrl+k ctrl+l`, `ctrl+k ctrl+0`,
+`ctrl+k ctrl+j`; macOS `meta+alt+[`, `meta+alt+]`, `meta+k meta+l`, `meta+k meta+0`,
+`meta+k meta+j`. `fold` folds the innermost unfolded block around the caret line, so
+repeating it folds outwards.
 
-- `cargo check --workspace -j 2`
-- `cargo test -p lapce-core -j 2` (19 tests pass)
+## Not verified (needs a display)
 
-No GUI behavior is claimed or visually verified by this patch.
+Gutter marker placement and icons, wrapped lines next to folds, split editors showing the
+same document, scroll position and scrollbar extent after folding or unfolding, scroll
+to the caret after a reveal, mouse clicks below a folded block, selection painting across
+a fold, and the keyboard shortcuts on each platform.
