@@ -105,6 +105,28 @@ impl Default for Registry {
         }
     }
 }
+fn command_exists(command: &str) -> bool {
+    let path = std::path::Path::new(command);
+    if path.components().count() > 1 || path.is_absolute() {
+        return path.is_file();
+    }
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    let exts: Vec<String> = if cfg!(windows) {
+        std::env::var("PATHEXT")
+            .unwrap_or_else(|_| ".EXE;.CMD;.BAT".into())
+            .split(';')
+            .map(str::to_owned)
+            .collect()
+    } else {
+        vec![String::new()]
+    };
+    std::env::split_paths(&paths).any(|dir| {
+        exts.iter()
+            .any(|ext| dir.join(format!("{command}{ext}")).is_file())
+    })
+}
 impl Registry {
     pub fn load() -> Result<Self> {
         let path = Directory::config_directory()
@@ -128,6 +150,15 @@ impl Registry {
             (server.enabled && server.languages.iter().any(|lang| lang == language))
                 .then(|| (name.clone(), server.clone()))
         })
+    }
+    /// True when a directly configured (non-managed) server command cannot be
+    /// found, so launching it would only fail with a spawn error. Managed npm
+    /// servers are installed on demand and are never reported missing here.
+    pub fn is_missing(&self, server: &Server) -> bool {
+        if !server.packages.is_empty() || server.command.is_empty() {
+            return false;
+        }
+        !command_exists(&server.command)
     }
     pub fn command(&self, name: &str, server: &Server) -> Result<Command> {
         ensure!(!server.command.is_empty(), "Server command is empty");
@@ -297,6 +328,21 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_direct_server_is_detected_and_managed_is_not() {
+        let registry = Registry::default();
+        let mut server = registry.servers["php"].clone();
+        server.command = "definitely-not-a-real-language-server-xyz".into();
+        assert!(registry.is_missing(&server));
+        server.packages = vec!["x@1.0.0".into()];
+        assert!(!registry.is_missing(&server));
+        let mut sh = registry.servers["php"].clone();
+        sh.command = "sh".into();
+        if cfg!(unix) {
+            assert!(!registry.is_missing(&sh));
+        }
+    }
+
     #[test]
     fn auto_install_can_be_disabled_and_custom_commands_need_no_installer() {
         let registry = Registry {

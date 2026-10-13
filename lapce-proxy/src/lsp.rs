@@ -405,6 +405,8 @@ impl Manager {
         std::thread::spawn(move || {
             let mut clients: HashMap<String, Arc<Client>> = HashMap::new();
             let mut failed: HashMap<String, Instant> = HashMap::new();
+            let mut missing: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             let mut documents: HashMap<PathBuf, crate::buffer::Buffer> =
                 HashMap::new();
             while let Ok(job) = receiver.recv() {
@@ -467,6 +469,21 @@ impl Manager {
                             ),
                             "Language server recently failed; retry in 30 seconds"
                         );
+                        if registry.is_missing(&server) {
+                            // Not installed and not auto-installable: stay quiet
+                            // instead of popping an error on every startup.
+                            if missing.insert(name.clone()) {
+                                tracing::info!(
+                                    server = %name,
+                                    command = %server.command,
+                                    "language server not found on PATH; disabled for this session"
+                                );
+                            }
+                            anyhow::bail!(
+                                "{name} language server is not installed ({} not found on PATH)",
+                                server.command
+                            );
+                        }
                         core.notification(CoreNotification::ShowMessage {
                             title: "Language server".into(),
                             message: lsp_types::ShowMessageParams {
