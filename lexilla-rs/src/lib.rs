@@ -210,6 +210,8 @@ fn scope_from_tags(tags: &str) -> Option<&'static str> {
         Some("constant")
     } else if tags.contains(&"operator") {
         Some("operator")
+    } else if tags.contains(&"function") {
+        Some("function")
     } else if tags.contains(&"tag") {
         Some("tag")
     } else if tags.contains(&"type") {

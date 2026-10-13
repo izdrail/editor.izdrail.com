@@ -127,6 +127,8 @@ extern const LexerModule lmOScript;
 extern const LexerModule lmPascal;
 extern const LexerModule lmPB;
 extern const LexerModule lmPerl;
+extern const LexerModule lmLaravel;
+extern const LexerModule lmPHP;
 extern const LexerModule lmPHPSCRIPT;
 extern const LexerModule lmPLM;
 extern const LexerModule lmPO;
@@ -282,6 +284,8 @@ void AddEachLexer() {
 		&lmPascal,
 		&lmPB,
 		&lmPerl,
+		&lmLaravel,
+		&lmPHP,
 		&lmPHPSCRIPT,
 		&lmPLM,
 		&lmPO,

@@ -904,6 +904,8 @@ pub struct Syntax {
     /// Grammar scope from an imported VS Code extension, used when Lexilla
     /// has no lexer for the file.
     pub textmate_scope: Option<String>,
+    /// The file is inside a Laravel project (selects the `laravel` PHP lexer).
+    pub laravel: bool,
     pub textmate: Option<Arc<lapce_vsix::textmate::Snapshot>>,
     pub folding_ranges: Vec<crate::folding::FoldRange>,
     pub cancel_flag: Arc<AtomicUsize>,
@@ -928,6 +930,8 @@ impl Syntax {
         let language = LapceLanguage::from_path(path);
         let mut syntax = Syntax::from_language(language);
         syntax.textmate_scope = crate::textmate::scope_for_path(path);
+        syntax.laravel = language == LapceLanguage::Php
+            && crate::lexilla::is_laravel_project(path);
         syntax
     }
 
@@ -948,6 +952,7 @@ impl Syntax {
             styles: None,
             lexilla: None,
             textmate_scope: None,
+            laravel: false,
             textmate: None,
             folding_ranges: Vec::new(),
             cancel_flag: Arc::new(AtomicUsize::new(0)),
@@ -964,7 +969,8 @@ impl Syntax {
         // states. The UI accepts only the matching revision, then extracts runs
         // per painted line. No tree-sitter grammar loading or full-file spans.
         let _ = edits;
-        let snapshot = crate::lexilla::highlight(self.language, &new_text);
+        let snapshot =
+            crate::lexilla::highlight_in(self.language, &new_text, self.laravel);
         let textmate = match (&snapshot, &self.textmate_scope) {
             (None, Some(scope)) => crate::textmate::highlight(scope, &new_text),
             _ => None,

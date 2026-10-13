@@ -196,13 +196,18 @@ impl CompletionData {
             .chain(
                 self.local_items
                     .iter()
-                    .filter(|i| i.source == CompletionSource::Snippet)
+                    .filter(|i| {
+                        matches!(
+                            i.source,
+                            CompletionSource::Snippet | CompletionSource::Keyword
+                        )
+                    })
                     .map(|i| i.item.label.clone()),
             )
             .collect();
         for local in &self.local_items {
             match local.source {
-                CompletionSource::Word => {
+                CompletionSource::Word | CompletionSource::Keyword => {
                     // A word the server or a snippet already offers adds nothing.
                     if typed < MIN_WORD_INPUT || seen.contains(&local.item.label) {
                         continue;

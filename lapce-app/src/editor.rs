@@ -1796,12 +1796,12 @@ impl EditorData {
         use crate::{
             completion::ScoredCompletionItem,
             completion_sources::{
-                CompletionSource, MAX_SCAN_BYTES, buffer_words, leading_indent,
-                snippet_items, word_items,
+                CompletionSource, MAX_SCAN_BYTES, buffer_words, language_items,
+                leading_indent, php_variable_items, snippet_items, word_items,
             },
         };
         let doc = self.doc();
-        let (words, snippets) =
+        let (words, snippets, keywords) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
                 let len = buffer.len();
@@ -1814,7 +1814,12 @@ impl EditorData {
                 text.push_str(&buffer.slice_to_cow(
                     end_offset..len.min(end_offset + MAX_SCAN_BYTES / 2),
                 ));
-                let words = word_items(&buffer_words(&text));
+                let lang = lapce_proxy::buffer::language_id_from_path(path);
+                let mut words = word_items(&buffer_words(&text));
+                if lang == Some("php") {
+                    words.extend(php_variable_items(&text));
+                }
+                let keywords = lang.map(language_items).unwrap_or_default();
 
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);
@@ -1823,7 +1828,6 @@ impl EditorData {
                     start: buffer.offset_to_position(start_offset),
                     end: buffer.offset_to_position(offset),
                 };
-                let lang = lapce_proxy::buffer::language_id_from_path(path);
                 let snippets = match lang {
                     Some(lang) => {
                         let loaded = lapce_core::textmate::loaded();
@@ -1831,7 +1835,7 @@ impl EditorData {
                     }
                     None => Vec::new(),
                 };
-                (words, snippets)
+                (words, snippets, keywords)
             });
         let wrap = |item, source| ScoredCompletionItem {
             item,
@@ -1844,6 +1848,11 @@ impl EditorData {
         snippets
             .into_iter()
             .map(|i| wrap(i, CompletionSource::Snippet))
+            .chain(
+                keywords
+                    .into_iter()
+                    .map(|i| wrap(i, CompletionSource::Keyword)),
+            )
             .chain(words.into_iter().map(|i| wrap(i, CompletionSource::Word)))
             .collect()
     }

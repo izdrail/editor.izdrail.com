@@ -5,8 +5,100 @@ use lapce_xi_rope::Rope;
 use lexilla_rs::Snapshot;
 use std::sync::Arc;
 
+/// Pure-PHP files (content starts with `<?php`, after optional BOM and
+/// whitespace) use the standalone `php` lexer (LexPHP.cxx). Everything else,
+/// including `.php` templates that start with HTML, keeps the `hypertext`
+/// lexer, because the standalone one colours inline HTML as a single style.
+pub fn is_pure_php(source: &str) -> bool {
+    let s = source.trim_start_matches('\u{feff}').trim_start();
+    s.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("<?php"))
+}
+
+/// Word lists for the `laravel` lexer: the four PHP lists, then facades, route
+/// methods, Artisan commands, helpers and Eloquent methods.
+pub const LARAVEL_WORD_LISTS: &[&str] = &[
+    PHP_WORD_LISTS[0],
+    PHP_WORD_LISTS[1],
+    PHP_WORD_LISTS[2],
+    PHP_WORD_LISTS[3],
+    "Artisan Auth Blade Broadcast Bus Cache Config Cookie Crypt Date DB Event Exceptions File Gate Hash Http Lang Log Mail Notification Password Process Queue RateLimiter Redirect Redis Request Response Route Schedule Schema Session Storage URL Validator View Vite",
+    "get post put patch delete options any match resource apiResource resources apiResources middleware prefix name domain group where whereNumber whereAlpha whereUuid controller view redirect permanentRedirect fallback singleton namespace scopeBindings withoutMiddleware",
+    "about cache:clear cache:forget cache:table config:cache config:clear db:seed db:wipe down env event:cache event:clear key:generate make:cast make:channel make:command make:component make:controller make:event make:exception make:factory make:job make:listener make:mail make:middleware make:migration make:model make:notification make:observer make:policy make:provider make:request make:resource make:rule make:scope make:seeder make:test make:view migrate migrate:fresh migrate:install migrate:refresh migrate:reset migrate:rollback migrate:status model:prune optimize optimize:clear queue:failed queue:flush queue:listen queue:restart queue:retry queue:work route:cache route:clear route:list schedule:list schedule:run schedule:work serve storage:link test tinker up vendor:publish view:cache view:clear",
+    "abort abort_if abort_unless action app app_path auth back base_path bcrypt broadcast cache class_basename collect config config_path cookie csrf_field csrf_token database_path dd decrypt dispatch dispatch_sync dump e encrypt env event fake info lang_path logger method_field now old policy public_path redirect report request rescue resolve resource_path response retry route session storage_path tap throw_if throw_unless today trans trans_choice url validator value view with",
+    "all avg chunk count create delete distinct doesntExist doesntHave exists find findOrFail findMany first firstOrCreate firstOrFail firstOrNew firstWhere forceDelete from get groupBy has having inRandomOrder insert join latest leftJoin limit lockForUpdate max min offset oldest orderBy orderByDesc orWhere paginate pluck query rightJoin select selectRaw simplePaginate skip sum take toSql update updateOrCreate upsert value when whereBetween whereDate whereHas whereIn whereNotIn whereNotNull whereNull whereRaw with withCount withTrashed without onlyTrashed restore hasMany hasOne belongsTo belongsToMany morphTo morphMany morphOne hasManyThrough hasOneThrough",
+];
+
+/// Per-directory cache of the Laravel project check (the check reads files).
+static LARAVEL_CACHE: std::sync::Mutex<
+    Option<
+        std::collections::HashMap<std::path::PathBuf, (std::time::Instant, bool)>,
+    >,
+> = std::sync::Mutex::new(None);
+
+/// True when `file` sits inside a Laravel project: an `artisan` file, or a
+/// `composer.json` mentioning `laravel/framework`, in the nearest ancestor that
+/// has either. Cached per directory for a short time.
+pub fn is_laravel_project(file: &std::path::Path) -> bool {
+    let Some(dir) = file.parent() else {
+        return false;
+    };
+    let now = std::time::Instant::now();
+    if let Ok(mut guard) = LARAVEL_CACHE.lock() {
+        let cache = guard.get_or_insert_with(Default::default);
+        if let Some((at, v)) = cache.get(dir) {
+            if now.duration_since(*at) < std::time::Duration::from_secs(60) {
+                return *v;
+            }
+        }
+    }
+    let result = detect_laravel(dir);
+    if let Ok(mut guard) = LARAVEL_CACHE.lock() {
+        let cache = guard.get_or_insert_with(Default::default);
+        if cache.len() > 512 {
+            cache.clear();
+        }
+        cache.insert(dir.to_path_buf(), (now, result));
+    }
+    result
+}
+
+fn detect_laravel(dir: &std::path::Path) -> bool {
+    for ancestor in dir.ancestors().take(12) {
+        if ancestor.join("artisan").is_file() {
+            return true;
+        }
+        let composer = ancestor.join("composer.json");
+        if composer.is_file() {
+            return std::fs::read_to_string(&composer)
+                .map(|t| t.len() < 1 << 20 && t.contains("laravel/framework"))
+                .unwrap_or(false);
+        }
+    }
+    false
+}
+
+/// Word lists for the standalone `php` lexer: keywords, builtin functions,
+/// builtin types, other keywords.
+pub const PHP_WORD_LISTS: &[&str] = &[
+    "__halt_compiler abstract and array as break callable case catch class clone const continue declare default die do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile eval exit extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield",
+    "array_key_exists array_keys array_map array_merge array_filter array_pop array_push array_reduce array_shift array_slice array_unique array_values count explode implode in_array is_array is_callable is_int is_null is_numeric is_object is_string json_decode json_encode preg_match preg_match_all preg_replace preg_split sprintf str_contains str_replace str_starts_with strlen strpos strtolower strtoupper substr trim ucfirst var_dump printf file_get_contents file_put_contents sort usort ksort intval floatval strval date time microtime sleep define defined",
+    "bool boolean int integer float double string array object callable iterable mixed void null never self parent static true false resource",
+    "__CLASS__ __DIR__ __FILE__ __FUNCTION__ __LINE__ __METHOD__ __NAMESPACE__ __TRAIT__ PHP_EOL PHP_INT_MAX PHP_VERSION E_ALL",
+];
+
 pub fn highlight(language: LapceLanguage, text: &Rope) -> Option<Arc<Snapshot>> {
+    highlight_in(language, text, false)
+}
+
+/// Like [`highlight`]. `laravel` says the file belongs to a Laravel project,
+/// which selects the `laravel` lexer for pure-PHP files instead of `php`.
+pub fn highlight_in(
+    language: LapceLanguage,
+    text: &Rope,
+    laravel: bool,
+) -> Option<Arc<Snapshot>> {
     use LapceLanguage::*;
+    let source = text.to_string();
     let (lexer, keywords): (&str, &[&str]) = match language {
         C | Cpp => (
             "cpp",
@@ -33,6 +125,8 @@ pub fn highlight(language: LapceLanguage, text: &Rope) -> Option<Arc<Snapshot>> 
                 "abs all any bool bytes dict enumerate float int len list map max min object open print range repr set str sum super tuple type zip",
             ],
         ),
+        Php if laravel && is_pure_php(&source) => ("laravel", LARAVEL_WORD_LISTS),
+        Php if is_pure_php(&source) => ("php", PHP_WORD_LISTS),
         Html | Php => (
             "hypertext",
             &[
@@ -68,7 +162,7 @@ pub fn highlight(language: LapceLanguage, text: &Rope) -> Option<Arc<Snapshot>> 
         Xml => ("xml", &[]),
         _ => return None,
     };
-    match Snapshot::lex(lexer, &text.to_string(), keywords) {
+    match Snapshot::lex(lexer, &source, keywords) {
         Ok(snapshot) => Some(Arc::new(snapshot)),
         Err(error) => {
             tracing::warn!(?error, lexer, "Lexilla highlighting failed");
@@ -187,5 +281,199 @@ mod tests {
     #[test]
     fn unknown_language_is_plain_text() {
         assert!(highlight(LapceLanguage::PlainText, &Rope::from("hello")).is_none());
+    }
+
+    const PHP_FIXTURE: &str = "<?php\n/* outer /* nested */ still */\n/** doc */\n#[Attribute]\nnamespace App;\nfinal class User {\n    public function name(string $first): string {\n        $n = 0x1F + 1_000;\n        $s = \"hi $first {$n}\";\n        $t = 'it\\'s';\n        // line\n        return <<<EOT\n  Heredoc $first\n  EOT;\n    }\n}\n$raw = <<<'RAW'\nnow $doc\nRAW;\n?>\n<p><?= $x ?></p>\n";
+
+    fn php_scope_at(
+        snapshot: &Snapshot,
+        text: &str,
+        needle: &str,
+        nth: usize,
+    ) -> Option<&'static str> {
+        let pos = text.match_indices(needle).nth(nth).expect("needle").0;
+        snapshot.scope(snapshot.styles()[pos])
+    }
+
+    #[test]
+    fn standalone_php_lexer_covers_modern_php() {
+        let t = PHP_FIXTURE;
+        let snap =
+            Snapshot::lex("php", t, PHP_WORD_LISTS).expect("php lexer registered");
+        assert_eq!(snap.len(), t.len());
+        // keywords, types
+        assert_eq!(php_scope_at(&snap, t, "namespace", 0), Some("keyword"));
+        assert_eq!(php_scope_at(&snap, t, "final", 0), Some("keyword"));
+        assert_eq!(php_scope_at(&snap, t, "function", 0), Some("keyword"));
+        assert_eq!(php_scope_at(&snap, t, "string $first", 0), Some("type"));
+        // comments, including nested block comment and doc comment
+        assert_eq!(php_scope_at(&snap, t, "/* outer", 0), Some("comment"));
+        assert_eq!(php_scope_at(&snap, t, "still", 0), Some("comment"));
+        assert_eq!(php_scope_at(&snap, t, "/** doc", 0), Some("comment"));
+        assert_eq!(php_scope_at(&snap, t, "// line", 0), Some("comment"));
+        // #[Attribute] is not a comment
+        assert_ne!(php_scope_at(&snap, t, "#[Attribute]", 0), Some("comment"));
+        // numbers with hex and separators
+        assert_eq!(php_scope_at(&snap, t, "0x1F", 0), Some("constant"));
+        assert_eq!(php_scope_at(&snap, t, "1_000", 0), Some("constant"));
+        // strings
+        assert_eq!(php_scope_at(&snap, t, "\"hi", 0), Some("string"));
+        assert_eq!(php_scope_at(&snap, t, "'it", 0), Some("string"));
+        // heredoc body (indented closer) and nowdoc body
+        assert_eq!(php_scope_at(&snap, t, "Heredoc", 0), Some("string"));
+        assert_eq!(php_scope_at(&snap, t, "now ", 0), Some("string"));
+        // the code after the heredoc and nowdoc is lexed as code again
+        assert_eq!(php_scope_at(&snap, t, "return", 0), Some("keyword"));
+        // tags: <?php and <?= are open tags, inline HTML stays default
+        assert_eq!(php_scope_at(&snap, t, "<?php", 0), Some("operator"));
+        assert_eq!(php_scope_at(&snap, t, "<?=", 0), Some("operator"));
+        assert_eq!(php_scope_at(&snap, t, "<p>", 0), None);
+    }
+
+    #[test]
+    fn standalone_php_lexer_handles_unicode_and_empty_input() {
+        let t = "<?php echo 'λ🙂'; // ünï\n$café = 1;\n";
+        let snap = Snapshot::lex("php", t, PHP_WORD_LISTS).unwrap();
+        assert_eq!(snap.len(), t.len());
+        assert_eq!(php_scope_at(&snap, t, "echo", 0), Some("keyword"));
+        assert_eq!(php_scope_at(&snap, t, "'λ", 0), Some("string"));
+        assert!(Snapshot::lex("php", "", PHP_WORD_LISTS).unwrap().is_empty());
+        // unterminated constructs must not panic or hang
+        for bad in [
+            "<?php /* open",
+            "<?php <<<EOT\nx",
+            "<?php 'abc",
+            "<?php \"a $",
+        ] {
+            let s = Snapshot::lex("php", bad, PHP_WORD_LISTS).unwrap();
+            assert_eq!(s.len(), bad.len());
+        }
+    }
+
+    #[test]
+    fn php_routing_is_content_based() {
+        assert!(is_pure_php("<?php\necho 1;"));
+        assert!(is_pure_php("\u{feff}  \n<?PHP echo 1;"));
+        assert!(!is_pure_php("<html>\n<?php echo 1; ?>"));
+        assert!(!is_pure_php("<?= $x ?>"));
+        assert!(!is_pure_php(""));
+        // pure PHP: standalone lexer (a nowdoc body is a string there)
+        let pure = "<?php\n$a = <<<'X'\nbody\nX;\n";
+        let snap = highlight(LapceLanguage::Php, &Rope::from(pure)).unwrap();
+        assert_eq!(php_scope_at(&snap, pure, "body", 0), Some("string"));
+        // template: still highlighted through hypertext
+        let tpl = "<p>x</p>\n<?php echo 1; ?>";
+        assert!(highlight(LapceLanguage::Php, &Rope::from(tpl)).is_some());
+    }
+
+    const LARAVEL_FIXTURE: &str = "<?php\nnamespace App\\Http;\n#[Middleware('auth')]\nRoute::middleware('auth')->get('/home', fn () => view('home'));\nRoute::get('/x', [UserController::class, 'index'])->middleware(['verified', 'throttle:60,1']);\n$users = User::where('active', 1)->get();\n$c = config('auth');\n$s = $this->guard('web');\n$h = <<<EOT\n  Hello {$name}\n  EOT;\nArtisan::call('migrate:fresh');\n// php artisan make:model Post\nmake:model;\n$a = $x ? a:b : 1;\n";
+
+    fn lv(
+        snap: &Snapshot,
+        t: &str,
+        needle: &str,
+        nth: usize,
+    ) -> Option<&'static str> {
+        php_scope_at(snap, t, needle, nth)
+    }
+
+    #[test]
+    fn laravel_lexer_colours_framework_constructs() {
+        let t = LARAVEL_FIXTURE;
+        let snap =
+            Snapshot::lex("laravel", t, LARAVEL_WORD_LISTS).expect("laravel lexer");
+        assert_eq!(snap.len(), t.len());
+        // facades (PascalCase before ::) and the facade list
+        assert_eq!(lv(&snap, t, "Route", 0), Some("type"));
+        assert_eq!(lv(&snap, t, "User", 0), Some("type"));
+        assert_eq!(lv(&snap, t, "Artisan", 0), Some("type"));
+        // route methods and Eloquent methods after ::/->  (only after ::)
+        assert_eq!(lv(&snap, t, "middleware('auth')->get", 0), Some("function"));
+        assert_eq!(lv(&snap, t, "where", 0), Some("function"));
+        // helpers only when called
+        assert_eq!(lv(&snap, t, "view('home')", 0), Some("function"));
+        assert_eq!(lv(&snap, t, "config('auth')", 0), Some("function"));
+        // PHP attribute span
+        assert_eq!(lv(&snap, t, "#[Middleware", 0), Some("type"));
+        assert_eq!(lv(&snap, t, "Middleware('auth')]", 0), Some("type"));
+        // middleware aliases only in a middleware() context
+        assert_eq!(lv(&snap, t, "'verified'", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "'throttle:60,1'", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "'auth')->get", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "'auth');\n$s", 0), Some("string"));
+        assert_eq!(lv(&snap, t, "'web'", 0), Some("string"));
+        // heredoc with interpolation
+        assert_eq!(lv(&snap, t, "Hello", 0), Some("string"));
+        // artisan command in code, and plain PHP still works
+        assert_eq!(lv(&snap, t, "make:model;", 0), Some("function"));
+        assert_eq!(lv(&snap, t, "namespace", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "// php", 0), Some("comment"));
+        // a ternary "a:b" must not be mistaken for an artisan command
+        assert_ne!(lv(&snap, t, "a:b", 0), Some("function"));
+    }
+
+    #[test]
+    fn laravel_lexer_blade_directives_in_inline_html() {
+        let t = "<?php ?>\n<div>@if($a) x @endif @foreach($l as $i) mail@me.com @endforeach</div>\n";
+        let snap = Snapshot::lex("laravel", t, LARAVEL_WORD_LISTS).unwrap();
+        assert_eq!(lv(&snap, t, "@if", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@endif", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@foreach", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@endforeach", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@me", 0), None, "email is not a directive");
+        assert_eq!(lv(&snap, t, "<div>", 0), None);
+    }
+
+    #[test]
+    fn laravel_lexer_survives_unterminated_input() {
+        for bad in [
+            "<?php Route::",
+            "<?php #[",
+            "<?php ->middleware('au",
+            "<?php <<<E\n",
+            "@if",
+        ] {
+            let s = Snapshot::lex("laravel", bad, LARAVEL_WORD_LISTS).unwrap();
+            assert_eq!(s.len(), bad.len());
+        }
+    }
+
+    #[test]
+    fn laravel_project_detection_and_routing() {
+        let dir =
+            std::env::temp_dir().join(format!("lvtest-{}", std::process::id()));
+        let app = dir.join("app/Http");
+        std::fs::create_dir_all(&app).unwrap();
+        let file = app.join("C.php");
+        assert!(!is_laravel_project(&file));
+        let dir2 =
+            std::env::temp_dir().join(format!("lvtest2-{}", std::process::id()));
+        std::fs::create_dir_all(dir2.join("src")).unwrap();
+        std::fs::write(
+            dir2.join("composer.json"),
+            r#"{"require":{"laravel/framework":"^11"}}"#,
+        )
+        .unwrap();
+        assert!(is_laravel_project(&dir2.join("src/X.php")));
+        let dir3 =
+            std::env::temp_dir().join(format!("lvtest3-{}", std::process::id()));
+        std::fs::create_dir_all(dir3.join("src")).unwrap();
+        std::fs::write(
+            dir3.join("composer.json"),
+            r#"{"require":{"symfony/console":"^7"}}"#,
+        )
+        .unwrap();
+        assert!(!is_laravel_project(&dir3.join("src/X.php")));
+        std::fs::write(dir.join("artisan"), "#!/usr/bin/env php").unwrap();
+        assert!(is_laravel_project(&dir.join("app/Other.php")));
+        let code = "<?php\nRoute::get('/');\n";
+        let rope = Rope::from(code);
+        let lv_snap = highlight_in(LapceLanguage::Php, &rope, true).unwrap();
+        assert_eq!(php_scope_at(&lv_snap, code, "Route", 0), Some("type"));
+        let plain = highlight_in(LapceLanguage::Php, &rope, false).unwrap();
+        assert_eq!(php_scope_at(&plain, code, "Route", 0), None);
+        for d in [dir, dir2, dir3] {
+            let _ = std::fs::remove_dir_all(d);
+        }
     }
 }

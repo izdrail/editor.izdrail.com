@@ -15,6 +15,8 @@ pub enum CompletionSource {
     #[default]
     Lsp,
     Snippet,
+    /// Language keywords, builtin functions and types.
+    Keyword,
     Word,
 }
 
@@ -25,6 +27,7 @@ impl CompletionSource {
         match self {
             CompletionSource::Lsp => 24,
             CompletionSource::Snippet => 12,
+            CompletionSource::Keyword => 6,
             CompletionSource::Word => 0,
         }
     }
@@ -77,6 +80,83 @@ pub fn buffer_words(text: &str) -> Vec<String> {
         .into_iter()
         .take(MAX_WORDS)
         .map(|(w, _)| w.to_string())
+        .collect()
+}
+
+/// Keywords, builtin functions and types of a language, for the popup.
+/// Only PHP has lists today (the same ones the PHP lexer highlights).
+pub fn language_items(language_id: &str) -> Vec<CompletionItem> {
+    if language_id != "php" {
+        return Vec::new();
+    }
+    let lists = lapce_core::lexilla::PHP_WORD_LISTS;
+    let kinds = [
+        (0, CompletionItemKind::KEYWORD, "keyword"),
+        (1, CompletionItemKind::FUNCTION, "builtin function"),
+        (2, CompletionItemKind::CLASS, "builtin type"),
+        (3, CompletionItemKind::CONSTANT, "builtin constant"),
+    ];
+    let mut out = Vec::new();
+    for (i, kind, detail) in kinds {
+        for w in lists.get(i).copied().unwrap_or("").split_whitespace() {
+            out.push(CompletionItem {
+                label: w.to_string(),
+                kind: Some(kind),
+                detail: Some(detail.to_string()),
+                insert_text: Some(w.to_string()),
+                ..Default::default()
+            });
+        }
+    }
+    out
+}
+
+/// `$variable` names in PHP text, most frequent first. The label keeps the
+/// `$`, but the inserted text and the filter text do not, because the word
+/// being replaced never includes the `$`.
+pub fn php_variable_items(text: &str) -> Vec<CompletionItem> {
+    let mut count: HashMap<&str, (usize, usize)> = HashMap::new();
+    let bytes = text.as_bytes();
+    let mut n = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i + 1;
+            let mut end = start;
+            for (off, c) in text[start..].char_indices() {
+                let ok = if off == 0 {
+                    is_ident_start(c)
+                } else {
+                    is_ident(c)
+                };
+                if !ok {
+                    break;
+                }
+                end = start + off + c.len_utf8();
+            }
+            if end > start {
+                let e = count.entry(&text[start..end]).or_insert((0, n));
+                e.0 += 1;
+                n += 1;
+            }
+            i = end.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    let mut v: Vec<_> = count.into_iter().collect();
+    v.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.1.1.cmp(&b.1.1)));
+    v.into_iter()
+        .take(MAX_WORDS)
+        .filter(|(name, _)| *name != "this")
+        .map(|(name, _)| CompletionItem {
+            label: format!("${name}"),
+            kind: Some(CompletionItemKind::VARIABLE),
+            detail: Some("variable in file".to_string()),
+            filter_text: Some(name.to_string()),
+            insert_text: Some(name.to_string()),
+            ..Default::default()
+        })
         .collect()
 }
 
@@ -184,6 +264,32 @@ mod tests {
         assert_eq!(e.new_text, "fn $1() {\n    \t$0\n    }");
         assert_eq!(items[0].insert_text_format, Some(InsertTextFormat::SNIPPET));
         assert!(items[0].data.is_none(), "must not be sent to LSP resolve");
+    }
+
+    #[test]
+    fn php_variables_drop_the_dollar_on_insert() {
+        let v = php_variable_items("$a1 = $user->name; $user = $é; $$x; $1 $");
+        let labels: Vec<_> = v.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(labels[0], "$user");
+        assert!(
+            labels.contains(&"$a1")
+                && labels.contains(&"$é")
+                && labels.contains(&"$x")
+        );
+        assert!(!labels.iter().any(|l| l.starts_with("$1")));
+        assert_eq!(v[0].insert_text.as_deref(), Some("user"));
+        assert_eq!(v[0].filter_text.as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn php_language_items_come_from_the_lexer_lists() {
+        let items = language_items("php");
+        let has =
+            |l: &str, k| items.iter().any(|i| i.label == l && i.kind == Some(k));
+        assert!(has("foreach", CompletionItemKind::KEYWORD));
+        assert!(has("json_encode", CompletionItemKind::FUNCTION));
+        assert!(has("string", CompletionItemKind::CLASS));
+        assert!(language_items("rust").is_empty());
     }
 
     #[test]
