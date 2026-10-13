@@ -26,7 +26,7 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: |
@@ -38,7 +38,7 @@ jobs:
           rustup toolchain install 1.98.0 --profile minimal
           rustup default 1.98.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -66,7 +66,7 @@ jobs:
           sha256sum "${dir}.tar.xz" | tee "${dir}.tar.xz.sha256"
           echo "ARTIFACT=${dir}.tar.xz" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lapce-linux-x86_64
           path: |
