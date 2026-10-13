@@ -1173,6 +1173,11 @@ impl EditorData {
             FocusCommand::InlineCompletionCancel => {
                 self.cancel_inline_completion();
             }
+            FocusCommand::GetCompletion => {
+                // Manual "trigger suggest" (ctrl+space): show the popup even
+                // when no word has been typed yet.
+                self.update_completion(true);
+            }
             FocusCommand::InlineCompletionInvoke => {
                 self.update_inline_completion(InlineCompletionTriggerKind::Invoked);
             }
