@@ -1702,6 +1702,10 @@ impl LapceLanguage {
 
     pub fn from_path_raw(path: &Path) -> Option<LapceLanguage> {
         let filename = path.file_name().and_then(|s| s.to_str());
+        // Blade templates share the `php` extension but need their own lexer.
+        if filename.is_some_and(|f| f.to_lowercase().ends_with(".blade.php")) {
+            return Some(LapceLanguage::Blade);
+        }
         let extension = path
             .extension()
             .and_then(|s| s.to_str().map(|s| s.to_lowercase()));

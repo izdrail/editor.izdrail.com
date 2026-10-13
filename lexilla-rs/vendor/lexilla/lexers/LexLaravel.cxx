@@ -76,6 +76,17 @@ using namespace Lexilla;
 #define SCE_LARAVEL_ATTRIBUTE        28   /* #[Middleware], #[Authorize]    */
 #define SCE_LARAVEL_DIRECTIVE        29   /* @if, @foreach, @yield, ...     */
 #define SCE_LARAVEL_DIRECTIVE_END    30   /* @endif, @endforeach, ...       */
+/* ---- Blade template styles (lexer "blade" only) -------------------------- */
+#define SCE_LARAVEL_BLADE_COMMENT    31   /* {{-- ... --}}                  */
+#define SCE_LARAVEL_BLADE_DELIM      32   /* {{ }}  {!! !!}                 */
+#define SCE_LARAVEL_HTML_TAG         33   /* <div  </div  >  />  <!DOCTYPE */
+#define SCE_LARAVEL_HTML_ATTR        34   /* attribute name                 */
+#define SCE_LARAVEL_HTML_VALUE       35   /* attribute value                */
+#define SCE_LARAVEL_HTML_COMMENT     36   /* <!-- ... -->                   */
+#define SCE_LARAVEL_HTML_ENTITY      37   /* &amp; &#39;                    */
+#endif
+#ifndef SCLEX_BLADE
+#define SCLEX_BLADE 145
 #endif
 
 namespace {
@@ -184,6 +195,14 @@ const LexicalClass lexicalClasses[] = {
 	28, "SCE_LARAVEL_ATTRIBUTE",       "type annotation",            "PHP attribute",
 	29, "SCE_LARAVEL_DIRECTIVE",       "keyword",               "Blade directive",
 	30, "SCE_LARAVEL_DIRECTIVE_END",   "keyword",               "Blade end directive",
+	/* Blade template */
+	31, "SCE_LARAVEL_BLADE_COMMENT",   "comment",               "Blade comment",
+	32, "SCE_LARAVEL_BLADE_DELIM",     "keyword",               "Blade echo delimiter",
+	33, "SCE_LARAVEL_HTML_TAG",        "tag",                   "HTML tag",
+	34, "SCE_LARAVEL_HTML_ATTR",       "identifier type",       "HTML attribute name",
+	35, "SCE_LARAVEL_HTML_VALUE",      "literal string",        "HTML attribute value",
+	36, "SCE_LARAVEL_HTML_COMMENT",    "comment",               "HTML comment",
+	37, "SCE_LARAVEL_HTML_ENTITY",     "literal numeric",       "HTML entity",
 };
 
 class LexerLaravel : public DefaultLexer {
@@ -191,7 +210,10 @@ class LexerLaravel : public DefaultLexer {
 	OptionsLaravel options;
 	OptionSetLaravel osLaravel;
 public:
-	LexerLaravel() : DefaultLexer("laravel", SCLEX_LARAVEL, lexicalClasses, std::size(lexicalClasses)) {
+	const bool blade;
+	explicit LexerLaravel(bool isBlade = false) :
+		DefaultLexer(isBlade ? "blade" : "laravel", isBlade ? SCLEX_BLADE : SCLEX_LARAVEL,
+		             lexicalClasses, std::size(lexicalClasses)), blade(isBlade) {
 	}
 	virtual ~LexerLaravel() {
 	}
@@ -223,8 +245,15 @@ public:
 	void * SCI_METHOD PrivateCall(int, void *) override {
 		return nullptr;
 	}
+	void PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position max, bool &inPhp);
+	void PhpRegion(Accessor &styler, Sci_Position pos, Sci_Position end);
+	bool TryBlade(Accessor &styler, Sci_Position &pos, Sci_Position max);
+	void LexBlade(Accessor &styler, Sci_Position max);
 	static ILexer5 *LexerFactoryLaravel() {
 		return new LexerLaravel();
+	}
+	static ILexer5 *LexerFactoryBlade() {
+		return new LexerLaravel(true);
 	}
 };
 
@@ -605,6 +634,9 @@ static bool IsBladeDirective(const char *s) {
 		"readonly", "required", "vite", "inject", "use", "dd", "dump", "stop",
 		"overwrite", "append", "hasSection", "sectionMissing", "fragment",
 		"livewire", "livewireStyles", "livewireScripts", "viteReactRefresh",
+		"session", "teleport", "bool", "elseauth", "elseguest", "elsecan",
+		"elsecannot", "elsecanany", "elseunless", "componentFirst", "pushElseif",
+		"persist",
 		nullptr
 	};
 	for (int i = 0; names[i]; i++)
@@ -622,11 +654,214 @@ static bool IsBladeEndDirective(const char *s) {
 
 /* -------------------------------- Lex ----------------------------------- */
 
+void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position max, bool &inPhp) {
+	const int c  = styler.SafeGetCharAt(pos,     '\0');
+	const int n  = styler.SafeGetCharAt(pos + 1, '\0');
+	const int n2 = styler.SafeGetCharAt(pos + 2, '\0');
+	const int n3 = styler.SafeGetCharAt(pos + 3, '\0');
+	if (IsWhitespace(c)) {
+		while (pos < max && IsWhitespace(styler.SafeGetCharAt(pos, '\0')))
+			pos++;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_DEFAULT);
+	} else if (c == '?' && n == '>') {
+		pos += 2;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_CLOSE_TAG);
+		inPhp = false;
+	} else if (c == '<' && n == '?') {
+		if (n2 == 'p' && n3 == 'h' &&
+		    styler.SafeGetCharAt(pos + 4, '\0') == 'p') {
+			pos += 5;
+			styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
+		} else if (n2 == '=') {
+			pos += 3;
+			styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
+		} else {
+			pos += 2;
+			styler.ColourTo(pos - 1, SCE_LARAVEL_OPERATOR);
+		}
+	} else if (c == '/' && n == '/') {
+		pos += 2;
+		ScanLineComment(styler, pos, max);
+	} else if (c == '#') {
+		if (n == '[') {
+			/* PHP 8 attribute - colour the whole #[...] span. */
+			pos += 2;
+			int depth = 1;
+			while (pos < max && depth > 0) {
+				const int a = styler.SafeGetCharAt(pos, '\0');
+				if (a == '[') depth++;
+				else if (a == ']') depth--;
+				pos++;
+			}
+			styler.ColourTo(pos - 1, SCE_LARAVEL_ATTRIBUTE);
+		} else {
+			pos++;
+			ScanLineComment(styler, pos, max);
+		}
+	} else if (c == '/' && n == '*') {
+		const bool isDoc = (n2 == '*' &&
+		                    styler.SafeGetCharAt(pos + 3, '\0') != '/');
+		pos += 2;
+		ScanBlockComment(styler, pos, max, isDoc);
+	} else if (c == '\'') {
+		Sci_Position mwEnd = 0;
+		if (options.colourLaravel && IsMiddlewareString(styler, pos, max, mwEnd)) {
+			pos = mwEnd;
+			styler.ColourTo(pos - 1, SCE_LARAVEL_MIDDLEWARE);
+		} else {
+			pos++;
+			ScanSingleQuotedString(styler, pos, max);
+		}
+	} else if (c == '"') {
+		pos++;
+		ScanDoubleQuotedString(styler, pos, max);
+	} else if ((c == 'b' || c == 'B') && (n == '\'' || n == '"')) {
+		pos++;
+		if (styler.SafeGetCharAt(pos, '\0') == '\'') {
+			pos++;
+			ScanSingleQuotedString(styler, pos, max);
+		} else {
+			pos++;
+			ScanDoubleQuotedString(styler, pos, max);
+		}
+	} else if (c == '$' && IsIdentifierStart(n)) {
+		pos += 2;
+		while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
+			pos++;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_VARIABLE);
+	} else if (c == '<' && n == '<' && n2 == '<') {
+		pos += 3;
+		ScanHeredoc(styler, pos, max);
+	} else if (IsIdentifierStart(c)) {
+		const Sci_Position identStart = pos;
+
+		/* ---- Laravel helpers and facades ----------------------------
+		 * We must decide the style *before* consuming the identifier,
+		 * because helpers are followed by "(" while ordinary
+		 * identifiers are not.  We look ahead past the identifier. */
+		while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
+			pos++;
+		const Sci_Position identEnd = pos;
+
+		char s[MAX_LARAVEL_IDENT_CHARS + 1];
+		Sci_Position len = identEnd - identStart;
+		len = len > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : len;
+		GrabString(s, styler, identStart, len);
+
+		/* Look ahead for "(" (helper) or "::" (facade). */
+		Sci_Position la = identEnd;
+		while (la < max && IsWhitespace(styler.SafeGetCharAt(la, '\0')))
+			la++;
+		const bool nextIsParen = (la < max && styler.SafeGetCharAt(la, '\0') == '(');
+		const bool nextIsDoubleColon = (la + 1 < max &&
+		                               styler.SafeGetCharAt(la,     '\0') == ':' &&
+		                               styler.SafeGetCharAt(la + 1, '\0') == ':');
+
+		/* Preceding "::" means this is a static call. */
+		Sci_Position pb = identStart - 1;
+		while (pb >= 0 && IsWhitespace(styler.SafeGetCharAt(pb, '\0')))
+			pb--;
+		const bool prevIsDoubleColon = (pb >= 1 &&
+		                               styler.SafeGetCharAt(pb,     '\0') == ':' &&
+		                               styler.SafeGetCharAt(pb - 1, '\0') == ':');
+
+		if (options.colourLaravel) {
+			/* 1) User-provided facades win. */
+			if (keywords[WL_LARAVEL_FACADES].InList(s)) {
+				styler.ColourTo(identEnd - 1, SCE_LARAVEL_FACADE);
+				return;
+			}
+			/* 2) Heuristic: PascalCase before "::" is a facade. */
+			if (nextIsDoubleColon && isupper(static_cast<unsigned char>(s[0]))) {
+				styler.ColourTo(identEnd - 1, SCE_LARAVEL_FACADE);
+				return;
+			}
+			/* 3) After "::" - route method, Eloquent, middleware, etc. */
+			if (prevIsDoubleColon) {
+				if (keywords[WL_LARAVEL_METHODS].InList(s)) {
+					styler.ColourTo(identEnd - 1, SCE_LARAVEL_ROUTE_METHOD);
+					return;
+				}
+				/* Eloquent builder methods and anything else on the
+				 * Laravel method list are also coloured here. */
+				if (keywords[WL_LARAVEL_ELOQUENT].InList(s)) {
+					styler.ColourTo(identEnd - 1, SCE_LARAVEL_ELOQUENT);
+					return;
+				}
+			}
+			/* 4) Helpers: known helper names called as functions. */
+			if (nextIsParen && keywords[WL_LARAVEL_HELPERS].InList(s)) {
+				styler.ColourTo(identEnd - 1, SCE_LARAVEL_HELPER);
+				return;
+			}
+			/* 5) Artisan sub-commands are identifiers containing ':' */
+			/*    (handled below in the identifier loop)             */
+		}
+
+		/* Fall back to the plain PHP word lists. */
+		bool keyword = false;
+		for (int ii = 0; ii < 4; ii++) {   /* WL_PHP_* */
+			if (keywords[ii].InList(s)) {
+				styler.ColourTo(identEnd - 1, SCE_LARAVEL_WORD + ii);
+				keyword = true;
+				break;
+			}
+		}
+		if (!keyword) {
+			/* Artisan commands contain ':' (make:model, migrate:fresh).
+			 * The PHP identifier scanner stops at ':', so we have to
+			 * extend it here. */
+			if (pos < max && styler.SafeGetCharAt(pos, '\0') == ':') {
+				const Sci_Position saved = pos;
+				pos++;
+				const Sci_Position subStart = pos;
+				while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
+					pos++;
+				if (pos > subStart) {
+					/* Re-read the whole "a:b" string and test it. */
+					char full[MAX_LARAVEL_IDENT_CHARS + 1];
+					Sci_Position fullLen = pos - identStart;
+					fullLen = fullLen > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : fullLen;
+					GrabString(full, styler, identStart, fullLen);
+					if (keywords[WL_LARAVEL_ARTISAN].InList(full)) {
+						styler.ColourTo(pos - 1, SCE_LARAVEL_ARTISAN);
+						return;
+					}
+					/* Not an Artisan command - keep the sub-part
+					 * as a plain identifier by re-colouring. */
+					styler.ColourTo(identEnd - 1, SCE_LARAVEL_IDENTIFIER);
+					styler.ColourTo(pos - 1, SCE_LARAVEL_IDENTIFIER);
+					return;
+				}
+				pos = saved;
+			}
+			styler.ColourTo(identEnd - 1, SCE_LARAVEL_IDENTIFIER);
+		}
+	} else if (c >= '0' && c <= '9') {
+		ScanNumber(styler, pos, max);
+	} else if (IsOperatorChar(c)) {
+		pos++;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_OPERATOR);
+	} else {
+		pos++;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_LEXERROR);
+	}
+}
+
 void SCI_METHOD LexerLaravel::Lex(Sci_PositionU startPos, Sci_Position length, int initStyle, IDocument *pAccess) {
 	PropSetSimple props;
 	Accessor styler(pAccess, &props);
 	Sci_Position pos = startPos;
 	const Sci_Position max = pos + length;
+
+	if (blade) {
+		/* Blade templates are always lexed as one document from the start. */
+		styler.StartAt(0);
+		styler.StartSegment(0);
+		LexBlade(styler, max);
+		styler.Flush();
+		return;
+	}
 
 	styler.StartAt(pos);
 	styler.StartSegment(pos);
@@ -717,198 +952,354 @@ void SCI_METHOD LexerLaravel::Lex(Sci_PositionU startPos, Sci_Position length, i
 			continue;
 		}
 
-		/* ---- PHP mode ---- */
-		if (IsWhitespace(c)) {
-			while (pos < max && IsWhitespace(styler.SafeGetCharAt(pos, '\0')))
-				pos++;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_DEFAULT);
-		} else if (c == '?' && n == '>') {
-			pos += 2;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_CLOSE_TAG);
-			inPhp = false;
-		} else if (c == '<' && n == '?') {
-			if (n2 == 'p' && n3 == 'h' &&
-			    styler.SafeGetCharAt(pos + 4, '\0') == 'p') {
-				pos += 5;
-				styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
-			} else if (n2 == '=') {
-				pos += 3;
-				styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
-			} else {
-				pos += 2;
-				styler.ColourTo(pos - 1, SCE_LARAVEL_OPERATOR);
-			}
-		} else if (c == '/' && n == '/') {
-			pos += 2;
-			ScanLineComment(styler, pos, max);
-		} else if (c == '#') {
-			if (n == '[') {
-				/* PHP 8 attribute - colour the whole #[...] span. */
-				pos += 2;
-				int depth = 1;
-				while (pos < max && depth > 0) {
-					const int a = styler.SafeGetCharAt(pos, '\0');
-					if (a == '[') depth++;
-					else if (a == ']') depth--;
-					pos++;
-				}
-				styler.ColourTo(pos - 1, SCE_LARAVEL_ATTRIBUTE);
-			} else {
-				pos++;
-				ScanLineComment(styler, pos, max);
-			}
-		} else if (c == '/' && n == '*') {
-			const bool isDoc = (n2 == '*' &&
-			                    styler.SafeGetCharAt(pos + 3, '\0') != '/');
-			pos += 2;
-			ScanBlockComment(styler, pos, max, isDoc);
-		} else if (c == '\'') {
-			Sci_Position mwEnd = 0;
-			if (options.colourLaravel && IsMiddlewareString(styler, pos, max, mwEnd)) {
-				pos = mwEnd;
-				styler.ColourTo(pos - 1, SCE_LARAVEL_MIDDLEWARE);
-			} else {
-				pos++;
-				ScanSingleQuotedString(styler, pos, max);
-			}
-		} else if (c == '"') {
-			pos++;
-			ScanDoubleQuotedString(styler, pos, max);
-		} else if ((c == 'b' || c == 'B') && (n == '\'' || n == '"')) {
-			pos++;
-			if (styler.SafeGetCharAt(pos, '\0') == '\'') {
-				pos++;
-				ScanSingleQuotedString(styler, pos, max);
-			} else {
-				pos++;
-				ScanDoubleQuotedString(styler, pos, max);
-			}
-		} else if (c == '$' && IsIdentifierStart(n)) {
-			pos += 2;
-			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
-				pos++;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_VARIABLE);
-		} else if (c == '<' && n == '<' && n2 == '<') {
-			pos += 3;
-			ScanHeredoc(styler, pos, max);
-		} else if (IsIdentifierStart(c)) {
-			const Sci_Position identStart = pos;
-
-			/* ---- Laravel helpers and facades ----------------------------
-			 * We must decide the style *before* consuming the identifier,
-			 * because helpers are followed by "(" while ordinary
-			 * identifiers are not.  We look ahead past the identifier. */
-			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
-				pos++;
-			const Sci_Position identEnd = pos;
-
-			char s[MAX_LARAVEL_IDENT_CHARS + 1];
-			Sci_Position len = identEnd - identStart;
-			len = len > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : len;
-			GrabString(s, styler, identStart, len);
-
-			/* Look ahead for "(" (helper) or "::" (facade). */
-			Sci_Position la = identEnd;
-			while (la < max && IsWhitespace(styler.SafeGetCharAt(la, '\0')))
-				la++;
-			const bool nextIsParen = (la < max && styler.SafeGetCharAt(la, '\0') == '(');
-			const bool nextIsDoubleColon = (la + 1 < max &&
-			                               styler.SafeGetCharAt(la,     '\0') == ':' &&
-			                               styler.SafeGetCharAt(la + 1, '\0') == ':');
-
-			/* Preceding "::" means this is a static call. */
-			Sci_Position pb = identStart - 1;
-			while (pb >= 0 && IsWhitespace(styler.SafeGetCharAt(pb, '\0')))
-				pb--;
-			const bool prevIsDoubleColon = (pb >= 1 &&
-			                               styler.SafeGetCharAt(pb,     '\0') == ':' &&
-			                               styler.SafeGetCharAt(pb - 1, '\0') == ':');
-
-			if (options.colourLaravel) {
-				/* 1) User-provided facades win. */
-				if (keywords[WL_LARAVEL_FACADES].InList(s)) {
-					styler.ColourTo(identEnd - 1, SCE_LARAVEL_FACADE);
-					continue;
-				}
-				/* 2) Heuristic: PascalCase before "::" is a facade. */
-				if (nextIsDoubleColon && isupper(static_cast<unsigned char>(s[0]))) {
-					styler.ColourTo(identEnd - 1, SCE_LARAVEL_FACADE);
-					continue;
-				}
-				/* 3) After "::" - route method, Eloquent, middleware, etc. */
-				if (prevIsDoubleColon) {
-					if (keywords[WL_LARAVEL_METHODS].InList(s)) {
-						styler.ColourTo(identEnd - 1, SCE_LARAVEL_ROUTE_METHOD);
-						continue;
-					}
-					/* Eloquent builder methods and anything else on the
-					 * Laravel method list are also coloured here. */
-					if (keywords[WL_LARAVEL_ELOQUENT].InList(s)) {
-						styler.ColourTo(identEnd - 1, SCE_LARAVEL_ELOQUENT);
-						continue;
-					}
-				}
-				/* 4) Helpers: known helper names called as functions. */
-				if (nextIsParen && keywords[WL_LARAVEL_HELPERS].InList(s)) {
-					styler.ColourTo(identEnd - 1, SCE_LARAVEL_HELPER);
-					continue;
-				}
-				/* 5) Artisan sub-commands are identifiers containing ':' */
-				/*    (handled below in the identifier loop)             */
-			}
-
-			/* Fall back to the plain PHP word lists. */
-			bool keyword = false;
-			for (int ii = 0; ii < 4; ii++) {   /* WL_PHP_* */
-				if (keywords[ii].InList(s)) {
-					styler.ColourTo(identEnd - 1, SCE_LARAVEL_WORD + ii);
-					keyword = true;
-					break;
-				}
-			}
-			if (!keyword) {
-				/* Artisan commands contain ':' (make:model, migrate:fresh).
-				 * The PHP identifier scanner stops at ':', so we have to
-				 * extend it here. */
-				if (pos < max && styler.SafeGetCharAt(pos, '\0') == ':') {
-					const Sci_Position saved = pos;
-					pos++;
-					const Sci_Position subStart = pos;
-					while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
-						pos++;
-					if (pos > subStart) {
-						/* Re-read the whole "a:b" string and test it. */
-						char full[MAX_LARAVEL_IDENT_CHARS + 1];
-						Sci_Position fullLen = pos - identStart;
-						fullLen = fullLen > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : fullLen;
-						GrabString(full, styler, identStart, fullLen);
-						if (keywords[WL_LARAVEL_ARTISAN].InList(full)) {
-							styler.ColourTo(pos - 1, SCE_LARAVEL_ARTISAN);
-							continue;
-						}
-						/* Not an Artisan command - keep the sub-part
-						 * as a plain identifier by re-colouring. */
-						styler.ColourTo(identEnd - 1, SCE_LARAVEL_IDENTIFIER);
-						styler.ColourTo(pos - 1, SCE_LARAVEL_IDENTIFIER);
-						continue;
-					}
-					pos = saved;
-				}
-				styler.ColourTo(identEnd - 1, SCE_LARAVEL_IDENTIFIER);
-			}
-		} else if (c >= '0' && c <= '9') {
-			ScanNumber(styler, pos, max);
-		} else if (IsOperatorChar(c)) {
-			pos++;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_OPERATOR);
-		} else {
-			pos++;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_LEXERROR);
-		}
+		PhpToken(styler, pos, max, inPhp);
 	}
 
 	styler.ColourTo(pos - 1, SCE_LARAVEL_DEFAULT);
 	styler.Flush();
+}
+
+/* ------------------------------- Blade ---------------------------------- */
+
+static Sci_Position FindText(Accessor &styler, Sci_Position from, Sci_Position max, const char *needle) {
+	const Sci_Position nl = static_cast<Sci_Position>(strlen(needle));
+	for (Sci_Position p = from; p + nl <= max; p++) {
+		Sci_Position i = 0;
+		while (i < nl && styler.SafeGetCharAt(p + i, '\0') == needle[i])
+			i++;
+		if (i == nl)
+			return p;
+	}
+	return -1;
+}
+
+static bool MatchWordCI(Accessor &styler, Sci_Position p, Sci_Position max, const char *w) {
+	const Sci_Position wl = static_cast<Sci_Position>(strlen(w));
+	if (p + wl > max)
+		return false;
+	for (Sci_Position i = 0; i < wl; i++)
+		if (tolower(static_cast<unsigned char>(styler.SafeGetCharAt(p + i, '\0'))) != w[i])
+			return false;
+	return true;
+}
+
+/* Index of the ')' matching the '(' at open, skipping quoted strings; -1 if none. */
+static Sci_Position FindMatchingParen(Accessor &styler, Sci_Position open, Sci_Position max) {
+	int depth = 0;
+	for (Sci_Position p = open; p < max; p++) {
+		const int ch = styler.SafeGetCharAt(p, '\0');
+		if (ch == '\'' || ch == '"') {
+			for (p++; p < max; p++) {
+				const int q = styler.SafeGetCharAt(p, '\0');
+				if (q == '\\') p++;
+				else if (q == ch) break;
+			}
+		} else if (ch == '(') {
+			depth++;
+		} else if (ch == ')') {
+			if (--depth == 0)
+				return p;
+		}
+	}
+	return -1;
+}
+
+/* PHP tokens in [pos, end); the region never runs past end. */
+void LexerLaravel::PhpRegion(Accessor &styler, Sci_Position pos, Sci_Position end) {
+	bool inPhp = true;
+	while (pos < end) {
+		const Sci_Position before = pos;
+		PhpToken(styler, pos, end, inPhp);
+		inPhp = true;           /* a stray "?>" does not end a Blade expression */
+		if (pos <= before)
+			pos = before + 1;
+	}
+}
+
+static bool IsHtmlNameChar(int ch) {
+	return IsASCII(ch) && (isalnum(ch) || ch == '-' || ch == '_' || ch == ':' || ch == '.');
+}
+
+/* Blade constructs that apply in every HTML state. Returns true if it consumed input. */
+bool LexerLaravel::TryBlade(Accessor &styler, Sci_Position &pos, Sci_Position max) {
+	const int c  = styler.SafeGetCharAt(pos,     '\0');
+	const int n  = styler.SafeGetCharAt(pos + 1, '\0');
+	const int n2 = styler.SafeGetCharAt(pos + 2, '\0');
+	const int n3 = styler.SafeGetCharAt(pos + 3, '\0');
+
+	if (c == '{' && n == '{' && n2 == '-' && n3 == '-') {
+		const Sci_Position e = FindText(styler, pos + 4, max, "--}}");
+		pos = e < 0 ? max : e + 4;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_BLADE_COMMENT);
+		return true;
+	}
+	if (c == '@' && n == '{' && n2 == '{') {
+		/* @{{ x }} is output literally for JavaScript frameworks. */
+		const Sci_Position e = FindText(styler, pos + 3, max, "}}");
+		pos = e < 0 ? max : e + 2;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_INLINE_HTML);
+		return true;
+	}
+	if (c == '@' && n == '@') {
+		pos += 2;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_INLINE_HTML);
+		return true;
+	}
+	if (c == '{' && (n == '{' || (n == '!' && n2 == '!'))) {
+		const bool raw = (n == '!');
+		const int dl = raw ? 3 : 2;
+		const Sci_Position e = FindText(styler, pos + dl, max, raw ? "!!}" : "}}");
+		const Sci_Position innerEnd = e < 0 ? max : e;
+		pos += dl;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_BLADE_DELIM);
+		PhpRegion(styler, pos, innerEnd);
+		pos = innerEnd;
+		if (e >= 0) {
+			pos = e + dl;
+			styler.ColourTo(pos - 1, SCE_LARAVEL_BLADE_DELIM);
+		}
+		return true;
+	}
+	if (c == '<' && n == '?') {
+		int open = 0;
+		if (n2 == 'p' && n3 == 'h' && styler.SafeGetCharAt(pos + 4, '\0') == 'p') open = 5;
+		else if (n2 == '=') open = 3;
+		else if (n2 == ' ' || n2 == '\t' || n2 == '\n' || n2 == '\r') open = 2;
+		if (!open)
+			return false;
+		pos += open;
+		styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
+		bool inPhp = true;
+		while (pos < max && inPhp) {
+			const Sci_Position before = pos;
+			PhpToken(styler, pos, max, inPhp);
+			if (pos <= before)
+				pos = before + 1;
+		}
+		return true;
+	}
+	if (c == '@' && IsIdentifierStart(n) &&
+	    (pos == 0 || !IsIdentifierContinue(styler.SafeGetCharAt(pos - 1, '\0')))) {
+		Sci_Position e = pos + 1;
+		while (e < max && IsIdentifierContinue(styler.SafeGetCharAt(e, '\0')))
+			e++;
+		char dname[64];
+		Sci_Position dl = e - (pos + 1);
+		dl = dl > 63 ? 63 : dl;
+		GrabString(dname, styler, pos + 1, dl);
+		dname[dl] = '\0';
+		const bool isEnd = IsBladeEndDirective(dname);
+		if (!isEnd && !IsBladeDirective(dname))
+			return false;
+		pos = e;
+		styler.ColourTo(pos - 1, isEnd ? SCE_LARAVEL_DIRECTIVE_END : SCE_LARAVEL_DIRECTIVE);
+		if (isEnd)
+			return true;
+
+		Sci_Position q = pos;
+		while (q < max && (styler.SafeGetCharAt(q, '\0') == ' ' || styler.SafeGetCharAt(q, '\0') == '\t'))
+			q++;
+		const bool hasArgs = styler.SafeGetCharAt(q, '\0') == '(';
+
+		if (strcmp(dname, "verbatim") == 0) {
+			const Sci_Position v = FindText(styler, pos, max, "@endverbatim");
+			const Sci_Position stop = v < 0 ? max : v;
+			if (stop > pos) {
+				styler.ColourTo(stop - 1, SCE_LARAVEL_INLINE_HTML);
+				pos = stop;
+			}
+			return true;
+		}
+		if (strcmp(dname, "php") == 0 && !hasArgs) {
+			const Sci_Position v = FindText(styler, pos, max, "@endphp");
+			const Sci_Position stop = v < 0 ? max : v;
+			PhpRegion(styler, pos, stop);
+			pos = stop;
+			return true;
+		}
+		if (hasArgs) {
+			const Sci_Position r = FindMatchingParen(styler, q, max);
+			if (r >= 0) {
+				PhpRegion(styler, pos, r + 1);
+				pos = r + 1;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+/* HTML around Blade constructs. Blade is expanded on the server, so its
+ * constructs are recognised inside tags, attribute values and comments too. */
+void LexerLaravel::LexBlade(Accessor &styler, Sci_Position max) {
+	enum { H_TEXT, H_TAG, H_COMMENT, H_DQ, H_SQ, H_RAW };
+	int hs = H_TEXT;
+	bool afterEq = false;
+	bool closing = false;
+	char tagName[16] = "";
+	char rawEnd[16] = "";
+	Sci_Position pos = 0;
+
+	while (pos < max) {
+		const Sci_Position before = pos;
+		if (TryBlade(styler, pos, max))
+			continue;
+		const int c = styler.SafeGetCharAt(pos, '\0');
+		const int n = styler.SafeGetCharAt(pos + 1, '\0');
+		const int n2 = styler.SafeGetCharAt(pos + 2, '\0');
+
+		switch (hs) {
+		case H_TEXT:
+			if (c == '<' && n == '!' && n2 == '-' && styler.SafeGetCharAt(pos + 3, '\0') == '-') {
+				pos += 4;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_COMMENT);
+				hs = H_COMMENT;
+			} else if (c == '<' && n == '!') {
+				while (pos < max && styler.SafeGetCharAt(pos, '\0') != '>')
+					pos++;
+				if (pos < max)
+					pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_TAG);
+			} else if (c == '<' && (IsASCII(n) && isalpha(n) ||
+			           (n == '/' && IsASCII(n2) && isalpha(n2)))) {
+				closing = (n == '/');
+				pos += closing ? 2 : 1;
+				int k = 0;
+				while (pos < max && IsHtmlNameChar(styler.SafeGetCharAt(pos, '\0'))) {
+					if (k < 15)
+						tagName[k++] = static_cast<char>(tolower(static_cast<unsigned char>(styler.SafeGetCharAt(pos, '\0'))));
+					pos++;
+				}
+				tagName[k] = '\0';
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_TAG);
+				hs = H_TAG;
+				afterEq = false;
+			} else if (c == '&') {
+				Sci_Position e = pos + 1;
+				while (e < max && e - pos < 12 && (isalnum(static_cast<unsigned char>(styler.SafeGetCharAt(e, '\0'))) ||
+				       styler.SafeGetCharAt(e, '\0') == '#'))
+					e++;
+				if (e > pos + 1 && styler.SafeGetCharAt(e, '\0') == ';') {
+					pos = e + 1;
+					styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_ENTITY);
+				} else {
+					pos++;
+					styler.ColourTo(pos - 1, SCE_LARAVEL_INLINE_HTML);
+				}
+			} else {
+				pos++;
+				while (pos < max) {
+					const int h = styler.SafeGetCharAt(pos, '\0');
+					if (h == '<' || h == '{' || h == '@' || h == '&')
+						break;
+					pos++;
+				}
+				styler.ColourTo(pos - 1, SCE_LARAVEL_INLINE_HTML);
+			}
+			break;
+
+		case H_COMMENT:
+			if (c == '-' && n == '-' && n2 == '>') {
+				pos += 3;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_COMMENT);
+				hs = H_TEXT;
+			} else {
+				pos++;
+				while (pos < max) {
+					const int h = styler.SafeGetCharAt(pos, '\0');
+					if (h == '-' || h == '{' || h == '@' || h == '<')
+						break;
+					pos++;
+				}
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_COMMENT);
+			}
+			break;
+
+		case H_RAW:
+			if (c == '<' && n == '/' && MatchWordCI(styler, pos, max, rawEnd)) {
+				hs = H_TEXT;
+			} else {
+				pos++;
+				while (pos < max) {
+					const int h = styler.SafeGetCharAt(pos, '\0');
+					if (h == '<' || h == '{' || h == '@')
+						break;
+					pos++;
+				}
+				styler.ColourTo(pos - 1, SCE_LARAVEL_INLINE_HTML);
+			}
+			break;
+
+		case H_DQ:
+		case H_SQ: {
+			const int quote = (hs == H_DQ) ? '"' : '\'';
+			if (c == quote) {
+				pos++;
+				hs = H_TAG;
+			} else {
+				pos++;
+				while (pos < max) {
+					const int h = styler.SafeGetCharAt(pos, '\0');
+					if (h == quote || h == '{' || h == '@' || h == '<')
+						break;
+					pos++;
+				}
+			}
+			styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_VALUE);
+			break;
+		}
+
+		case H_TAG:
+		default:
+			if (IsWhitespace(c)) {
+				while (pos < max && IsWhitespace(styler.SafeGetCharAt(pos, '\0')))
+					pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_DEFAULT);
+			} else if (c == '>') {
+				pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_TAG);
+				hs = H_TEXT;
+				if (!closing && (strcmp(tagName, "script") == 0 || strcmp(tagName, "style") == 0)) {
+					hs = H_RAW;
+					snprintf(rawEnd, sizeof(rawEnd), "</%s", tagName);
+				}
+			} else if (c == '/' && n == '>') {
+				pos += 2;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_TAG);
+				hs = H_TEXT;
+			} else if (c == '/') {
+				pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_TAG);
+			} else if (c == '=') {
+				pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_OPERATOR);
+				afterEq = true;
+			} else if (c == '"' || c == '\'') {
+				pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_HTML_VALUE);
+				hs = (c == '"') ? H_DQ : H_SQ;
+				afterEq = false;
+			} else if (c == '<') {
+				hs = H_TEXT;      /* unterminated tag: let the text state restart */
+				afterEq = false;
+			} else {
+				pos++;
+				while (pos < max) {
+					const int h = styler.SafeGetCharAt(pos, '\0');
+					if (IsWhitespace(h) || h == '>' || h == '"' || h == '\'' || h == '<' ||
+					    (h == '=' && !afterEq) || (h == '/' && !afterEq) ||
+					    (h == '{' && (styler.SafeGetCharAt(pos + 1, '\0') == '{' ||
+					                  styler.SafeGetCharAt(pos + 1, '\0') == '!')))
+						break;
+					pos++;
+				}
+				styler.ColourTo(pos - 1, afterEq ? SCE_LARAVEL_HTML_VALUE : SCE_LARAVEL_HTML_ATTR);
+				afterEq = false;
+			}
+			break;
+		}
+	}
+	styler.ColourTo(max - 1, SCE_LARAVEL_DEFAULT);
 }
 
 /* -------------------------------- Fold ---------------------------------- */
@@ -995,3 +1386,4 @@ void SCI_METHOD LexerLaravel::Fold(Sci_PositionU startPos, Sci_Position length, 
 } // anonymous namespace
 
 extern const LexerModule lmLaravel(SCLEX_LARAVEL, LexerLaravel::LexerFactoryLaravel, "laravel", laravelWordLists);
+extern const LexerModule lmBlade(SCLEX_BLADE, LexerLaravel::LexerFactoryBlade, "blade", laravelWordLists);

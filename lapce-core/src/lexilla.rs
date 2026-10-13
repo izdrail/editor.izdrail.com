@@ -125,6 +125,10 @@ pub fn highlight_in(
                 "abs all any bool bytes dict enumerate float int len list map max min object open print range repr set str sum super tuple type zip",
             ],
         ),
+        // Blade templates: HTML, Blade directives/echo blocks and PHP in one lexer.
+        // Outside a Laravel project the framework word lists stay empty.
+        Blade if laravel => ("blade", LARAVEL_WORD_LISTS),
+        Blade => ("blade", PHP_WORD_LISTS),
         Php if laravel && is_pure_php(&source) => ("laravel", LARAVEL_WORD_LISTS),
         Php if is_pure_php(&source) => ("php", PHP_WORD_LISTS),
         Html | Php => (
@@ -225,7 +229,7 @@ mod tests {
         use LapceLanguage::*;
         for language in [
             C, Cpp, Javascript, Typescript, Csharp, Java, Python, Html, Php, Css,
-            Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml,
+            Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade,
         ] {
             assert!(
                 highlight(language, &Rope::from("text\n")).is_some(),
@@ -422,6 +426,133 @@ mod tests {
         assert_eq!(lv(&snap, t, "@endforeach", 0), Some("keyword"));
         assert_eq!(lv(&snap, t, "@me", 0), None, "email is not a directive");
         assert_eq!(lv(&snap, t, "<div>", 0), None);
+    }
+
+    const BLADE_FIXTURE: &str = "@extends('layouts.app')\n{{-- note @if --}}\n@section('content')\n<div class=\"card {{ $cls }}\" id='a' @disabled($off) data-x=raw>\n  @if ($user->isAdmin() && count($items) > 0)\n    <p>Hello, {{ $user->name ?? 'guest' }} &amp; {!! $html !!}</p>\n  @elseif(true) @else @endif\n  @foreach ($items as $item)\n    <li>{{ route('items.show', $item) }}</li>\n  @endforeach\n</div>\n<!-- c {{ $x }} -->\n@php\n  $total = 1 + 2; // sum\n  $s = \"a\";\n@endphp\n@php($y = 3)\n@verbatim {{ raw }} @if @endverbatim\n@{{ vue }} mail@me.com @@if\n<script>if (a < b) { x = \"{{ $js }}\"; }</script>\n<?php echo $legacy; ?>\n@endsection\n";
+
+    fn bl(snap: &Snapshot, needle: &str, nth: usize) -> Option<&'static str> {
+        php_scope_at(snap, BLADE_FIXTURE, needle, nth)
+    }
+
+    #[test]
+    fn blade_lexer_covers_directives_echo_php_and_html() {
+        let t = BLADE_FIXTURE;
+        let snap =
+            Snapshot::lex("blade", t, LARAVEL_WORD_LISTS).expect("blade lexer");
+        // directives and their PHP arguments
+        assert_eq!(bl(&snap, "@extends", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "'layouts.app'", 0), Some("string"));
+        assert_eq!(bl(&snap, "@section", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "@if (", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "&&", 0), Some("operator"));
+        assert_eq!(bl(&snap, "@elseif", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "@else ", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "@endif", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "@foreach", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "@endsection", 0), Some("keyword"));
+        // blade comment hides directives
+        assert_eq!(bl(&snap, "{{-- note", 0), Some("comment"));
+        assert_eq!(bl(&snap, "@if --}}", 0), Some("comment"));
+        // echo blocks: delimiters keyword, PHP inside
+        assert_eq!(bl(&snap, "{{ $cls", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "'guest'", 0), Some("string"));
+        assert_eq!(bl(&snap, "{!!", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "!!}", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "route(", 0), Some("function"));
+        assert_eq!(bl(&snap, "'items.show'", 0), Some("string"));
+        // HTML around everything
+        assert_eq!(bl(&snap, "<div", 0), Some("tag"));
+        assert_eq!(bl(&snap, "class", 0), Some("type"));
+        assert_eq!(bl(&snap, "\"card ", 0), Some("string"));
+        assert_eq!(bl(&snap, "id=", 0), Some("type"));
+        assert_eq!(bl(&snap, "raw>", 0), Some("string"));
+        assert_eq!(bl(&snap, "</p>", 0), Some("tag"));
+        assert_eq!(bl(&snap, "&amp;", 0), Some("constant"));
+        assert_eq!(bl(&snap, "<!-- c", 0), Some("comment"));
+        assert_eq!(bl(&snap, "{{ $x }} -->", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "Hello", 0), None);
+        // @php ... @endphp with full PHP
+        assert_eq!(bl(&snap, "@php\n", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "// sum", 0), Some("comment"));
+        assert_eq!(bl(&snap, "\"a\"", 0), Some("string"));
+        assert_eq!(bl(&snap, "@endphp", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "@php($y", 0), Some("keyword"));
+        // verbatim, escapes, email, script, raw php tags
+        assert_eq!(bl(&snap, "@if @endverbatim", 0), None);
+        assert_eq!(bl(&snap, "@endverbatim", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "{{ raw }}", 0), None);
+        assert_eq!(bl(&snap, "@{{ vue }}", 0), None);
+        assert_eq!(bl(&snap, "@me", 0), None);
+        assert_eq!(bl(&snap, "@@if", 0), None);
+        assert_eq!(bl(&snap, "<script>", 0), Some("tag"));
+        assert_eq!(bl(&snap, "if (a < b)", 0), None);
+        assert_eq!(bl(&snap, "{{ $js }}", 0), Some("keyword"));
+        assert_eq!(bl(&snap, "</script>", 0), Some("tag"));
+        assert_eq!(bl(&snap, "<?php", 0), Some("operator"));
+        assert_eq!(bl(&snap, "echo", 0), Some("keyword"));
+    }
+
+    #[test]
+    fn blade_lexer_survives_unterminated_input() {
+        for bad in [
+            "{{",
+            "{{ $a",
+            "{!! $a",
+            "{{--",
+            "@if(",
+            "@if($a",
+            "@php",
+            "@php\n$a = '",
+            "@verbatim x",
+            "<div class=\"",
+            "<div {{",
+            "<!--",
+            "<?php",
+            "@{{",
+            "<",
+            "@section('a', ['x' => \"y",
+            "<script>{{ ",
+            "\u{feff}@if(λ)🙂",
+        ] {
+            let s = Snapshot::lex("blade", bad, LARAVEL_WORD_LISTS).unwrap();
+            assert_eq!(s.len(), bad.len(), "{bad:?}");
+        }
+        assert!(
+            Snapshot::lex("blade", "", LARAVEL_WORD_LISTS)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn blade_routing_by_file_name() {
+        use std::path::Path;
+        assert_eq!(
+            LapceLanguage::from_path(Path::new("resources/views/home.blade.php")),
+            LapceLanguage::Blade
+        );
+        assert_eq!(
+            LapceLanguage::from_path(Path::new("Home.BLADE.PHP")),
+            LapceLanguage::Blade
+        );
+        assert_eq!(
+            LapceLanguage::from_path(Path::new("app/Http/Home.php")),
+            LapceLanguage::Php
+        );
+        let text = Rope::from("@if($a) <b>{{ $a }}</b> @endif\n");
+        for laravel in [true, false] {
+            let snap =
+                highlight_in(LapceLanguage::Blade, &text, laravel).expect("blade");
+            let s = text.to_string();
+            let pos = s.find("@if").unwrap();
+            assert_eq!(snap.scope(snap.styles()[pos]), Some("keyword"));
+        }
+        // non-Laravel Blade has no framework helper colouring
+        let t = Rope::from("{{ route('a') }}\n");
+        let l = highlight_in(LapceLanguage::Blade, &t, true).unwrap();
+        let p = highlight_in(LapceLanguage::Blade, &t, false).unwrap();
+        assert_eq!(l.scope(l.styles()[3]), Some("function"));
+        assert_ne!(p.scope(p.styles()[3]), Some("function"));
     }
 
     #[test]

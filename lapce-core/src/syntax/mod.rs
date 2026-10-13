@@ -930,7 +930,7 @@ impl Syntax {
         let language = LapceLanguage::from_path(path);
         let mut syntax = Syntax::from_language(language);
         syntax.textmate_scope = crate::textmate::scope_for_path(path);
-        syntax.laravel = language == LapceLanguage::Php
+        syntax.laravel = matches!(language, LapceLanguage::Php | LapceLanguage::Blade)
             && crate::lexilla::is_laravel_project(path);
         syntax
     }
