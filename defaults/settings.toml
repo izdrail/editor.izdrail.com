@@ -112,3 +112,5 @@ tokenizer-path = ""
 prefix-tokens = 512
 suffix-tokens = 128
 max-tokens = 32
+auto-trigger = false
+auto-trigger-debounce-ms = 400

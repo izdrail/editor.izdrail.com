@@ -22,6 +22,12 @@ pub struct Request {
     pub prefix_tokens: usize,
     pub suffix_tokens: usize,
     pub max_tokens: usize,
+    /// Worker-side job identity. Set by the dispatcher, not by the editor:
+    /// cancellation lines reference it so a stale cancel can never kill a
+    /// newer request. Zero means untagged (older client) and matches any
+    /// in-flight request.
+    #[serde(default)]
+    pub request_id: u64,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Completion {
@@ -32,7 +38,41 @@ pub struct Completion {
     pub generation_ms: u128,
     pub prefill_ms: u128,
     pub decode_ms: u128,
+    /// True when generation stopped early because a cancellation line named
+    /// this request. The worker still emits exactly one response line so the
+    /// parent pipe stays in sync; text is empty.
+    #[serde(default)]
+    pub cancelled: bool,
 }
+/// One stdin line for the worker process: either a completion request or a
+/// cooperative cancellation naming the in-flight request id. Cancellation
+/// keeps the process (and the loaded model) alive; killing the process
+/// remains the hard fallback.
+#[derive(Debug)]
+pub enum Wire {
+    Request(Request),
+    Cancel(u64),
+}
+#[derive(Deserialize)]
+struct CancelLine {
+    cancel_request: u64,
+}
+pub fn parse_wire(line: &str) -> Result<Wire> {
+    if let Ok(cancel) = serde_json::from_str::<CancelLine>(line) {
+        return Ok(Wire::Cancel(cancel.cancel_request));
+    }
+    Ok(Wire::Request(serde_json::from_str(line)?))
+}
+/// Parent side of the cancellation line. Requests and cancellations share one
+/// stdin, so a cancel is only ever meaningful for the request id it names.
+pub fn cancel_line(request_id: u64) -> String {
+    format!("{{\"cancel_request\":{request_id}}}")
+}
+/// True when an error means cooperative cancellation, not a failure.
+fn is_cancelled(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| cause.to_string() == "Cancelled")
+}
+
 pub trait Provider {
     fn complete(
         &mut self,
@@ -192,6 +232,7 @@ impl Provider for CandleProvider {
             generation_ms,
             prefill_ms,
             decode_ms: generation_ms.saturating_sub(prefill_ms),
+            cancelled: false,
         })
     }
 }
@@ -336,6 +377,9 @@ pub fn download(root: &Path) -> Result<Installed> {
     event("ready", 0, 0, "Qwen2.5-Coder 1.5B base Q4_K_M installed");
     Ok(installed)
 }
+/// Cooperative cancellation needs a control thread: stdin carries both
+/// requests and cancellation lines, but inference blocks the serving thread,
+/// so it could never read a cancellation from the same stream in time.
 pub fn run() -> i32 {
     let result = (|| -> Result<()> {
         if std::env::args().nth(1).as_deref() == Some("--ai-download") {
@@ -345,10 +389,36 @@ pub fn run() -> i32 {
             download(Path::new(&root))?;
             return Ok(());
         }
-        let stdin = std::io::stdin();
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU64, Ordering},
+        };
+        let cancel_for = Arc::new(AtomicU64::new(u64::MAX));
+        let (tx, rx) = std::sync::mpsc::channel::<Request>();
+        std::thread::spawn({
+            let cancel_for = cancel_for.clone();
+            move || {
+                let stdin = std::io::stdin();
+                for line in stdin.lock().lines() {
+                    let Ok(line) = line else { return };
+                    match parse_wire(&line) {
+                        Ok(Wire::Cancel(id)) => {
+                            cancel_for.store(id, Ordering::Release);
+                        }
+                        Ok(Wire::Request(request)) => {
+                            if tx.send(request).is_err() {
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("AI worker: bad input line: {e}");
+                        }
+                    }
+                }
+            }
+        });
         let mut provider: Option<(PathBuf, PathBuf, CandleProvider)> = None;
-        for line in stdin.lock().lines() {
-            let request: Request = serde_json::from_str(&line?)?;
+        for request in rx {
             if provider.as_ref().is_none_or(|(m, t, _)| {
                 *m != request.model || *t != request.tokenizer
             }) {
@@ -358,8 +428,30 @@ pub fn run() -> i32 {
                     CandleProvider::load(&request.model, &request.tokenizer)?,
                 ));
             }
+            let id = request.request_id;
+            let cancelled = {
+                let cancel_for = cancel_for.clone();
+                move || {
+                    let named = cancel_for.load(Ordering::Acquire);
+                    named == id || (id == 0 && named != u64::MAX)
+                }
+            };
+            let start = Instant::now();
             let output =
-                provider.as_mut().unwrap().2.complete(&request, &|| false)?;
+                match provider.as_mut().unwrap().2.complete(&request, &cancelled) {
+                    Ok(output) => output,
+                    Err(e) if is_cancelled(&e) => Completion {
+                        text: String::new(),
+                        tokens: 0,
+                        prompt_tokens: 0,
+                        load_ms: provider.as_ref().unwrap().2.load_ms,
+                        generation_ms: start.elapsed().as_millis(),
+                        prefill_ms: 0,
+                        decode_ms: 0,
+                        cancelled: true,
+                    },
+                    Err(e) => return Err(e),
+                };
             println!("{}", serde_json::to_string(&output)?);
             std::io::stdout().flush()?;
         }
@@ -421,6 +513,30 @@ mod tests {
         );
     }
     #[test]
+    fn wire_parsing() {
+        let request = Request {
+            model: PathBuf::from("m.gguf"),
+            tokenizer: PathBuf::from("t.json"),
+            prefix: "fn a() {".into(),
+            suffix: "}".into(),
+            prefix_tokens: 4,
+            suffix_tokens: 2,
+            max_tokens: 8,
+            request_id: 7,
+        };
+        let line = serde_json::to_string(&request).unwrap();
+        match parse_wire(&line).unwrap() {
+            Wire::Request(r) => assert_eq!(r.request_id, 7),
+            other => panic!("expected request, got {other:?}"),
+        }
+        match parse_wire(&cancel_line(7)).unwrap() {
+            Wire::Cancel(7) => {}
+            other => panic!("expected cancel 7, got {other:?}"),
+        }
+        assert_eq!(cancel_line(7), "{\"cancel_request\":7}");
+        assert!(parse_wire("not json").is_err());
+    }
+    #[test]
     fn cancellation() {
         assert!(sample_loop(8, &[], &|| true, |_| panic!("must not run")).is_err());
     }
@@ -439,6 +555,7 @@ mod tests {
             prefix_tokens: 5,
             suffix_tokens: 2,
             max_tokens: 8,
+            request_id: 0,
         };
         let p = prompt_ids(&t, &r).unwrap();
         assert_eq!(p[0], token(&t, "fim_prefix").unwrap());
@@ -463,6 +580,7 @@ mod tests {
                 prefix_tokens: 128,
                 suffix_tokens: 64,
                 max_tokens: 24,
+                request_id: 0,
             };
             let c = provider.complete(&r, &|| false).unwrap();
             println!("{c:?}");

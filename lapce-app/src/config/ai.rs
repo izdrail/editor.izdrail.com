@@ -21,6 +21,14 @@ pub struct AiConfig {
     pub suffix_tokens: usize,
     #[field_names(desc = "Output token limit (1-128).")]
     pub max_tokens: usize,
+    #[field_names(
+        desc = "Automatically suggest ghost text after a typing pause. CPU inference takes seconds per suggestion; opt-in."
+    )]
+    pub auto_trigger: bool,
+    #[field_names(
+        desc = "Typing pause before an automatic suggestion starts (50-2000 ms)."
+    )]
+    pub auto_trigger_debounce_ms: u64,
 }
 impl Default for AiConfig {
     fn default() -> Self {
@@ -31,6 +39,8 @@ impl Default for AiConfig {
             prefix_tokens: 512,
             suffix_tokens: 128,
             max_tokens: 32,
+            auto_trigger: false,
+            auto_trigger_debounce_ms: 400,
         }
     }
 }

@@ -226,6 +226,9 @@ pub struct EditorData {
     pub common: Rc<CommonData>,
     pub sticky_header_info: RwSignal<StickyHeaderInfo>,
     ai_generation: RwSignal<u64>,
+    /// Debounce token for automatic (Copilot-style) ghost text. A newer
+    /// keystroke replaces it, so only the last typing pause fires.
+    ai_auto_timer: RwSignal<TimerToken>,
 }
 
 impl PartialEq for EditorData {
@@ -266,6 +269,7 @@ impl EditorData {
             common,
             sticky_header_info: cx.create_rw_signal(StickyHeaderInfo::default()),
             ai_generation: cx.create_rw_signal(0),
+            ai_auto_timer: cx.create_rw_signal(TimerToken::INVALID),
         };
         data.reveal_cursor_in_folds();
         data
@@ -1684,6 +1688,7 @@ impl EditorData {
     }
 
     pub fn cancel_inline_completion(&self) {
+        self.ai_auto_timer.set(TimerToken::INVALID);
         self.ai_generation.update(|g| *g = g.wrapping_add(1));
         self.common.proxy.notification(
             lapce_rpc::proxy::ProxyNotification::CancelInlineCompletion {},
@@ -1703,15 +1708,92 @@ impl EditorData {
         self.doc().clear_inline_completion();
     }
 
-    /// Update the current inline completion
+    /// Entry point shared by the manual command and the edit hooks. Manual
+    /// invocation (Alt+Backslash) fires immediately; edit hooks only arm the
+    /// debounce timer so inference starts after a typing pause.
     fn update_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
-        // Local AI is deliberately manual-only. Inherited edit hooks must not invoke it.
-        if trigger_kind != InlineCompletionTriggerKind::Invoked {
+        let ai = self.common.config.get_untracked().ai_autocomplete.clone();
+        match trigger_kind {
+            InlineCompletionTriggerKind::Invoked => {
+                self.ai_auto_timer.set(TimerToken::INVALID);
+                self.request_inline_completion(trigger_kind);
+            }
+            InlineCompletionTriggerKind::Automatic => {
+                if ai.enabled && ai.auto_trigger {
+                    self.schedule_auto_inline_completion(
+                        ai.auto_trigger_debounce_ms,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Build the current auto-trigger context. Kept in one place so the
+    /// scheduling and firing checks can never drift apart.
+    fn auto_trigger_context(&self) -> crate::inline_completion::AutoTriggerContext {
+        let config = self.common.config.get_untracked();
+        let doc = self.doc();
+        crate::inline_completion::AutoTriggerContext {
+            ai_enabled: config.ai_autocomplete.enabled,
+            auto_trigger: config.ai_autocomplete.auto_trigger,
+            insert_mode: self.get_mode() == Mode::Insert,
+            is_remote: self.common.workspace.kind.is_remote(),
+            completion_popup_open: self.common.completion.with_untracked(|c| {
+                c.status != crate::completion::CompletionStatus::Inactive
+            }),
+            has_file_path: doc.content.with_untracked(|c| c.path().is_some()),
+            buffer_loaded: doc.loaded(),
+        }
+    }
+
+    /// Arm (or re-arm) the debounce timer. Each keystroke supersedes the
+    /// previous token, so only the final pause after a burst fires.
+    fn schedule_auto_inline_completion(&self, debounce_ms: u64) {
+        if !crate::inline_completion::auto_trigger_allowed(
+            &self.auto_trigger_context(),
+        ) {
             return;
         }
+        let editor = self.clone();
+        let timer = self.ai_auto_timer;
+        let token = exec_after(
+            Duration::from_millis(debounce_ms.clamp(50, 2000)),
+            move |token| {
+                if timer.try_get_untracked() == Some(token) {
+                    editor.fire_auto_inline_completion();
+                }
+            },
+        );
+        self.ai_auto_timer.set(token);
+    }
+
+    /// The debounce elapsed without a newer keystroke. Re-validate everything:
+    /// the popup may have opened or the mode may have changed meanwhile.
+    fn fire_auto_inline_completion(&self) {
+        self.ai_auto_timer.set(TimerToken::INVALID);
+        if self.editor_tab_id.try_get_untracked().is_none() {
+            return;
+        }
+        if !crate::inline_completion::auto_trigger_allowed(
+            &self.auto_trigger_context(),
+        ) {
+            return;
+        }
+        self.request_inline_completion(InlineCompletionTriggerKind::Automatic);
+    }
+
+    /// Request local AI ghost text for the current cursor position. Automatic
+    /// requests fail silently (they are speculative); manual ones cancel the
+    /// visible completion on guard failures.
+    fn request_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
+        let automatic = trigger_kind == InlineCompletionTriggerKind::Automatic;
         let ai = self.common.config.get_untracked().ai_autocomplete.clone();
         if !ai.enabled {
             self.cancel_inline_completion();
+            return;
+        }
+        if automatic && !ai.auto_trigger {
             return;
         }
 
@@ -1809,6 +1891,9 @@ impl EditorData {
             prefix_tokens: ai.prefix_tokens,
             suffix_tokens: ai.suffix_tokens,
             max_tokens: ai.max_tokens,
+            // The dispatcher owns the worker job identity used for
+            // cooperative cancellation; zero means untagged here.
+            request_id: 0,
         };
         let ai_request = match serde_json::to_string(&request) {
             Ok(s) => s,
@@ -1818,14 +1903,21 @@ impl EditorData {
         let send = create_ext_action(
             self.scope,
             move |items: Vec<lsp_types::InlineCompletionItem>| {
+                let config = editor.common.config.get_untracked();
                 if generation_signal.get_untracked() != generation
                     || doc.rev() != rev
                     || editor.doc().buffer_id != doc.buffer_id
                     || editor.cursor().with_untracked(|c| c.offset()) != offset
-                    || !editor.common.config.get_untracked().ai_autocomplete.enabled
+                    || !config.ai_autocomplete.enabled
+                    || (automatic && !config.ai_autocomplete.auto_trigger)
+                    || (automatic
+                        && editor.common.completion.with_untracked(|c| {
+                            c.status != crate::completion::CompletionStatus::Inactive
+                        }))
                 {
                     return;
                 }
+                drop(config);
 
                 let items = doc.buffer.with_untracked(|buffer| {
                     items

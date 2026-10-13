@@ -65,7 +65,7 @@ impl ProxyHandler for Dispatcher {
     fn handle_notification(&mut self, rpc: ProxyNotification) {
         use ProxyNotification::*;
         match rpc {
-            CancelInlineCompletion {} => self.ai.cancel(),
+            CancelInlineCompletion {} => self.ai.soft_cancel(),
             Initialize {
                 workspace,
                 window_id,
@@ -168,7 +168,9 @@ impl ProxyHandler for Dispatcher {
                 self.proxy_rpc.shutdown();
             }
             Update { path, delta, rev } => {
-                self.ai.cancel();
+                // Every keystroke cancels the in-flight suggestion, but
+                // cooperatively: the worker keeps its model warm.
+                self.ai.soft_cancel();
                 let buffer = self.buffers.get_mut(&path).unwrap();
                 let old_text = buffer.rope.clone();
                 buffer.update(&delta, rev);
@@ -988,7 +990,11 @@ impl ProxyHandler for Dispatcher {
                 ai_request,
                 ..
             } => {
-                if trigger_kind != lsp_types::InlineCompletionTriggerKind::Invoked {
+                if !matches!(
+                    trigger_kind,
+                    lsp_types::InlineCompletionTriggerKind::Invoked
+                        | lsp_types::InlineCompletionTriggerKind::Automatic
+                ) {
                     self.respond_rpc(
                         id,
                         Ok(ProxyResponse::GetInlineCompletions {

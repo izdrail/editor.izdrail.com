@@ -287,3 +287,84 @@ fn inline_completion_text(
         ICompletionRes::Set(text.to_string(), prefix.len())
     }
 }
+
+/// Context for deciding whether an automatic (Copilot-style) inline
+/// completion request may start. Pure and UI-free so the rules stay testable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutoTriggerContext {
+    /// Master switch: `[ai-autocomplete] enabled`.
+    pub ai_enabled: bool,
+    /// Opt-in automatic triggering: `[ai-autocomplete] auto-trigger`.
+    pub auto_trigger: bool,
+    pub insert_mode: bool,
+    /// Remote workspaces cannot place the model on the proxy host yet.
+    pub is_remote: bool,
+    /// The LSP completion popup owns the same visual space and Tab.
+    pub completion_popup_open: bool,
+    /// Scratch buffers have no file path and are unsupported.
+    pub has_file_path: bool,
+    pub buffer_loaded: bool,
+}
+/// Automatic ghost text fires only when every condition holds. Anything the
+/// local CPU provider cannot serve correctly falls back to manual Alt+Backslash.
+pub fn auto_trigger_allowed(ctx: &AutoTriggerContext) -> bool {
+    ctx.ai_enabled
+        && ctx.auto_trigger
+        && ctx.insert_mode
+        && !ctx.is_remote
+        && !ctx.completion_popup_open
+        && ctx.has_file_path
+        && ctx.buffer_loaded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn allowed() -> AutoTriggerContext {
+        AutoTriggerContext {
+            ai_enabled: true,
+            auto_trigger: true,
+            insert_mode: true,
+            is_remote: false,
+            completion_popup_open: false,
+            has_file_path: true,
+            buffer_loaded: true,
+        }
+    }
+    #[test]
+    fn auto_trigger_requires_every_guard() {
+        assert!(auto_trigger_allowed(&allowed()));
+        for ctx in [
+            AutoTriggerContext {
+                ai_enabled: false,
+                ..allowed()
+            },
+            AutoTriggerContext {
+                auto_trigger: false,
+                ..allowed()
+            },
+            AutoTriggerContext {
+                insert_mode: false,
+                ..allowed()
+            },
+            AutoTriggerContext {
+                is_remote: true,
+                ..allowed()
+            },
+            AutoTriggerContext {
+                completion_popup_open: true,
+                ..allowed()
+            },
+            AutoTriggerContext {
+                has_file_path: false,
+                ..allowed()
+            },
+            AutoTriggerContext {
+                buffer_loaded: false,
+                ..allowed()
+            },
+        ] {
+            assert!(!auto_trigger_allowed(&ctx), "{ctx:?}");
+        }
+    }
+}

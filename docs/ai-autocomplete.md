@@ -20,9 +20,25 @@ tokenizer-path = "" # matching downloaded tokenizer by default
 prefix-tokens = 512 # 1..2048
 suffix-tokens = 128 # 0..1024
 max-tokens = 32 # 1..128
+auto-trigger = false # Copilot-style automatic ghost text after a typing pause
+auto-trigger-debounce-ms = 400 # 50..2000
 ```
 
-In Insert mode, Alt+Backslash invokes completion using the existing inline command. Existing inline accept/cancel bindings remain. Automatic invocation is intentionally disabled. Inference is CPU-only in a child process and never on the UI/dispatcher thread. The provider owns FIM prompting, token budgets, greedy sampling and marker stops over Candle's quantized Qwen2 architecture. It does not implement new kernels or duplicate Candle's transformer layers. Model files are lazy-loaded and reused while the worker remains alive. Edits/cancellation kill the worker; the next request reloads it. Stale responses are rejected against generation, document, revision and cursor. No memory-pressure monitor or idle unload is implemented.
+When auto-trigger is on, ghost text appears automatically after the typing
+pause instead of only on Alt+Backslash. It stays opt-in because each CPU
+suggestion takes seconds. Automatic requests never fire while the completion
+popup is open, outside Insert mode, or on remote/scratch buffers; undo and
+other non-typing edits only cancel. Every keystroke cancels the in-flight
+request cooperatively: the worker stops between tokens, answers the cancelled
+request with an empty completion to keep the pipe in sync, and keeps the
+model warm, so re-triggering after a cancel no longer pays a model reload.
+Shutdown still kills the worker. Cancellation during the prompt prefill (one
+uninterruptible forward pass) completes the pass first, so a cancel can take
+about one prefill plus one token. At most one request is in flight and one
+pending; a newer request supersedes the pending one (latest wins), so
+automatic triggers cannot pile up behind slow inference.
+
+In Insert mode, Alt+Backslash invokes completion using the existing inline command. Existing inline accept/cancel bindings remain. Automatic invocation after a typing pause is available through auto-trigger, default off. Inference is CPU-only in a child process and never on the UI/dispatcher thread. The provider owns FIM prompting, token budgets, greedy sampling and marker stops over Candle's quantized Qwen2 architecture. It does not implement new kernels or duplicate Candle's transformer layers. Model files are lazy-loaded and reused while the worker remains alive. Edits/cancellation kill the worker; the next request reloads it. Stale responses are rejected against generation, document, revision and cursor. No memory-pressure monitor or idle unload is implemented.
 
 Local model/tokenizer overrides require a Qwen2 GGUF with matching Qwen FIM tokenizer. Other architectures are rejected. Scratch-buffer and remote-workspace model placement are not yet supported consistently: download occurs on the UI host, while inference follows the proxy host. Use a local workspace for this first version. An HTTP provider is not implemented; the Provider trait is the extension seam.
 
