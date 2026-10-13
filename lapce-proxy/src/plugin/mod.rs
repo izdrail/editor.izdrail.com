@@ -1,17 +1,15 @@
 //! Data-only theme packages. Executable plugins, LSP, PSP, WASI and DAP are removed.
 use anyhow::Result;
 use lapce_core::directory::Directory;
-use lapce_rpc::plugin::{VoltInfo, VoltMetadata};
+use lapce_rpc::plugin::VoltMetadata;
 use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
 };
 
-/// The editor deliberately does not install packages from the old marketplace.
-pub fn download_volt(_volt: &VoltInfo) -> Result<VoltMetadata> {
-    anyhow::bail!("Executable plugin installation is not available in this editor")
-}
+mod data_only;
+pub use data_only::download_volt;
 
 pub fn volt_icon(volt: &VoltMetadata) -> Option<Vec<u8>> {
     let dir = volt.dir.as_ref()?;
@@ -118,6 +116,11 @@ pub fn load_volt(path: &Path) -> Result<VoltMetadata> {
     let mut file = fs::File::open(path.join("volt.toml"))?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
+    let manifest: toml::Value = toml::from_str(&contents)?;
+    anyhow::ensure!(
+        manifest.get("wasm").is_none(),
+        "Executable packages are not data-only themes"
+    );
     let mut meta: VoltMetadata = toml::from_str(&contents)?;
 
     meta.dir = Some(path.clone());

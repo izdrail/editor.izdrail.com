@@ -3,9 +3,8 @@
 The executable plugin catalog, LSP/PSP clients, WASI runtime and DAP backend
 are removed from the proxy crate and the dependency graph. No plugin engine is
 started at workspace initialization, file open, edit or save. Existing local
-color/icon theme packages are read as data only. Marketplace listing and
-installation are disabled. Plugins and Debug are absent from the default panel
-order; saved layouts and old commands can still contain compatibility UI.
+color/icon theme packages are read as data only. Marketplace listing and installation are limited to validated color/icon data
+packages. Raw WASM declarations and executable package files are rejected. Themes & Icons is restored in the panel order; Debug remains absent; saved layouts and old commands can still contain compatibility UI.
 
 The local proxy remains for file IO, watcher, search, git and terminal services.
 This is not yet a removal of the remote workspace transport or every IDE view.

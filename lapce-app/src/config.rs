@@ -1028,3 +1028,50 @@ impl LapceConfig {
         Some(())
     }
 }
+
+#[cfg(test)]
+mod data_theme_tests {
+    use super::*;
+    #[test]
+    fn data_package_loads_via_existing_plugin_theme_loader() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("volt.toml"), "name = 'test'\nauthor = 'test'\nversion = '1'\ndisplay-name = 'Test'\ndescription = 'Test'\ncolor-themes = ['theme.toml']\nicon-themes = ['icons.toml']\n").unwrap();
+        std::fs::write(dir.path().join("theme.toml"), "[color-theme]\nname = 'Installed Test Color'\n[color-theme.base]\nblack = '#000000'\n").unwrap();
+        std::fs::write(dir.path().join("icons.toml"), "[icon-theme]\nname = 'Installed Test Icons'\n[icon-theme.ui]\nfile = 'file.svg'\n").unwrap();
+        std::fs::write(
+            dir.path().join("file.svg"),
+            "<svg xmlns='http://www.w3.org/2000/svg'/>",
+        )
+        .unwrap();
+        let extra = vec![dir.path().to_path_buf()];
+        let color = LapceConfig::load_plugin_color_themes(&[], &extra);
+        assert!(color.contains_key("installed test color"));
+        let icons = LapceConfig::load_plugin_icon_themes(&[], &extra);
+        assert!(icons.contains_key("installed test icons"));
+        let meta = lapce_proxy::plugin::load_volt(dir.path()).unwrap();
+        assert!(
+            !LapceConfig::load_plugin_color_themes(&[meta.id()], &extra)
+                .contains_key("installed test color")
+        );
+    }
+}
+
+#[cfg(test)]
+mod real_data_theme_smoke {
+    use super::*;
+    #[test]
+    #[ignore = "explicit real-registry install/load smoke test"]
+    fn downloaded_packages_load_in_app_config() {
+        let path = PathBuf::from(std::env::var("LAPCE_THEME_TEST_ROOT").unwrap());
+        let paths = std::fs::read_dir(path)
+            .unwrap()
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                path.join("volt.toml").is_file().then_some(path)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(paths.len(), 2);
+        assert!(!LapceConfig::load_plugin_color_themes(&[], &paths).is_empty());
+        assert!(!LapceConfig::load_plugin_icon_themes(&[], &paths).is_empty());
+    }
+}

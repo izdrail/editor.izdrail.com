@@ -24,7 +24,11 @@ pub fn default_panel_order() -> PanelOrder {
     let mut order = PanelOrder::new();
     order.insert(
         PanelPosition::LeftTop,
-        im::vector![PanelKind::FileExplorer, PanelKind::SourceControl,],
+        im::vector![
+            PanelKind::FileExplorer,
+            PanelKind::SourceControl,
+            PanelKind::Plugin,
+        ],
     );
     order.insert(
         PanelPosition::BottomLeft,
@@ -96,6 +100,17 @@ impl PanelData {
         sections: im::HashMap<PanelSection, bool>,
         common: Rc<CommonData>,
     ) -> Self {
+        // Phase-1 layouts omit this panel; restore it without discarding saved layout.
+        let mut panels = panels;
+        if !panels
+            .values()
+            .any(|items| items.contains(&PanelKind::Plugin))
+        {
+            panels
+                .entry(PanelPosition::LeftTop)
+                .or_default()
+                .push_back(PanelKind::Plugin);
+        }
         let panels = cx.create_rw_signal(panels);
 
         let mut styles = im::HashMap::new();

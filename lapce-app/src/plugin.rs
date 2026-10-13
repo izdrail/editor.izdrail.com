@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    command::{CommandExecuted, CommandKind},
+    command::{CommandExecuted, CommandKind, InternalCommand},
     config::{LapceConfig, color::LapceColor},
     db::LapceDb,
     editor::EditorData,
@@ -99,14 +99,21 @@ pub struct AvailableVoltList {
     pub total: RwSignal<usize>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PluginData {
+    pub core_rpc: CoreRpcHandler,
     pub installed: RwSignal<IndexMap<VoltID, InstalledVoltData>>,
     pub available: AvailableVoltList,
     pub all: RwSignal<im::HashMap<VoltID, AvailableVoltData>>,
     pub disabled: RwSignal<HashSet<VoltID>>,
     pub workspace_disabled: RwSignal<HashSet<VoltID>>,
     pub common: Rc<CommonData>,
+}
+
+impl std::fmt::Debug for PluginData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PluginData").finish_non_exhaustive()
+    }
 }
 
 impl KeyPressFocus for PluginData {
@@ -175,6 +182,7 @@ impl PluginData {
         let workspace_disabled = cx.create_rw_signal(workspace_disabled);
 
         let plugin = Self {
+            core_rpc: core_rpc.clone(),
             installed,
             available,
             all: cx.create_rw_signal(im::HashMap::new()),
@@ -289,11 +297,14 @@ impl PluginData {
                 "https://plugins.lapce.dev/api/v1/plugins/{}/{}/latest",
                 volt.author, volt.name
             );
-            let send = create_ext_action(self.common.scope, move |info| {
-                if let Some(info) = info {
-                    latest.set(info);
-                }
-            });
+            let send = create_ext_action(
+                self.common.scope,
+                move |info: Option<VoltInfo>| {
+                    if let Some(info) = info.filter(|info: &VoltInfo| !info.wasm) {
+                        latest.set(info);
+                    }
+                },
+            );
             std::thread::spawn(move || {
                 let info: Option<VoltInfo> = lapce_proxy::get_url(url, None)
                     .ok()
@@ -336,12 +347,75 @@ impl PluginData {
 
     fn load_available_volts(
         &self,
-        _query: &str,
+        query: &str,
         _offset: usize,
-        _core_rpc: CoreRpcHandler,
+        core_rpc: CoreRpcHandler,
     ) {
-        self.available.loading.set(false);
-        self.available.total.set(0);
+        if self.available.loading.get_untracked() {
+            return;
+        }
+        self.available.loading.set(true);
+        let plugin = self.clone();
+        let generation = self.available.query_id.get_untracked();
+        let send = create_ext_action(
+            self.common.scope,
+            move |result: Result<VoltsInfo>| {
+                if plugin.available.query_id.get_untracked() != generation {
+                    return;
+                }
+                plugin.available.loading.set(false);
+                match result {
+                    Ok(result) => {
+                        plugin.available.total.set(result.plugins.len());
+                        let mut available = IndexMap::new();
+                        for info in result.plugins {
+                            let data = AvailableVoltData {
+                                info: plugin
+                                    .common
+                                    .scope
+                                    .create_rw_signal(info.clone()),
+                                icon: plugin.common.scope.create_rw_signal(None),
+                                installing: plugin
+                                    .common
+                                    .scope
+                                    .create_rw_signal(false),
+                            };
+                            let icon = data.icon;
+                            let icon_info = info.clone();
+                            let icon_send = create_ext_action(
+                                plugin.common.scope,
+                                move |result: Result<VoltIcon>| {
+                                    if let Ok(value) = result {
+                                        icon.set(Some(value));
+                                    }
+                                },
+                            );
+                            std::thread::spawn(move || {
+                                icon_send(Self::load_icon(&icon_info))
+                            });
+                            available.insert(info.id(), data);
+                        }
+                        plugin.all.update(|all| {
+                            for (id, data) in &available {
+                                all.insert(id.clone(), data.clone());
+                            }
+                        });
+                        plugin.available.volts.set(available);
+                    }
+                    Err(error) => {
+                        core_rpc.notification(CoreNotification::ShowMessage {
+                            title: "Themes & Icons".to_string(),
+                            message: lsp_types::ShowMessageParams {
+                                typ: MessageType::ERROR,
+                                message: error.to_string(),
+                            },
+                        })
+                    }
+                }
+            },
+        );
+        let query = query.to_owned();
+        std::thread::spawn(move || send(Self::query_volts(&query, 0)));
     }
 
     fn load_icon(volt: &VoltInfo) -> Result<VoltIcon> {
@@ -400,12 +474,31 @@ impl PluginData {
         Ok(text)
     }
 
-    fn query_volts(query: &str, offset: usize) -> Result<VoltsInfo> {
-        let url = format!(
-            "https://plugins.lapce.dev/api/v1/plugins?q={query}&offset={offset}"
-        );
-        let plugins: VoltsInfo = lapce_proxy::get_url(url, None)?.json()?;
-        Ok(plugins)
+    fn query_volts(query: &str, _offset: usize) -> Result<VoltsInfo> {
+        // Consume server pagination before filtering: counting visible entries as
+        // the next server offset would repeat/skip entries and never finish.
+        let mut plugins = Vec::new();
+        let mut offset = 0usize;
+        for _ in 0..100 {
+            let mut url =
+                url::Url::parse("https://plugins.lapce.dev/api/v1/plugins")?;
+            url.query_pairs_mut()
+                .append_pair("q", query)
+                .append_pair("offset", &offset.to_string());
+            let page: VoltsInfo = lapce_proxy::get_url(url, None)?
+                .error_for_status()?
+                .json()?;
+            let count = page.plugins.len();
+            offset += count;
+            plugins.extend(page.plugins.into_iter().filter(|info| !info.wasm));
+            if count == 0 || offset >= page.total {
+                return Ok(VoltsInfo {
+                    total: plugins.len(),
+                    plugins,
+                });
+            }
+        }
+        anyhow::bail!("Theme catalog exceeds pagination limit")
     }
 
     fn all_loaded(&self) -> bool {
@@ -429,30 +522,49 @@ impl PluginData {
     }
 
     pub fn install_volt(&self, info: VoltInfo) {
-        self.available.volts.with_untracked(|volts| {
-            if let Some(volt) = volts.get(&info.id()) {
-                volt.installing.set(true);
-            };
-        });
-        if info.wasm {
-            self.common.proxy.install_volt(info);
-        } else {
-            let plugin = self.clone();
-            let send = create_ext_action(self.common.scope, move |result| {
-                if let Ok((meta, icon)) = result {
-                    plugin.volt_installed(&meta, &icon);
-                }
-            });
-            std::thread::spawn(move || {
-                let download = || -> Result<(VoltMetadata, Option<Vec<u8>>)> {
-                    let download_volt_result = download_volt(&info);
-                    let meta = download_volt_result?;
-                    let icon = volt_icon(&meta);
-                    Ok((meta, icon))
-                };
-                send(download());
-            });
+        let installing = self
+            .all
+            .with_untracked(|all| all.get(&info.id()).map(|data| data.installing));
+        if let Some(signal) = installing {
+            if signal.get_untracked() {
+                return;
+            }
+            signal.set(true);
         }
+        let plugin = self.clone();
+        let send = create_ext_action(
+            self.common.scope,
+            move |result: Result<(VoltMetadata, Option<Vec<u8>>)>| {
+                if let Some(signal) = installing {
+                    signal.set(false);
+                }
+                match result {
+                    Ok((meta, icon)) => {
+                        plugin.volt_installed(&meta, &icon);
+                        plugin
+                            .common
+                            .internal_command
+                            .send(InternalCommand::ReloadConfig);
+                    }
+                    Err(error) => {
+                        plugin.core_rpc.notification(CoreNotification::ShowMessage {
+                            title: "Themes & Icons".to_string(),
+                            message: lsp_types::ShowMessageParams {
+                                typ: MessageType::ERROR,
+                                message: error.to_string(),
+                            },
+                        })
+                    }
+                }
+            },
+        );
+        std::thread::spawn(move || {
+            let result = download_volt(&info).map(|meta| {
+                let icon = volt_icon(&meta);
+                (meta, icon)
+            });
+            send(result);
+        });
     }
 
     pub fn plugin_disabled(&self, id: &VoltID) -> bool {
@@ -465,11 +577,11 @@ impl PluginData {
         self.disabled.update(|d| {
             d.remove(&id);
         });
-        if !self.plugin_disabled(&id) {
-            self.common.proxy.enable_volt(volt);
-        }
         let db: Arc<LapceDb> = use_context().unwrap();
         db.save_disabled_volts(self.disabled.get_untracked().into_iter().collect());
+        self.common
+            .internal_command
+            .send(InternalCommand::ReloadConfig);
     }
 
     pub fn disable_volt(&self, volt: VoltInfo) {
@@ -477,9 +589,11 @@ impl PluginData {
         self.disabled.update(|d| {
             d.insert(id);
         });
-        self.common.proxy.disable_volt(volt);
         let db: Arc<LapceDb> = use_context().unwrap();
         db.save_disabled_volts(self.disabled.get_untracked().into_iter().collect());
+        self.common
+            .internal_command
+            .send(InternalCommand::ReloadConfig);
     }
 
     pub fn enable_volt_for_ws(&self, volt: VoltInfo) {
@@ -487,14 +601,17 @@ impl PluginData {
         self.workspace_disabled.update(|d| {
             d.remove(&id);
         });
-        if !self.plugin_disabled(&id) {
-            self.common.proxy.enable_volt(volt);
-        }
         let db: Arc<LapceDb> = use_context().unwrap();
         db.save_workspace_disabled_volts(
             self.common.workspace.clone(),
-            self.disabled.get_untracked().into_iter().collect(),
+            self.workspace_disabled
+                .get_untracked()
+                .into_iter()
+                .collect(),
         );
+        self.common
+            .internal_command
+            .send(InternalCommand::ReloadConfig);
     }
 
     pub fn disable_volt_for_ws(&self, volt: VoltInfo) {
@@ -502,12 +619,17 @@ impl PluginData {
         self.workspace_disabled.update(|d| {
             d.insert(id);
         });
-        self.common.proxy.disable_volt(volt);
         let db: Arc<LapceDb> = use_context().unwrap();
         db.save_workspace_disabled_volts(
             self.common.workspace.clone(),
-            self.disabled.get_untracked().into_iter().collect(),
+            self.workspace_disabled
+                .get_untracked()
+                .into_iter()
+                .collect(),
         );
+        self.common
+            .internal_command
+            .send(InternalCommand::ReloadConfig);
     }
 
     pub fn uninstall_volt(&self, volt: VoltMetadata) {
@@ -518,8 +640,23 @@ impl PluginData {
             let info = volt.info();
             let send =
                 create_ext_action(self.common.scope, move |result: Result<()>| {
-                    if let Ok(()) = result {
-                        plugin.volt_removed(&info);
+                    match result {
+                        Ok(()) => {
+                            plugin.volt_removed(&info);
+                            plugin
+                                .common
+                                .internal_command
+                                .send(InternalCommand::ReloadConfig);
+                        }
+                        Err(error) => plugin.core_rpc.notification(
+                            CoreNotification::ShowMessage {
+                                title: "Themes & Icons".to_string(),
+                                message: lsp_types::ShowMessageParams {
+                                    typ: MessageType::ERROR,
+                                    message: error.to_string(),
+                                },
+                            },
+                        ),
                     }
                 });
             std::thread::spawn(move || {
@@ -528,6 +665,16 @@ impl PluginData {
                         .dir
                         .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("don't have dir"))?;
+                    let root = Directory::plugins_directory()
+                        .ok_or_else(|| anyhow::anyhow!("No package directory"))?
+                        .canonicalize()?;
+                    let path = path.canonicalize()?;
+                    anyhow::ensure!(
+                        path.parent() == Some(root.as_path())
+                            && path.file_name().and_then(|s| s.to_str())
+                                == Some(volt.id().to_string().as_str()),
+                        "Cannot uninstall a development theme outside the package directory"
+                    );
                     std::fs::remove_dir_all(path)?;
                     Ok(())
                 };
@@ -536,8 +683,10 @@ impl PluginData {
         }
     }
 
-    pub fn reload_volt(&self, volt: VoltMetadata) {
-        self.common.proxy.reload_volt(volt);
+    pub fn reload_volt(&self, _volt: VoltMetadata) {
+        self.common
+            .internal_command
+            .send(InternalCommand::ReloadConfig);
     }
 
     pub fn plugin_controls(&self, meta: VoltMetadata, latest: VoltInfo) -> Menu {
@@ -545,7 +694,7 @@ impl PluginData {
         let mut menu = Menu::new("");
         if meta.version != latest.version {
             menu = menu
-                .entry(MenuItem::new("Upgrade Plugin").action({
+                .entry(MenuItem::new("Upgrade Theme").action({
                     let plugin = self.clone();
                     let info = latest.clone();
                     move || {
@@ -555,7 +704,7 @@ impl PluginData {
                 .separator();
         }
         menu = menu
-            .entry(MenuItem::new("Reload Plugin").action({
+            .entry(MenuItem::new("Reload Themes").action({
                 let plugin = self.clone();
                 let meta = meta.clone();
                 move || {
