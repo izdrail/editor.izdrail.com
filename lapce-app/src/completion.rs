@@ -15,7 +15,12 @@ use lsp_types::{
 };
 use nucleo::Utf32Str;
 
-use crate::{config::LapceConfig, editor::EditorData, snippet::Snippet};
+use crate::{
+    completion_sources::{CompletionSource, MIN_WORD_INPUT},
+    config::LapceConfig,
+    editor::EditorData,
+    snippet::Snippet,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CompletionStatus {
@@ -28,6 +33,7 @@ pub enum CompletionStatus {
 pub struct ScoredCompletionItem {
     pub item: CompletionItem,
     pub plugin_id: PluginId,
+    pub source: CompletionSource,
     pub score: u32,
     pub label_score: u32,
     pub indices: Vec<usize>,
@@ -52,6 +58,8 @@ pub struct CompletionData {
     pub input: String,
     /// `(Input, CompletionItems)`
     pub input_items: im::HashMap<String, im::Vector<ScoredCompletionItem>>,
+    /// Snippets and buffer words, gathered once when the session starts.
+    pub local_items: im::Vector<ScoredCompletionItem>,
     /// The filtered items that are being displayed to the user
     pub filtered_items: im::Vector<ScoredCompletionItem>,
     /// The size of the completion element.  
@@ -78,6 +86,7 @@ impl CompletionData {
             active,
             input: "".to_string(),
             input_items: im::HashMap::new(),
+            local_items: im::Vector::new(),
             filtered_items: im::Vector::new(),
             layout_rect: Rect::ZERO,
             matcher: cx
@@ -111,6 +120,7 @@ impl CompletionData {
             .map(|i| ScoredCompletionItem {
                 item: i.to_owned(),
                 plugin_id,
+                source: CompletionSource::Lsp,
                 score: 0,
                 label_score: 0,
                 indices: Vec::new(),
@@ -145,6 +155,7 @@ impl CompletionData {
         self.active.set(0);
         self.input.clear();
         self.input_items.clear();
+        self.local_items.clear();
         self.filtered_items.clear();
     }
 
@@ -161,7 +172,7 @@ impl CompletionData {
         self.filter_items();
     }
 
-    fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
+    fn lsp_items(&self) -> im::Vector<ScoredCompletionItem> {
         self.input_items
             .get(&self.input)
             .cloned()
@@ -169,6 +180,50 @@ impl CompletionData {
             .unwrap_or_else(move || {
                 self.input_items.get("").cloned().unwrap_or_default()
             })
+    }
+
+    /// LSP items plus the local sources. Local items are only offered once
+    /// something has been typed, and buffer words need a little more.
+    fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
+        let mut items = self.lsp_items();
+        if self.input.is_empty() {
+            return items;
+        }
+        let typed = self.input.chars().count();
+        let seen: std::collections::HashSet<String> = items
+            .iter()
+            .map(|i| i.item.label.clone())
+            .chain(
+                self.local_items
+                    .iter()
+                    .filter(|i| i.source == CompletionSource::Snippet)
+                    .map(|i| i.item.label.clone()),
+            )
+            .collect();
+        for local in &self.local_items {
+            match local.source {
+                CompletionSource::Word => {
+                    // A word the server or a snippet already offers adds nothing.
+                    if typed < MIN_WORD_INPUT || seen.contains(&local.item.label) {
+                        continue;
+                    }
+                }
+                // Same label as an LSP *snippet* is a duplicate, anything else
+                // is a different insertion and stays.
+                CompletionSource::Snippet => {
+                    if items.iter().any(|i| {
+                        i.item.label == local.item.label
+                            && i.item.insert_text_format
+                                == Some(InsertTextFormat::SNIPPET)
+                    }) {
+                        continue;
+                    }
+                }
+                CompletionSource::Lsp => {}
+            }
+            items.push_back(local.clone());
+        }
+        items
     }
 
     pub fn filter_items(&mut self) {
@@ -231,11 +286,15 @@ impl CompletionData {
                     .collect()
             })
             .unwrap();
-        // Sort all the items by their score, then their label score, then their length.
+        // Blend the sources: fuzzy score, a bonus for a prefix match and a
+        // source priority (LSP, then snippets, then buffer words). LSP
+        // `sortText` and the label length break ties.
+        let input_lower = self.input.to_lowercase();
         items.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
+            blended_score(b, &input_lower)
+                .cmp(&blended_score(a, &input_lower))
                 .then_with(|| b.label_score.cmp(&a.label_score))
+                .then_with(|| sort_text(a).cmp(sort_text(b)))
                 .then_with(|| a.item.label.len().cmp(&b.item.label.len()))
         });
         self.filtered_items = items;
@@ -339,6 +398,27 @@ impl CompletionData {
     }
 }
 
+fn sort_text(i: &ScoredCompletionItem) -> &str {
+    i.item.sort_text.as_deref().unwrap_or(&i.item.label)
+}
+
+/// Rank used to blend items from different sources.
+pub fn blended_score(i: &ScoredCompletionItem, input_lower: &str) -> u32 {
+    let filter = i
+        .item
+        .filter_text
+        .as_deref()
+        .unwrap_or(&i.item.label)
+        .to_lowercase();
+    let prefix = if filter.starts_with(input_lower) {
+        64
+    } else {
+        0
+    };
+    let preselect = if i.item.preselect == Some(true) { 8 } else { 0 };
+    i.score + prefix + preselect + i.source.bonus()
+}
+
 /// Get the text of the completion lens for the given completion item.  
 /// Returns `None` if the completion lens should be hidden.
 /// Returns `Some(None)` if the completion lens should be shown, but not changed.
@@ -413,5 +493,48 @@ fn completion_lens_text(
         Some(None)
     } else {
         Some(Some(item.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod blend_tests {
+    use super::*;
+
+    fn item(
+        label: &str,
+        source: CompletionSource,
+        score: u32,
+    ) -> ScoredCompletionItem {
+        ScoredCompletionItem {
+            item: CompletionItem {
+                label: label.to_string(),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source,
+            score,
+            label_score: score,
+            indices: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn same_match_quality_ranks_lsp_then_snippet_then_word() {
+        let l = item("print", CompletionSource::Lsp, 100);
+        let s = item("print", CompletionSource::Snippet, 100);
+        let w = item("print", CompletionSource::Word, 100);
+        let (l, s, w) = (
+            blended_score(&l, "pri"),
+            blended_score(&s, "pri"),
+            blended_score(&w, "pri"),
+        );
+        assert!(l > s && s > w);
+    }
+
+    #[test]
+    fn strong_prefix_word_beats_weak_scattered_lsp_match() {
+        let word = item("println_count", CompletionSource::Word, 90);
+        let lsp = item("xpxrxixnxt", CompletionSource::Lsp, 40);
+        assert!(blended_score(&word, "print") > blended_score(&lsp, "print"));
     }
 }

@@ -1785,6 +1785,69 @@ impl EditorData {
         self.doc().clear_completion_lens()
     }
 
+    /// Snippets (imported from VS Code extensions) and words from this
+    /// buffer, offered next to the LSP results.
+    fn local_completion_items(
+        &self,
+        path: &std::path::Path,
+        start_offset: usize,
+        offset: usize,
+    ) -> im::Vector<crate::completion::ScoredCompletionItem> {
+        use crate::{
+            completion::ScoredCompletionItem,
+            completion_sources::{
+                CompletionSource, MAX_SCAN_BYTES, buffer_words, leading_indent,
+                snippet_items, word_items,
+            },
+        };
+        let doc = self.doc();
+        let (words, snippets) =
+            doc.buffer.with_untracked(|buffer| {
+                let end_offset = buffer.next_code_boundary(offset);
+                let len = buffer.len();
+                // Leave the word being typed out so it does not suggest itself.
+                let mut text = String::new();
+                text.push_str(&buffer.slice_to_cow(
+                    start_offset.saturating_sub(MAX_SCAN_BYTES / 2)..start_offset,
+                ));
+                text.push(' ');
+                text.push_str(&buffer.slice_to_cow(
+                    end_offset..len.min(end_offset + MAX_SCAN_BYTES / 2),
+                ));
+                let words = word_items(&buffer_words(&text));
+
+                let line = buffer.line_of_offset(start_offset);
+                let line_text = buffer.line_content(line);
+                let indent = leading_indent(&line_text).to_string();
+                let range = lsp_types::Range {
+                    start: buffer.offset_to_position(start_offset),
+                    end: buffer.offset_to_position(offset),
+                };
+                let lang = lapce_proxy::buffer::language_id_from_path(path);
+                let snippets = match lang {
+                    Some(lang) => {
+                        let loaded = lapce_core::textmate::loaded();
+                        snippet_items(&loaded.snippets_for(lang), &indent, range)
+                    }
+                    None => Vec::new(),
+                };
+                (words, snippets)
+            });
+        let wrap = |item, source| ScoredCompletionItem {
+            item,
+            plugin_id: lapce_rpc::plugin::PluginId(0),
+            source,
+            score: 0,
+            label_score: 0,
+            indices: Vec::new(),
+        };
+        snippets
+            .into_iter()
+            .map(|i| wrap(i, CompletionSource::Snippet))
+            .chain(words.into_iter().map(|i| wrap(i, CompletionSource::Word)))
+            .collect()
+    }
+
     /// Update the displayed autocompletion box
     /// Sends a request to the LSP for completion information
     fn update_completion(&self, display_if_empty_input: bool) {
@@ -1867,12 +1930,14 @@ impl EditorData {
         }
 
         let doc = self.doc();
+        let local_items = self.local_completion_items(&path, start_offset, offset);
         self.common.completion.update(|completion| {
             completion.path.clone_from(&path);
             completion.offset = start_offset;
             completion.input.clone_from(&input);
             completion.status = CompletionStatus::Started;
             completion.input_items.clear();
+            completion.local_items = local_items;
             completion.request_id += 1;
             let start_pos = doc
                 .buffer
