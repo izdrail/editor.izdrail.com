@@ -3886,7 +3886,11 @@ fn extension_commands(cli: &Cli) -> i32 {
     if let Some(q) = &cli.ext_search {
         match openvsx::Client::open_vsx().and_then(|c| c.search(q, 20, 0)) {
             Ok(r) => {
-                println!("{} results on open-vsx.org (showing {})", r.total, r.extensions.len());
+                println!(
+                    "{} results on open-vsx.org (showing {})",
+                    r.total,
+                    r.extensions.len()
+                );
                 for e in &r.extensions {
                     println!(
                         "{} {}  {}  {} downloads{}",
@@ -3896,7 +3900,9 @@ fn extension_commands(cli: &Cli) -> i32 {
                         e.download_count,
                         if e.deprecated { "  [deprecated]" } else { "" }
                     );
-                    if let Some(d) = e.description.as_deref().filter(|d| !d.is_empty()) {
+                    if let Some(d) =
+                        e.description.as_deref().filter(|d| !d.is_empty())
+                    {
                         println!("    {d}");
                     }
                 }
@@ -3944,7 +3950,11 @@ fn extension_commands(cli: &Cli) -> i32 {
                 e.icon_themes,
                 e.grammars,
                 e.snippets,
-                if e.has_code { "  [contains code, not loaded]" } else { "" }
+                if e.has_code {
+                    "  [contains code, not loaded]"
+                } else {
+                    ""
+                }
             );
         }
     }

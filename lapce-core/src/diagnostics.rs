@@ -189,8 +189,9 @@ pub fn prune_logs(dir: &Path, max_total: u64) -> usize {
         .filter(|e| e.file_name().to_string_lossy().contains(".log"))
         .filter_map(|e| {
             let meta = e.metadata().ok()?;
-            meta.is_file()
-                .then(|| (meta.modified().unwrap_or(UNIX_EPOCH), meta.len(), e.path()))
+            meta.is_file().then(|| {
+                (meta.modified().unwrap_or(UNIX_EPOCH), meta.len(), e.path())
+            })
         })
         .collect();
     let mut total: u64 = files.iter().map(|f| f.1).sum();

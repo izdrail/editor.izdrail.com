@@ -71,7 +71,7 @@ mod debug_logging {
             .build(dir)
             .ok()?;
         let (writer, guard) = tracing_appender::non_blocking(appender);
-        let layer = tracing_subscriber::fmt::layer()
+        let layer = tracing_subscriber::fmt::subscriber()
             .with_ansi(false)
             .with_thread_names(true)
             .with_writer(writer)
