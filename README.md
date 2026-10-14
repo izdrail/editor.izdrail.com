@@ -95,6 +95,9 @@ Palette list of Laravel middleware, jobs, events, listeners, observers, notifica
 ### Go to Artisan Command
 Palette list of your custom Artisan commands (class `$signature` / `AsCommand` and `Artisan::command` closures), jump to the definition. Nothing is run. See [docs/go-to-artisan-command.md](docs/go-to-artisan-command.md).
 
+### Go to Config / Service Provider
+Palette list of `config/*.php` files (by their `config('name')` key) and service providers with their `register()`/`boot()` methods. See [docs/go-to-config-provider.md](docs/go-to-config-provider.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

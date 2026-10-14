@@ -486,6 +486,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Artisan Command")]
     PaletteArtisanCommands,
 
+    #[strum(serialize = "palette.config_providers")]
+    #[strum(message = "Go to Config / Service Provider")]
+    PaletteConfigProviders,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

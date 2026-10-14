@@ -1223,6 +1223,9 @@ impl WindowTabData {
             PaletteArtisanCommands => {
                 self.palette.run(PaletteKind::ArtisanCommands);
             }
+            PaletteConfigProviders => {
+                self.palette.run(PaletteKind::ConfigProviders);
+            }
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }

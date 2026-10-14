@@ -444,6 +444,9 @@ impl PaletteData {
             PaletteKind::ArtisanCommands => {
                 self.set_route_items(crate::artisan_index::discover);
             }
+            PaletteKind::ConfigProviders => {
+                self.set_route_items(crate::config_provider_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
