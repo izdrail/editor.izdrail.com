@@ -474,6 +474,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Blade Layout / Section")]
     PaletteBladeLayouts,
 
+    #[strum(serialize = "palette.form_requests")]
+    #[strum(message = "Go to Form Request")]
+    PaletteFormRequests,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

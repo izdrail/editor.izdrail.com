@@ -86,6 +86,9 @@ Palette list of every Blade view that renders the component open in the editor (
 ### Go to Blade Layout / Section
 From a view, lists its `@extends` layout and the layout's `@yield`/`@stack` slots; from a layout, lists the views that extend it. See [docs/blade-layouts.md](docs/blade-layouts.md).
 
+### Go to Form Request
+Palette list of Laravel form request classes and the fields in their `rules()`. See [docs/go-to-form-request.md](docs/go-to-form-request.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

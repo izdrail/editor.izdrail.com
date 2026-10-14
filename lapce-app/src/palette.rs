@@ -435,6 +435,9 @@ impl PaletteData {
             PaletteKind::BladeLayouts => {
                 self.get_active_file_route_items(crate::blade_layouts::discover);
             }
+            PaletteKind::FormRequests => {
+                self.set_route_items(crate::form_request_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }

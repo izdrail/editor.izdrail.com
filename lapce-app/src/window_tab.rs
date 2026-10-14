@@ -1214,6 +1214,9 @@ impl WindowTabData {
             PaletteBladeLayouts => {
                 self.palette.run(PaletteKind::BladeLayouts);
             }
+            PaletteFormRequests => {
+                self.palette.run(PaletteKind::FormRequests);
+            }
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }
