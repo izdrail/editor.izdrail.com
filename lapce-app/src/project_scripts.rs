@@ -80,6 +80,18 @@ fn script_names(doc: &Value) -> Vec<String> {
 }
 
 
+/// Composer commands that make sense in any project with a `composer.json`.
+const COMPOSER_BUILTIN: &[&str] = &["install", "update", "dump-autoload", "outdated", "audit"];
+
+/// Symfony console commands offered when `bin/console` exists. `make:*` needs
+/// symfony/maker-bundle and prints an error otherwise.
+const SYMFONY_BUILTIN: &[&str] = &[
+    "cache:clear", "debug:router", "debug:container", "debug:config", "lint:twig",
+    "lint:yaml", "doctrine:migrations:migrate", "doctrine:migrations:diff",
+    "doctrine:schema:validate", "messenger:consume", "make:controller", "make:entity",
+    "make:migration",
+];
+
 /// Framework commands offered for every Laravel project, in display order.
 /// `make:*` commands prompt for their name in the terminal.
 const ARTISAN_BUILTIN: &[&str] = &[
@@ -195,9 +207,18 @@ pub fn discover(root: &Path) -> Vec<RunDebugConfig> {
     }
     if root.join("bin").join("console").is_file() {
         out.push(config("symfony: console".into(), "php", &["bin/console"]));
+        for name in SYMFONY_BUILTIN {
+            out.push(config(format!("symfony: {name}"), "php", &["bin/console", name]));
+        }
     }
 
     if let Some(doc) = read_json(&root.join("composer.json")) {
+        for name in COMPOSER_BUILTIN {
+            // A script of the same name wins and is listed below.
+            if !script_names(&doc).iter().any(|s| s == name) {
+                out.push(config(format!("composer: {name}"), "composer", &[name]));
+            }
+        }
         for name in script_names(&doc) {
             out.push(config(
                 format!("composer: {name}"),
@@ -301,6 +322,25 @@ mod tests {
         let send = c.iter().find(|c| c.name == "artisan: mail:send").unwrap();
         assert_eq!(send.program, "php");
         assert_eq!(send.args.as_deref().unwrap(), ["artisan", "mail:send"]);
+    }
+
+    #[test]
+    fn composer_and_symfony_builtins() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "composer.json", r#"{"scripts":{"audit":"x","test":"phpunit"}}"#);
+        std::fs::create_dir_all(dir.path().join("bin")).unwrap();
+        write(&dir.path().join("bin"), "console", "<?php");
+        let c = discover(dir.path());
+        let get = |n: &str| c.iter().filter(|c| c.name == n).count();
+        assert_eq!(get("composer: install"), 1);
+        assert_eq!(get("composer: dump-autoload"), 1);
+        // The project's own `audit` script replaces the built-in, not duplicates it.
+        assert_eq!(get("composer: audit"), 1);
+        let audit = c.iter().find(|c| c.name == "composer: audit").unwrap();
+        assert_eq!(audit.args.as_deref().unwrap(), ["run-script", "audit"]);
+        assert_eq!(get("symfony: cache:clear"), 1);
+        let cc = c.iter().find(|c| c.name == "symfony: debug:router").unwrap();
+        assert_eq!(cc.args.as_deref().unwrap(), ["bin/console", "debug:router"]);
     }
 
     #[test]

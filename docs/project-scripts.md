@@ -19,3 +19,8 @@ sub-packages need run.toml entries.
 
 Artisan discovery is static: `php artisan list` is never run, so commands provided by
 packages are not listed unless they are in the built-in set. Add them to `.lapce/run.toml`.
+
+Composer projects also list `composer: install`, `update`, `dump-autoload`, `outdated` and `audit`
+(a script of the same name in `composer.json` replaces the built-in). When `bin/console` exists,
+Symfony projects list `symfony: <command>` for cache:clear, debug:router/container/config,
+lint:twig/yaml, Doctrine migrations and schema validate, messenger:consume and make:controller/entity/migration.
