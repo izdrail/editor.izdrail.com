@@ -478,6 +478,180 @@ pub fn abbreviation_before_cursor(
     Some((i, abbr))
 }
 
+// ---------------------------------------------------------------- CSS
+
+/// Whole-abbreviation shortcuts that carry their own value.
+const CSS_SHORTCUTS: &[(&str, &str, &str)] = &[
+    ("df", "display", "flex"),
+    ("dg", "display", "grid"),
+    ("db", "display", "block"),
+    ("dib", "display", "inline-block"),
+    ("di", "display", "inline"),
+    ("dn", "display", "none"),
+    ("pa", "position", "absolute"),
+    ("pr", "position", "relative"),
+    ("pf", "position", "fixed"),
+    ("ps", "position", "sticky"),
+    ("fwb", "font-weight", "bold"),
+    ("fsi", "font-style", "italic"),
+    ("tac", "text-align", "center"),
+    ("tal", "text-align", "left"),
+    ("tar", "text-align", "right"),
+    ("tdn", "text-decoration", "none"),
+    ("tdu", "text-decoration", "underline"),
+    ("jcc", "justify-content", "center"),
+    ("jcsb", "justify-content", "space-between"),
+    ("aic", "align-items", "center"),
+    ("fxdc", "flex-direction", "column"),
+    ("ovh", "overflow", "hidden"),
+    ("ova", "overflow", "auto"),
+    ("curp", "cursor", "pointer"),
+    ("bxzb", "box-sizing", "border-box"),
+];
+
+/// Property abbreviations that take a value.
+const CSS_PROPS: &[(&str, &str)] = &[
+    ("m", "margin"),
+    ("mt", "margin-top"),
+    ("mr", "margin-right"),
+    ("mb", "margin-bottom"),
+    ("ml", "margin-left"),
+    ("p", "padding"),
+    ("pt", "padding-top"),
+    ("pr", "padding-right"),
+    ("pb", "padding-bottom"),
+    ("pl", "padding-left"),
+    ("w", "width"),
+    ("h", "height"),
+    ("maw", "max-width"),
+    ("mah", "max-height"),
+    ("miw", "min-width"),
+    ("mih", "min-height"),
+    ("bd", "border"),
+    ("bdt", "border-top"),
+    ("bdb", "border-bottom"),
+    ("bdrs", "border-radius"),
+    ("bg", "background"),
+    ("bgc", "background-color"),
+    ("bgi", "background-image"),
+    ("c", "color"),
+    ("fz", "font-size"),
+    ("fw", "font-weight"),
+    ("ff", "font-family"),
+    ("lh", "line-height"),
+    ("ta", "text-align"),
+    ("t", "top"),
+    ("r", "right"),
+    ("b", "bottom"),
+    ("l", "left"),
+    ("z", "z-index"),
+    ("op", "opacity"),
+    ("fx", "flex"),
+    ("gap", "gap"),
+    ("bxsh", "box-shadow"),
+    ("trs", "transition"),
+    ("ls", "letter-spacing"),
+    ("ord", "order"),
+];
+
+/// Properties whose plain numbers are not lengths.
+const CSS_UNITLESS: &[&str] = &[
+    "font-weight",
+    "line-height",
+    "z-index",
+    "opacity",
+    "flex",
+    "order",
+];
+
+fn css_value(prop: &str, raw: &str) -> Option<String> {
+    let (neg, raw) = match raw.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, raw),
+    };
+    if raw.is_empty() {
+        return None;
+    }
+    // Split on `-` between values (`10-20`, `0-auto`).
+    let mut parts: Vec<String> = Vec::new();
+    for (i, piece) in raw.split('-').enumerate() {
+        if piece.is_empty() {
+            return None;
+        }
+        let first = piece.chars().next().unwrap();
+        let v = if first.is_ascii_digit() || first == '.' {
+            let split = piece
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(piece.len());
+            let (num, unit) = piece.split_at(split);
+            if num.parse::<f64>().is_err() {
+                return None;
+            }
+            let unit = match unit {
+                "" if CSS_UNITLESS.contains(&prop)
+                    || num.trim_matches('0').trim_matches('.').is_empty() =>
+                {
+                    ""
+                }
+                "" => "px",
+                "p" => "%",
+                "e" => "em",
+                "r" => "rem",
+                other if other.chars().all(|c| c.is_ascii_alphabetic()) => other,
+                _ => return None,
+            };
+            let sign = if neg && i == 0 { "-" } else { "" };
+            format!("{sign}{num}{unit}")
+        } else if first == '#' {
+            piece.to_string()
+        } else if piece.chars().all(|c| c.is_ascii_alphabetic()) {
+            piece.to_string()
+        } else {
+            return None;
+        };
+        parts.push(v);
+    }
+    Some(parts.join(" "))
+}
+
+/// Expands a CSS abbreviation (`m10-20`, `w100p`, `df`, `bgc#333!`) into a
+/// declaration snippet, or `None` when it is not one.
+pub fn expand_css(abbr: &str) -> Option<String> {
+    let abbr = abbr.trim();
+    let (abbr, important) = match abbr.strip_suffix('!') {
+        Some(a) => (a, true),
+        None => (abbr, false),
+    };
+    if abbr.is_empty() || !abbr.chars().next()?.is_ascii_alphabetic() {
+        return None;
+    }
+    let tail = if important { " !important" } else { "" };
+    if let Some((_, prop, value)) = CSS_SHORTCUTS.iter().find(|(a, _, _)| *a == abbr)
+    {
+        return Some(format!("{prop}: {value}{tail};"));
+    }
+    // Longest property abbreviation whose remainder is a value (or nothing).
+    let mut best: Option<(&str, &str)> = None;
+    for (a, prop) in CSS_PROPS {
+        if let Some(rest) = abbr.strip_prefix(a) {
+            let ok = rest.is_empty()
+                || rest.starts_with(|c: char| {
+                    c.is_ascii_digit() || c == '-' || c == '#' || c == '.'
+                });
+            if ok && best.map_or(true, |(ba, _)| a.len() > ba.len()) {
+                best = Some((a, prop));
+            }
+        }
+    }
+    let (a, prop) = best?;
+    let rest = &abbr[a.len()..];
+    if rest.is_empty() {
+        return Some(format!("{prop}: $1{tail};"));
+    }
+    let value = css_value(prop, rest)?;
+    Some(format!("{prop}: {}{tail};", esc(&value)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,5 +729,33 @@ mod tests {
             Some((2, "a[href=y z]".into()))
         );
         assert_eq!(abbreviation_before_cursor("foo "), None);
+    }
+
+    #[test]
+    fn css_abbreviations() {
+        let c = |s: &str| expand_css(s).unwrap();
+        assert_eq!(c("m10"), "margin: 10px;");
+        assert_eq!(c("m10-20"), "margin: 10px 20px;");
+        assert_eq!(c("m0-auto"), "margin: 0 auto;");
+        assert_eq!(c("m-10"), "margin: -10px;");
+        assert_eq!(c("w100p"), "width: 100%;");
+        assert_eq!(c("fz1.5r"), "font-size: 1.5rem;");
+        assert_eq!(c("fw700"), "font-weight: 700;");
+        assert_eq!(c("lh1.4"), "line-height: 1.4;");
+        assert_eq!(c("mt"), "margin-top: $1;");
+        assert_eq!(c("bgc#333!"), "background-color: #333 !important;");
+        assert_eq!(c("df"), "display: flex;");
+        assert_eq!(c("pa"), "position: absolute;");
+        assert_eq!(c("h50vh"), "height: 50vh;");
+        assert_eq!(c("z10"), "z-index: 10;");
+    }
+
+    #[test]
+    fn css_rejects_non_abbreviations() {
+        assert!(expand_css("").is_none());
+        assert!(expand_css("margin").is_none());
+        assert!(expand_css("10px").is_none());
+        assert!(expand_css("m10-").is_none());
+        assert!(expand_css("hello").is_none());
     }
 }

@@ -38,7 +38,7 @@ Laravel, WordPress, Symfony and Twig snippets, offered by project type. See [doc
 Run and Debug lists `npm`/`composer`/`artisan` scripts from your project. See [docs/project-scripts.md](docs/project-scripts.md).
 
 ### Emmet
-Expand HTML abbreviations (`ul>li.item*3`) with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
+Expand HTML (`ul>li.item*3`) and CSS (`m10-20`) abbreviations with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
 
 ### Completion popup
 LSP results, imported snippets and buffer words in one fuzzy-ranked popup, in that priority order. See [docs/completion-popup.md](docs/completion-popup.md).

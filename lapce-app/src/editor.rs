@@ -2334,7 +2334,19 @@ impl EditorData {
             return false;
         };
         let indent = doc.buffer.with_untracked(|b| b.indent_unit().to_string());
-        let Some(expanded) = crate::emmet::expand_html(&abbr, &indent) else {
+        let is_css = match doc.content.get_untracked() {
+            DocContent::File { path, .. } => matches!(
+                lapce_proxy::buffer::language_id_from_path(&path),
+                Some("css" | "scss" | "less")
+            ),
+            _ => false,
+        };
+        let expanded = if is_css {
+            crate::emmet::expand_css(&abbr)
+        } else {
+            crate::emmet::expand_html(&abbr, &indent)
+        };
+        let Some(expanded) = expanded else {
             return false;
         };
         let base: String = before.chars().take_while(|c| c.is_whitespace()).collect();
