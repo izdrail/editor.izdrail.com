@@ -34,6 +34,7 @@ pub mod markdown;
 pub mod palette;
 pub mod panel;
 pub mod project_scripts;
+pub mod test_runner;
 pub mod route_index;
 pub mod class_refs;
 pub mod template_refs;

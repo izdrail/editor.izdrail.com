@@ -221,6 +221,14 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Open in Browser")]
     OpenInBrowser,
 
+    #[strum(serialize = "run_test_at_cursor")]
+    #[strum(message = "Run Test at Cursor")]
+    RunTestAtCursor,
+
+    #[strum(serialize = "run_test_file")]
+    #[strum(message = "Run Test File")]
+    RunTestFile,
+
     #[strum(serialize = "run_in_terminal")]
     #[strum(message = "Run in Terminal")]
     RunInTerminal,

@@ -1508,6 +1508,10 @@ impl WindowTabData {
                     }
                 }
             }
+            RunTestAtCursor | RunTestFile => {
+                let at_cursor = matches!(cmd, RunTestAtCursor);
+                self.run_php_test(at_cursor);
+            }
             ShowCallHierarchy => {
                 if let Some(editor_data) =
                     self.main_split.active_editor.get_untracked()
@@ -2770,6 +2774,62 @@ impl WindowTabData {
             }
         }
         self.common.focus.set(Focus::Panel(kind));
+    }
+
+    /// Runs the PHPUnit/Pest test around the cursor (or the whole file) in
+    /// the terminal. Problems are shown as a toast, never swallowed.
+    fn run_php_test(&self, at_cursor: bool) {
+        let warn = |text: String| {
+            self.show_message(
+                "Run Test",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: text,
+                },
+            );
+        };
+        let Some(root) = self.workspace.path.clone() else {
+            return warn("Open a folder first.".into());
+        };
+        let Some(editor_data) = self.main_split.active_editor.get_untracked() else {
+            return warn("Open a test file first.".into());
+        };
+        let doc = editor_data.doc();
+        let DocContent::File { path, .. } = doc.content.get_untracked() else {
+            return warn("Save the file first.".into());
+        };
+        let offset = editor_data.cursor().with_untracked(|c| c.offset());
+        // Larger buffers run as a whole file rather than being scanned.
+        let (text, line) = doc.buffer.with_untracked(|b| {
+            if b.len() > 1024 * 1024 {
+                (String::new(), None)
+            } else {
+                (b.text().to_string(), Some(b.line_of_offset(offset)))
+            }
+        });
+        let line = if at_cursor { line } else { None };
+        match crate::test_runner::plan(&root, &path, &text, line) {
+            Ok(run) => {
+                let config = RunDebugConfig {
+                    ty: None,
+                    name: run.name,
+                    program: run.program,
+                    args: Some(run.args),
+                    cwd: Some("${workspace}".to_string()),
+                    env: None,
+                    prelaunch: None,
+                    debug_command: None,
+                    dap_id: Default::default(),
+                    tracing_output: false,
+                    config_source: ConfigSource::Palette,
+                };
+                self.common.internal_command.send(InternalCommand::RunAndDebug {
+                    mode: RunDebugMode::Run,
+                    config,
+                });
+            }
+            Err(e) => warn(format!("Run Test: {e}.")),
+        }
     }
 
     fn run_and_debug(
