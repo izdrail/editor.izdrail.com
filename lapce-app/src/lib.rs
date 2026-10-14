@@ -30,6 +30,7 @@ pub mod form_request_index;
 pub mod app_class_index;
 pub mod artisan_index;
 pub mod config_provider_index;
+pub mod livewire_members;
 pub mod color_swatch;
 pub mod component_index;
 pub mod command;

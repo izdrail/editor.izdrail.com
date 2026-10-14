@@ -447,6 +447,9 @@ impl PaletteData {
             PaletteKind::ConfigProviders => {
                 self.set_route_items(crate::config_provider_index::discover);
             }
+            PaletteKind::LivewireMembers => {
+                self.get_livewire_members();
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
@@ -1125,6 +1128,10 @@ impl PaletteData {
 
     fn get_component_usages(&self) {
         self.get_active_file_route_items(crate::component_usages::discover);
+    }
+
+    fn get_livewire_members(&self) {
+        self.get_active_file_route_items(crate::livewire_members::discover);
     }
 
     fn get_active_file_route_items(

@@ -98,6 +98,9 @@ Palette list of your custom Artisan commands (class `$signature` / `AsCommand` a
 ### Go to Config / Service Provider
 Palette list of `config/*.php` files (by their `config('name')` key) and service providers with their `register()`/`boot()` methods. See [docs/go-to-config-provider.md](docs/go-to-config-provider.md).
 
+### Livewire: Go to Property / Action
+Palette list of the public properties and methods of the Livewire component open in the editor (from its class or its view). See [docs/livewire-members.md](docs/livewire-members.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

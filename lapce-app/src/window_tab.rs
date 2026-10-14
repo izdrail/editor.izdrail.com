@@ -1226,6 +1226,9 @@ impl WindowTabData {
             PaletteConfigProviders => {
                 self.palette.run(PaletteKind::ConfigProviders);
             }
+            PaletteLivewireMembers => {
+                self.palette.run(PaletteKind::LivewireMembers);
+            }
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }

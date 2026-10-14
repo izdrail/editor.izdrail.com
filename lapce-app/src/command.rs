@@ -490,6 +490,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Config / Service Provider")]
     PaletteConfigProviders,
 
+    #[strum(serialize = "palette.livewire_members")]
+    #[strum(message = "Livewire: Go to Property / Action")]
+    PaletteLivewireMembers,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

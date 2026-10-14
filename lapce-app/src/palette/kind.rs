@@ -30,6 +30,7 @@ pub enum PaletteKind {
     AppClasses,
     ArtisanCommands,
     ConfigProviders,
+    LivewireMembers,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -73,6 +74,7 @@ impl PaletteKind {
             | PaletteKind::AppClasses
             | PaletteKind::ArtisanCommands
             | PaletteKind::ConfigProviders
+            | PaletteKind::LivewireMembers
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -156,6 +158,9 @@ impl PaletteKind {
             PaletteKind::ConfigProviders => {
                 Some(LapceWorkbenchCommand::PaletteConfigProviders)
             }
+            PaletteKind::LivewireMembers => {
+                Some(LapceWorkbenchCommand::PaletteLivewireMembers)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -206,6 +211,7 @@ impl PaletteKind {
             | PaletteKind::AppClasses
             | PaletteKind::ArtisanCommands
             | PaletteKind::ConfigProviders
+            | PaletteKind::LivewireMembers
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
