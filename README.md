@@ -52,6 +52,9 @@ Palette command that renames the opening and closing tag of the element around t
 ### Wrap Selection in Tag
 Palette command that wraps the selection in an HTML, Blade or Livewire element from a list. See [docs/wrap-in-tag.md](docs/wrap-in-tag.md).
 
+### Organize PHP Imports
+Palette command that removes unused `use` lines and sorts the rest. See [docs/organize-imports.md](docs/organize-imports.md).
+
 ### Import PHP Class
 Palette command that adds a sorted `use` line for the class under the cursor, from composer.json PSR-4 paths and vendor packages. See [docs/import-class.md](docs/import-class.md).
 

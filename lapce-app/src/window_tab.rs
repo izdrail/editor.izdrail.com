@@ -1168,6 +1168,7 @@ impl WindowTabData {
                 self.palette.run(PaletteKind::RunAndDebug);
             }
             ImportPhpClass => self.import_php_class(),
+            OrganizePhpImports => self.organize_php_imports(),
             RenameTag => {
                 let found = self
                     .main_split
@@ -2819,6 +2820,59 @@ impl WindowTabData {
             }
         }
         self.common.focus.set(Focus::Panel(kind));
+    }
+
+    /// "Organize PHP Imports": removes unused `use` lines and sorts the rest.
+    fn organize_php_imports(&self) {
+        let note = |typ: lsp_types::MessageType, text: String| {
+            self.show_message(
+                "Organize PHP Imports",
+                &ShowMessageParams { typ, message: text },
+            );
+        };
+        let warn = |text: String| note(lsp_types::MessageType::WARNING, text);
+        let Some(editor) = self.main_split.active_editor.get_untracked() else {
+            return warn("Open a PHP file first.".into());
+        };
+        let doc = editor.doc();
+        let is_php = match doc.content.get_untracked() {
+            DocContent::File { path, .. } => {
+                path.extension().and_then(|e| e.to_str()) == Some("php")
+                    && !path.to_string_lossy().to_lowercase().ends_with(".blade.php")
+            }
+            _ => false,
+        };
+        if !is_php {
+            return warn("Organize PHP Imports works in .php files.".into());
+        }
+        let text = doc.buffer.with_untracked(|b| {
+            (b.len() <= 1024 * 1024).then(|| b.text().to_string())
+        });
+        let Some(result) = text.as_deref().and_then(crate::php_organize::organize)
+        else {
+            return warn("The file is too large to organize.".into());
+        };
+        if result.edits.is_empty() {
+            return note(
+                lsp_types::MessageType::INFO,
+                "Imports are already organized.".into(),
+            );
+        }
+        let selection = doc
+            .buffer
+            .with_untracked(|b| editor.cursor().get_untracked().edit_selection(b));
+        let edits: Vec<(lapce_core::selection::Selection, &str)> = result
+            .edits
+            .iter()
+            .map(|(r, s)| (lapce_core::selection::Selection::region(r.start, r.end), s.as_str()))
+            .collect();
+        editor.do_edit(&selection, &edits);
+        let mut msg = String::new();
+        if !result.removed.is_empty() {
+            msg.push_str(&format!("Removed {} unused import(s). ", result.removed.len()));
+        }
+        msg.push_str("Imports sorted.");
+        note(lsp_types::MessageType::INFO, msg);
     }
 
     /// "Import PHP Class": adds a `use` line for the class under the cursor.

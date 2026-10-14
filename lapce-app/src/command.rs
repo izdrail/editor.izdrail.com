@@ -426,6 +426,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Wrap Selection in Tag")]
     WrapSelectionInTag,
 
+    #[strum(serialize = "organize_php_imports")]
+    #[strum(message = "Organize PHP Imports")]
+    OrganizePhpImports,
+
     #[strum(serialize = "import_php_class")]
     #[strum(message = "Import PHP Class")]
     ImportPhpClass,

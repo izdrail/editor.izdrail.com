@@ -37,6 +37,7 @@ pub mod project_scripts;
 pub mod editorconfig;
 pub mod test_runner;
 pub mod php_imports;
+pub mod php_organize;
 pub mod route_index;
 pub mod blade_end;
 pub mod tag_close;
