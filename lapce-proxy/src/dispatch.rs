@@ -1309,6 +1309,33 @@ impl ProxyHandler for Dispatcher {
                 );
             }
             GetDocumentFormatting { path } => {
+                // A project that configures Prettier (config file plus a binary)
+                // formats through it; language servers and plugins are skipped.
+                // Failure means no edits, never a fallback to a second formatter.
+                if let Some(formatter) = crate::external_format::resolve(&path) {
+                    let snapshot = self.buffers.get(&path).map(|b| {
+                        (b.rope.to_string(), b.offset_to_position(b.len()))
+                    });
+                    let proxy_rpc = self.proxy_rpc.clone();
+                    thread::spawn(move || {
+                        let result = snapshot
+                            .and_then(|(old, end)| {
+                                crate::external_format::format(&formatter, &path, &old)
+                                    .map(|new| {
+                                        crate::external_format::whole_document_edit(&old, new, end)
+                                    })
+                            })
+                            .ok_or_else(|| RpcError {
+                                code: -32603,
+                                message: "external formatter unavailable or failed".into(),
+                            });
+                        proxy_rpc.handle_response(
+                            id,
+                            result.map(|edits| ProxyResponse::GetDocumentFormatting { edits }),
+                        );
+                    });
+                    return;
+                }
                 let merge = FirstOk::new(self.proxy_rpc.clone(), id, move |edits| {
                     ProxyResponse::GetDocumentFormatting { edits }
                 });

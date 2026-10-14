@@ -37,6 +37,9 @@ Laravel, WordPress, Symfony and Twig snippets, offered by project type. See [doc
 ### Project scripts
 Run and Debug lists `npm`/`composer`/`artisan` scripts from your project. See [docs/project-scripts.md](docs/project-scripts.md).
 
+### Prettier formatting
+Projects with a Prettier config and binary are formatted through it on save. See [docs/format-on-save.md](docs/format-on-save.md).
+
 ### Emmet
 Expand HTML (`ul>li.item*3`) and CSS (`m10-20`) abbreviations with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
 
