@@ -418,6 +418,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "palette.run_and_debug")]
     PaletteRunAndDebug,
 
+    #[strum(serialize = "rename_tag")]
+    #[strum(message = "Rename Tag")]
+    RenameTag,
+
     #[strum(serialize = "wrap_selection_in_tag")]
     #[strum(message = "Wrap Selection in Tag")]
     WrapSelectionInTag,

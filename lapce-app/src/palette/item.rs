@@ -59,6 +59,9 @@ pub enum PaletteItemContent {
     WrapTag {
         tag: String,
     },
+    RenameTag {
+        tag: String,
+    },
     DocumentSymbol {
         kind: SymbolKind,
         name: String,

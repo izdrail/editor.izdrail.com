@@ -46,6 +46,9 @@ Projects with a Prettier config and binary are formatted through it on save. See
 ### Auto-close tags
 Typing `>` after an opening tag in HTML, Twig, Blade and Vue files inserts the closing tag, and Enter after a Blade `@if`/`@foreach`/... adds the `@end...` line (`auto-close-tags` setting). See [docs/auto-close-tags.md](docs/auto-close-tags.md).
 
+### Rename Tag
+Palette command that renames the opening and closing tag of the element around the caret. See [docs/rename-tag.md](docs/rename-tag.md).
+
 ### Wrap Selection in Tag
 Palette command that wraps the selection in an HTML, Blade or Livewire element from a list. See [docs/wrap-in-tag.md](docs/wrap-in-tag.md).
 

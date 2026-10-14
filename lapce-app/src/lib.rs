@@ -40,6 +40,7 @@ pub mod php_imports;
 pub mod route_index;
 pub mod blade_end;
 pub mod tag_close;
+pub mod tag_pair;
 pub mod tag_wrap;
 pub mod class_refs;
 pub mod template_refs;

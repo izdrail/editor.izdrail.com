@@ -2595,6 +2595,7 @@ fn palette_item(
         | PaletteItemContent::Route { .. }
         | PaletteItemContent::ImportClass { .. }
         | PaletteItemContent::WrapTag { .. }
+        | PaletteItemContent::RenameTag { .. }
         | PaletteItemContent::Workspace { .. }
         | PaletteItemContent::SshHost { .. }
         | PaletteItemContent::Language { .. }

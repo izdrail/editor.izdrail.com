@@ -1168,6 +1168,24 @@ impl WindowTabData {
                 self.palette.run(PaletteKind::RunAndDebug);
             }
             ImportPhpClass => self.import_php_class(),
+            RenameTag => {
+                let found = self
+                    .main_split
+                    .active_editor
+                    .get_untracked()
+                    .is_some_and(|e| e.tag_pair_at_cursor().is_some());
+                if found {
+                    self.palette.run(PaletteKind::RenameTag);
+                } else {
+                    self.show_message(
+                        "Rename Tag",
+                        &ShowMessageParams {
+                            typ: lsp_types::MessageType::WARNING,
+                            message: "Put the cursor inside an opening or closing tag of a matched element.".into(),
+                        },
+                    );
+                }
+            }
             WrapSelectionInTag => {
                 self.palette.run(PaletteKind::WrapTag);
             }

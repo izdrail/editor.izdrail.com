@@ -3154,6 +3154,39 @@ impl EditorData {
             });
     }
 
+    /// Name range pair of the element around the caret, if any.
+    pub fn tag_pair_at_cursor(&self) -> Option<crate::tag_pair::Pair> {
+        let doc = self.doc();
+        let offset = self.cursor().with_untracked(|c| c.offset());
+        let text = doc.buffer.with_untracked(|b| {
+            (b.len() <= 1024 * 1024).then(|| b.text().to_string())
+        })?;
+        crate::tag_pair::pair_at(&text, offset)
+    }
+
+    /// Renames the opening and closing tag of the element around the caret.
+    pub fn rename_tag(&self, new_name: &str) -> bool {
+        if !crate::tag_wrap::is_valid_tag(new_name) {
+            return false;
+        }
+        let Some(pair) = self.tag_pair_at_cursor() else {
+            return false;
+        };
+        let doc = self.doc();
+        let selection = doc
+            .buffer
+            .with_untracked(|b| self.cursor().get_untracked().edit_selection(b));
+        // Closing tag first is not needed: edits are applied as one delta.
+        self.do_edit(
+            &selection,
+            &[
+                (Selection::region(pair.open_name.start, pair.open_name.end), new_name),
+                (Selection::region(pair.close_name.start, pair.close_name.end), new_name),
+            ],
+        );
+        true
+    }
+
     /// Wraps each selection (or the word at each caret) in `<tag>...</tag>`.
     pub fn wrap_in_tag(&self, tag: &str) -> bool {
         if !crate::tag_wrap::is_valid_tag(tag) {
