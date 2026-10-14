@@ -132,6 +132,13 @@ mod linux {
                     Ok(f) => {
                         let mut bytes = Vec::new();
                         let meta = f.metadata().map_err(|e| e.to_string())?;
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::MetadataExt;
+                            if meta.nlink() > 1 {
+                                return Err("Hard-linked gitignore denied".into());
+                            }
+                        }
                         if !meta.is_file() || meta.len() > 65536 {
                             return Err("Invalid gitignore file".into());
                         }
@@ -364,5 +371,16 @@ mod tests {
         .unwrap();
         assert!(root.read(Path::new("old/file")).is_err());
         assert!(root.search("inside").is_err());
+    }
+    #[test]
+    fn hardlinked_gitignore_is_not_trusted() {
+        let d = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        fs::write(other.path().join("ignore"), "secret.txt\n").unwrap();
+        fs::hard_link(other.path().join("ignore"), d.path().join(".gitignore"))
+            .unwrap();
+        fs::write(d.path().join("file.txt"), "needle").unwrap();
+        let r = ReadRoot::new(d.path(), true).unwrap();
+        assert!(r.read(Path::new("file.txt")).is_err());
     }
 }
