@@ -274,6 +274,32 @@ fn blade_scanners_random_text() {
     assert!(start.elapsed().as_secs() < 15);
 }
 
+const LARAVEL_CLASS_TOKENS: &[&str] = &[
+    "class A extends FormRequest {", "final class ", "abstract class ", "enum E: string {", "function rules", "return [",
+    "'a' =>", "\"é\" =>", "$signature = '", "$name = \"", "$description = '", "#[AsCommand(name: '", "Artisan::command('",
+    "]", "[", "(", ")", "'", "\"", "\\", "\n", " ", "//", "/*", "*/", "日本", "é", "{", "}",
+];
+
+#[test]
+fn form_request_app_class_artisan_random_text() {
+    use crate::{app_class_index, artisan_index, form_request_index};
+    let mut rng = Rng(0xA27154A0C1A55E5);
+    let start = Instant::now();
+    for _ in 0..3000 {
+        let n = (rng.next() % 150) as usize;
+        let t = soup(&mut rng, LARAVEL_CLASS_TOKENS, n);
+        let _ = form_request_index::parse(&t);
+        let _ = app_class_index::class_decl(&t);
+        let _ = artisan_index::parse_class(&t);
+        let _ = artisan_index::parse_closures(&t);
+    }
+    // One long line and one very deep bracket nest must stay fast.
+    let long = format!("class A extends FormRequest {{\n function rules() {{\n return [{}", "[".repeat(200_000));
+    let _ = form_request_index::parse(&long);
+    let _ = artisan_index::parse_closures(&"Artisan::command('".repeat(50_000));
+    assert!(start.elapsed().as_secs() < 15);
+}
+
 #[test]
 fn blade_scanners_on_hostile_trees() {
     use crate::{blade_layouts, component_usages, props_draft};
@@ -302,5 +328,36 @@ fn blade_scanners_on_hostile_trees() {
     assert!(!props_draft::scan(r, "btn").is_empty());
     assert!(blade_layouts::discover(r, &views.join("v1.blade.php")).is_empty());
     assert!(blade_layouts::discover(r, &views.join("huge.blade.php")).is_empty());
+    assert!(start.elapsed().as_secs() < 15);
+}
+
+#[test]
+fn laravel_folder_scanners_on_hostile_trees() {
+    use crate::{app_class_index, artisan_index, form_request_index};
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    for dir in ["app/Http/Requests", "app/Jobs", "app/Console/Commands", "database/seeders"] {
+        std::fs::create_dir_all(r.join(dir)).unwrap();
+    }
+    for i in 0..2000 {
+        std::fs::write(r.join(format!("app/Jobs/J{i}.php")), "class J {}").unwrap();
+    }
+    for i in 0..1200 {
+        std::fs::write(r.join(format!("app/Console/Commands/C{i}.php")), format!("$signature = 'c:{i}';")).unwrap();
+    }
+    std::fs::write(r.join("app/Http/Requests/Huge.php"), "x".repeat(2_000_000)).unwrap();
+    std::fs::write(r.join("app/Http/Requests/Bin.php"), [0xffu8, 0xfe, 0x00, 0x80].repeat(1000)).unwrap();
+    let mut deep = r.join("app/Http/Requests");
+    for i in 0..15 {
+        deep = deep.join(format!("d{i}"));
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join("DeepRequest.php"), "class DeepRequest extends FormRequest {}").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(r.join("app"), r.join("app/Http/Requests/loop")).unwrap();
+    let start = Instant::now();
+    let _ = form_request_index::discover(r);
+    assert!(app_class_index::discover(r).len() <= 1500);
+    assert!(artisan_index::discover(r).len() <= 1000);
     assert!(start.elapsed().as_secs() < 15);
 }
