@@ -429,6 +429,9 @@ impl PaletteData {
             PaletteKind::Policies => {
                 self.set_route_items(crate::policy_index::discover);
             }
+            PaletteKind::ComponentUsages => {
+                self.get_component_usages();
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
@@ -1103,6 +1106,36 @@ impl PaletteData {
 
     fn get_blade_components(&self) {
         self.set_route_items(crate::component_index::discover);
+    }
+
+    fn get_component_usages(&self) {
+        let file = self
+            .main_split
+            .active_editor
+            .get_untracked()
+            .and_then(|e| e.doc().content.with_untracked(|c| c.path().cloned()));
+        let (Some(root), Some(file)) = (self.workspace.path.clone(), file) else {
+            self.items.set(im::Vector::new());
+            return;
+        };
+        let items = crate::component_usages::discover(&root, &file)
+            .into_iter()
+            .map(|route| PaletteItem {
+                content: PaletteItemContent::Route {
+                    location: EditorLocation {
+                        path: route.path,
+                        position: Some(EditorPosition::Line(route.line)),
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                },
+                filter_text: route.label,
+                score: 0,
+                indices: vec![],
+            })
+            .collect::<Vec<_>>();
+        self.items.set(items.into_iter().collect());
     }
 
     fn set_route_items(

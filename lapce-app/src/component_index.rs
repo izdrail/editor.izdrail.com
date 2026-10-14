@@ -27,7 +27,7 @@ fn kebab(s: &str) -> String {
     out
 }
 
-fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+pub(crate) fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth > MAX_DEPTH || out.len() >= MAX_ENTRIES {
         return;
     }
@@ -58,13 +58,13 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 
 /// Component name for `rel` (path under the base dir, `/` separated), given
 /// how the file is named: strips the suffix, `index` collapses to its folder.
-fn view_name(rel: &str) -> Option<String> {
+pub(crate) fn view_name(rel: &str) -> Option<String> {
     let stem = rel.strip_suffix(".blade.php")?;
     let stem = stem.strip_suffix("/index").unwrap_or(stem);
     (!stem.is_empty() && stem != "index").then(|| stem.replace('/', "."))
 }
 
-fn class_name(rel: &str) -> Option<String> {
+pub(crate) fn class_name(rel: &str) -> Option<String> {
     let stem = rel.strip_suffix(".php")?;
     if stem.ends_with(".blade") {
         return None;
@@ -72,7 +72,7 @@ fn class_name(rel: &str) -> Option<String> {
     Some(stem.split('/').map(kebab).collect::<Vec<_>>().join("."))
 }
 
-fn rel_of(base: &Path, p: &Path) -> Option<String> {
+pub(crate) fn rel_of(base: &Path, p: &Path) -> Option<String> {
     let r = p.strip_prefix(base).ok()?;
     let parts: Vec<&str> = r.components().filter_map(|c| c.as_os_str().to_str()).collect();
     (!parts.is_empty()).then(|| parts.join("/"))

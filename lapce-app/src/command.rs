@@ -466,6 +466,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Policy / Gate")]
     PalettePolicies,
 
+    #[strum(serialize = "palette.component_usages")]
+    #[strum(message = "Find Component Usages")]
+    PaletteComponentUsages,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

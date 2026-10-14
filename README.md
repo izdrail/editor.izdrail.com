@@ -80,6 +80,9 @@ Palette list of Laravel migrations, newest first, with the tables they touch. Se
 ### Go to Policy / Gate
 Palette list of Laravel policies with their abilities, and `Gate::define` names. See [docs/go-to-policy.md](docs/go-to-policy.md).
 
+### Find Component Usages
+Palette list of every Blade view that renders the component open in the editor (`<x-...>`, `<livewire:...>`, `@livewire`). See [docs/component-usages.md](docs/component-usages.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

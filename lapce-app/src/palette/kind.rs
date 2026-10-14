@@ -24,6 +24,7 @@ pub enum PaletteKind {
     Tests,
     Migrations,
     Policies,
+    ComponentUsages,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -61,6 +62,7 @@ impl PaletteKind {
             | PaletteKind::Tests
             | PaletteKind::Migrations
             | PaletteKind::Policies
+            | PaletteKind::ComponentUsages
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -126,6 +128,9 @@ impl PaletteKind {
             PaletteKind::Tests => Some(LapceWorkbenchCommand::PaletteTests),
             PaletteKind::Migrations => Some(LapceWorkbenchCommand::PaletteMigrations),
             PaletteKind::Policies => Some(LapceWorkbenchCommand::PalettePolicies),
+            PaletteKind::ComponentUsages => {
+                Some(LapceWorkbenchCommand::PaletteComponentUsages)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -170,6 +175,7 @@ impl PaletteKind {
             | PaletteKind::Tests
             | PaletteKind::Migrations
             | PaletteKind::Policies
+            | PaletteKind::ComponentUsages
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
