@@ -1217,6 +1217,9 @@ impl WindowTabData {
             PaletteFormRequests => {
                 self.palette.run(PaletteKind::FormRequests);
             }
+            PaletteAppClasses => {
+                self.palette.run(PaletteKind::AppClasses);
+            }
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }

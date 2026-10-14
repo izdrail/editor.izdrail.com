@@ -27,6 +27,7 @@ pub enum PaletteKind {
     ComponentUsages,
     BladeLayouts,
     FormRequests,
+    AppClasses,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -67,6 +68,7 @@ impl PaletteKind {
             | PaletteKind::ComponentUsages
             | PaletteKind::BladeLayouts
             | PaletteKind::FormRequests
+            | PaletteKind::AppClasses
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -141,6 +143,9 @@ impl PaletteKind {
             PaletteKind::FormRequests => {
                 Some(LapceWorkbenchCommand::PaletteFormRequests)
             }
+            PaletteKind::AppClasses => {
+                Some(LapceWorkbenchCommand::PaletteAppClasses)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -188,6 +193,7 @@ impl PaletteKind {
             | PaletteKind::ComponentUsages
             | PaletteKind::BladeLayouts
             | PaletteKind::FormRequests
+            | PaletteKind::AppClasses
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag

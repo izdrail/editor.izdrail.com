@@ -478,6 +478,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Form Request")]
     PaletteFormRequests,
 
+    #[strum(serialize = "palette.app_classes")]
+    #[strum(message = "Go to Middleware / Job / Event")]
+    PaletteAppClasses,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

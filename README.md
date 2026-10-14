@@ -89,6 +89,9 @@ From a view, lists its `@extends` layout and the layout's `@yield`/`@stack` slot
 ### Go to Form Request
 Palette list of Laravel form request classes and the fields in their `rules()`. See [docs/go-to-form-request.md](docs/go-to-form-request.md).
 
+### Go to Middleware / Job / Event
+Palette list of Laravel middleware, jobs, events, listeners, observers, notifications and mailables, tagged by kind. See [docs/go-to-app-class.md](docs/go-to-app-class.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

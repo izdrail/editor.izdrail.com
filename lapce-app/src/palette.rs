@@ -438,6 +438,9 @@ impl PaletteData {
             PaletteKind::FormRequests => {
                 self.set_route_items(crate::form_request_index::discover);
             }
+            PaletteKind::AppClasses => {
+                self.set_route_items(crate::app_class_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
