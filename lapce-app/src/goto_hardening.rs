@@ -5,7 +5,7 @@
 //! them may panic or take noticeable time.
 use std::{path::Path, time::Instant};
 
-use crate::{env_refs, laravel_keys, route_names, template_refs, wp_hooks};
+use crate::{class_refs, env_refs, laravel_keys, route_names, template_refs, wp_hooks};
 
 fn lines() -> Vec<String> {
     let mut v: Vec<String> = [
@@ -14,7 +14,8 @@ fn lines() -> Vec<String> {
         "add_action('é', 'ñ');", "add_action('x', [", "do_action(\"", "config('é.ü')",
         "__('日本語')", "route('日本')", "😀😀 view('😀') 😀", "\u{0301}\u{0301}'",
         "}}'\"((", "@includeWhen(", "add_action( '", "App\\Élan\\Ünï", "App\\\\\\\\",
-        "register_activation_hook(__FILE__, '",
+        "register_activation_hook(__FILE__, '", "class: 'App\\Ünï\\", "@App\\É::é",
+        "App\\Controller\\Home::", "::", "\\\\\\", "resource: '../src/'",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -30,8 +31,9 @@ fn lines() -> Vec<String> {
 }
 
 fn all_resolvers(root: &Path, line: &str, col: usize) {
-    for name in ["a.blade.php", "a.php", "a.html.twig", "a.yaml"] {
+    for name in ["a.blade.php", "a.php", "a.html.twig", "a.yaml", "a.xml", "a.neon"] {
         let f = root.join(name);
+        let _ = class_refs::resolve(root, &f, line, col);
         let _ = template_refs::resolve(root, &f, line, col);
         let _ = wp_hooks::resolve(root, &f, line, col);
     }
@@ -122,4 +124,41 @@ fn symlink_loops_are_not_followed() {
     assert_eq!(wp_hooks::resolve(r, &f, l, 18), None);
     assert_eq!(route_names::resolve(r, "path('missing')", 8), None);
     assert!(start.elapsed().as_secs() < 3);
+}
+
+#[test]
+fn class_refs_with_bad_composer_and_traversal() {
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    let f = r.join("services.yaml");
+    std::fs::write(r.join("composer.json"), [0xff, 0xfe, b'{']).unwrap();
+    assert_eq!(class_refs::resolve(r, &f, "class: App\\Foo", 10), None);
+    std::fs::write(
+        r.join("composer.json"),
+        r#"{"autoload":{"psr-4":{"App\\":"../","":"src/"}}}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(r.join("src")).unwrap();
+    for l in ["App\\..\\..\\Etc", "App\\\\Foo", "App\\", "\\"] {
+        for c in 0..=l.len() {
+            let _ = class_refs::resolve(r, &f, l, c);
+        }
+    }
+}
+
+#[test]
+fn class_refs_oversized_class_file_is_not_read() {
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    let f = r.join("services.yaml");
+    std::fs::create_dir_all(r.join("src")).unwrap();
+    std::fs::write(
+        r.join("src/Big.php"),
+        "x".repeat(1024 * 1024 + 10),
+    )
+    .unwrap();
+    let t = Instant::now();
+    let got = class_refs::resolve(r, &f, "class: App\\Big", 10);
+    assert_eq!(got, Some((r.join("src/Big.php"), 0)));
+    assert!(t.elapsed().as_secs() < 2);
 }
