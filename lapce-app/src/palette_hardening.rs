@@ -331,6 +331,33 @@ fn blade_scanners_on_hostile_trees() {
     assert!(start.elapsed().as_secs() < 15);
 }
 
+const CP_TOKENS: &[&str] = &[
+    "class ", "final class ", "abstract ", "function ", "register", "boot", "(", ")", "{", "}", "public ", "static ", "$p",
+    "#[Locked]", "#[Computed]", "class=\"", "className='", "lass", "=", "Name", "p-4", "md:flex", "{{", "}}", "<?php",
+    "'", "\"", "\\", "é", "日本", "\n", " ", "//", "/*", "*/",
+];
+
+#[test]
+fn config_livewire_css_scanners_random_text() {
+    use crate::{config_provider_index, livewire_members, tw_usage_index};
+    let mut rng = Rng(0xC0F16C55D00DF00D);
+    let start = Instant::now();
+    for _ in 0..3000 {
+        let n = (rng.next() % 150) as usize;
+        let t = soup(&mut rng, CP_TOKENS, n);
+        let _ = config_provider_index::parse_provider(&t);
+        let _ = livewire_members::parse(&t);
+        let _ = tw_usage_index::classes_in(&t);
+    }
+    // Pathological single inputs must stay fast.
+    let _ = livewire_members::parse(&format!("class A {{\n{}", "{".repeat(200_000)));
+    let _ = livewire_members::parse(&"class A {\n#[Locked]\n".repeat(20_000));
+    let _ = tw_usage_index::classes_in(&"class=\"".repeat(50_000));
+    let _ = tw_usage_index::classes_in(&"lass".repeat(100_000));
+    let _ = config_provider_index::parse_provider(&"function register(".repeat(50_000));
+    assert!(start.elapsed().as_secs() < 15);
+}
+
 #[test]
 fn laravel_folder_scanners_on_hostile_trees() {
     use crate::{app_class_index, artisan_index, form_request_index};
@@ -360,4 +387,41 @@ fn laravel_folder_scanners_on_hostile_trees() {
     assert!(app_class_index::discover(r).len() <= 1500);
     assert!(artisan_index::discover(r).len() <= 1000);
     assert!(start.elapsed().as_secs() < 15);
+}
+
+#[test]
+fn config_livewire_css_scanners_on_hostile_trees() {
+    use crate::{config_provider_index, livewire_members, tw_usage_index};
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    for dir in ["config", "app/Providers", "app/Livewire", "resources/views/livewire"] {
+        std::fs::create_dir_all(r.join(dir)).unwrap();
+    }
+    for i in 0..1500 {
+        std::fs::write(r.join(format!("config/c{i}.php")), "<?php return [];").unwrap();
+        std::fs::write(r.join(format!("resources/views/v{i}.blade.php")), format!("<i class=\"u{i} p-4\"></i>")).unwrap();
+    }
+    std::fs::write(r.join("app/Providers/Big.php"), format!("class Big {{\n{}", "x".repeat(2_000_000))).unwrap();
+    std::fs::write(r.join("app/Providers/Bin.php"), [0xffu8, 0xfe, 0x00, 0x80].repeat(5000)).unwrap();
+    std::fs::write(r.join("app/Livewire/Huge.php"), format!("class Huge {{\n{}}}", "public $a;\n".repeat(200_000))).unwrap();
+    std::fs::write(r.join("resources/views/livewire/huge.blade.php"), "<div></div>").unwrap();
+    let mut deep = r.join("resources/views");
+    for i in 0..15 {
+        deep = deep.join(format!("d{i}"));
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join("deep.blade.php"), "<i class=\"deep-only\"></i>").unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(r.join("resources"), r.join("resources/views/loop")).unwrap();
+        std::os::unix::fs::symlink(r.join("config"), r.join("config/loop")).unwrap();
+    }
+    let start = Instant::now();
+    assert!(config_provider_index::discover(r).len() <= 3000);
+    let css = tw_usage_index::discover(r);
+    assert!(css.len() <= 1000);
+    assert!(!css.iter().any(|t| t.label.starts_with("deep-only")), "depth cap");
+    assert!(livewire_members::discover(r, &r.join("app/Livewire/Huge.php")).is_empty(), "over 1 MB");
+    assert!(livewire_members::discover(r, &r.join("resources/views/livewire/huge.blade.php")).is_empty());
+    assert!(start.elapsed().as_secs() < 20);
 }
