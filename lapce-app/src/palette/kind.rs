@@ -25,6 +25,7 @@ pub enum PaletteKind {
     Migrations,
     Policies,
     ComponentUsages,
+    BladeLayouts,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -63,6 +64,7 @@ impl PaletteKind {
             | PaletteKind::Migrations
             | PaletteKind::Policies
             | PaletteKind::ComponentUsages
+            | PaletteKind::BladeLayouts
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -131,6 +133,9 @@ impl PaletteKind {
             PaletteKind::ComponentUsages => {
                 Some(LapceWorkbenchCommand::PaletteComponentUsages)
             }
+            PaletteKind::BladeLayouts => {
+                Some(LapceWorkbenchCommand::PaletteBladeLayouts)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -176,6 +181,7 @@ impl PaletteKind {
             | PaletteKind::Migrations
             | PaletteKind::Policies
             | PaletteKind::ComponentUsages
+            | PaletteKind::BladeLayouts
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag

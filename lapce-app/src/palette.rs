@@ -432,6 +432,9 @@ impl PaletteData {
             PaletteKind::ComponentUsages => {
                 self.get_component_usages();
             }
+            PaletteKind::BladeLayouts => {
+                self.get_active_file_route_items(crate::blade_layouts::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
@@ -1109,6 +1112,13 @@ impl PaletteData {
     }
 
     fn get_component_usages(&self) {
+        self.get_active_file_route_items(crate::component_usages::discover);
+    }
+
+    fn get_active_file_route_items(
+        &self,
+        discover: fn(&std::path::Path, &std::path::Path) -> Vec<crate::route_index::RouteTarget>,
+    ) {
         let file = self
             .main_split
             .active_editor
@@ -1118,7 +1128,7 @@ impl PaletteData {
             self.items.set(im::Vector::new());
             return;
         };
-        let items = crate::component_usages::discover(&root, &file)
+        let items = discover(&root, &file)
             .into_iter()
             .map(|route| PaletteItem {
                 content: PaletteItemContent::Route {

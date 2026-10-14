@@ -25,6 +25,7 @@ pub mod model_index;
 pub mod test_index;
 pub mod policy_index;
 pub mod component_usages;
+pub mod blade_layouts;
 pub mod color_swatch;
 pub mod component_index;
 pub mod command;

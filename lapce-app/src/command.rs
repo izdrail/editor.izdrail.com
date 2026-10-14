@@ -470,6 +470,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Find Component Usages")]
     PaletteComponentUsages,
 
+    #[strum(serialize = "palette.blade_layouts")]
+    #[strum(message = "Go to Blade Layout / Section")]
+    PaletteBladeLayouts,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

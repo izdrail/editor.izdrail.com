@@ -83,6 +83,9 @@ Palette list of Laravel policies with their abilities, and `Gate::define` names.
 ### Find Component Usages
 Palette list of every Blade view that renders the component open in the editor (`<x-...>`, `<livewire:...>`, `@livewire`). See [docs/component-usages.md](docs/component-usages.md).
 
+### Go to Blade Layout / Section
+From a view, lists its `@extends` layout and the layout's `@yield`/`@stack` slots; from a layout, lists the views that extend it. See [docs/blade-layouts.md](docs/blade-layouts.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 
