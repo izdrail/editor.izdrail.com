@@ -43,7 +43,7 @@ pub fn default_panel_order() -> PanelOrder {
     );
     order.insert(
         PanelPosition::RightTop,
-        im::vector![PanelKind::DocumentSymbol,],
+        im::vector![PanelKind::DocumentSymbol, PanelKind::Chat,],
     );
 
     order
@@ -112,6 +112,15 @@ impl PanelData {
                 .entry(PanelPosition::LeftTop)
                 .or_default()
                 .push_back(PanelKind::Plugin);
+        }
+        if !panels
+            .values()
+            .any(|items| items.contains(&PanelKind::Chat))
+        {
+            panels
+                .entry(PanelPosition::RightTop)
+                .or_default()
+                .push_back(PanelKind::Chat);
         }
         let panels = cx.create_rw_signal(panels);
 

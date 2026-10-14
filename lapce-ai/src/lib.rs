@@ -1,4 +1,6 @@
 //! Local CPU-only Qwen FIM provider. No implicit downloads or remote inference.
+pub mod catalog;
+pub mod chat;
 pub mod process;
 use anyhow::{Result, anyhow, bail, ensure};
 use candle_core::{Device, Tensor, quantized::gguf_file};
@@ -28,6 +30,8 @@ pub struct Request {
     /// in-flight request.
     #[serde(default)]
     pub request_id: u64,
+    #[serde(default)]
+    pub messages: Option<Vec<chat::Message>>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Completion {
@@ -95,6 +99,9 @@ fn token(tokenizer: &Tokenizer, name: &str) -> Result<u32> {
         .ok_or_else(|| anyhow!("Tokenizer lacks {name}"))
 }
 pub fn prompt_ids(tokenizer: &Tokenizer, request: &Request) -> Result<Vec<u32>> {
+    if let Some(messages) = &request.messages {
+        return chat::prompt_ids(tokenizer, messages, request.max_tokens);
+    }
     ensure!(
         (1..=2048).contains(&request.prefix_tokens),
         "prefix tokens must be 1..2048"
@@ -167,7 +174,7 @@ impl CandleProvider {
         );
         let tokenizer =
             Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e.to_string()))?;
-        for name in ["fim_prefix", "fim_suffix", "fim_middle", "endoftext"] {
+        for name in ["endoftext"] {
             token(&tokenizer, name)?;
         }
         let model = ModelWeights::from_gguf(content, &mut reader, &Device::Cpu)?;
@@ -225,7 +232,11 @@ impl Provider for CandleProvider {
             .map_err(|e| anyhow!(e.to_string()))?;
         let generation_ms = start.elapsed().as_millis();
         Ok(Completion {
-            text: clip_suffix(&text, &request.suffix),
+            text: if request.messages.is_some() {
+                text
+            } else {
+                clip_suffix(&text, &request.suffix)
+            },
             tokens: generated.len(),
             prompt_tokens: ids.len(),
             load_ms: self.load_ms,
@@ -319,6 +330,10 @@ pub struct Installed {
     pub tokenizer: PathBuf,
 }
 pub fn download(root: &Path) -> Result<Installed> {
+    download_model(root, "qwen-fim-1.5b")
+}
+pub fn download_model(root: &Path, id: &str) -> Result<Installed> {
+    let entry = catalog::find(id).ok_or_else(|| anyhow!("Unknown curated model"))?;
     use hf_hub::{Repo, RepoType, api::sync::ApiBuilder};
     std::fs::create_dir_all(root)?;
     let api = ApiBuilder::new()
@@ -357,24 +372,31 @@ pub fn download(root: &Path) -> Result<Installed> {
             Ok(path)
         };
     let model = obtain_progress(
-        "QuantFactory/Qwen2.5-Coder-1.5B-GGUF",
-        MODEL_REV,
-        MODEL_FILE,
-        986048352,
-        MODEL_HASH,
+        entry.repo,
+        entry.revision,
+        entry.file,
+        entry.size,
+        entry.hash,
     )?;
     let tokenizer = obtain_progress(
-        "Qwen/Qwen2.5-Coder-1.5B",
-        TOKEN_REV,
+        "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+        chat::TOKEN_REV,
         "tokenizer.json",
         7031645,
         TOKEN_HASH,
     )?;
     let installed = Installed { model, tokenizer };
-    let temp = root.join("installed.json.part");
+    let manifest = format!("installed-{}.json", entry.id);
+    let temp = root.join(format!("{manifest}.part"));
     std::fs::write(&temp, serde_json::to_vec_pretty(&installed)?)?;
-    std::fs::rename(temp, root.join("installed.json"))?;
-    event("ready", 0, 0, "Qwen2.5-Coder 1.5B base Q4_K_M installed");
+    std::fs::rename(temp, root.join(&manifest))?;
+    if entry.id == "qwen-fim-1.5b" {
+        std::fs::write(
+            root.join("installed.json"),
+            serde_json::to_vec_pretty(&installed)?,
+        )?;
+    }
+    event("ready", 0, 0, entry.id);
     Ok(installed)
 }
 /// Cooperative cancellation needs a control thread: stdin carries both
@@ -386,7 +408,10 @@ pub fn run() -> i32 {
             let root = std::env::args()
                 .nth(2)
                 .ok_or_else(|| anyhow!("Missing download directory"))?;
-            download(Path::new(&root))?;
+            let id = std::env::args()
+                .nth(3)
+                .unwrap_or_else(|| "qwen-fim-1.5b".into());
+            download_model(Path::new(&root), &id)?;
             return Ok(());
         }
         use std::sync::{
@@ -523,6 +548,7 @@ mod tests {
             suffix_tokens: 2,
             max_tokens: 8,
             request_id: 7,
+            messages: None,
         };
         let line = serde_json::to_string(&request).unwrap();
         match parse_wire(&line).unwrap() {
@@ -556,6 +582,7 @@ mod tests {
             suffix_tokens: 2,
             max_tokens: 8,
             request_id: 0,
+            messages: None,
         };
         let p = prompt_ids(&t, &r).unwrap();
         assert_eq!(p[0], token(&t, "fim_prefix").unwrap());
@@ -581,6 +608,7 @@ mod tests {
                 suffix_tokens: 64,
                 max_tokens: 24,
                 request_id: 0,
+                messages: None,
             };
             let c = provider.complete(&r, &|| false).unwrap();
             println!("{c:?}");

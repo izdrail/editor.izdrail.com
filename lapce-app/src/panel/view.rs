@@ -481,6 +481,9 @@ fn panel_view(
                     source_control_panel(window_tab_data.clone(), position)
                         .into_any()
                 }
+                PanelKind::Chat => {
+                    super::chat_view::chat_panel(window_tab_data.clone()).into_any()
+                }
                 PanelKind::Plugin => {
                     plugin_panel(window_tab_data.clone(), position).into_any()
                 }
@@ -556,6 +559,7 @@ fn panel_picker(
                 PanelKind::FileExplorer => "File Explorer",
                 PanelKind::SourceControl => "Source Control",
                 PanelKind::Plugin => "Plugins",
+                PanelKind::Chat => "AI Chat",
                 PanelKind::Search => "Search",
                 PanelKind::Problem => "Problems",
                 PanelKind::Debug => "Debug",

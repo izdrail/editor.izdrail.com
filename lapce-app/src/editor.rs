@@ -1848,9 +1848,24 @@ impl EditorData {
             Some(p) => p.join("ai-models"),
             None => return,
         };
-        let installed = std::fs::read(root.join("installed.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<lapce_ai::Installed>(&b).ok());
+        if lapce_ai::catalog::find(&ai.local_model).is_none_or(|entry| entry.chat)
+            && ai.model_path.is_empty()
+        {
+            return;
+        }
+        let installed =
+            std::fs::read(root.join(format!("installed-{}.json", ai.local_model)))
+                .or_else(|e| {
+                    if ai.local_model == "qwen-fim-1.5b" {
+                        std::fs::read(root.join("installed.json"))
+                    } else {
+                        Err(e)
+                    }
+                })
+                .ok()
+                .and_then(|b| {
+                    serde_json::from_slice::<lapce_ai::Installed>(&b).ok()
+                });
         let model = if ai.model_path.is_empty() {
             match installed.as_ref() {
                 Some(i) => i.model.clone(),
@@ -1894,6 +1909,7 @@ impl EditorData {
             // The dispatcher owns the worker job identity used for
             // cooperative cancellation; zero means untagged here.
             request_id: 0,
+            messages: None,
         };
         let ai_request = match serde_json::to_string(&request) {
             Ok(s) => s,

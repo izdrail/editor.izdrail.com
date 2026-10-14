@@ -179,6 +179,7 @@ pub struct WindowTabData {
     pub panel: PanelData,
     pub terminal: TerminalPanelData,
     pub plugin: PluginData,
+    pub chat: crate::panel::chat_view::ChatData,
     pub code_action: RwSignal<CodeActionData>,
     pub code_lens: RwSignal<Option<ViewId>>,
     pub source_control: SourceControlData,
@@ -562,6 +563,7 @@ impl WindowTabData {
             code_lens: cx.create_rw_signal(None),
             source_control,
             plugin,
+            chat: crate::panel::chat_view::ChatData::new(cx),
             rename,
             global_search,
             call_hierarchy_data: CallHierarchyData {
@@ -1314,6 +1316,7 @@ impl WindowTabData {
             ToggleSourceControlVisual => {
                 self.toggle_panel_visual(PanelKind::SourceControl);
             }
+            ToggleAiChat => { self.toggle_panel_visual(PanelKind::Chat); },
             TogglePluginVisual => {
                 self.toggle_panel_visual(PanelKind::Plugin);
             }
@@ -2643,7 +2646,8 @@ impl WindowTabData {
     /// Toggle a specific kind of panel.
     fn toggle_panel_focus(&self, kind: PanelKind) {
         let should_hide = match kind {
-            PanelKind::Plugin
+            PanelKind::Chat
+            | PanelKind::Plugin
             | PanelKind::Problem
             | PanelKind::Debug
             | PanelKind::CallHierarchy

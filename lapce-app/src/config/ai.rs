@@ -7,6 +7,8 @@ pub struct AiConfig {
         desc = "Enable local manual AI ghost text. No code is sent to the network."
     )]
     pub enabled: bool,
+    #[field_names(desc = "Curated FIM model. Pick and download below.")]
+    pub local_model: String,
     #[field_names(
         desc = "Local Qwen2 GGUF path; empty uses the downloaded curated model."
     )]
@@ -34,6 +36,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            local_model: "qwen-fim-1.5b".into(),
             model_path: String::new(),
             tokenizer_path: String::new(),
             prefix_tokens: 512,

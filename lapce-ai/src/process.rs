@@ -186,7 +186,17 @@ fn serve(executable: PathBuf, shared: Arc<Shared>) {
             if line.is_empty() {
                 anyhow::bail!("Worker exited without answering");
             }
-            Ok(serde_json::from_str(&line)?)
+            let value: serde_json::Value = serde_json::from_str(&line)?;
+            if value.get("state").and_then(|v| v.as_str()) == Some("error") {
+                anyhow::bail!(
+                    "{}",
+                    value
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Local inference failed")
+                );
+            }
+            Ok(serde_json::from_value(value)?)
         })();
         let mut result = result.map_err(|e| e.to_string());
         // A dead worker must not be reused; drop it so the next job respawns.
@@ -225,6 +235,7 @@ mod tests {
             suffix_tokens: 0,
             max_tokens: 1,
             request_id: 0,
+            messages: None,
         }
     }
     const OK: &str = "{\"text\":\"ok$$\",\"tokens\":1,\"prompt_tokens\":1,\"load_ms\":0,\"generation_ms\":0,\"prefill_ms\":0,\"decode_ms\":0,\"cancelled\":false}";

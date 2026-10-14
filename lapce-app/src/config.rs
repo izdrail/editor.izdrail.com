@@ -31,6 +31,7 @@ use self::{
 use crate::workspace::{LapceWorkspace, LapceWorkspaceType};
 
 pub mod ai;
+pub mod chat;
 pub mod color;
 pub mod color_theme;
 pub mod core;
@@ -102,6 +103,8 @@ pub struct LapceConfig {
     pub editor: EditorConfig,
     #[serde(default)]
     pub ai_autocomplete: ai::AiConfig,
+    #[serde(default)]
+    pub ai_chat: chat::ChatConfig,
     pub terminal: TerminalConfig,
     #[serde(default)]
     pub color_theme: ColorThemeConfig,
@@ -291,6 +294,8 @@ impl LapceConfig {
             self.core = new.core;
             self.ui = new.ui;
             self.editor = new.editor;
+            self.ai_chat = new.ai_chat;
+            self.ai_autocomplete = new.ai_autocomplete;
             self.terminal = new.terminal;
             self.terminal.get_indexed_colors();
 
@@ -905,6 +910,31 @@ impl LapceConfig {
     /// update the dropdown items.
     pub fn get_dropdown_info(&self, kind: &str, key: &str) -> Option<DropdownInfo> {
         match (kind, key) {
+            ("ai chat" | "ai-chat", "backend") => Some(DropdownInfo {
+                active_index: usize::from(self.ai_chat.backend == "ollama"),
+                items: im::vector!["local".into(), "ollama".into()],
+            }),
+            ("ai chat" | "ai-chat", "local-model")
+            | ("ai autocomplete" | "ai-autocomplete", "local-model") => {
+                let chat = kind == "ai chat" || kind == "ai-chat";
+                let selected = if chat {
+                    &self.ai_chat.local_model
+                } else {
+                    &self.ai_autocomplete.local_model
+                };
+                let items: im::Vector<String> = lapce_ai::catalog::MODELS
+                    .iter()
+                    .filter(|m| m.chat == chat)
+                    .map(|m| m.id.to_string())
+                    .collect();
+                Some(DropdownInfo {
+                    active_index: items
+                        .iter()
+                        .position(|id| id == selected)
+                        .unwrap_or(0),
+                    items,
+                })
+            }
             ("core", "keymap-preset") => Some(DropdownInfo {
                 active_index: crate::keypress::presets::NAMES
                     .iter()

@@ -488,6 +488,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "toggle_plugin_visual")]
     TogglePluginVisual,
 
+    #[strum(message = "Toggle AI Chat")]
+    #[strum(serialize = "toggle_ai_chat")]
+    ToggleAiChat,
+
     #[strum(serialize = "toggle_file_explorer_visual")]
     ToggleFileExplorerVisual,
 

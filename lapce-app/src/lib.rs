@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod about;
 pub mod alert;
 pub mod app;
