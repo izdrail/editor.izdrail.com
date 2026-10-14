@@ -3737,14 +3737,42 @@ impl EditorData {
         let config = self.common.config;
         let hover_data = self.common.hover.clone();
         let editor_id = self.id();
+        // `$this->member` in a PHP file: used only if the language server has
+        // nothing to say.
+        let fallback: Option<String> = (path.extension().is_some_and(|e| e == "php")
+            && !path.to_string_lossy().ends_with(".blade.php"))
+        .then(|| {
+            doc.buffer.with_untracked(|buffer| {
+                if buffer.len() > 1 << 20 {
+                    return None;
+                }
+                let line = buffer.line_of_offset(offset);
+                let line_text = buffer.line_content(line).to_string();
+                if line_text.len() > 8192 {
+                    return None;
+                }
+                let col = offset - buffer.offset_of_line(line);
+                crate::php_this_hover::member_at(&line_text, col)?;
+                crate::php_this_hover::help(&buffer.to_string(), &line_text, col)
+            })
+        })
+        .flatten();
         let send = create_ext_action(self.scope, move |resp| {
-            if let Ok(ProxyResponse::HoverResponse { hover, .. }) = resp {
-                let content = parse_hover_resp(hover, &config.get_untracked());
-                hover_data.content.set(content);
-                hover_data.offset.set(offset);
-                hover_data.editor_id.set(editor_id);
-                hover_data.active.set(true);
-            }
+            let lsp_content = match resp {
+                Ok(ProxyResponse::HoverResponse { hover, .. }) => {
+                    Some(parse_hover_resp(hover, &config.get_untracked()))
+                }
+                _ => None,
+            };
+            let content = match (lsp_content, fallback) {
+                (Some(c), _) if !c.is_empty() => c,
+                (_, Some(md)) => parse_markdown(&md, 1.8, &config.get_untracked()),
+                _ => return,
+            };
+            hover_data.content.set(content);
+            hover_data.offset.set(offset);
+            hover_data.editor_id.set(editor_id);
+            hover_data.active.set(true);
         });
         self.common.proxy.get_hover(0, path, position, |resp| {
             send(resp);

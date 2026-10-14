@@ -18,6 +18,7 @@ pub mod code_action;
 pub mod code_lens;
 pub mod hover_help;
 pub mod livewire_props;
+pub mod php_this_hover;
 pub mod env_index;
 pub mod migration_index;
 pub mod model_index;
