@@ -74,6 +74,8 @@ Go to Definition on a package in `composer.json`/`composer.lock` opens its `comp
 Palette list of PHPUnit and Pest test files and cases under `tests/`. See [docs/go-to-test.md](docs/go-to-test.md).
 ### Go to Migration
 Palette list of Laravel migrations, newest first, with the tables they touch. See [docs/go-to-migration.md](docs/go-to-migration.md).
+### Go to Policy / Gate
+Palette list of Laravel policies with their abilities, and `Gate::define` names. See [docs/go-to-policy.md](docs/go-to-policy.md).
 
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).

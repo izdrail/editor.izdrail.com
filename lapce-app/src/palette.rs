@@ -426,6 +426,9 @@ impl PaletteData {
             PaletteKind::Migrations => {
                 self.set_route_items(crate::migration_index::discover);
             }
+            PaletteKind::Policies => {
+                self.set_route_items(crate::policy_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }

@@ -459,6 +459,9 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "palette.migrations")]
     #[strum(message = "Go to Migration")]
     PaletteMigrations,
+    #[strum(serialize = "palette.policies")]
+    #[strum(message = "Go to Policy / Gate")]
+    PalettePolicies,
 
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
