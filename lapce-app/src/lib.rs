@@ -31,6 +31,7 @@ pub mod app_class_index;
 pub mod artisan_index;
 pub mod config_provider_index;
 pub mod livewire_members;
+pub mod tw_usage_index;
 pub mod color_swatch;
 pub mod component_index;
 pub mod command;

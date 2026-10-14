@@ -104,6 +104,9 @@ Palette list of the public properties and methods of the Livewire component open
 ### Switch Keymap Preset
 Palette command that switches between the `compact-65` (no F-keys), VSCode, PhpStorm, Sublime, Notepad++ and Lapce keymaps without opening Settings. See [docs/keymap-presets.md](docs/keymap-presets.md).
 
+### CSS / Tailwind Classes in Use
+Palette list of every class name used in `class="..."` attributes under `resources/`, most used first, with counts; jumps to the first use. See [docs/css-classes-in-use.md](docs/css-classes-in-use.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

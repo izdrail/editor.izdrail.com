@@ -453,6 +453,9 @@ impl PaletteData {
             PaletteKind::KeymapPresets => {
                 self.get_keymap_presets();
             }
+            PaletteKind::CssClasses => {
+                self.set_route_items(crate::tw_usage_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }

@@ -498,6 +498,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Switch Keymap Preset")]
     PaletteKeymapPresets,
 
+    #[strum(serialize = "palette.css_classes")]
+    #[strum(message = "CSS / Tailwind Classes in Use")]
+    PaletteCssClasses,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,
