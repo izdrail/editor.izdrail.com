@@ -217,6 +217,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Reveal in Finder")]
     RevealInFileExplorer,
 
+    #[strum(serialize = "open_in_browser")]
+    #[strum(message = "Open in Browser")]
+    OpenInBrowser,
+
     #[strum(serialize = "run_in_terminal")]
     #[strum(message = "Run in Terminal")]
     RunInTerminal,

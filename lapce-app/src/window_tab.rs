@@ -1485,6 +1485,26 @@ impl WindowTabData {
                     }
                 }
             }
+            OpenInBrowser => {
+                if let Some(editor_data) =
+                    self.main_split.active_editor.get_untracked()
+                {
+                    if let DocContent::File { path, .. } =
+                        editor_data.doc().content.get_untracked()
+                    {
+                        match crate::browser_preview::browser_url(&path) {
+                            Some(url) => {
+                                if let Err(err) = open::that(&url) {
+                                    error!("Failed to open {url} in the browser: {err}");
+                                }
+                            }
+                            None => {
+                                error!("Open in Browser: {path:?} is not a static HTML or SVG file");
+                            }
+                        }
+                    }
+                }
+            }
             ShowCallHierarchy => {
                 if let Some(editor_data) =
                     self.main_split.active_editor.get_untracked()
