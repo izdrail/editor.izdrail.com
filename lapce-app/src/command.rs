@@ -453,6 +453,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Model")]
     PaletteModels,
 
+    #[strum(serialize = "palette.tests")]
+    #[strum(message = "Go to Test")]
+    PaletteTests,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

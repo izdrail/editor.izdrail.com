@@ -4,7 +4,7 @@
 //! multibyte filler, so the run is reproducible.
 use std::{path::Path, time::Instant};
 
-use crate::{php_organize, tw_sort, blade_props, color_swatch, component_index, env_index, hover_help, model_index};
+use crate::{php_imports, test_index, php_organize, tw_sort, blade_props, color_swatch, component_index, env_index, hover_help, model_index};
 
 struct Rng(u64);
 impl Rng {
@@ -222,5 +222,25 @@ fn tw_sort_random_values_keep_invariants() {
     let big = format!("<div class=\"{}\">", "p-4 flex md:p-2 ".repeat(100_000));
     let _ = tw_sort::sort_attributes(&big, 0..big.len());
     let _ = tw_sort::sort_attributes(&"class=\"".repeat(200_000), 0..1_000_000);
+    assert!(start.elapsed().as_secs() < 15);
+}
+
+#[test]
+fn php_imports_and_test_index_random_files() {
+    let mut rng = Rng(0x1D8E4E27C47D124F);
+    let start = Instant::now();
+    for _ in 0..4000 {
+        let n = (rng.next() % 80) as usize;
+        let t = soup(&mut rng, IMPORT_TOKENS, n);
+        if let Some((off, ins)) = php_imports::insertion(&t, "App\\Models\\User") {
+            assert!(off <= t.len() && t.is_char_boundary(off), "insertion offset for {t:?}");
+            assert!(ins.contains("use App"));
+        }
+        for col in 0..t.len().min(60) + 2 {
+            let _ = php_imports::name_at(&t, col);
+        }
+        let _ = test_index::parse(&soup(&mut rng, PHP_TOKENS, n));
+        let _ = test_index::parse(&soup(&mut rng, &["#[Test]", "@test", "it('x'", "test(\"y\"", "function ", "test_a", "public ", "\n", "class A"], n));
+    }
     assert!(start.elapsed().as_secs() < 15);
 }

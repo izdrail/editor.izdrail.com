@@ -420,6 +420,9 @@ impl PaletteData {
             PaletteKind::Models => {
                 self.set_route_items(crate::model_index::discover);
             }
+            PaletteKind::Tests => {
+                self.set_route_items(crate::test_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }

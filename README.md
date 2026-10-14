@@ -70,6 +70,9 @@ Palette command that adds a sorted `use` line for the class under the cursor, fr
 
 ### Go to Composer package
 Go to Definition on a package in `composer.json`/`composer.lock` opens its `composer.json` under `vendor/`. See [docs/composer-go-to-package.md](docs/composer-go-to-package.md).
+### Go to Test
+Palette list of PHPUnit and Pest test files and cases under `tests/`. See [docs/go-to-test.md](docs/go-to-test.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 
