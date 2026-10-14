@@ -105,6 +105,8 @@ pub struct PaletteData {
     pub executed_run_configs: Rc<RefCell<HashMap<(RunDebugMode, String), Instant>>>,
     pub main_split: MainSplitData,
     pub references: RwSignal<Vec<EditorLocation>>,
+    /// Candidate class names for "Import PHP Class".
+    pub import_candidates: RwSignal<Vec<String>>,
     pub source_control: SourceControlData,
     pub common: Rc<CommonData>,
     left_diff_path: RwSignal<Option<PathBuf>>,
@@ -131,6 +133,7 @@ impl PaletteData {
         let preselect_index = cx.create_rw_signal(None);
         let index = cx.create_rw_signal(0);
         let references = cx.create_rw_signal(Vec::new());
+        let import_candidates = cx.create_rw_signal(Vec::new());
         let input = cx.create_rw_signal(PaletteInput {
             input: "".to_string(),
             kind: PaletteKind::File,
@@ -238,6 +241,7 @@ impl PaletteData {
             executed_commands: Rc::new(RefCell::new(HashMap::new())),
             executed_run_configs: Rc::new(RefCell::new(HashMap::new())),
             references,
+            import_candidates,
             source_control,
             common,
             left_diff_path,
@@ -409,6 +413,20 @@ impl PaletteData {
             }
             PaletteKind::Routes => {
                 self.get_routes();
+            }
+            PaletteKind::ImportClass => {
+                let items = self
+                    .import_candidates
+                    .get_untracked()
+                    .into_iter()
+                    .map(|fqcn| PaletteItem {
+                        filter_text: fqcn.clone(),
+                        content: PaletteItemContent::ImportClass { fqcn },
+                        score: 0,
+                        indices: vec![],
+                    })
+                    .collect::<Vec<_>>();
+                self.items.set(items.into_iter().collect());
             }
             PaletteKind::ColorTheme => {
                 self.get_color_themes();
@@ -1357,6 +1375,12 @@ impl PaletteData {
                         },
                     );
                 }
+                PaletteItemContent::ImportClass { fqcn } => {
+                    if let Some(editor) = self.main_split.active_editor.get_untracked()
+                    {
+                        editor.import_php_class(fqcn);
+                    }
+                }
                 PaletteItemContent::SshHost { host } => {
                     self.common.window_common.window_command.send(
                         WindowCommand::SetWorkspace {
@@ -1551,6 +1575,7 @@ impl PaletteData {
                 PaletteItemContent::WslHost { .. } => {}
                 PaletteItemContent::Language { .. } => {}
                 PaletteItemContent::LineEnding { .. } => {}
+                PaletteItemContent::ImportClass { .. } => {}
                 PaletteItemContent::Reference { location, .. }
                 | PaletteItemContent::Route { location } => {
                     self.has_preview.set(true);

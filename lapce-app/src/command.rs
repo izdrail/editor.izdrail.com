@@ -418,6 +418,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "palette.run_and_debug")]
     PaletteRunAndDebug,
 
+    #[strum(serialize = "import_php_class")]
+    #[strum(message = "Import PHP Class")]
+    ImportPhpClass,
+
     #[strum(serialize = "palette.routes")]
     #[strum(message = "Go to Route")]
     PaletteRoutes,

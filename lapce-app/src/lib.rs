@@ -36,6 +36,7 @@ pub mod panel;
 pub mod project_scripts;
 pub mod editorconfig;
 pub mod test_runner;
+pub mod php_imports;
 pub mod route_index;
 pub mod class_refs;
 pub mod template_refs;

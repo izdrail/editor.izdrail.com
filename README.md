@@ -43,6 +43,9 @@ Projects with a Prettier config and binary are formatted through it on save. See
 ### Open in Browser
 "Open in Browser" in the command palette shows the active HTML/SVG file in your browser. See [docs/open-in-browser.md](docs/open-in-browser.md).
 
+### Import PHP Class
+Palette command that adds a sorted `use` line for the class under the cursor, from composer.json PSR-4 paths and vendor packages. See [docs/import-class.md](docs/import-class.md).
+
 ### Go to Route
 Laravel and Symfony route list in the command palette ("Go to Route") jumping to controller methods. See [docs/go-to-route.md](docs/go-to-route.md).
 

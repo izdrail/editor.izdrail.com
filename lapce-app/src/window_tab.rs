@@ -1167,6 +1167,7 @@ impl WindowTabData {
             PaletteRunAndDebug => {
                 self.palette.run(PaletteKind::RunAndDebug);
             }
+            ImportPhpClass => self.import_php_class(),
             PaletteRoutes => {
                 self.palette.run(PaletteKind::Routes);
             }
@@ -2797,6 +2798,77 @@ impl WindowTabData {
             }
         }
         self.common.focus.set(Focus::Panel(kind));
+    }
+
+    /// "Import PHP Class": adds a `use` line for the class under the cursor.
+    fn import_php_class(&self) {
+        use crate::php_imports::{ImportPlan, name_at, plan};
+        let warn = |text: String| {
+            self.show_message(
+                "Import PHP Class",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: text,
+                },
+            );
+        };
+        let Some(root) = self.workspace.path.clone() else {
+            return warn("Open a folder first.".into());
+        };
+        let Some(editor) = self.main_split.active_editor.get_untracked() else {
+            return warn("Open a PHP file first.".into());
+        };
+        let doc = editor.doc();
+        let is_php = match doc.content.get_untracked() {
+            DocContent::File { path, .. } => {
+                path.extension().and_then(|e| e.to_str()) == Some("php")
+            }
+            _ => false,
+        };
+        if !is_php {
+            return warn("Import PHP Class works in .php files.".into());
+        }
+        let offset = editor.cursor().with_untracked(|c| c.offset());
+        let (text, line_text, col) = doc.buffer.with_untracked(|b| {
+            if b.len() > 1024 * 1024 {
+                return (String::new(), String::new(), 0);
+            }
+            let line = b.line_of_offset(offset);
+            let start = b.offset_of_line(line);
+            let end = b.offset_of_line(line + 1).min(b.len());
+            (
+                b.text().to_string(),
+                b.slice_to_cow(start..end).to_string(),
+                offset - start,
+            )
+        });
+        if text.is_empty() {
+            return warn("The file is too large to import into.".into());
+        }
+        let Some(short) = name_at(&line_text, col) else {
+            return warn("Put the cursor on a class name (Capitalised).".into());
+        };
+        match plan(&root, &text, &short) {
+            ImportPlan::NoName => warn("Put the cursor on a class name.".into()),
+            ImportPlan::AlreadyAvailable(fqcn) => {
+                warn(format!("{short} is already available as {fqcn}."))
+            }
+            ImportPlan::NoPlace => {
+                warn("No <?php header found to add the import after.".into())
+            }
+            ImportPlan::NotFound => warn(format!(
+                "No class named {short} found in composer.json PSR-4 paths or vendor."
+            )),
+            ImportPlan::Insert { fqcn, .. } => {
+                if !editor.import_php_class(&fqcn) {
+                    warn("Could not place the import.".into());
+                }
+            }
+            ImportPlan::Choose { candidates, .. } => {
+                self.palette.import_candidates.set(candidates);
+                self.palette.run(PaletteKind::ImportClass);
+            }
+        }
     }
 
     /// Runs the PHPUnit/Pest test around the cursor (or the whole file) in

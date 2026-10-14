@@ -18,6 +18,7 @@ pub enum PaletteKind {
     WslHost,
     RunAndDebug,
     Routes,
+    ImportClass,
     ColorTheme,
     IconTheme,
     Language,
@@ -46,6 +47,7 @@ impl PaletteKind {
             | PaletteKind::SshHost
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
+            | PaletteKind::ImportClass
             | PaletteKind::ColorTheme
             | PaletteKind::IconTheme
             | PaletteKind::Language
@@ -98,6 +100,7 @@ impl PaletteKind {
                 Some(LapceWorkbenchCommand::PaletteRunAndDebug)
             }
             PaletteKind::Routes => Some(LapceWorkbenchCommand::PaletteRoutes),
+            PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::ColorTheme => Some(LapceWorkbenchCommand::ChangeColorTheme),
             PaletteKind::IconTheme => Some(LapceWorkbenchCommand::ChangeIconTheme),
             PaletteKind::Language => Some(LapceWorkbenchCommand::ChangeFileLanguage),
@@ -133,6 +136,7 @@ impl PaletteKind {
             | PaletteKind::SshHost
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
+            | PaletteKind::ImportClass
             | PaletteKind::ColorTheme
             | PaletteKind::IconTheme
             | PaletteKind::Language

@@ -53,6 +53,9 @@ pub enum PaletteItemContent {
     Route {
         location: EditorLocation,
     },
+    ImportClass {
+        fqcn: String,
+    },
     DocumentSymbol {
         kind: SymbolKind,
         name: String,

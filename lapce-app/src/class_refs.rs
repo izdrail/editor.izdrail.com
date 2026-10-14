@@ -49,7 +49,7 @@ fn class_at(line: &str, col: usize) -> Option<(String, Option<String>)> {
 }
 
 /// PSR-4 `(prefix, dir)` pairs, longest prefix first.
-fn psr4(root: &Path) -> Vec<(String, PathBuf)> {
+pub(crate) fn psr4(root: &Path) -> Vec<(String, PathBuf)> {
     let mut out: Vec<(String, PathBuf)> = Vec::new();
     let doc = std::fs::metadata(root.join("composer.json"))
         .ok()

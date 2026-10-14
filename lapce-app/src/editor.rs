@@ -3154,6 +3154,29 @@ impl EditorData {
             });
     }
 
+    /// Inserts `use <fqcn>;` into the current PHP file in sorted position.
+    /// Returns false when the file has no `<?php` header to anchor on.
+    pub fn import_php_class(&self, fqcn: &str) -> bool {
+        let doc = self.doc();
+        let (selection, text) = doc.buffer.with_untracked(|buffer| {
+            let text = if buffer.len() > 1024 * 1024 {
+                String::new()
+            } else {
+                buffer.text().to_string()
+            };
+            (self.cursor().get_untracked().edit_selection(buffer), text)
+        });
+        let Some((offset, insert)) = crate::php_imports::insertion(&text, fqcn)
+        else {
+            return false;
+        };
+        self.do_edit(
+            &selection,
+            &[(Selection::region(offset, offset), insert.as_str())],
+        );
+        true
+    }
+
     #[instrument]
     pub fn word_at_cursor(&self) -> String {
         let doc = self.doc();
