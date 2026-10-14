@@ -19,6 +19,7 @@ pub enum PaletteKind {
     RunAndDebug,
     Routes,
     BladeComponents,
+    EnvConfigKeys,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -51,6 +52,7 @@ impl PaletteKind {
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
             | PaletteKind::BladeComponents
+            | PaletteKind::EnvConfigKeys
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -109,6 +111,9 @@ impl PaletteKind {
             PaletteKind::BladeComponents => {
                 Some(LapceWorkbenchCommand::PaletteBladeComponents)
             }
+            PaletteKind::EnvConfigKeys => {
+                Some(LapceWorkbenchCommand::PaletteEnvConfigKeys)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -148,6 +153,7 @@ impl PaletteKind {
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
             | PaletteKind::BladeComponents
+            | PaletteKind::EnvConfigKeys
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag

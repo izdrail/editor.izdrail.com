@@ -445,6 +445,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Blade Component")]
     PaletteBladeComponents,
 
+    #[strum(serialize = "palette.env_config_keys")]
+    #[strum(message = "Go to Env / Config Key")]
+    PaletteEnvConfigKeys,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

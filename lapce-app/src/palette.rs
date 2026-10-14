@@ -414,6 +414,9 @@ impl PaletteData {
             PaletteKind::BladeComponents => {
                 self.get_blade_components();
             }
+            PaletteKind::EnvConfigKeys => {
+                self.set_route_items(crate::env_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }

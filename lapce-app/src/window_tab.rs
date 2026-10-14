@@ -1197,6 +1197,9 @@ impl WindowTabData {
             PaletteBladeComponents => {
                 self.palette.run(PaletteKind::BladeComponents);
             }
+            PaletteEnvConfigKeys => {
+                self.palette.run(PaletteKind::EnvConfigKeys);
+            }
             PaletteSCMReferences => {
                 self.palette.run(PaletteKind::SCMReferences);
             }
