@@ -1,7 +1,7 @@
 //! Transport and context assembly independent of views.
 use lapce_ai::chat::Message;
 use serde_json::{Value, json};
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
 pub const MAX_CONTEXT_BYTES: usize = 12_000;
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -91,48 +91,61 @@ pub fn ollama(
     endpoint: &str,
     model: &str,
     messages: &[Message],
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     send: impl Fn(Update),
 ) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
     let url = completion_url(endpoint)?;
     if model.trim().is_empty() {
         return Err("Set an Ollama model in AI Chat settings".into());
     }
-    let client = reqwest::blocking::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(15))
-        .timeout(std::time::Duration::from_secs(180))
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
         .build()
         .map_err(|e| e.to_string())?;
-    let make = |stream| {
-        client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})).send()
-    };
-    let mut response = make(true).map_err(|e| e.to_string())?;
-    // Some compatible endpoints explicitly reject stream=true.
-    if [400, 405, 422, 501].contains(&response.status().as_u16()) {
-        response = make(false).map_err(|e| e.to_string())?;
-    }
-    if !response.status().is_success() {
-        return Err(format!(
-            "Ollama returned HTTP {}. Check endpoint and model in AI Chat settings.",
-            response.status()
-        ));
-    }
-    let streaming = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|h| h.to_str().ok())
-        .is_some_and(|h| h.contains("text/event-stream"));
-    if streaming {
-        read_sse(BufReader::new(response), |text| send(Update::Delta(text)))?;
-    } else {
-        let value: Value = response.json().map_err(|e| e.to_string())?;
-        let text = value
-            .pointer("/choices/0/message/content")
-            .and_then(Value::as_str)
-            .ok_or("Ollama response contains no message")?;
-        send(Update::Delta(text.into()));
-    }
-    send(Update::Done(String::new()));
-    Ok(())
+    runtime.block_on(async {
+        let request = async {
+            let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
+            let make = |stream| client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})).send();
+            let mut response = make(true).await.map_err(|e| e.to_string())?;
+            if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
+            if !response.status().is_success() { return Err(format!("Ollama returned HTTP {}. Check endpoint and model.", response.status())); }
+            let streaming = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).is_some_and(|h| h.contains("text/event-stream"));
+            if streaming {
+                let mut buffer = Vec::new();
+                let mut lines = Vec::new();
+                let mut total = 0usize;
+                while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                    total += chunk.len();
+                    if total > 2 * 1024 * 1024 { return Err("Ollama response exceeded 2 MB".into()); }
+                    buffer.extend_from_slice(&chunk);
+                    while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
+                        let bytes: Vec<u8> = buffer.drain(..=end).collect();
+                        let line = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?.trim_end_matches(['\r','\n']);
+                        if line.is_empty() && !lines.is_empty() {
+                            let payload = lines.join("\n"); lines.clear();
+                            if parse_event(&payload, &mut |text| send(Update::Delta(text)))? { send(Update::Done(String::new())); return Ok(()); }
+                        } else if let Some(data) = line.strip_prefix("data:") { lines.push(data.trim_start().to_string()); }
+                    }
+                }
+                Err("Ollama stream ended before completion. Partial response kept.".into())
+            } else {
+                let mut bytes = Vec::new();
+                while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                    if bytes.len() + chunk.len() > 2 * 1024 * 1024 { return Err("Ollama response exceeded 2 MB".into()); }
+                    bytes.extend_from_slice(&chunk);
+                }
+                let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+                let text = value.pointer("/choices/0/message/content").and_then(Value::as_str).ok_or("Ollama response contains no message")?;
+                send(Update::Delta(text.into())); send(Update::Done(String::new())); Ok(())
+            }
+        };
+        tokio::select! {
+            result = request => result,
+            _ = async { loop { if cancelled.load(Ordering::Acquire) { break; } tokio::time::sleep(std::time::Duration::from_millis(25)).await; } } => Err("Cancelled".into()),
+            _ = tokio::time::sleep(std::time::Duration::from_secs(180)) => Err("Ollama request timed out".into()),
+        }
+    })
 }
 pub fn read_sse(
     reader: impl BufRead,
@@ -221,5 +234,69 @@ mod tests {
                 .is_err()
         );
         assert!(read_sse(&b""[..], |_| {}).is_err());
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::{Duration, Instant},
+    };
+    #[test]
+    fn stop_aborts_waiting_http_without_waiting_for_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancel = cancelled.clone();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut bytes = [0; 4096];
+            let _ = socket.read(&mut bytes);
+            cancel.store(true, Ordering::Release);
+            std::thread::sleep(Duration::from_millis(300));
+            let _ =
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+        });
+        let start = Instant::now();
+        let result = ollama(&endpoint, "test", &[], cancelled, |_| {
+            panic!("Cancelled run must not complete")
+        });
+        assert_eq!(result.unwrap_err(), "Cancelled");
+        assert!(start.elapsed() < Duration::from_secs(2));
+        server.join().unwrap();
+    }
+    #[test]
+    fn full_response_emits_text_and_done() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut buf = [0; 4096];
+            let _ = s.read(&mut buf);
+            let body = r#"{"choices":[{"message":{"content":"hello"}}]}"#;
+            write!(s,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+        });
+        let result = std::cell::RefCell::new(Vec::new());
+        ollama(
+            &endpoint,
+            "test",
+            &[],
+            Arc::new(AtomicBool::new(false)),
+            |u| result.borrow_mut().push(u),
+        )
+        .unwrap();
+        assert!(matches!(&result.borrow()[0],Update::Delta(s) if s=="hello"));
+        assert!(matches!(&result.borrow()[1], Update::Done(_)));
+        server.join().unwrap();
     }
 }

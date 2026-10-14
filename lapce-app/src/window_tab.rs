@@ -550,6 +550,10 @@ impl WindowTabData {
         let about_data = AboutData::new(cx, common.focus);
         let alert_data = AlertBoxData::new(cx, common.clone());
 
+        let chat_storage = Directory::data_local_directory().map(|root| {
+            crate::chat_session::workspace_directory(&root, &format!("{}:{:?}", workspace.kind, workspace.path))
+        });
+        let chat = crate::panel::chat_view::ChatData::new(cx, chat_storage, common.config.get_untracked().ai_chat.save_history);
         let window_tab_data = Self {
             scope: cx,
             window_tab_id: WindowTabId::next(),
@@ -563,7 +567,7 @@ impl WindowTabData {
             code_lens: cx.create_rw_signal(None),
             source_control,
             plugin,
-            chat: crate::panel::chat_view::ChatData::new(cx),
+            chat,
             rename,
             global_search,
             call_hierarchy_data: CallHierarchyData {

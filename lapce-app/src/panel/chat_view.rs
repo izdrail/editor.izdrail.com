@@ -1,3 +1,4 @@
+use crate::chat_session::{self, RunGate, RunState, SavedTurn, Session};
 use crate::{
     chat::{self, Context, Update},
     config::color::LapceColor,
@@ -7,18 +8,26 @@ use crate::{
 };
 use floem::{
     IntoView, View,
-    style::CursorStyle,
     reactive::{
         RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
     },
+    style::CursorStyle,
     views::{
         Decorators, container, dyn_stack, empty, h_stack, label, rich_text,
-        scroll::scroll, text_input, v_stack,
+        scroll::scroll, text_editor, v_stack,
     },
 };
 use lapce_ai::chat::Message;
 use lapce_core::buffer::rope_text::RopeText;
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    path::PathBuf,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 #[derive(Clone)]
 pub struct Turn {
     pub role: &'static str,
@@ -32,30 +41,121 @@ pub struct ChatData {
     pub busy: RwSignal<bool>,
     pub error: RwSignal<String>,
     pub history: RwSignal<Vec<Message>>,
+    pub session: RwSignal<Session>,
+    pub state: RwSignal<RunState>,
+    gate: RunGate,
+    cancellation: RwSignal<Arc<AtomicBool>>,
+    storage: Option<PathBuf>,
     worker: Rc<ChatWorker>,
 }
-struct ChatWorker(lapce_ai::process::Worker);
+struct ChatWorker {
+    local: lapce_ai::process::Worker,
+    network: RefCell<Arc<AtomicBool>>,
+}
 impl Drop for ChatWorker {
     fn drop(&mut self) {
-        self.0.cancel();
+        self.network.borrow().store(true, Ordering::Release);
+        self.local.cancel();
     }
 }
 impl ChatData {
-    pub fn new(cx: Scope) -> Self {
+    pub fn new(cx: Scope, storage: Option<PathBuf>, restore: bool) -> Self {
         let worker = lapce_ai::process::Worker::new(
             std::env::current_exe().unwrap_or_default(),
         );
 
+        let (session, error) = if restore {
+            match storage
+                .as_ref()
+                .map(|p| chat_session::latest(p))
+                .transpose()
+            {
+                Ok(Some(Some(s))) => (s, String::new()),
+                Ok(_) => (Session::new(), String::new()),
+                Err(e) => (Session::new(), e),
+            }
+        } else {
+            (Session::new(), String::new())
+        };
+        let turns = session
+            .turns
+            .iter()
+            .map(|t| Turn {
+                role: if t.role == "user" { "You" } else { "Assistant" },
+                text: cx.create_rw_signal(t.text.clone()),
+                context: t.context.clone(),
+            })
+            .collect();
         Self {
-            turns: cx.create_rw_signal(Vec::new()),
+            session: cx.create_rw_signal(session.clone()),
+            state: cx.create_rw_signal(session.state.clone()),
+            gate: RunGate::default(),
+            cancellation: cx.create_rw_signal(Arc::new(AtomicBool::new(false))),
+            storage,
+            turns: cx.create_rw_signal(turns),
             input: cx.create_rw_signal(String::new()),
             busy: cx.create_rw_signal(false),
-            error: cx.create_rw_signal(String::new()),
-            history: cx.create_rw_signal(Vec::new()),
-            worker: Rc::new(ChatWorker(worker)),
+            error: cx.create_rw_signal(error),
+            history: cx.create_rw_signal({
+                // Restarted runs cannot promote partial assistant output into history.
+                let count =
+                    if matches!(session.state, RunState::Done | RunState::Idle) {
+                        session.turns.len()
+                    } else {
+                        session.turns.len().saturating_sub(2)
+                    };
+                session.turns[..count]
+                    .iter()
+                    .map(|t| Message {
+                        role: t.role.clone(),
+                        content: t.text.clone(),
+                    })
+                    .collect()
+            }),
+            worker: Rc::new(ChatWorker {
+                local: worker,
+                network: RefCell::new(Arc::new(AtomicBool::new(false))),
+            }),
         }
     }
 }
+impl ChatData {
+    fn stop(&self) {
+        self.gate.cancel();
+        self.cancellation
+            .get_untracked()
+            .store(true, Ordering::Release);
+        self.worker.local.cancel();
+        self.busy.set(false);
+        self.state.set(RunState::Cancelled);
+    }
+    fn persist(&self, enabled: bool) {
+        if !enabled {
+            return;
+        }
+        let mut session = self.session.get_untracked();
+        session.state = self.state.get_untracked();
+        session.turns = self
+            .turns
+            .get_untracked()
+            .iter()
+            .map(|t| SavedTurn {
+                role: if t.role == "You" { "user" } else { "assistant" }.into(),
+                text: t.text.get_untracked(),
+                context: t.context.clone(),
+            })
+            .collect();
+        self.session.set(session.clone());
+        if let Some(path) = &self.storage {
+            if let Err(e) = chat_session::save(path, &session) {
+                self.error.set(format!("Chat history was not saved: {e}"));
+            }
+        } else {
+            self.error.set("No local chat storage directory".into());
+        }
+    }
+}
+
 fn context(tab: &WindowTabData) -> Option<Context> {
     let editor = tab.main_split.active_editor.get()?;
     let doc = editor.doc_signal().get();
@@ -103,6 +203,11 @@ fn send(tab: &WindowTabData) {
     let ctx = context(tab);
     let messages =
         chat::assemble(&data.history.get_untracked(), &prompt, ctx.as_ref());
+    let run = data.gate.begin();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    data.cancellation.set(cancelled.clone());
+    *data.worker.network.borrow_mut() = cancelled.clone();
+    data.state.set(RunState::Running);
     let reply = tab.scope.create_rw_signal(String::new());
     data.turns.update(|v| {
         v.push(Turn {
@@ -122,12 +227,17 @@ fn send(tab: &WindowTabData) {
     data.input.set(String::new());
     data.busy.set(true);
     data.error.set(String::new());
+    data.persist(settings.save_history);
+    let save_history = settings.save_history;
     let (tx, rx) = std::sync::mpsc::channel();
     let progress = floem::ext_event::create_signal_from_channel(rx);
     let done_data = data.clone();
     let request_messages = messages.clone();
     create_effect(move |_| {
         if let Some(update) = progress.get() {
+            if !done_data.gate.accepts(run) {
+                return;
+            }
             match update {
                 Update::Delta(text) => reply.set(text),
                 Update::Done(text) => {
@@ -139,10 +249,14 @@ fn send(tab: &WindowTabData) {
                     });
                     done_data.history.set(history);
                     done_data.busy.set(false);
+                    done_data.state.set(RunState::Done);
+                    done_data.persist(save_history);
                 }
                 Update::Error(error) => {
                     done_data.error.set(error);
                     done_data.busy.set(false);
+                    done_data.state.set(RunState::Error);
+                    done_data.persist(save_history);
                 }
             }
         }
@@ -170,18 +284,20 @@ fn send(tab: &WindowTabData) {
         })();
         match run {
             Ok(request) => {
-                data.worker.0.complete(request, move |result| match result {
-                    Ok(c) if c.cancelled => {
-                        let _ = tx.send(Update::Error("Cancelled".into()));
-                    }
-                    Ok(c) => {
-                        let _ = tx.send(Update::Delta(c.text.clone()));
-                        let _ = tx.send(Update::Done(c.text.clone()));
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Update::Error(e));
-                    }
-                })
+                data.worker
+                    .local
+                    .complete(request, move |result| match result {
+                        Ok(c) if c.cancelled => {
+                            let _ = tx.send(Update::Error("Cancelled".into()));
+                        }
+                        Ok(c) => {
+                            let _ = tx.send(Update::Delta(c.text.clone()));
+                            let _ = tx.send(Update::Done(c.text.clone()));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Update::Error(e));
+                        }
+                    })
             }
             Err(e) => {
                 let _ = tx.send(Update::Error(e));
@@ -190,8 +306,12 @@ fn send(tab: &WindowTabData) {
     } else if settings.backend == "ollama" {
         std::thread::spawn(move || {
             let accumulated = std::cell::RefCell::new(String::new());
-            if let Err(e) =
-                chat::ollama(&settings.endpoint, &settings.model, &messages, |u| {
+            if let Err(e) = chat::ollama(
+                &settings.endpoint,
+                &settings.model,
+                &messages,
+                cancelled,
+                |u| {
                     let u = match u {
                         Update::Delta(s) => {
                             accumulated.borrow_mut().push_str(&s);
@@ -203,8 +323,8 @@ fn send(tab: &WindowTabData) {
                         u => u,
                     };
                     let _ = tx.send(u);
-                })
-            {
+                },
+            ) {
                 let _ = tx.send(Update::Error(e));
             }
         });
@@ -215,10 +335,34 @@ fn send(tab: &WindowTabData) {
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let config = tab.common.config;
-    let send_tab = tab.clone();
+
     let click_tab = tab.clone();
     let indicator_tab = tab.clone();
     let clear = data.clone();
+    let stop = data.clone();
+    let input_signal = data.input;
+    let composer = text_editor(data.input.get_untracked())
+        .placeholder("Ask about this file or selection...")
+        .editor_style(|s| s.hide_gutter(true).scroll_beyond_last_line(false))
+        .update(move |update| {
+            if let Some(editor) = update.editor {
+                input_signal.set(editor.doc().text().to_string());
+            }
+        });
+    let composer_doc = composer.doc();
+    create_effect(move |_| {
+        let input = input_signal.get();
+        if input.is_empty() && !composer_doc.text().is_empty() {
+            use floem::views::editor::core::{
+                editor::EditType, selection::Selection,
+            };
+            composer_doc.edit_single(
+                Selection::region(0, composer_doc.text().len()),
+                "",
+                EditType::Other,
+            );
+        }
+    });
     v_stack((
         h_stack((
             label(|| "AI CHAT".to_string()),
@@ -227,7 +371,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     if !clear.busy.get_untracked() {
                         clear.turns.set(Vec::new());
                         clear.history.set(Vec::new());
+                        clear.input.set(String::new());
                         clear.error.set(String::new());
+                        clear.session.set(Session::new());
+                        clear.state.set(RunState::Idle);
+                        clear.persist(config.get_untracked().ai_chat.save_history);
                     }
                 })
                 .style(move |s| {
@@ -239,6 +387,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         .cursor(CursorStyle::Pointer)
                         .selectable(false)
                 }),
+            label(|| "Stop".to_string())
+                .on_click_stop(move |_| { if stop.busy.get_untracked() { stop.stop(); stop.persist(config.get_untracked().ai_chat.save_history); } })
+                .style(move |s| s.padding(6.0).cursor(CursorStyle::Pointer).selectable(false)),
         )),
         label(move || {
             let c = config.get();
@@ -331,16 +482,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             if data.busy.get() {
                 "Thinking... (local replies arrive as a full turn)".to_string()
             } else {
-                "Enter to send. Code stays local unless Ollama is selected."
+                "Enter inserts a new line. Click Send. History is opt-in in Settings."
                     .to_string()
             }
         })
         .style(|s| s.font_size(11.0).max_width_full()),
         h_stack((
-            text_input(data.input)
-                .placeholder("Ask about this file or selection...")
-                .on_enter(move || send(&send_tab))
-                .style(|s| s.flex_grow(1.0).min_width(0.0)),
+            composer.style(|s| s.flex_grow(1.0).min_width(0.0).height(100.0)),
             label(|| "Send".to_string())
                 .on_click_stop(move |_| send(&click_tab))
                 .style(move |s| {

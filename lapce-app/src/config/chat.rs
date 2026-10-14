@@ -7,6 +7,10 @@ pub struct ChatConfig {
         desc = "Enable AI Chat. Local CPU is the default; Ollama sends context only on Send."
     )]
     pub enabled: bool,
+    #[field_names(
+        desc = "Save chat prompts and replies on this device. May contain private code; default off."
+    )]
+    pub save_history: bool,
     #[field_names(desc = "Backend: local (CPU Candle) or ollama (your server).")]
     pub backend: String,
     #[field_names(desc = "Curated local instruct model. Pick and download below.")]
@@ -22,6 +26,7 @@ impl Default for ChatConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            save_history: false,
             backend: "local".into(),
             local_model: "qwen-chat-1.5b".into(),
             endpoint: "https://ai.izdrail.com".into(),
