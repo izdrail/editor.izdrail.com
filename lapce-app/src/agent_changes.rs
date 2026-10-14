@@ -99,7 +99,7 @@ impl Proposal {
         Ok(Reviewed { digest })
     }
     /// Returns a staged in-memory transaction only after every base is checked.
-    /// The caller must hold document ownership and apply all changes as one editor undo group.
+    /// The caller must hold document ownership and apply synchronously, one undo entry per document.
     pub fn stage(
         &self,
         review: &Reviewed,

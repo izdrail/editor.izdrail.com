@@ -46,6 +46,7 @@ pub struct ChatData {
     pub mode: RwSignal<Option<crate::agent_loop::Mode>>,
     pub trust_reads: RwSignal<bool>,
     pub trusted_endpoint: RwSignal<String>,
+    pub review: crate::agent_review_ui::ReviewData,
     gate: RunGate,
     cancellation: RwSignal<Arc<AtomicBool>>,
     storage: Option<PathBuf>,
@@ -67,6 +68,10 @@ impl ChatData {
             std::env::current_exe().unwrap_or_default(),
         );
 
+        let review = crate::agent_review_ui::ReviewData::new(
+            cx,
+            storage.as_ref().map(|p| p.join("checkpoints")),
+        );
         let (session, error) = if restore {
             match storage
                 .as_ref()
@@ -98,6 +103,7 @@ impl ChatData {
             gate: RunGate::default(),
             cancellation: cx.create_rw_signal(Arc::new(AtomicBool::new(false))),
             storage,
+            review,
             turns: cx.create_rw_signal(turns),
             input: cx.create_rw_signal(String::new()),
             busy: cx.create_rw_signal(false),
@@ -650,6 +656,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }),
         label(move || format!("Session: {:?}", data.state.get()))
             .style(|s| s.font_size(11.0).max_width_full()),
+        crate::agent_review_ui::panel(tab.clone()),
         label(move || data.error.get()).style(move |s| {
             s.max_width_full()
                 .color(config.get().color(LapceColor::LAPCE_ERROR))

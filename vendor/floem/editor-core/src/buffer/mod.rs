@@ -189,6 +189,19 @@ impl Buffer {
             .map(|(i, _)| i)
     }
 
+    /// Clone for preflight edits without changing the live background-work revision clock.
+    pub fn detached_edit_clone(&self) -> Self {
+        let mut staged = self.clone();
+        staged.atomic_rev = Arc::new(AtomicU64::new(self.rev()));
+        staged
+    }
+
+    /// At commit, retain the live clock so pending background work sees the edit.
+    pub fn adopt_revision_clock(&mut self, live: &Self) {
+        self.atomic_rev = live.atomic_rev.clone();
+        self.atomic_rev.store(self.rev(), atomic::Ordering::Release);
+    }
+
     pub fn atomic_rev(&self) -> Arc<AtomicU64> {
         self.atomic_rev.clone()
     }

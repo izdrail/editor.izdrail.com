@@ -7,6 +7,8 @@ pub mod agent_budget;
 pub mod agent_transport;
 pub mod agent_read;
 pub mod agent_changes;
+pub mod agent_checkpoint;
+pub mod agent_review_ui;
 pub mod agent_loop;
 pub mod about;
 pub mod alert;

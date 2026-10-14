@@ -7,6 +7,36 @@ mod editing {
     use crate::{editor::EditType, selection::Selection};
 
     #[test]
+    fn detached_review_edit_preserves_live_clock_and_undo_boundary() {
+        use std::sync::atomic::Ordering;
+        let mut live = Buffer::new("abc");
+        live.edit(&[(Selection::caret(3), "d")], EditType::InsertChars);
+        let base = live.to_string();
+        let base_rev = live.rev();
+        let clock = live.atomic_rev();
+        let mut staged = live.detached_edit_clone();
+        staged.edit(
+            &[(Selection::region(0, staged.len()), "reviewed")],
+            EditType::Other,
+        );
+        assert_eq!(live.to_string(), base);
+        assert_eq!(clock.load(Ordering::Acquire), base_rev);
+        staged.adopt_revision_clock(&live);
+        live = staged;
+        assert_eq!(clock.load(Ordering::Acquire), live.rev());
+        live.edit(
+            &[(Selection::caret(live.len()), "!")],
+            EditType::InsertChars,
+        );
+        live.do_undo();
+        assert_eq!(live.to_string(), "reviewed");
+        live.do_undo();
+        assert_eq!(live.to_string(), base);
+        live.do_undo();
+        assert_eq!(live.to_string(), "abc");
+    }
+
+    #[test]
     fn is_pristine() {
         let mut buffer = Buffer::new("");
         buffer.init_content(Rope::from("abc"));
