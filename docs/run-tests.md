@@ -3,6 +3,7 @@
 Command palette: "Run Test at Cursor" and "Run Test File" run the active PHP test in the terminal.
 No keybinding is assigned; add one in `keymaps.toml` for `run_test_at_cursor` / `run_test_file`.
 
+- Pest `arch('...')` tests and calls whose description sits on the next line (`it(\n    'x',`) are found too.
 - Test files: a `.php` file under a `tests/` (or `Tests/`) folder, or named `*Test.php`.
 - Runner: `php artisan test` when `artisan` exists (works for PHPUnit and Pest), else `vendor/bin/pest`,
   else `vendor/bin/phpunit`, run from the workspace root. Nothing is run unless you pick the command.

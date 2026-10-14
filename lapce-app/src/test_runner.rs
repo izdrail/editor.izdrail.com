@@ -3,7 +3,7 @@
 //! Picks the runner from the project (`artisan` => `php artisan test`, else
 //! `vendor/bin/pest`, else `vendor/bin/phpunit`) and finds the test around the
 //! cursor textually: a PHPUnit method named `test*` (or marked `#[Test]` /
-//! `@test`), or a top-level Pest `it('...')` / `test('...')`. Between tests, or
+//! `@test`), or a top-level Pest `it('...')` / `test('...')` / `arch('...')`. Between tests, or
 //! with no match, the whole file runs. The command is only built here; the
 //! caller starts it in the terminal when the user asks.
 use std::path::{Path, PathBuf};
@@ -67,8 +67,23 @@ fn phpunit_method(lines: &[&str], line: usize) -> Option<String> {
 
 /// `(is_describe, description)` when `l` opens a Pest `it`/`test`/`describe`.
 fn pest_opener(l: &str) -> Option<(bool, String)> {
+    pest_opener_at(l, None)
+}
+
+/// Like `pest_opener`, but a call that ends at `(` (Pest code formatted with
+/// the description on its own line) reads the description from `next`.
+fn pest_opener_at(l: &str, next: Option<&str>) -> Option<(bool, String)> {
+    let joined;
+    let l = if l.trim_end().ends_with('(') && next.is_some() {
+        joined = format!("{}{}", l.trim_end(), next.unwrap_or("").trim_start());
+        joined.as_str()
+    } else {
+        l
+    };
     let t = l.trim_start();
-    for (call, describe) in [("it", false), ("test", false), ("describe", true)] {
+    for (call, describe) in
+        [("it", false), ("test", false), ("arch", false), ("describe", true)]
+    {
         if let Some(rest) = t.strip_prefix(call).and_then(|r| r.trim_start().strip_prefix('(')) {
             let rest = rest.trim_start();
             let q = rest.chars().next().filter(|c| *c == '\'' || *c == '"')?;
@@ -104,9 +119,10 @@ fn pest_description(lines: &[&str], line: usize) -> Option<String> {
     loop {
         let l = lines[i];
         let above = i < line;
-        if let Some((_, d)) = pest_opener(l) {
+        if let Some((_, d)) = pest_opener_at(l, lines.get(i + 1).copied()) {
             let k = indent_of(l);
-            if above && paren_balance(l) <= 0 {
+            let multi = l.trim_end().ends_with('(');
+            if above && !multi && paren_balance(l) <= 0 {
                 // A complete one-line test: not enclosing.
             } else if above && closed.contains(&k) {
                 let pos = closed.iter().position(|c| *c == k).unwrap();
@@ -307,5 +323,38 @@ it('top level', function () {
         assert!(plan(d.path(), &d.path().join("tests/a.js"), "x", None).is_err());
         let d = project(&[]);
         assert!(plan(d.path(), &d.path().join("tests/aTest.php"), "x", None).is_err());
+    }
+
+    #[test]
+    fn pest_arch_and_multiline_descriptions() {
+        let src = "<?php
+arch('no debug calls')
+    ->expect(['dd', 'dump'])
+    ->not->toBeUsed();
+
+it(
+    'creates a user',
+    function () {
+        expect(1)->toBe(1);
+    }
+);
+
+test('other', fn () => 1);
+";
+        let lines: Vec<&str> = src.lines().collect();
+        assert_eq!(pest_description(&lines, 1).as_deref(), Some("no debug calls"));
+        assert_eq!(pest_description(&lines, 7).as_deref(), Some("creates a user"));
+        assert_eq!(pest_description(&lines, 5).as_deref(), Some("creates a user"));
+        assert_eq!(pest_description(&lines, 12).as_deref(), Some("other"));
+        // Between tests: nothing encloses the cursor.
+        assert_eq!(pest_description(&lines, 4), None);
+    }
+
+    #[test]
+    fn dangling_open_paren_at_eof_is_safe() {
+        let lines = ["it(", "'x'", "it("];
+        for l in 0..3 {
+            let _ = pest_description(&lines, l);
+        }
     }
 }
