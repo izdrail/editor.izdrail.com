@@ -502,6 +502,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "CSS / Tailwind Classes in Use")]
     PaletteCssClasses,
 
+    #[strum(serialize = "palette.view_usages")]
+    #[strum(message = "Find View Usages")]
+    PaletteViewUsages,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

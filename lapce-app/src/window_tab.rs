@@ -1235,6 +1235,9 @@ impl WindowTabData {
             PaletteCssClasses => {
                 self.palette.run(PaletteKind::CssClasses);
             }
+            PaletteViewUsages => {
+                self.palette.run(PaletteKind::ViewUsages);
+            }
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }

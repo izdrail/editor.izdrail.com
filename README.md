@@ -107,6 +107,9 @@ Palette command that switches between the `compact-65` (no F-keys), VSCode, PhpS
 ### CSS / Tailwind Classes in Use
 Palette list of every class name used in `class="..."` attributes under `resources/`, most used first, with counts; jumps to the first use. See [docs/css-classes-in-use.md](docs/css-classes-in-use.md).
 
+### Find View Usages
+Palette list of every controller, route, mailable or Blade view that renders or includes the Blade view open in the editor (the reverse of Go to Template). See [docs/view-usages.md](docs/view-usages.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

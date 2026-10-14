@@ -456,6 +456,9 @@ impl PaletteData {
             PaletteKind::CssClasses => {
                 self.set_route_items(crate::tw_usage_index::discover);
             }
+            PaletteKind::ViewUsages => {
+                self.get_view_usages();
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
@@ -1138,6 +1141,10 @@ impl PaletteData {
 
     fn get_livewire_members(&self) {
         self.get_active_file_route_items(crate::livewire_members::discover);
+    }
+
+    fn get_view_usages(&self) {
+        self.get_active_file_route_items(crate::view_usages::discover);
     }
 
     fn get_active_file_route_items(
