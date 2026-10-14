@@ -90,7 +90,7 @@ From a view, lists its `@extends` layout and the layout's `@yield`/`@stack` slot
 Palette list of Laravel form request classes and the fields in their `rules()`. See [docs/go-to-form-request.md](docs/go-to-form-request.md).
 
 ### Go to Middleware / Job / Event
-Palette list of Laravel middleware, jobs, events, listeners, observers, notifications and mailables, tagged by kind. See [docs/go-to-app-class.md](docs/go-to-app-class.md).
+Palette list of Laravel middleware, jobs, events, listeners, observers, notifications and mailables, tagged by kind (also seeders and factories). See [docs/go-to-app-class.md](docs/go-to-app-class.md).
 
 ### Go to Artisan Command
 Palette list of your custom Artisan commands (class `$signature` / `AsCommand` and `Artisan::command` closures), jump to the definition. Nothing is run. See [docs/go-to-artisan-command.md](docs/go-to-artisan-command.md).

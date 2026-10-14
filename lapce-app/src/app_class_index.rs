@@ -2,7 +2,8 @@
 //! standard Laravel folders, labelled by kind.
 //!
 //! Folders: `app/Http/Middleware`, `app/Jobs`, `app/Events`,
-//! `app/Listeners`, `app/Observers`, `app/Notifications`, `app/Mail`.
+//! `app/Listeners`, `app/Observers`, `app/Notifications`, `app/Mail`,
+//! `database/seeders` (or legacy `database/seeds`), `database/factories`.
 //! Static scan: the class line is found by text, nothing is executed.
 //! Bounded: depth 6 per folder, 1500 files in total, 64 KB read per file,
 //! 5000 entries, symlinks skipped.
@@ -26,6 +27,9 @@ pub const KINDS: &[(&str, &str)] = &[
     ("Observer", "app/Observers"),
     ("Notification", "app/Notifications"),
     ("Mail", "app/Mail"),
+    ("Seeder", "database/seeders"),
+    ("Seeder", "database/seeds"),
+    ("Factory", "database/factories"),
 ];
 
 fn walk(dir: &Path, depth: usize, budget: &mut usize, out: &mut Vec<PathBuf>) {
@@ -143,6 +147,20 @@ mod tests {
         assert_eq!(got[1].line, 2);
         assert_eq!(got[3].line, 0);
         assert!(discover(&r.join("none")).is_empty());
+    }
+
+    #[test]
+    fn seeders_and_factories() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "database/seeders/DatabaseSeeder.php", "<?php\nclass DatabaseSeeder extends Seeder {}\n");
+        put(r, "database/seeds/OldSeeder.php", "class OldSeeder {}");
+        put(r, "database/factories/UserFactory.php", "<?php\nnamespace Database\\Factories;\nclass UserFactory extends Factory {}\n");
+        put(r, "database/migrations/2020_x.php", "class X {}");
+        let got = discover(r);
+        let labels: Vec<_> = got.iter().map(|t| t.label.split("  ").next().unwrap().to_string()).collect();
+        assert_eq!(labels, ["[Seeder] DatabaseSeeder", "[Seeder] OldSeeder", "[Factory] UserFactory"]);
+        assert_eq!(got[2].line, 2);
     }
 
     #[test]
