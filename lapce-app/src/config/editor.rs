@@ -123,6 +123,10 @@ pub struct EditorConfig {
     )]
     pub auto_surround: bool,
     #[field_names(
+        desc = "Whether typing > after an HTML/Twig/Blade/Vue opening tag inserts the closing tag"
+    )]
+    pub auto_close_tags: bool,
+    #[field_names(
         desc = "How long (in ms) it should take before the hover information appears"
     )]
     pub hover_delay: u64,

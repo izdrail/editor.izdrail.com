@@ -31,6 +31,7 @@ show-signature = true
 signature-label-code-block = true
 auto-closing-matching-pairs = true
 auto-surround = true
+auto-close-tags = true
 hover-delay = 300                                            # ms
 modal-mode-relative-line-numbers = true
 format-on-save = false

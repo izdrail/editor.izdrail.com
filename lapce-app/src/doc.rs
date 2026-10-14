@@ -607,6 +607,12 @@ impl Doc {
                 })
                 .unwrap()
         });
+        let mut deltas = deltas;
+        if s == ">" && config.editor.auto_close_tags {
+            if let Some(d) = self.auto_close_tag(cursor) {
+                deltas.push(d);
+            }
+        }
         // Keep track of the change in the cursor mode for undo/redo
         self.buffer.update(|buffer| {
             buffer.set_cursor_before(old_cursor);
@@ -614,6 +620,46 @@ impl Doc {
         });
         self.apply_deltas(&deltas);
         deltas
+    }
+
+    /// After a typed `>`: inserts the closing tag after the caret and keeps
+    /// the caret between the tags. Returns the extra edit, to be applied by
+    /// the caller together with the typed character.
+    fn auto_close_tag(
+        &self,
+        cursor: &mut Cursor,
+    ) -> Option<(Rope, RopeDelta, InvalLines)> {
+        let path = self.content.with_untracked(|c| c.path().cloned())?;
+        if !crate::tag_close::enabled_for(&path) {
+            return None;
+        }
+        let offset = match &cursor.mode {
+            lapce_core::cursor::CursorMode::Insert(sel) if sel.regions().len() == 1 => {
+                let r = &sel.regions()[0];
+                if !r.is_caret() {
+                    return None;
+                }
+                r.end
+            }
+            _ => return None,
+        };
+        let close = self.buffer.with_untracked(|b| {
+            let len = b.len();
+            if offset > len || len > 4 * 1024 * 1024 {
+                return None;
+            }
+            let from = b.prev_code_boundary(offset.saturating_sub(4096));
+            let to = b.next_code_boundary((offset + 256).min(len));
+            let before = b.slice_to_cow(from..offset).to_string();
+            let after = b.slice_to_cow(offset..to.max(offset)).to_string();
+            crate::tag_close::closing_tag(&before, &after)
+        })?;
+        let sel = Selection::caret(offset);
+        let edit = self
+            .buffer
+            .try_update(|b| b.edit(&[(&sel, close.as_str())], EditType::InsertChars))?;
+        cursor.mode = lapce_core::cursor::CursorMode::Insert(Selection::caret(offset));
+        Some(edit)
     }
 
     pub fn do_raw_edit(
