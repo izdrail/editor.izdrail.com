@@ -1173,6 +1173,7 @@ impl WindowTabData {
             }
             ImportPhpClass => self.import_php_class(),
             OrganizePhpImports => self.organize_php_imports(),
+            InsertPropsDraft => self.insert_props_draft(),
             SortTailwindClasses => self.sort_tailwind_classes(),
             RenameTag => {
                 let found = self
@@ -2896,6 +2897,62 @@ impl WindowTabData {
         }
         msg.push_str("Imports sorted.");
         note(lsp_types::MessageType::INFO, msg);
+    }
+
+    /// "Insert @props Draft": inserts an `@props([...])` block at the cursor of
+    /// a component view, from the attributes other views pass to it.
+    fn insert_props_draft(&self) {
+        let note = |typ: lsp_types::MessageType, text: String| {
+            self.show_message(
+                "Insert @props Draft",
+                &ShowMessageParams { typ, message: text },
+            );
+        };
+        let warn = |text: String| note(lsp_types::MessageType::WARNING, text);
+        let Some(editor) = self.main_split.active_editor.get_untracked() else {
+            return warn("Open a Blade component view first.".into());
+        };
+        let Some(root) = self.workspace.path.as_deref() else {
+            return warn("Open a project folder first.".into());
+        };
+        let doc = editor.doc();
+        let DocContent::File { path, .. } = doc.content.get_untracked() else {
+            return warn("Open a Blade component view first.".into());
+        };
+        let Some(name) = crate::props_draft::component_name(root, &path) else {
+            return warn(
+                "This works in resources/views/components/*.blade.php.".into(),
+            );
+        };
+        let (text, crlf) = doc.buffer.with_untracked(|b| {
+            let t = (b.len() <= 1024 * 1024).then(|| b.text().to_string());
+            let crlf = t.as_deref().is_some_and(|t| t.contains("\r\n"));
+            (t, crlf)
+        });
+        let Some(text) = text else {
+            return warn("The file is too large.".into());
+        };
+        if crate::props_draft::has_props(&text) {
+            return note(
+                lsp_types::MessageType::INFO,
+                "This component already has @props.".into(),
+            );
+        }
+        let attrs = crate::props_draft::scan(root, &name);
+        if attrs.is_empty() {
+            return note(
+                lsp_types::MessageType::INFO,
+                format!("No view passes attributes to <x-{name}>."),
+            );
+        }
+        let draft = crate::props_draft::draft(&attrs, if crlf { "\r\n" } else { "\n" });
+        let offset = editor.cursor().get_untracked().offset();
+        let at = lapce_core::selection::Selection::caret(offset);
+        editor.do_edit(&at, &[(lapce_core::selection::Selection::caret(offset), draft.as_str())]);
+        note(
+            lsp_types::MessageType::INFO,
+            format!("Inserted a draft with {} attribute(s). Add defaults as needed.", attrs.len()),
+        );
     }
 
     /// "Sort Tailwind Classes": sorts static class attributes in the

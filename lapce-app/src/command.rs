@@ -429,6 +429,9 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "organize_php_imports")]
     #[strum(message = "Organize PHP Imports")]
     OrganizePhpImports,
+    #[strum(serialize = "insert_props_draft")]
+    #[strum(message = "Insert @props Draft")]
+    InsertPropsDraft,
     #[strum(serialize = "sort_tailwind_classes")]
     #[strum(message = "Sort Tailwind Classes")]
     SortTailwindClasses,

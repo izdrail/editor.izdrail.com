@@ -51,6 +51,9 @@ A colour square before `#rrggbb`, `rgb()` and `hsl()` literals in CSS, templates
 ### Blade prop go-to
 Go to Definition on an attribute of `<x-...>` opens the component's `@props` entry or constructor parameter. See [docs/blade-props-goto.md](docs/blade-props-goto.md).
 
+### Insert @props Draft
+In a component view, inserts an `@props([...])` block from the attributes other views pass to it. See [docs/props-draft.md](docs/props-draft.md).
+
 ### Blade hover help
 Hover a Blade directive or an `<x-...>` attribute for its syntax or prop declaration. See [docs/blade-hover.md](docs/blade-hover.md).
 
