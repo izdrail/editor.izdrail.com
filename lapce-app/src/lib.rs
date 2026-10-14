@@ -40,6 +40,7 @@ pub mod php_imports;
 pub mod php_organize;
 pub mod route_index;
 pub mod blade_end;
+pub mod composer_pkg;
 pub mod tag_close;
 pub mod tw_sort;
 pub mod tag_pair;

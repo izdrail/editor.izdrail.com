@@ -1415,6 +1415,22 @@ impl EditorData {
                 });
                 return;
             }
+            // composer.json / composer.lock: a package name opens its
+            // composer.json under vendor/.
+            if let Some((target, line)) =
+                crate::composer_pkg::resolve(root, &path, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: Some(EditorPosition::Line(line)),
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
             // Symfony: a class named in YAML/XML/Twig config opens its file.
             if let Some((target, line)) =
                 crate::class_refs::resolve(root, &path, &line_text, col)

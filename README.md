@@ -60,6 +60,9 @@ Palette command that sorts static `class`/`className` utilities into Tailwind's 
 ### Import PHP Class
 Palette command that adds a sorted `use` line for the class under the cursor, from composer.json PSR-4 paths and vendor packages. See [docs/import-class.md](docs/import-class.md).
 
+### Go to Composer package
+Go to Definition on a package in `composer.json`/`composer.lock` opens its `composer.json` under `vendor/`. See [docs/composer-go-to-package.md](docs/composer-go-to-package.md).
+
 ### Go to Route
 Laravel and Symfony route list in the command palette ("Go to Route") jumping to controller methods. See [docs/go-to-route.md](docs/go-to-route.md).
 

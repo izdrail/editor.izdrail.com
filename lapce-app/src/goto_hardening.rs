@@ -5,7 +5,7 @@
 //! them may panic or take noticeable time.
 use std::{path::Path, time::Instant};
 
-use crate::{class_refs, env_refs, laravel_keys, route_names, template_refs, wp_hooks};
+use crate::{class_refs, composer_pkg, env_refs, laravel_keys, route_names, template_refs, wp_hooks};
 
 fn lines() -> Vec<String> {
     let mut v: Vec<String> = [
@@ -15,7 +15,7 @@ fn lines() -> Vec<String> {
         "__('日本語')", "route('日本')", "😀😀 view('😀') 😀", "\u{0301}\u{0301}'",
         "}}'\"((", "@includeWhen(", "add_action( '", "App\\Élan\\Ünï", "App\\\\\\\\",
         "register_activation_hook(__FILE__, '", "class: 'App\\Ünï\\", "@App\\É::é",
-        "App\\Controller\\Home::", "::", "\\\\\\", "resource: '../src/'",
+        "App\\Controller\\Home::", "::", "\\\\\\", "resource: '../src/'", "\"laravel/é\": \"^1\"", "\"name\": \"a/b",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -34,6 +34,8 @@ fn all_resolvers(root: &Path, line: &str, col: usize) {
     for name in ["a.blade.php", "a.php", "a.html.twig", "a.yaml", "a.xml", "a.neon"] {
         let f = root.join(name);
         let _ = class_refs::resolve(root, &f, line, col);
+        let _ = composer_pkg::resolve(root, &root.join("composer.json"), line, col);
+        let _ = composer_pkg::resolve(root, &root.join("composer.lock"), line, col);
         let _ = template_refs::resolve(root, &f, line, col);
         let _ = wp_hooks::resolve(root, &f, line, col);
     }
