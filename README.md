@@ -54,6 +54,8 @@ Palette command that wraps the selection in an HTML, Blade or Livewire element f
 
 ### Organize PHP Imports
 Palette command that removes unused `use` lines and sorts the rest. See [docs/organize-imports.md](docs/organize-imports.md).
+### Sort Tailwind Classes
+Palette command that sorts static `class`/`className` utilities into Tailwind's usual order (approximation). See [docs/tailwind-sort.md](docs/tailwind-sort.md).
 
 ### Import PHP Class
 Palette command that adds a sorted `use` line for the class under the cursor, from composer.json PSR-4 paths and vendor packages. See [docs/import-class.md](docs/import-class.md).

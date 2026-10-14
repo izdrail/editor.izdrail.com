@@ -1169,6 +1169,7 @@ impl WindowTabData {
             }
             ImportPhpClass => self.import_php_class(),
             OrganizePhpImports => self.organize_php_imports(),
+            SortTailwindClasses => self.sort_tailwind_classes(),
             RenameTag => {
                 let found = self
                     .main_split
@@ -2873,6 +2874,55 @@ impl WindowTabData {
         }
         msg.push_str("Imports sorted.");
         note(lsp_types::MessageType::INFO, msg);
+    }
+
+    /// "Sort Tailwind Classes": sorts static class attributes in the
+    /// selection, or in the whole file when nothing is selected.
+    fn sort_tailwind_classes(&self) {
+        let note = |typ: lsp_types::MessageType, text: String| {
+            self.show_message(
+                "Sort Tailwind Classes",
+                &ShowMessageParams { typ, message: text },
+            );
+        };
+        let Some(editor) = self.main_split.active_editor.get_untracked() else {
+            return note(lsp_types::MessageType::WARNING, "Open a file first.".into());
+        };
+        let doc = editor.doc();
+        let (text, selection, range) = doc.buffer.with_untracked(|b| {
+            let selection = editor.cursor().get_untracked().edit_selection(b);
+            let (mut lo, mut hi) = (usize::MAX, 0);
+            for r in selection.regions() {
+                if r.min() != r.max() {
+                    lo = lo.min(r.min());
+                    hi = hi.max(r.max());
+                }
+            }
+            let range = if lo < hi { lo..hi } else { 0..b.len() };
+            ((b.len() <= 1024 * 1024).then(|| b.text().to_string()), selection, range)
+        });
+        let Some(text) = text else {
+            return note(
+                lsp_types::MessageType::WARNING,
+                "The file is too large to sort.".into(),
+            );
+        };
+        let edits = crate::tw_sort::sort_attributes(&text, range);
+        if edits.is_empty() {
+            return note(
+                lsp_types::MessageType::INFO,
+                "No static class attributes needed sorting.".into(),
+            );
+        }
+        let list: Vec<(lapce_core::selection::Selection, &str)> = edits
+            .iter()
+            .map(|(r, s)| (lapce_core::selection::Selection::region(r.start, r.end), s.as_str()))
+            .collect();
+        editor.do_edit(&selection, &list);
+        note(
+            lsp_types::MessageType::INFO,
+            format!("Sorted {} class attribute(s).", edits.len()),
+        );
     }
 
     /// "Import PHP Class": adds a `use` line for the class under the cursor.
