@@ -2860,6 +2860,11 @@ impl EditorData {
             self.run_edit_command(&EditCommand::NormalizeLineEndings);
         }
 
+        // `.editorconfig`: end_of_line, trim_trailing_whitespace, insert_final_newline.
+        if allow_formatting && !self.common.workspace.kind.is_remote() {
+            self.apply_editorconfig_on_save(&path);
+        }
+
         let rev = doc.rev();
         let format_on_save = allow_formatting && config.editor.format_on_save;
         if format_on_save {
@@ -2890,6 +2895,43 @@ impl EditorData {
         } else {
             self.do_save(after_action);
         }
+    }
+
+    /// Applies the `.editorconfig` save-time rules to the open buffer.
+    fn apply_editorconfig_on_save(&self, path: &std::path::Path) {
+        let props = crate::editorconfig::resolve(path);
+        if props.is_empty() {
+            return;
+        }
+        let doc = self.doc();
+        if let Some(eol) = props.eol {
+            let want = match eol {
+                crate::editorconfig::Eol::Lf => lapce_core::line_ending::LineEnding::Lf,
+                crate::editorconfig::Eol::CrLf => lapce_core::line_ending::LineEnding::CrLf,
+            };
+            if doc.buffer.with_untracked(|b| b.line_ending()) != want {
+                doc.buffer.update(|b| b.set_line_ending(want));
+                self.run_edit_command(&EditCommand::NormalizeLineEndings);
+            }
+        }
+        // Larger buffers are left alone rather than scanned on every save.
+        let text = doc.buffer.with_untracked(|b| {
+            (b.len() <= 5 * 1024 * 1024).then(|| b.text().to_string())
+        });
+        let Some(text) = text else { return };
+        let ranges = crate::editorconfig::save_edits(&text, &props);
+        if ranges.is_empty() {
+            return;
+        }
+        let selection = self
+            .cursor()
+            .get_untracked()
+            .edit_selection(&doc.buffer.get_untracked());
+        let edits: Vec<(lapce_core::selection::Selection, &str)> = ranges
+            .iter()
+            .map(|(s, e, r)| (lapce_core::selection::Selection::region(*s, *e), r.as_str()))
+            .collect();
+        self.do_edit(&selection, &edits);
     }
 
     pub fn format(&self) {

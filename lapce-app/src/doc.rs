@@ -502,6 +502,11 @@ impl Doc {
 
     //// Initialize the content with some text, this marks the document as loaded.
     pub fn init_content(&self, content: Rope) {
+        let editorconfig_path = if self.common.workspace.kind.is_remote() {
+            None
+        } else {
+            self.content.with_untracked(|c| c.path().cloned())
+        };
         batch(|| {
             self.syntax.with_untracked(|syntax| {
                 self.buffer.update(|buffer| {
@@ -509,6 +514,25 @@ impl Doc {
                     buffer.detect_indent(|| {
                         IndentStyle::from_str(syntax.language.indent_unit())
                     });
+                    // `.editorconfig` beats auto-detection (local files only).
+                    if let Some(path) = editorconfig_path {
+                        let props = crate::editorconfig::resolve(&path);
+                        let current = match buffer.indent_style() {
+                            IndentStyle::Tabs => crate::editorconfig::Indent::Tabs,
+                            IndentStyle::Spaces(n) => {
+                                crate::editorconfig::Indent::Spaces(n)
+                            }
+                        };
+                        match props.indent(current) {
+                            Some(crate::editorconfig::Indent::Tabs) => {
+                                buffer.set_indent_style(IndentStyle::Tabs)
+                            }
+                            Some(crate::editorconfig::Indent::Spaces(n)) => {
+                                buffer.set_indent_style(IndentStyle::Spaces(n))
+                            }
+                            None => {}
+                        }
+                    }
                 });
             });
             self.loaded.set(true);

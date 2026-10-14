@@ -235,6 +235,11 @@ impl Buffer {
         self.indent_style = auto_detect_indent_style(&self.text).unwrap_or_else(default);
     }
 
+    /// Overrides the indent unit, for example from an `.editorconfig`.
+    pub fn set_indent_style(&mut self, style: IndentStyle) {
+        self.indent_style = style;
+    }
+
     pub fn indent_style(&self) -> IndentStyle {
         self.indent_style
     }
