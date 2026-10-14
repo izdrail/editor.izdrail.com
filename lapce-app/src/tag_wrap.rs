@@ -15,13 +15,26 @@ pub const TAGS: [&str; 34] = [
 
 /// The text replacing `selected` when wrapped in `tag`. `indent` is the
 /// leading whitespace of the selection's first line.
-pub fn wrap(selected: &str, tag: &str, indent: &str, nl: &str) -> String {
+pub fn wrap(selected: &str, spec: &str, indent: &str, nl: &str) -> String {
+    let name = tag_name(spec);
     if selected.contains('\n') {
         let body = selected.trim_matches(|c| c == '\r' || c == '\n');
-        format!("<{tag}>{nl}{body}{nl}{indent}</{tag}>")
+        format!("<{spec}>{nl}{body}{nl}{indent}</{name}>")
     } else {
-        format!("<{tag}>{selected}</{tag}>")
+        format!("<{spec}>{selected}</{name}>")
     }
+}
+
+/// The element name of a typed spec such as `div class="card"`.
+pub fn tag_name(spec: &str) -> &str {
+    spec.split_whitespace().next().unwrap_or("")
+}
+
+/// A typed wrap spec: a valid name, optionally followed by attributes. The
+/// attributes may not contain `<`, `>` or a line break.
+pub fn is_valid_spec(spec: &str) -> bool {
+    let spec = spec.trim();
+    is_valid_tag(tag_name(spec)) && !spec.contains(['<', '>', '\n', '\r']) && spec.len() <= 200
 }
 
 /// Closing-tag name: attributes and Livewire-style `name` suffixes kept as typed.
@@ -48,6 +61,22 @@ mod tests {
             "<ul>\n  <li>a</li>\n  <li>b</li>\n  </ul>"
         );
         assert_eq!(wrap("a\r\nb\r\n", "div", "", "\r\n"), "<div>\r\na\r\nb\r\n</div>");
+    }
+
+    #[test]
+    fn typed_spec_with_attributes() {
+        assert_eq!(
+            wrap("hi", "div class=\"card p-4\"", "", "\n"),
+            "<div class=\"card p-4\">hi</div>"
+        );
+        assert_eq!(wrap("a\nb", "section id=x", "", "\n"), "<section id=x>\na\nb\n</section>");
+        assert!(is_valid_spec("div class=\"a\""));
+        assert!(is_valid_spec("x-card"));
+        assert!(!is_valid_spec(""));
+        assert!(!is_valid_spec("div><script>"));
+        assert!(!is_valid_spec("1div"));
+        assert!(!is_valid_spec(&format!("div {}", "a".repeat(300))));
+        assert_eq!(tag_name("  "), "");
     }
 
     #[test]

@@ -3189,7 +3189,8 @@ impl EditorData {
 
     /// Wraps each selection (or the word at each caret) in `<tag>...</tag>`.
     pub fn wrap_in_tag(&self, tag: &str) -> bool {
-        if !crate::tag_wrap::is_valid_tag(tag) {
+        let tag = tag.trim();
+        if !crate::tag_wrap::is_valid_spec(tag) {
             return false;
         }
         let doc = self.doc();

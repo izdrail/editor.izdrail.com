@@ -1289,7 +1289,25 @@ impl PaletteData {
     fn select(&self) {
         let index = self.index.get_untracked();
         let items = self.filtered_items.get_untracked();
+        let typed = self.input.get_untracked().input;
+        let kind = self.kind.get_untracked();
         self.close();
+        // Wrap/Rename Tag: when nothing in the list matches, the typed text
+        // is the tag (Wrap also accepts attributes: `div class="card"`).
+        if items.is_empty() && !typed.trim().is_empty() {
+            if let Some(editor) = self.main_split.active_editor.get_untracked() {
+                match kind {
+                    PaletteKind::WrapTag => {
+                        editor.wrap_in_tag(typed.trim());
+                    }
+                    PaletteKind::RenameTag => {
+                        editor.rename_tag(typed.trim());
+                    }
+                    _ => {}
+                }
+            }
+            return;
+        }
         if let Some(item) = items.get(index) {
             match &item.content {
                 PaletteItemContent::PaletteHelp { cmd } => {

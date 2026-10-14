@@ -4,4 +4,4 @@ Command palette: **Rename Tag** (`rename_tag`, no default key). Put the caret in
 
 Parsing is textual and bounded (files up to 1 MB, tags up to 4 KB). Skipped: HTML and `{{-- --}}` comments, `<?php ... ?>`, doctype, void elements (`br`, `img`, ...), self-closing tags, and the bodies of `<script>` and `<style>`. Quotes and `{{ }}` inside attributes may contain `>`. A mismatched closer is tolerated. If no matched element is found a warning toast says so and nothing changes.
 
-The new name comes from the list; a free-text name is not supported yet. Edit it afterwards if you need another one.
+You can also type any element name: when nothing in the list matches, Enter uses what you typed (name only; attributes are not used for rename).
