@@ -44,7 +44,7 @@ Projects with a Prettier config and binary are formatted through it on save. See
 "Open in Browser" in the command palette shows the active HTML/SVG file in your browser. See [docs/open-in-browser.md](docs/open-in-browser.md).
 
 ### Auto-close tags
-Typing `>` after an opening tag in HTML, Twig, Blade and Vue files inserts the closing tag (`auto-close-tags` setting). See [docs/auto-close-tags.md](docs/auto-close-tags.md).
+Typing `>` after an opening tag in HTML, Twig, Blade and Vue files inserts the closing tag, and Enter after a Blade `@if`/`@foreach`/... adds the `@end...` line (`auto-close-tags` setting). See [docs/auto-close-tags.md](docs/auto-close-tags.md).
 
 ### Import PHP Class
 Palette command that adds a sorted `use` line for the class under the cursor, from composer.json PSR-4 paths and vendor packages. See [docs/import-class.md](docs/import-class.md).

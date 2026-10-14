@@ -716,6 +716,16 @@ impl Doc {
                 .unwrap()
         });
 
+        let mut deltas = deltas;
+        if matches!(cmd, EditCommand::InsertNewLine)
+            && !deltas.is_empty()
+            && self.common.config.get_untracked().editor.auto_close_tags
+        {
+            if let Some(d) = self.auto_end_directive(cursor) {
+                deltas.push(d);
+            }
+        }
+
         if !deltas.is_empty() {
             self.buffer.update(|buffer| {
                 buffer.set_cursor_before(old_cursor);
@@ -725,6 +735,64 @@ impl Doc {
         }
 
         deltas
+    }
+
+    /// After Enter on a Blade block directive line: adds the matching
+    /// `@end...` below the new (indented) line and keeps the caret on it.
+    fn auto_end_directive(
+        &self,
+        cursor: &mut Cursor,
+    ) -> Option<(Rope, RopeDelta, InvalLines)> {
+        let path = self.content.with_untracked(|c| c.path().cloned())?;
+        if !path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.to_lowercase().ends_with(".blade.php"))
+        {
+            return None;
+        }
+        let offset = match &cursor.mode {
+            lapce_core::cursor::CursorMode::Insert(sel) if sel.regions().len() == 1 => {
+                let r = &sel.regions()[0];
+                if !r.is_caret() {
+                    return None;
+                }
+                r.end
+            }
+            _ => return None,
+        };
+        let insert = self.buffer.with_untracked(|b| {
+            let len = b.len();
+            if len > 4 * 1024 * 1024 {
+                return None;
+            }
+            let line = b.line_of_offset(offset);
+            if line == 0 {
+                return None;
+            }
+            let line_end = b.offset_of_line(line + 1).min(len);
+            let line_text = b.slice_to_cow(offset..line_end).to_string();
+            // Only when nothing but the line break follows the caret.
+            if !line_text.trim_matches(['\r', '\n']).is_empty() {
+                return None;
+            }
+            let prev_start = b.offset_of_line(line - 1);
+            let prev_end = b.offset_of_line(line);
+            let prev = b.slice_to_cow(prev_start..prev_end).to_string();
+            let prev = prev.trim_end_matches(['\r', '\n']);
+            let to = b.next_code_boundary((line_end + 200_000).min(len));
+            let following = b.slice_to_cow(line_end..to.max(line_end)).to_string();
+            let end = crate::blade_end::end_directive(prev, &following)?;
+            let indent: String =
+                prev.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+            Some(format!("{}{indent}{end}", b.line_ending().get_chars()))
+        })?;
+        let sel = Selection::caret(offset);
+        let edit = self
+            .buffer
+            .try_update(|b| b.edit(&[(&sel, insert.as_str())], EditType::InsertChars))?;
+        cursor.mode = lapce_core::cursor::CursorMode::Insert(Selection::caret(offset));
+        Some(edit)
     }
 
     pub fn apply_deltas(&self, deltas: &[(Rope, RopeDelta, InvalLines)]) {
