@@ -136,7 +136,9 @@ pub fn help(root: Option<&Path>, file: &Path, window: &str, at: usize) -> Option
         return Some(format!("```blade\n{syntax}\n```\n{desc}"));
     }
     let root = root?;
-    let (tag, attr) = crate::blade_props::tag_and_attr(window, at)?;
+    let Some((tag, attr)) = crate::blade_props::tag_and_attr(window, at) else {
+        return crate::livewire_props::help(root, file, line, at - line_start);
+    };
     let (target, n) = crate::blade_props::resolve(root, file, window, at)?;
     let text = std::fs::read_to_string(&target).ok()?;
     let decl = text.lines().nth(n)?.trim();

@@ -17,6 +17,7 @@ pub mod app;
 pub mod code_action;
 pub mod code_lens;
 pub mod hover_help;
+pub mod livewire_props;
 pub mod env_index;
 pub mod migration_index;
 pub mod model_index;
