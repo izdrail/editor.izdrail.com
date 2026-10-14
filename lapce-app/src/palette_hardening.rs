@@ -244,3 +244,63 @@ fn php_imports_and_test_index_random_files() {
     }
     assert!(start.elapsed().as_secs() < 15);
 }
+
+const BLADE_TOKENS: &[&str] = &[
+    "<x-btn", "<x-btn-lg", "<x-", "<livewire:", "@livewire('", "@extends('", "@yield(\"", "@stack(", "@props([",
+    "'", "\"", " ", "\n", "/", ">", "=", ":", "é", "日本", "$x", "{{ ", " }}", "class=\"a\"", "wire:model=\"b\"",
+];
+
+#[test]
+fn blade_scanners_random_text() {
+    use crate::{blade_layouts, component_usages, props_draft};
+    let mut rng = Rng(0xB1ADE5CA77E2D00D);
+    let start = Instant::now();
+    for _ in 0..3000 {
+        let n = (rng.next() % 120) as usize;
+        let t = soup(&mut rng, BLADE_TOKENS, n);
+        for (kind, name) in [("x", "btn"), ("livewire", "a.b-c"), ("x", "")] {
+            let _ = component_usages::usages_in(&t, kind, name);
+        }
+        let _ = blade_layouts::slots(&t);
+        for l in t.lines() {
+            let _ = blade_layouts::directive_arg(l, "extends");
+        }
+        let attrs = props_draft::attrs_in(&t, "btn");
+        let flat: Vec<String> = attrs.into_iter().flatten().collect();
+        let d = props_draft::draft(&flat, "\n");
+        assert!(d.is_empty() || d.contains("@props"));
+        let _ = props_draft::has_props(&t);
+    }
+    assert!(start.elapsed().as_secs() < 15);
+}
+
+#[test]
+fn blade_scanners_on_hostile_trees() {
+    use crate::{blade_layouts, component_usages, props_draft};
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    let views = r.join("resources/views");
+    std::fs::create_dir_all(views.join("components")).unwrap();
+    std::fs::write(views.join("components/btn.blade.php"), "<x-btn a=\"1\">").unwrap();
+    // 1 MB+ file, a deep tree, many tiny files, and a symlink loop.
+    std::fs::write(views.join("huge.blade.php"), "<x-btn a=\"1\">\n".repeat(120_000)).unwrap();
+    let mut deep = views.clone();
+    for i in 0..20 {
+        deep = deep.join(format!("d{i}"));
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join("deep.blade.php"), "<x-btn>").unwrap();
+    for i in 0..300 {
+        std::fs::write(views.join(format!("v{i}.blade.php")), "@extends('layouts.app')\n<x-btn b=\"2\"/>\n").unwrap();
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&views, views.join("loop")).unwrap();
+    let start = Instant::now();
+    let btn = views.join("components/btn.blade.php");
+    let u = component_usages::discover(r, &btn);
+    assert_eq!(u.len(), 300, "huge file and deep file are skipped, symlink not followed");
+    assert!(!props_draft::scan(r, "btn").is_empty());
+    assert!(blade_layouts::discover(r, &views.join("v1.blade.php")).is_empty());
+    assert!(blade_layouts::discover(r, &views.join("huge.blade.php")).is_empty());
+    assert!(start.elapsed().as_secs() < 15);
+}
