@@ -117,6 +117,54 @@ fn directive_at(line: &str, col: usize) -> Option<&str> {
     (e > s).then(|| &line[s..e])
 }
 
+const VARIABLES: &[(&str, &str, &str)] = &[
+    ("slot", "$slot", "The content between the component's tags (the default slot). Named slots are `$name` for `<x-slot:name>`. `$slot->isEmpty()` and `$slot->hasActualContent()` check it."),
+    ("attributes", "$attributes", "Attributes passed to the component that are not declared in `@props`. Use `{{ $attributes }}` on the root element, `$attributes->merge(['class' => 'p-4'])`, `->class([...])`, `->only(...)`, `->except(...)`, `->whereStartsWith('wire:model')`, `->has('x')`, `->get('x')`."),
+    ("component", "$component", "The component instance (class components only)."),
+    ("loop", "$loop", "Inside `@foreach` / `@forelse`: `->index` (0-based), `->iteration` (1-based), `->remaining`, `->count`, `->first`, `->last`, `->even`, `->odd`, `->depth`, `->parent`."),
+    ("errors", "$errors", "The validation error bag. `$errors->any()`, `$errors->has('f')`, `$errors->first('f')`, `$errors->get('f')`."),
+    ("message", "$message", "The error text inside `@error('field') ... @enderror`."),
+];
+
+fn variable_at(line: &str, col: usize) -> Option<&str> {
+    let mut col = col.min(line.len());
+    while !line.is_char_boundary(col) {
+        col -= 1;
+    }
+    let is_name = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut s = col;
+    while let Some(c) = line[..s].chars().next_back() {
+        if is_name(c) { s -= c.len_utf8() } else { break }
+    }
+    let mut e = col;
+    while let Some(c) = line[e..].chars().next() {
+        if is_name(c) { e += c.len_utf8() } else { break }
+    }
+    (s < e && line[..s].ends_with('$')).then(|| &line[s..e])
+}
+
+/// Help for `$slot`, `$attributes`, `$loop`... and, inside a component view,
+/// for a variable declared in the file's own `@props`.
+fn variable_help(root: Option<&Path>, file: &Path, line: &str, col: usize) -> Option<String> {
+    let name = variable_at(line, col)?;
+    let in_component = root.is_some_and(|r| file.starts_with(r.join("resources/views/components")));
+    if let Some((_, syntax, desc)) = VARIABLES.iter().find(|(n, _, _)| *n == name) {
+        // `$slot`, `$attributes`, `$component` only mean something in components.
+        let component_only = matches!(name, "slot" | "attributes" | "component");
+        if !component_only || in_component || root.is_none() {
+            return Some(format!("```blade\n{syntax}\n```\n{desc}"));
+        }
+    }
+    if in_component {
+        std::fs::symlink_metadata(file).ok().filter(|m| m.is_file() && m.len() <= 1 << 20)?;
+        let text = std::fs::read_to_string(file).ok()?;
+        let n = crate::blade_props::prop_line(&text, name)?;
+        let decl = text.lines().nth(n)?.trim();
+        return Some(format!("**Prop** `${name}`\n```php\n{decl}\n```\nline {} of this component (from the saved file)", n + 1));
+    }
+    None
+}
+
 /// Markdown for the hover at byte `col` of the line the window ends on.
 /// `window` is the text of up to 30 lines above plus the hovered line (for
 /// multi-line component tags); `at` is the hover byte offset inside it.
@@ -134,6 +182,9 @@ pub fn help(root: Option<&Path>, file: &Path, window: &str, at: usize) -> Option
     if let Some(name) = directive_at(line, at - line_start) {
         let (syntax, desc) = directive(name)?;
         return Some(format!("```blade\n{syntax}\n```\n{desc}"));
+    }
+    if let Some(md) = variable_help(root, file, line, at - line_start) {
+        return Some(md);
     }
     let root = root?;
     let Some((tag, attr)) = crate::blade_props::tag_and_attr(window, at) else {
@@ -197,6 +248,29 @@ mod tests {
         assert!(help(None, &f, t, at).is_none());
         let unknown = help(Some(d.path()), &f, "@mycustom", 2);
         assert!(unknown.is_none());
+    }
+
+    #[test]
+    fn variable_hover() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let comp = r.join("resources/views/components/btn.blade.php");
+        std::fs::create_dir_all(comp.parent().unwrap()).unwrap();
+        std::fs::write(&comp, "@props([\n 'type' => 'button',\n])\n<button {{ $attributes }}>{{ $slot }}</button>\n").unwrap();
+        let page = r.join("resources/views/page.blade.php");
+        let l = "<button {{ $attributes }}>{{ $slot }} {{ $type }} @foreach($a as $b) {{ $loop->index }}";
+        let at = |m: &str| l.find(m).unwrap() + 2;
+        assert!(help(Some(r), &comp, l, at("attributes")).unwrap().contains("merge"));
+        assert!(help(Some(r), &comp, l, at("slot")).unwrap().contains("default slot"));
+        let h = help(Some(r), &comp, l, at("type")).unwrap();
+        assert!(h.contains("'type' => 'button'") && h.contains("line 2"), "{h}");
+        // $loop works anywhere, $slot only in components.
+        assert!(help(Some(r), &page, l, at("loop")).unwrap().contains("iteration"));
+        assert!(help(Some(r), &page, l, at("slot")).is_none());
+        assert!(help(Some(r), &comp, l, at("a as")).is_none());
+        assert_eq!(variable_at("$", 1), None);
+        assert_eq!(variable_at("é$ab x", 4), Some("ab"));
+        assert_eq!(variable_at("é$日 x", 5), None);
     }
 
     #[test]

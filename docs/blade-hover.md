@@ -12,3 +12,7 @@ Limits: the directive table follows Laravel 10/11 Blade. Custom directives from 
 ## Livewire views
 
 In a view under `resources/views/livewire/`, hovering a name in a `wire:model="email"` / `wire:click="save"` value, or a `$email` use, shows the matching `public` property or method of the component class (`app/Livewire/...`, or `app/Http/Livewire/...` for v2), with its declaration and file:line. See [livewire-hover.md](livewire-hover.md).
+
+## Variables
+
+`$loop` and `$errors` (everywhere in Blade), `$message` and, inside `resources/views/components/`, `$slot`, `$attributes` and `$component` show what they hold and the methods you can call on them. In a component view a `$name` declared in the file's own `@props` shows its `@props` line (read from the saved file, so unsaved edits are not seen). `$slot` and friends get no help outside component views.
