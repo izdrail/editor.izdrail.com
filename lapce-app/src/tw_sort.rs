@@ -169,7 +169,7 @@ pub fn sort_attributes(text: &str, range: Range<usize>) -> Vec<(Range<usize>, St
             let at = from + p;
             from = at + name.len();
             let boundary = at == 0 || b[at - 1].is_ascii_whitespace();
-            if !boundary || (name == "class=" && at >= 4 && &text[at - 4..at] == "Name") {
+            if !boundary || (name == "class=" && at >= 4 && &b[at - 4..at] == b"Name") {
                 continue;
             }
             let Some(&q) = b.get(from) else { break };

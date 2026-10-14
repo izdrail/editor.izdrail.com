@@ -4,7 +4,7 @@
 //! multibyte filler, so the run is reproducible.
 use std::{path::Path, time::Instant};
 
-use crate::{blade_props, color_swatch, component_index, env_index, hover_help, model_index};
+use crate::{php_organize, tw_sort, blade_props, color_swatch, component_index, env_index, hover_help, model_index};
 
 struct Rng(u64);
 impl Rng {
@@ -146,4 +146,81 @@ fn hover_help_random_windows() {
         }
     }
     assert!(start.elapsed().as_secs() < 10);
+}
+
+const IMPORT_TOKENS: &[&str] = &[
+    "<?php\n", "namespace App;\n", "use ", "App\\Models\\User", "Foo\\Bar", " as ", "Baz", ";", "\n", "\r\n", " ",
+    "function ", "{", "}", "class A", "const ", "use function ", "use const ", "\\", "/*", "*/", "//", "$u", "User",
+    "é", "日", "#", "'", "\"", "(", ")", "new ", "::", "<", ">",
+];
+
+fn apply(text: &str, edits: &[(std::ops::Range<usize>, String)]) -> String {
+    let mut out = String::new();
+    let mut pos = 0;
+    for (r, rep) in edits {
+        assert!(r.start >= pos && r.end >= r.start && r.end <= text.len(), "edit order or bounds");
+        assert!(text.is_char_boundary(r.start) && text.is_char_boundary(r.end), "char boundary");
+        out.push_str(&text[pos..r.start]);
+        out.push_str(rep);
+        pos = r.end;
+    }
+    out.push_str(&text[pos..]);
+    out
+}
+
+#[test]
+fn php_organize_random_files_keep_invariants() {
+    let mut rng = Rng(0x8EBC6AF09C88C6E3);
+    let start = Instant::now();
+    for _ in 0..4000 {
+        let n = (rng.next() % 80) as usize;
+        let t = soup(&mut rng, IMPORT_TOKENS, n);
+        if let Some(o) = php_organize::organize(&t) {
+            let once = apply(&t, &o.edits);
+            // Running it on its own output must change nothing further.
+            if let Some(o2) = php_organize::organize(&once) {
+                assert_eq!(apply(&once, &o2.edits), once, "not idempotent for {t:?}");
+            }
+        }
+    }
+    let big = "use A\\B;\n".repeat(200_000);
+    let _ = php_organize::organize(&big);
+    let _ = php_organize::organize(&"use ".repeat(300_000));
+    assert!(start.elapsed().as_secs() < 15);
+}
+
+const TW_TOKENS: &[&str] = &[
+    "p-4", "flex", "md:p-2", "hover:bg-red-500", "dark:md:hover:text-sm", "!font-bold", "-mt-2", "w-[calc(100%-1rem)]",
+    "[&>*]:p-1", "group-hover:flex", "sm:", ":", "::", "bg-", "é", "日", " ", "  ", "\t", "\n", "{{", "$x", "@if",
+    "class=\"", "className='", "\"", "'", "<div ", ">", "class=", "xxx-yyy", "container", "text-[#fff]", "/",
+];
+
+#[test]
+fn tw_sort_random_values_keep_invariants() {
+    let mut rng = Rng(0x589965CC75374CC3);
+    let start = Instant::now();
+    for _ in 0..4000 {
+        let n = (rng.next() % 40) as usize;
+        let t = soup(&mut rng, TW_TOKENS, n);
+        if let Some(sorted) = tw_sort::sort_classes(&t) {
+            let mut a: Vec<_> = t.split_whitespace().collect();
+            let mut b: Vec<_> = sorted.split_whitespace().collect();
+            a.sort();
+            b.sort();
+            assert_eq!(a, b, "tokens lost or invented for {t:?}");
+            assert!(tw_sort::sort_classes(&sorted).is_none(), "not idempotent for {t:?}");
+        }
+        let edits = tw_sort::sort_attributes(&t, 0..t.len());
+        let _ = apply(&t, &edits);
+        let sub = t.len() / 2;
+        let mut e = sub;
+        while !t.is_char_boundary(e) {
+            e -= 1;
+        }
+        let _ = apply(&t, &tw_sort::sort_attributes(&t, 0..e));
+    }
+    let big = format!("<div class=\"{}\">", "p-4 flex md:p-2 ".repeat(100_000));
+    let _ = tw_sort::sort_attributes(&big, 0..big.len());
+    let _ = tw_sort::sort_attributes(&"class=\"".repeat(200_000), 0..1_000_000);
+    assert!(start.elapsed().as_secs() < 15);
 }
