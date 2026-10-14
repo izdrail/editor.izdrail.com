@@ -1,3 +1,4 @@
+pub mod blade_props;
 pub mod chat;
 pub mod about;
 pub mod alert;

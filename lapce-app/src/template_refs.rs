@@ -128,7 +128,7 @@ fn studly(part: &str) -> String {
 }
 
 /// `<x-forms.input` -> view `components/forms/input` or class `Forms/Input.php`.
-fn blade_component(root: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn blade_component(root: &Path, name: &str) -> Option<PathBuf> {
     if !safe(name) || name.contains('/') || name.contains(':') {
         return None;
     }

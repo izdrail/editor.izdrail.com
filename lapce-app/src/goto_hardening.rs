@@ -38,6 +38,7 @@ fn all_resolvers(root: &Path, line: &str, col: usize) {
         let _ = composer_pkg::resolve(root, &root.join("composer.lock"), line, col);
         let _ = template_refs::resolve(root, &f, line, col);
         let _ = wp_hooks::resolve(root, &f, line, col);
+        let _ = crate::blade_props::resolve(root, &f, line, col);
     }
     let _ = env_refs::resolve(root, line, col);
     let _ = laravel_keys::resolve(root, line, col);

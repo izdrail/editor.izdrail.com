@@ -48,6 +48,8 @@ Typing `>` after an opening tag in HTML, Twig, Blade and Vue files inserts the c
 
 ### Colour swatches
 A colour square before `#rrggbb`, `rgb()` and `hsl()` literals in CSS, templates and scripts (`enable-color-swatches` setting). See [docs/color-swatches.md](docs/color-swatches.md).
+### Blade prop go-to
+Go to Definition on an attribute of `<x-...>` opens the component's `@props` entry or constructor parameter. See [docs/blade-props-goto.md](docs/blade-props-goto.md).
 
 ### Rename Tag
 Palette command that renames the opening and closing tag of the element around the caret. See [docs/rename-tag.md](docs/rename-tag.md).

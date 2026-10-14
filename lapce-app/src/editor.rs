@@ -1354,6 +1354,32 @@ impl EditorData {
                 });
                 return;
             }
+            // An attribute of a Blade component tag opens the component's
+            // `@props` / constructor line (the tag may start on earlier lines).
+            if path.to_string_lossy().ends_with(".blade.php") {
+                let (window, at) = doc.buffer.with_untracked(|buffer| {
+                    let line = buffer.line_of_offset(offset);
+                    let first = line.saturating_sub(30);
+                    let from = buffer.offset_of_line(first);
+                    let to = offset.min(from + 16_384).max(from);
+                    let to_end = buffer.offset_of_line(line + 1).min(from + 16_384).max(to);
+                    (buffer.slice_to_cow(from..to_end).to_string(), to - from)
+                });
+                if let Some((target, line)) =
+                    crate::blade_props::resolve(root, &path, &window, at)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // An env variable (`env('X')`, `%env(X)%`, `process.env.X`) opens
             // the `.env` line that defines it.
             if let Some((target, line)) =
