@@ -36,6 +36,7 @@ pub mod panel;
 pub mod project_scripts;
 pub mod route_index;
 pub mod template_refs;
+pub mod env_refs;
 pub mod plugin;
 pub mod vsx_market;
 pub mod proxy;
