@@ -35,6 +35,7 @@ pub mod palette;
 pub mod panel;
 pub mod project_scripts;
 pub mod route_index;
+pub mod class_refs;
 pub mod template_refs;
 pub mod env_refs;
 pub mod wp_hooks;

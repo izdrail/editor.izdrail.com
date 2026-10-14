@@ -1413,6 +1413,21 @@ impl EditorData {
                 });
                 return;
             }
+            // Symfony: a class named in YAML/XML/Twig config opens its file.
+            if let Some((target, line)) =
+                crate::class_refs::resolve(root, &path, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: Some(EditorPosition::Line(line)),
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
         }
         let (start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
