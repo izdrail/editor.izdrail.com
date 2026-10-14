@@ -92,6 +92,9 @@ Palette list of Laravel form request classes and the fields in their `rules()`. 
 ### Go to Middleware / Job / Event
 Palette list of Laravel middleware, jobs, events, listeners, observers, notifications and mailables, tagged by kind. See [docs/go-to-app-class.md](docs/go-to-app-class.md).
 
+### Go to Artisan Command
+Palette list of your custom Artisan commands (class `$signature` / `AsCommand` and `Artisan::command` closures), jump to the definition. Nothing is run. See [docs/go-to-artisan-command.md](docs/go-to-artisan-command.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

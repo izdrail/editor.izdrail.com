@@ -482,6 +482,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Middleware / Job / Event")]
     PaletteAppClasses,
 
+    #[strum(serialize = "palette.artisan_commands")]
+    #[strum(message = "Go to Artisan Command")]
+    PaletteArtisanCommands,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,
