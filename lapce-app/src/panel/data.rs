@@ -28,6 +28,7 @@ pub fn default_panel_order() -> PanelOrder {
             PanelKind::FileExplorer,
             PanelKind::SourceControl,
             PanelKind::Plugin,
+            PanelKind::Debug,
         ],
     );
     order.insert(
@@ -47,6 +48,20 @@ pub fn default_panel_order() -> PanelOrder {
     );
 
     order
+}
+
+// Persisted layouts from builds without debugging do not contain this panel.
+// Append only when absent: preserve custom placement and active panel indices.
+fn restore_debug_panel(panels: &mut PanelOrder) {
+    if !panels
+        .values()
+        .any(|items| items.contains(&PanelKind::Debug))
+    {
+        panels
+            .entry(PanelPosition::LeftTop)
+            .or_default()
+            .push_back(PanelKind::Debug);
+    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
@@ -102,8 +117,9 @@ impl PanelData {
         sections: im::HashMap<PanelSection, bool>,
         common: Rc<CommonData>,
     ) -> Self {
-        // Phase-1 layouts omit this panel; restore it without discarding saved layout.
         let mut panels = panels;
+        restore_debug_panel(&mut panels);
+        // Phase-1 layouts omit the plugin panel too.
         if !panels
             .values()
             .any(|items| items.contains(&PanelKind::Plugin))
@@ -482,4 +498,38 @@ pub fn panel_position(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod debug_panel_tests {
+    use super::*;
+
+    #[test]
+    fn debug_is_in_default_layout() {
+        assert_eq!(
+            PanelKind::Debug.position(&default_panel_order()).unwrap().1,
+            PanelPosition::LeftTop
+        );
+    }
+
+    #[test]
+    fn old_layout_restores_debug_once_without_reordering() {
+        let mut panels = PanelOrder::new();
+        panels.insert(PanelPosition::LeftTop, im::vector![PanelKind::FileExplorer]);
+        restore_debug_panel(&mut panels);
+        restore_debug_panel(&mut panels);
+        assert_eq!(
+            panels[&PanelPosition::LeftTop],
+            im::vector![PanelKind::FileExplorer, PanelKind::Debug]
+        );
+    }
+
+    #[test]
+    fn custom_debug_position_is_preserved() {
+        let mut panels = PanelOrder::new();
+        panels.insert(PanelPosition::RightBottom, im::vector![PanelKind::Debug]);
+        let original = panels.clone();
+        restore_debug_panel(&mut panels);
+        assert_eq!(panels, original);
+    }
 }
