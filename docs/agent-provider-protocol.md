@@ -46,3 +46,25 @@ Verification: seven pure contract/ledger regression tests. No authenticated host
 endpoint or billing behavior was tested. Milestone 2b is actual tool-aware local/
 Ollama transport and durable locked budget journal; optional paid adapters remain
 off until those checks are complete.
+
+## Wire and journal foundation (2b)
+
+agent_wire provides bounded tool schemas and OpenAI-compatible/Ollama request and
+final-response encoding. Truncated, refused, mismatched and unknown-tool responses
+are rejected. It is non-streaming at this stage and is not connected to paid IO.
+
+agent_budget provides private Linux journal files with an exclusive create-new
+lock shared by tabs/processes for one provider/account identity. Reserve commits
+and syncs before returning. Usage settlement is atomic; unknown outcomes consume
+the bound. Stale locks and incomplete temp writes fail closed and require manual
+reconciliation; they are not automatically treated as free requests. Do not remove
+locks or clear unresolved reservations without checking provider usage first.
+
+The guard must remain held throughout the request. Account identity must be stable
+across aliases and tabs, not the model name or a per-session random ID. Provider
+prices and input/output ceilings still need verified adapter handling. This feature
+has no paid execution path, history browser or provider-manager UI yet.
+
+Tests cover lock contention, persisted reservations on reopen, corruption,
+account partitioning, persisted price overruns and stale-lock denial. Linux only;
+Windows replacement semantics and all GUI work remain unverified.
