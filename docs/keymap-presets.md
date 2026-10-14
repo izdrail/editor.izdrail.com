@@ -29,6 +29,9 @@ All non-legacy presets include these Ctrl+Alt alternatives:
 | B / F | Start / end of document |
 | Backspace | Forward delete |
 | W | Delete next word |
+| N | Rename symbol (F2) |
+| G | Go to definition (F12) |
+| . / , | Next / previous error (F8 / Shift+F8) |
 | X | Delete line |
 | R in explorer | Rename selected file |
 | Backspace in explorer | Trash selected file |

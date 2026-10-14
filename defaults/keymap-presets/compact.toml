@@ -135,3 +135,28 @@ when = "file_explorer_focus"
 key = "ctrl+alt+backspace"
 command = "file_explorer.trash"
 when = "file_explorer_focus"
+
+# Alternatives for commands whose only default binding is a function key.
+[[keymaps]]
+key = "ctrl+alt+n"
+command = "rename_symbol"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+g"
+command = "goto_definition"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+."
+command = "next_error"
+mode = "i"
+when = "editor_focus && !list_focus"
+
+[[keymaps]]
+key = "ctrl+alt+,"
+command = "previous_error"
+mode = "i"
+when = "editor_focus && !list_focus"

@@ -57,7 +57,7 @@ mod tests {
     use super::*;
     use crate::{
         command::lapce_internal_commands,
-        keypress::{keymap::KeyMapPress, loader::KeyMapLoader},
+        keypress::{keymap::{KeyMap, KeyMapPress}, loader::KeyMapLoader},
     };
     use lapce_core::mode::Modes;
 
@@ -126,6 +126,10 @@ mod tests {
                 ("ctrl+alt+f", "document_end"),
                 ("ctrl+alt+backspace", "delete_forward"),
                 ("ctrl+alt+w", "delete_word_forward"),
+                ("ctrl+alt+n", "rename_symbol"),
+                ("ctrl+alt+g", "goto_definition"),
+                ("ctrl+alt+.", "next_error"),
+                ("ctrl+alt+,", "previous_error"),
             ] {
                 assert!(
                     commands[command]
@@ -133,6 +137,41 @@ mod tests {
                         .any(|map| map.key == KeyMapPress::parse(key)),
                     "{name}: {command}"
                 );
+            }
+        }
+    }
+
+    /// A command bound to a function key must also have a key without one,
+    /// in the same scope, in every Fn-free preset (65% keyboards have no F row).
+    #[test]
+    fn no_command_is_reachable_only_through_a_function_key() {
+        fn has_f_key(map: &KeyMap) -> bool {
+            map.key.iter().any(|p| {
+                let s = p.to_string();
+                let last = s.rsplit('+').next().unwrap_or("");
+                last.len() >= 2
+                    && last.len() <= 3
+                    && last.starts_with(['F', 'f'])
+                    && last[1..].chars().all(|c| c.is_ascii_digit())
+            })
+        }
+        // OS-level window close; the editor has its own close commands.
+        let exempt = ["close_window"];
+        for name in NAMES.iter().copied().filter(|name| *name != "lapce") {
+            let (_, commands) = loaded(name, false).finalize();
+            for (command, maps) in &commands {
+                if exempt.contains(&command.as_str()) {
+                    continue;
+                }
+                for f in maps.iter().filter(|m| has_f_key(m)) {
+                    let explorer = |m: &KeyMap| m.when.as_deref().is_some_and(|w| w.contains("file_explorer_focus") && !w.contains("!file_explorer_focus"));
+                    let ok = maps.iter().any(|m| {
+                        !has_f_key(m)
+                            && explorer(m) == explorer(f)
+                            && (m.modes.is_empty() || m.modes.contains(Modes::INSERT))
+                    });
+                    assert!(ok, "{name}: {command} is bound only to a function key ({:?})", f.key.iter().map(|k| k.to_string()).collect::<Vec<_>>());
+                }
             }
         }
     }
