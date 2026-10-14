@@ -84,11 +84,44 @@ const DIRECTIVES: &[(&str, &str, &str)] = &[
     ("auth", "@auth('guard') ... @endauth", "Runs for authenticated users."),
     ("session", "@session('key') ... $value ... @endsession", "Runs when the session key exists; `$value` holds it (Laravel 11)."),
     ("fragment", "@fragment('name') ... @endfragment", "Marks a part of the view that can be returned alone (htmx/Turbo)."),
-    ("csp", "@cspNonce", "Outputs the CSP nonce attribute value."),
+    ("cspNonce", "<script @cspNonce>", "Outputs the `nonce=\"...\"` attribute for the request (spatie/laravel-csp)."),
+    ("cspMetaTag", "@cspMetaTag", "Outputs the CSP policy as a `<meta>` tag (spatie/laravel-csp)."),
+    ("stop", "@stop", "Ends a `@section` without yielding it (older equivalent of `@endsection`)."),
+    ("append", "@append", "Ends a `@section` and appends it to the parent layout's section of the same name."),
+    ("overwrite", "@overwrite", "Ends a `@section` and replaces the parent layout's section of the same name."),
+    ("choice", "@choice('messages.apples', $count)", "Translates a key with pluralization."),
+    ("elsecan", "@elsecan('ability', $model)", "Else-if branch of `@can`."),
+    ("elsecannot", "@elsecannot('ability', $model)", "Else-if branch of `@cannot`."),
+    ("elsecanany", "@elsecanany(['a', 'b'], $model)", "Else-if branch of `@canany`."),
+    ("inertia", "@inertia", "Outputs the Inertia root `<div id=\"app\">` with the page data (Inertia.js)."),
+    ("inertiaHead", "@inertiaHead", "Outputs the head tags set by Inertia's SSR (Inertia.js)."),
+    ("routes", "@routes", "Outputs the Ziggy route table for JavaScript (tightenco/ziggy)."),
+    ("teleport", "@teleport('#selector') ... @endteleport", "Renders the block elsewhere in the DOM, for example a modal at the end of `<body>` (Livewire)."),
+    ("persist", "@persist('name') ... @endpersist", "Keeps the block alive across `wire:navigate` page changes (Livewire 3)."),
+    ("script", "@script ... @endscript", "A script that runs with the Livewire component (Livewire 3)."),
+    ("assets", "@assets ... @endassets", "Scripts or styles loaded once per page for a component (Livewire 3)."),
 ];
 
-fn directive(name: &str) -> Option<(&'static str, &'static str)> {
-    DIRECTIVES.iter().find(|(n, _, _)| *n == name).map(|(_, s, d)| (*s, *d))
+/// Closing directives and the opener each one ends.
+const ENDS: &[(&str, &str)] = &[
+    ("endforeach", "foreach"), ("endfor", "for"), ("endforelse", "forelse"), ("endwhile", "while"),
+    ("endunless", "unless"), ("endisset", "isset"), ("endempty", "empty"), ("endauth", "auth"),
+    ("endguest", "guest"), ("endcan", "can"), ("endcannot", "cannot"), ("endcanany", "canany"),
+    ("endenv", "env"), ("endproduction", "production"), ("endswitch", "switch"), ("endpush", "push"),
+    ("endprepend", "prepend"), ("endpushonce", "pushOnce"), ("endpushif", "pushIf"), ("endonce", "once"),
+    ("endcomponent", "component"), ("endslot", "slot"), ("enderror", "error"), ("endphp", "php"),
+    ("endverbatim", "verbatim"), ("endfragment", "fragment"), ("endsession", "session"),
+    ("endteleport", "teleport"), ("endpersist", "persist"), ("endscript", "script"), ("endassets", "assets"),
+];
+
+fn directive(name: &str) -> Option<(String, String)> {
+    if let Some((_, s, d)) = DIRECTIVES.iter().find(|(n, _, _)| *n == name) {
+        return Some((s.to_string(), d.to_string()));
+    }
+    // Closing tags are matched without regard to case (`@endPushOnce`).
+    let (end, open) = ENDS.iter().find(|(e, _)| e.eq_ignore_ascii_case(name))?;
+    let (open_syntax, _) = DIRECTIVES.iter().find(|(n, _, _)| n == open).map(|(_, s, d)| (*s, *d))?;
+    Some((format!("@{end}"), format!("Ends `@{open}`. Opened with: `{open_syntax}`")))
 }
 
 /// The directive name when `col` is on `@name` in `line`.
@@ -217,6 +250,27 @@ mod tests {
         assert_eq!(directive_at("@", 1), None);
         assert!(directive("vite").is_some());
         assert!(directive("nope").is_none());
+    }
+
+    #[test]
+    fn closing_tags_and_new_directives() {
+        let (s, d) = directive("endforeach").unwrap();
+        assert_eq!(s, "@endforeach");
+        assert!(d.contains("Ends `@foreach`") && d.contains("@foreach ($items as $item)"), "{d}");
+        assert!(directive("endPushOnce").is_some());
+        assert!(directive("ENDPHP").is_some());
+        assert!(directive("endnope").is_none());
+        for name in ["stop", "append", "choice", "inertia", "persist", "cspNonce"] {
+            assert!(directive(name).is_some(), "{name}");
+        }
+        // Every closing tag points at a real opener, and the closers start with "end".
+        for (e, o) in ENDS {
+            assert!(e.starts_with("end"), "{e}");
+            assert!(DIRECTIVES.iter().any(|(n, _, _)| n == o), "{e} -> {o}");
+        }
+        let f = Path::new("a.blade.php");
+        let h = help(None, f, "@endauth", 3).unwrap();
+        assert!(h.contains("```blade\n@endauth\n```") && h.contains("Ends `@auth`"), "{h}");
     }
 
     #[test]
