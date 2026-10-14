@@ -79,18 +79,119 @@ fn script_names(doc: &Value) -> Vec<String> {
         .collect()
 }
 
+
+/// Framework commands offered for every Laravel project, in display order.
+/// `make:*` commands prompt for their name in the terminal.
+const ARTISAN_BUILTIN: &[&str] = &[
+    "serve", "test", "tinker", "migrate", "migrate:fresh", "migrate:rollback",
+    "migrate:status", "db:seed", "route:list", "queue:work", "schedule:work",
+    "optimize:clear", "cache:clear", "config:clear", "view:clear", "key:generate",
+    "storage:link", "make:model", "make:controller", "make:migration",
+    "make:request", "make:middleware", "make:seeder", "make:factory",
+    "make:command", "make:job", "make:event", "make:listener",
+];
+
+/// The command name from a Laravel signature such as `mail:send {user} {--queue}`.
+fn signature_name(sig: &str) -> Option<String> {
+    let name = sig.split_whitespace().next()?;
+    let ok = !name.is_empty()
+        && name.len() <= 100
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '-' | '_' | '.'));
+    ok.then(|| name.to_string())
+}
+
+/// Names declared by `$signature = '...'` in a PHP file.
+fn signatures_in(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("$signature") {
+        rest = &rest[i + "$signature".len()..];
+        let after = rest.trim_start();
+        let Some(after) = after.strip_prefix('=') else { continue };
+        let after = after.trim_start();
+        let Some(q) = after.chars().next().filter(|c| *c == '\'' || *c == '"') else {
+            continue;
+        };
+        let body = &after[1..];
+        if let Some(end) = body.find(q) {
+            if let Some(name) = signature_name(&body[..end]) {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
+/// Names from `Artisan::command('name {arg}', ...)` closures (routes/console.php).
+fn closure_commands_in(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("Artisan::command(") {
+        rest = &rest[i + "Artisan::command(".len()..];
+        let arg = rest.trim_start();
+        let Some(q) = arg.chars().next().filter(|c| *c == '\'' || *c == '"') else {
+            continue;
+        };
+        let body = &arg[1..];
+        if let Some(end) = body.find(q) {
+            if let Some(name) = signature_name(&body[..end]) {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
+/// Built-in commands first, then the project's own, without duplicates.
+/// Reads `app/Console/Commands/*.php` and `routes/console.php` only; PHP is
+/// never executed, so package-provided commands are not listed.
+fn artisan_commands(root: &Path) -> Vec<String> {
+    let mut names: Vec<String> = ARTISAN_BUILTIN.iter().map(|s| s.to_string()).collect();
+    let mut custom = Vec::new();
+    let read = |path: &Path| -> Option<String> {
+        let meta = std::fs::metadata(path).ok()?;
+        (meta.is_file() && meta.len() <= MAX_FILE_BYTES)
+            .then(|| std::fs::read_to_string(path).ok())
+            .flatten()
+    };
+    if let Ok(dir) = std::fs::read_dir(root.join("app").join("Console").join("Commands")) {
+        let mut files: Vec<_> = dir
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "php"))
+            .collect();
+        files.sort();
+        for f in files.into_iter().take(MAX_SCRIPTS) {
+            if let Some(text) = read(&f) {
+                custom.extend(signatures_in(&text));
+            }
+        }
+    }
+    if let Some(text) = read(&root.join("routes").join("console.php")) {
+        custom.extend(closure_commands_in(&text));
+    }
+    for name in custom {
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// Run configurations for the project at `root`, in a stable order.
 pub fn discover(root: &Path) -> Vec<RunDebugConfig> {
     let mut out = Vec::new();
 
     if root.join("artisan").is_file() {
-        out.push(config("artisan: serve".into(), "php", &["artisan", "serve"]));
-        out.push(config("artisan: test".into(), "php", &["artisan", "test"]));
-        out.push(config(
-            "artisan: migrate".into(),
-            "php",
-            &["artisan", "migrate"],
-        ));
+        for name in artisan_commands(root) {
+            out.push(config(
+                format!("artisan: {name}"),
+                "php",
+                &["artisan", &name],
+            ));
+        }
     }
     if root.join("bin").join("console").is_file() {
         out.push(config("symfony: console".into(), "php", &["bin/console"]));
@@ -171,5 +272,42 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "package.json", "{not json");
         assert!(discover(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn artisan_lists_builtin_and_project_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "artisan", "<?php");
+        let cmds = dir.path().join("app/Console/Commands");
+        std::fs::create_dir_all(&cmds).unwrap();
+        std::fs::write(
+            cmds.join("SendEmails.php"),
+            "<?php\nclass SendEmails {\n    protected $signature = 'mail:send {user} {--queue}';\n}\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("routes")).unwrap();
+        std::fs::write(
+            dir.path().join("routes/console.php"),
+            "<?php\nArtisan::command(\"inspire:me {n}\", function () {});\nArtisan::command('migrate', fn() => 1);\n",
+        )
+        .unwrap();
+        let c = discover(dir.path());
+        let names: Vec<_> = c.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"artisan: serve"));
+        assert!(names.contains(&"artisan: make:model"));
+        assert!(names.contains(&"artisan: mail:send"));
+        assert!(names.contains(&"artisan: inspire:me"));
+        assert_eq!(names.iter().filter(|n| **n == "artisan: migrate").count(), 1);
+        let send = c.iter().find(|c| c.name == "artisan: mail:send").unwrap();
+        assert_eq!(send.program, "php");
+        assert_eq!(send.args.as_deref().unwrap(), ["artisan", "mail:send"]);
+    }
+
+    #[test]
+    fn odd_signatures_are_ignored() {
+        assert_eq!(signatures_in("$signature = $x;"), Vec::<String>::new());
+        assert_eq!(signatures_in("$signature='a b'"), vec!["a".to_string()]);
+        assert!(signature_name("").is_none());
+        assert!(signature_name("bad;name x").is_none());
     }
 }
