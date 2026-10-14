@@ -449,6 +449,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Env / Config Key")]
     PaletteEnvConfigKeys,
 
+    #[strum(serialize = "palette.models")]
+    #[strum(message = "Go to Model")]
+    PaletteModels,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

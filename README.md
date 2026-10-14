@@ -70,6 +70,9 @@ Palette command that adds a sorted `use` line for the class under the cursor, fr
 
 ### Go to Composer package
 Go to Definition on a package in `composer.json`/`composer.lock` opens its `composer.json` under `vendor/`. See [docs/composer-go-to-package.md](docs/composer-go-to-package.md).
+### Go to Model
+Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
+
 ### Go to Env / Config Key
 Palette list of `.env` variable names and Laravel `config/*.php` keys. See [docs/go-to-env-config-key.md](docs/go-to-env-config-key.md).
 

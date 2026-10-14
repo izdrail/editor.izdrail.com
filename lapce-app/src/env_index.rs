@@ -58,7 +58,12 @@ pub fn parse_config(text: &str) -> Vec<(String, usize)> {
         let b = line.as_bytes();
         let mut j = 0;
         let mut last_str: Option<String> = None;
+        let ret_pos = if in_ret { None } else { line.find("return") };
         while j < b.len() {
+            if !line.is_char_boundary(j) {
+                j += 1;
+                continue;
+            }
             if block_comment {
                 if line[j..].starts_with("*/") {
                     block_comment = false;
@@ -98,7 +103,7 @@ pub fn parse_config(text: &str) -> Vec<(String, usize)> {
                     }
                 }
                 b'[' => {
-                    if !in_ret && line[..j].contains("return") {
+                    if !in_ret && ret_pos.is_some_and(|r| r < j) {
                         in_ret = true;
                     }
                     depth += 1;

@@ -417,6 +417,9 @@ impl PaletteData {
             PaletteKind::EnvConfigKeys => {
                 self.set_route_items(crate::env_index::discover);
             }
+            PaletteKind::Models => {
+                self.set_route_items(crate::model_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }

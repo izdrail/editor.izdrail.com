@@ -12,6 +12,7 @@ pub mod code_action;
 pub mod code_lens;
 pub mod hover_help;
 pub mod env_index;
+pub mod model_index;
 pub mod color_swatch;
 pub mod component_index;
 pub mod command;

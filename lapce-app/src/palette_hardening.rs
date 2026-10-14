@@ -4,7 +4,7 @@
 //! multibyte filler, so the run is reproducible.
 use std::{path::Path, time::Instant};
 
-use crate::{blade_props, color_swatch, component_index};
+use crate::{blade_props, color_swatch, component_index, env_index, hover_help, model_index};
 
 struct Rng(u64);
 impl Rng {
@@ -107,4 +107,43 @@ fn component_index_survives_odd_trees() {
     assert!(component_index::discover(r).len() <= 5000);
     assert!(start.elapsed().as_secs() < 10);
     assert!(component_index::discover(Path::new("/nonexistent/x")).is_empty());
+}
+
+const PHP_TOKENS: &[&str] = &[
+    "<?php", "return", "[", "]", "'", "\"", "=>", ",", ";", "//", "/*", "*/", "#", "\n", " ", "class ", "A", " extends ",
+    "Model", "function ", "public ", "$this->", "hasMany", "belongsTo", "(", ")", "::class", "{", "}", "é", "日",
+    "KEY", "=", "export ", "\\",
+];
+
+#[test]
+fn config_env_and_model_parsers_random_input() {
+    let mut rng = Rng(0xA0761D6478BD642F);
+    let start = Instant::now();
+    for _ in 0..3000 {
+        let n = (rng.next() % 120) as usize;
+        let t = soup(&mut rng, PHP_TOKENS, n);
+        let _ = env_index::parse_config(&t);
+        let _ = env_index::parse_env(&t);
+        let _ = model_index::parse(&t);
+    }
+    for t in ["[".repeat(300_000), "'[".repeat(200_000), "/*".repeat(200_000), "return [".to_string() + &"'a' => [".repeat(50_000)] {
+        let _ = env_index::parse_config(&t);
+    }
+    assert!(start.elapsed().as_secs() < 10);
+}
+
+#[test]
+fn hover_help_random_windows() {
+    let mut rng = Rng(0xE7037ED1A0B428DB);
+    let f = Path::new("a.blade.php");
+    let start = Instant::now();
+    for _ in 0..1500 {
+        let n = (rng.next() % 60) as usize;
+        let t = soup(&mut rng, TOKENS, n) + &soup(&mut rng, &["@", "@if", "@foreach", "@@", "a@b"], 6);
+        for at in 0..t.len() + 2 {
+            let _ = hover_help::help(None, f, &t, at);
+            let _ = hover_help::help(Some(Path::new("/nonexistent")), f, &t, at);
+        }
+    }
+    assert!(start.elapsed().as_secs() < 10);
 }
