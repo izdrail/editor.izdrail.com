@@ -75,6 +75,8 @@ pub mod route_names;
 mod goto_hardening;
 #[cfg(test)]
 mod palette_hardening;
+#[cfg(test)]
+mod palette_wiring;
 pub mod plugin;
 pub mod vsx_market;
 pub mod proxy;
