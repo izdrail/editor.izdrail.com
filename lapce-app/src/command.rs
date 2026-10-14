@@ -494,6 +494,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Livewire: Go to Property / Action")]
     PaletteLivewireMembers,
 
+    #[strum(serialize = "palette.keymap_presets")]
+    #[strum(message = "Switch Keymap Preset")]
+    PaletteKeymapPresets,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,
@@ -854,6 +858,9 @@ pub enum InternalCommand {
         name: String,
         /// Whether to save the theme to the config file
         save: bool,
+    },
+    SetKeymapPreset {
+        name: String,
     },
     SetIconTheme {
         name: String,

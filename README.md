@@ -101,6 +101,9 @@ Palette list of `config/*.php` files (by their `config('name')` key) and service
 ### Livewire: Go to Property / Action
 Palette list of the public properties and methods of the Livewire component open in the editor (from its class or its view). See [docs/livewire-members.md](docs/livewire-members.md).
 
+### Switch Keymap Preset
+Palette command that switches between the `compact-65` (no F-keys), VSCode, PhpStorm, Sublime, Notepad++ and Lapce keymaps without opening Settings. See [docs/keymap-presets.md](docs/keymap-presets.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

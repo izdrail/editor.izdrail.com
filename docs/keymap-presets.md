@@ -13,6 +13,10 @@ Visual and operator-pending editing and terminal controls are not overwritten.
 Popup lists keep their navigation. File explorer rename/trash alternatives are
 scoped to the explorer. For conventional editor behavior use Core > Modal = false.
 
+## Switching from the palette
+
+Command palette: **Switch Keymap Preset** (`palette.keymap_presets`; the palette itself opens with Ctrl+Shift+P or from the menu, no F-key involved). Lists every preset with a one-line description, marks the active one `(current)` and preselects it. Enter writes `[core] keymap-preset` in settings.toml, the same setting the Settings dropdown edits, and the existing settings reload applies it. There is no live preview: the keymap changes on Enter. An unknown value in settings.toml is shown as `compact-65`, which is what the loader uses.
+
 ## No Fn layer needed
 
 All non-legacy presets include these Ctrl+Alt alternatives:

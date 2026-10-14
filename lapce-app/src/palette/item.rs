@@ -91,6 +91,9 @@ pub enum PaletteItemContent {
     IconTheme {
         name: String,
     },
+    KeymapPreset {
+        name: String,
+    },
     Language {
         name: String,
     },

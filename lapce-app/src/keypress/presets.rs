@@ -8,6 +8,25 @@ pub const NAMES: &[&str] = &[
     "notepad-plus-plus",
     "lapce",
 ];
+/// One-line description shown next to the name in the switcher palette.
+pub fn describe(name: &str) -> &'static str {
+    match name {
+        "compact-65" => "no F-keys needed, Ctrl+Alt navigation (default)",
+        "vscode" => "Visual Studio Code style",
+        "phpstorm" => "PhpStorm / JetBrains style",
+        "sublime" => "Sublime Text style",
+        "notepad-plus-plus" => "Notepad++ style",
+        "lapce" => "unchanged upstream Lapce defaults",
+        _ => "",
+    }
+}
+
+/// Name the loader will actually use for `configured` (unknown names fall
+/// back to the default).
+pub fn effective(configured: &str) -> &str {
+    NAMES.iter().copied().find(|n| *n == configured).unwrap_or(NAMES[0])
+}
+
 pub const COMPACT: &str =
     include_str!("../../../defaults/keymap-presets/compact.toml");
 
@@ -55,6 +74,17 @@ mod tests {
             loader.load_from_str(preset, modal).unwrap();
         }
         loader
+    }
+
+    #[test]
+    fn every_preset_is_described_and_unknown_falls_back() {
+        for n in NAMES {
+            assert!(!describe(n).is_empty(), "{n}");
+            assert_eq!(effective(n), *n);
+        }
+        assert_eq!(effective("vsocde"), "compact-65");
+        assert_eq!(effective(""), "compact-65");
+        assert_eq!(describe("nope"), "");
     }
 
     #[test]

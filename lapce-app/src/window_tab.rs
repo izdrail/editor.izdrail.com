@@ -1229,6 +1229,9 @@ impl WindowTabData {
             PaletteLivewireMembers => {
                 self.palette.run(PaletteKind::LivewireMembers);
             }
+            PaletteKeymapPresets => {
+                self.palette.run(PaletteKind::KeymapPresets);
+            }
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }
@@ -2062,6 +2065,14 @@ impl WindowTabData {
                         .set_color_theme(&self.workspace, &name);
                     self.set_config.set(new_config);
                 }
+            }
+            InternalCommand::SetKeymapPreset { name } => {
+                // The config file is watched; keymaps reload from it.
+                LapceConfig::update_file(
+                    "core",
+                    "keymap-preset",
+                    toml_edit::Value::from(name),
+                );
             }
             InternalCommand::SetIconTheme { name, save } => {
                 if save {

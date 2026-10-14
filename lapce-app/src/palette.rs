@@ -450,6 +450,9 @@ impl PaletteData {
             PaletteKind::LivewireMembers => {
                 self.get_livewire_members();
             }
+            PaletteKind::KeymapPresets => {
+                self.get_keymap_presets();
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
@@ -1263,6 +1266,28 @@ impl PaletteData {
         self.items.set(items);
     }
 
+    fn get_keymap_presets(&self) {
+        let current = self.common.config.get_untracked().core.keymap_preset.clone();
+        let current = crate::keypress::presets::effective(&current).to_string();
+        let items: Vec<PaletteItem> = crate::keypress::presets::NAMES
+            .iter()
+            .map(|name| PaletteItem {
+                content: PaletteItemContent::KeymapPreset { name: name.to_string() },
+                filter_text: format!(
+                    "{name}  {}{}",
+                    crate::keypress::presets::describe(name),
+                    if *name == current { "  (current)" } else { "" }
+                ),
+                score: 0,
+                indices: Vec::new(),
+            })
+            .collect();
+        if let Some(idx) = crate::keypress::presets::NAMES.iter().position(|n| *n == current) {
+            self.preselect_index.set(Some(idx));
+        }
+        self.items.set(items.into_iter().collect());
+    }
+
     fn get_languages(&self) {
         let langs = LapceLanguage::languages();
         let items = langs
@@ -1607,6 +1632,10 @@ impl PaletteData {
                         name: name.clone(),
                         save: true,
                     }),
+                PaletteItemContent::KeymapPreset { name } => self
+                    .common
+                    .internal_command
+                    .send(InternalCommand::SetKeymapPreset { name: name.clone() }),
                 PaletteItemContent::Language { name } => {
                     let editor = self.main_split.active_editor.get_untracked();
                     let doc = match editor {
@@ -1791,6 +1820,7 @@ impl PaletteData {
                     }),
                 PaletteItemContent::SCMReference { .. } => {}
                 PaletteItemContent::TerminalProfile { .. } => {}
+                PaletteItemContent::KeymapPreset { .. } => {}
             }
         }
     }

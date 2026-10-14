@@ -2603,6 +2603,7 @@ fn palette_item(
         | PaletteItemContent::ColorTheme { .. }
         | PaletteItemContent::SCMReference { .. }
         | PaletteItemContent::TerminalProfile { .. }
+        | PaletteItemContent::KeymapPreset { .. }
         | PaletteItemContent::IconTheme { .. } => {
             let text = item.filter_text;
             let indices = item.indices;
