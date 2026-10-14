@@ -171,11 +171,11 @@ fn twig_component(root: &Path, name: &str) -> Option<PathBuf> {
 
 /// The tag name when `col` is inside `<prefix...` (up to the first non-name char).
 fn tag_name_at<'a>(line: &'a str, col: usize, prefix: &str) -> Option<&'a str> {
-    let col = col.min(line.len());
+    let col = clamp_col(line, col);
     let open = format!("<{prefix}");
-    let start = line[..col.max(open.len().min(line.len()))]
-        .rfind(&open)
-        .or_else(|| line[..].get(..col).and_then(|s| s.rfind(&open)))?;
+    // Last opening tag that starts at or before the cursor.
+    let upto = clamp_col(line, col.saturating_add(open.len()));
+    let start = line[..upto].rfind(&open)?;
     let name_start = start + open.len();
     let name_end = line[name_start..]
         .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':')))
@@ -184,8 +184,19 @@ fn tag_name_at<'a>(line: &'a str, col: usize, prefix: &str) -> Option<&'a str> {
     (col >= start && col <= name_end && name_end > name_start).then(|| &line[name_start..name_end])
 }
 
+/// `col` clamped to the line and moved back onto a char boundary, so slicing
+/// can never panic on multibyte text.
+fn clamp_col(line: &str, col: usize) -> usize {
+    let mut c = col.min(line.len());
+    while !line.is_char_boundary(c) {
+        c -= 1;
+    }
+    c
+}
+
 /// Template file referenced at byte `col` of `line`, for the file `file_name`.
 pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathBuf> {
+    let col = clamp_col(line, col);
     let name = file.file_name()?.to_str()?;
     let blade = name.ends_with(".blade.php");
     let twig = name.ends_with(".twig");

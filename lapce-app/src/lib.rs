@@ -42,6 +42,8 @@ pub mod env_refs;
 pub mod wp_hooks;
 pub mod laravel_keys;
 pub mod route_names;
+#[cfg(test)]
+mod goto_hardening;
 pub mod plugin;
 pub mod vsx_market;
 pub mod proxy;

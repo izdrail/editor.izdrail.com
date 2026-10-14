@@ -164,8 +164,19 @@ fn find_symfony(root: &Path, name: &str) -> Option<(PathBuf, usize)> {
     None
 }
 
+/// `col` clamped to the line and moved back onto a char boundary, so slicing
+/// can never panic on multibyte text.
+fn clamp_col(line: &str, col: usize) -> usize {
+    let mut c = col.min(line.len());
+    while !line.is_char_boundary(c) {
+        c -= 1;
+    }
+    c
+}
+
 /// Where the route named at byte `col` of `line` is defined.
 pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> {
+    let col = clamp_col(line, col);
     let name = route_name_at(line, col)?;
     find_laravel(root, name).or_else(|| find_symfony(root, name))
 }

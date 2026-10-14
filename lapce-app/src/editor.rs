@@ -1338,6 +1338,8 @@ impl EditorData {
                     offset - buffer.offset_of_line(line),
                 )
             });
+            // Minified or generated lines are not worth scanning.
+            let line_text = if line_text.len() > 8192 { String::new() } else { line_text };
             if let Some(target) =
                 crate::template_refs::resolve(root, &path, &line_text, col)
             {

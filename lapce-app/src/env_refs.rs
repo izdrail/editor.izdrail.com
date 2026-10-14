@@ -56,6 +56,7 @@ pub fn find_definition(root: &Path, key: &str) -> Option<(PathBuf, usize)> {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
         for (i, l) in text.lines().enumerate() {
             let l = l.trim_start();
             let l = l.strip_prefix("export ").map(str::trim_start).unwrap_or(l);
@@ -69,8 +70,19 @@ pub fn find_definition(root: &Path, key: &str) -> Option<(PathBuf, usize)> {
     None
 }
 
+/// `col` clamped to the line and moved back onto a char boundary, so slicing
+/// can never panic on multibyte text.
+fn clamp_col(line: &str, col: usize) -> usize {
+    let mut c = col.min(line.len());
+    while !line.is_char_boundary(c) {
+        c -= 1;
+    }
+    c
+}
+
 /// Where the env reference under the cursor is defined.
 pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> {
+    let col = clamp_col(line, col);
     find_definition(root, key_at(line, col)?)
 }
 

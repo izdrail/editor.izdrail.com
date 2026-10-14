@@ -178,8 +178,19 @@ fn locales_from_json(dir: &Path) -> Vec<String> {
     v
 }
 
+/// `col` clamped to the line and moved back onto a char boundary, so slicing
+/// can never panic on multibyte text.
+fn clamp_col(line: &str, col: usize) -> usize {
+    let mut c = col.min(line.len());
+    while !line.is_char_boundary(c) {
+        c -= 1;
+    }
+    c
+}
+
 /// Target of the config/translation key at byte `col` of `line`.
 pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> {
+    let col = clamp_col(line, col);
     match classify(line, col)? {
         Key::Config(k) => resolve_config(root, &k),
         Key::Lang(k) => resolve_lang(root, &k),
