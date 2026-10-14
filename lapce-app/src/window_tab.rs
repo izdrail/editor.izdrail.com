@@ -1167,6 +1167,9 @@ impl WindowTabData {
             PaletteRunAndDebug => {
                 self.palette.run(PaletteKind::RunAndDebug);
             }
+            PaletteRoutes => {
+                self.palette.run(PaletteKind::Routes);
+            }
             PaletteSCMReferences => {
                 self.palette.run(PaletteKind::SCMReferences);
             }

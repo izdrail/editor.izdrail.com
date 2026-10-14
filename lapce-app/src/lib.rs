@@ -34,6 +34,7 @@ pub mod markdown;
 pub mod palette;
 pub mod panel;
 pub mod project_scripts;
+pub mod route_index;
 pub mod plugin;
 pub mod vsx_market;
 pub mod proxy;

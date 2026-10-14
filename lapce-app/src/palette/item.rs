@@ -50,6 +50,9 @@ pub enum PaletteItemContent {
         path: PathBuf,
         location: EditorLocation,
     },
+    Route {
+        location: EditorLocation,
+    },
     DocumentSymbol {
         kind: SymbolKind,
         name: String,

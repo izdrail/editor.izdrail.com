@@ -407,6 +407,9 @@ impl PaletteData {
             PaletteKind::RunAndDebug => {
                 self.get_run_configs();
             }
+            PaletteKind::Routes => {
+                self.get_routes();
+            }
             PaletteKind::ColorTheme => {
                 self.get_color_themes();
             }
@@ -1034,6 +1037,32 @@ impl PaletteData {
             .set(items.into_iter().map(|(_, item)| item).collect());
     }
 
+    fn get_routes(&self) {
+        let items = self
+            .workspace
+            .path
+            .as_deref()
+            .map(crate::route_index::discover)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|route| PaletteItem {
+                content: PaletteItemContent::Route {
+                    location: EditorLocation {
+                        path: route.path,
+                        position: Some(EditorPosition::Line(route.line)),
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                },
+                filter_text: route.label,
+                score: 0,
+                indices: vec![],
+            })
+            .collect::<Vec<_>>();
+        self.items.set(items.into_iter().collect());
+    }
+
     fn get_run_configs(&self) {
         if let Some(workspace) = self.common.workspace.path.as_deref() {
             let run_toml = workspace.join(".lapce").join("run.toml");
@@ -1320,7 +1349,8 @@ impl PaletteData {
                         },
                     );
                 }
-                PaletteItemContent::Reference { location, .. } => {
+                PaletteItemContent::Reference { location, .. }
+                | PaletteItemContent::Route { location } => {
                     self.common.internal_command.send(
                         InternalCommand::JumpToLocation {
                             location: location.clone(),
@@ -1521,7 +1551,8 @@ impl PaletteData {
                 PaletteItemContent::WslHost { .. } => {}
                 PaletteItemContent::Language { .. } => {}
                 PaletteItemContent::LineEnding { .. } => {}
-                PaletteItemContent::Reference { location, .. } => {
+                PaletteItemContent::Reference { location, .. }
+                | PaletteItemContent::Route { location } => {
                     self.has_preview.set(true);
                     let (doc, new_doc) =
                         self.main_split.get_doc(location.path.clone(), None);

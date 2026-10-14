@@ -43,6 +43,9 @@ Projects with a Prettier config and binary are formatted through it on save. See
 ### Open in Browser
 "Open in Browser" in the command palette shows the active HTML/SVG file in your browser. See [docs/open-in-browser.md](docs/open-in-browser.md).
 
+### Go to Route
+Laravel route list in the command palette ("Go to Route") jumping to controller methods. See [docs/go-to-route.md](docs/go-to-route.md).
+
 ### Emmet
 Expand HTML (`ul>li.item*3`) and CSS (`m10-20`) abbreviations with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
 

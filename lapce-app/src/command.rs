@@ -406,6 +406,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "palette.run_and_debug")]
     PaletteRunAndDebug,
 
+    #[strum(serialize = "palette.routes")]
+    #[strum(message = "Go to Route")]
+    PaletteRoutes,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,
