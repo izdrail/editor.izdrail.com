@@ -3712,6 +3712,28 @@ impl EditorData {
             Some(path) => path,
             None => return,
         };
+        // Blade directive / component prop help comes from local text, no
+        // language server round trip.
+        if path.to_string_lossy().ends_with(".blade.php") {
+            let (window, at) = doc.buffer.with_untracked(|buffer| {
+                let line = buffer.line_of_offset(offset);
+                let from = buffer.offset_of_line(line.saturating_sub(30));
+                let cap = from + 16_384;
+                let to = buffer.offset_of_line(line + 1).min(cap).max(offset.min(cap));
+                (buffer.slice_to_cow(from..to).to_string(), offset.min(cap) - from)
+            });
+            let root = self.common.workspace.path.as_deref();
+            if let Some(md) = crate::hover_help::help(root, &path, &window, at) {
+                let content =
+                    parse_markdown(&md, 1.8, &self.common.config.get_untracked());
+                let hover_data = self.common.hover.clone();
+                hover_data.content.set(content);
+                hover_data.offset.set(offset);
+                hover_data.editor_id.set(self.id());
+                hover_data.active.set(true);
+                return;
+            }
+        }
         let config = self.common.config;
         let hover_data = self.common.hover.clone();
         let editor_id = self.id();
