@@ -411,6 +411,9 @@ impl PaletteData {
             PaletteKind::RunAndDebug => {
                 self.get_run_configs();
             }
+            PaletteKind::BladeComponents => {
+                self.get_blade_components();
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
@@ -1080,11 +1083,22 @@ impl PaletteData {
     }
 
     fn get_routes(&self) {
+        self.set_route_items(crate::route_index::discover);
+    }
+
+    fn get_blade_components(&self) {
+        self.set_route_items(crate::component_index::discover);
+    }
+
+    fn set_route_items(
+        &self,
+        discover: fn(&std::path::Path) -> Vec<crate::route_index::RouteTarget>,
+    ) {
         let items = self
             .workspace
             .path
             .as_deref()
-            .map(crate::route_index::discover)
+            .map(discover)
             .unwrap_or_default()
             .into_iter()
             .map(|route| PaletteItem {

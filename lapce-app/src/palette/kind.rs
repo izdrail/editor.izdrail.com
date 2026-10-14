@@ -18,6 +18,7 @@ pub enum PaletteKind {
     WslHost,
     RunAndDebug,
     Routes,
+    BladeComponents,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -49,6 +50,7 @@ impl PaletteKind {
             | PaletteKind::SshHost
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
+            | PaletteKind::BladeComponents
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -104,6 +106,9 @@ impl PaletteKind {
                 Some(LapceWorkbenchCommand::PaletteRunAndDebug)
             }
             PaletteKind::Routes => Some(LapceWorkbenchCommand::PaletteRoutes),
+            PaletteKind::BladeComponents => {
+                Some(LapceWorkbenchCommand::PaletteBladeComponents)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -142,6 +147,7 @@ impl PaletteKind {
             | PaletteKind::SshHost
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
+            | PaletteKind::BladeComponents
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag

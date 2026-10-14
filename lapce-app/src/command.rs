@@ -441,6 +441,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to Route")]
     PaletteRoutes,
 
+    #[strum(serialize = "palette.blade_components")]
+    #[strum(message = "Go to Blade Component")]
+    PaletteBladeComponents,
+
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,

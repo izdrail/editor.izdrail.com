@@ -1194,6 +1194,9 @@ impl WindowTabData {
             PaletteRoutes => {
                 self.palette.run(PaletteKind::Routes);
             }
+            PaletteBladeComponents => {
+                self.palette.run(PaletteKind::BladeComponents);
+            }
             PaletteSCMReferences => {
                 self.palette.run(PaletteKind::SCMReferences);
             }

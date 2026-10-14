@@ -67,6 +67,8 @@ Palette command that adds a sorted `use` line for the class under the cursor, fr
 
 ### Go to Composer package
 Go to Definition on a package in `composer.json`/`composer.lock` opens its `composer.json` under `vendor/`. See [docs/composer-go-to-package.md](docs/composer-go-to-package.md).
+### Go to Blade Component
+Palette list of every `<x-...>` and `<livewire:...>` component in the project. See [docs/go-to-blade-component.md](docs/go-to-blade-component.md).
 
 ### Go to Route
 Laravel and Symfony route list in the command palette ("Go to Route") jumping to controller methods. See [docs/go-to-route.md](docs/go-to-route.md).
