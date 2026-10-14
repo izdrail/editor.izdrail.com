@@ -118,3 +118,63 @@ With no `php` binary the server is skipped quietly (one log line, no popup).
 Setting `command` to anything other than `phpactor` (for example an absolute path)
 keeps your own server, with no fallback. Not verified: phpactor's PHP version and
 extension requirements on a given machine.
+
+## Laravel (laravel-lsp)
+
+The seeded, disabled `laravel-lsp` entry is the official Laravel language server
+(laravel/lsp, MIT): completions, hover, diagnostics, document links, definitions
+and code actions for routes, views and Blade, translations, config, env,
+middleware, Inertia, Livewire, policies, container bindings, validation rules,
+controller actions and Eloquent completions - the framework awareness phpactor
+does not have. It is one server per language, so it replaces phpactor for
+`php`/`blade` when enabled; it does not run alongside it.
+
+To switch, edit the global `language-servers.toml` and restart the workspace:
+
+```toml
+[servers.laravel-lsp]
+languages = ["php", "blade"]
+command = "laravel-lsp"
+args = []
+enabled = true
+requires-laravel = true
+initialization-options = { phpEnvironment = "auto", pestGenerateDocBlocks = false }
+packages = []
+
+[servers.php]
+# ... keep the rest of the phpactor entry, but disable it:
+enabled = false
+```
+
+If both entries are enabled, `laravel-lsp` (alphabetically first) serves PHP and
+Blade inside Laravel projects and phpactor still serves them everywhere else -
+the `requires-laravel` gate falls through to the next enabled entry, so this
+combo is a valid "laravel-lsp where possible, phpactor otherwise" setup.
+
+Gating reuses the static LexLaravel project detection: an `artisan` file or a
+`composer.json` requiring `laravel/framework` at the nearest project root above
+the workspace. The server launches with that detected root as its working
+directory and rootUri, not a parent folder. The probe result is cached for 60
+seconds. Outside a Laravel project the server is never downloaded or started.
+
+If `laravel-lsp` is on PATH (for example from `composer global require
+laravel/lsp`) it is used as is. Otherwise the editor downloads the pinned
+v0.0.32 self-contained binary for the current platform (x64/arm64 Linux, x64/
+arm64 macOS, x64 Windows) from the laravel/lsp GitHub release into
+`language-servers/laravel-lsp/` under the editor data directory, checks its
+SHA-256, marks it executable and runs it with no arguments (its default command
+is `lsp`, stdio). A binary that fails the hash check is never run.
+`auto-install = false` disables the download. The binary bundles its own PHP
+runtime, so unlike phpactor no `php` is needed to launch the server itself.
+
+Defaults sent in `initializationOptions`: `phpEnvironment: "auto"` (the server
+picks herd/valet/sail/lando/ddev/local itself) and `pestGenerateDocBlocks:
+false` (that feature writes helper files under `storage/`). The server resolves
+`phpCommand` to `["php"]` on its own; override either key in the entry to change
+them. Feature requests shell out to the project's own PHP, so routes/config/
+Eloquent awareness needs `php` plus `vendor/` installed in the project; the
+initialize handshake itself needs neither. Verified against v0.0.32: initialize
+over stdio returns completion/definition/hover/codeAction/documentLink and sync
+capabilities, logs INFO to stderr. The release is young (v0.0.x) and pinned on
+purpose; bump the version and all five digests together after checking a new
+release.

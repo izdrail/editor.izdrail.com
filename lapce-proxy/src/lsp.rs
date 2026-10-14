@@ -388,6 +388,24 @@ fn utf16_end(text: &str) -> Position {
     Position { line, character }
 }
 
+/// Laravel project evidence for registry gating: artisan at the nearest
+/// project root or a composer.json requiring laravel/framework, the same
+/// static detection the LexLaravel lexer routing uses. The detected root is
+/// returned so a Laravel-only server launches in the application directory
+/// even when the workspace opened a subdirectory or a parent of it.
+fn detect_laravel(root: Option<&Path>) -> (bool, Option<PathBuf>) {
+    let Some(root) = root else {
+        return (false, None);
+    };
+    let profile = lapce_core::project_profile::detect(&root.join("artisan"));
+    let laravel_root = if profile.laravel {
+        profile.root.clone()
+    } else {
+        None
+    };
+    (profile.laravel, laravel_root)
+}
+
 pub enum Job {
     Sync(crate::buffer::Buffer),
     Save(PathBuf),
@@ -425,17 +443,21 @@ impl Manager {
             let mut failed: HashMap<String, Instant> = HashMap::new();
             let mut missing: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
+            let mut laravel_probe: Option<(Instant, bool, Option<PathBuf>)> = None;
             let mut documents: HashMap<PathBuf, crate::buffer::Buffer> =
                 HashMap::new();
             while let Ok(job) = receiver.recv() {
                 let (buffer, request) = match job {
-                    Job::Resolve { id, method, item, callback } => {
+                    Job::Resolve {
+                        id,
+                        method,
+                        item,
+                        callback,
+                    } => {
                         let client = clients.values().find(|client| client.id == id);
                         callback(
                             client
-                                .map(|client| {
-                                    client.request(&method, item)
-                                })
+                                .map(|client| client.request(&method, item))
                                 .unwrap_or_else(|| {
                                     Err(error("Language server no longer available"))
                                 }),
@@ -474,8 +496,27 @@ impl Manager {
                     let registry = registry
                         .as_ref()
                         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                    // Probe for a Laravel project only when a seeded server
+                    // needs the answer, and reuse it for 60 seconds.
+                    if registry
+                        .servers
+                        .values()
+                        .any(|server| server.enabled && server.requires_laravel)
+                        && laravel_probe.as_ref().is_none_or(|(at, ..)| {
+                            at.elapsed() >= Duration::from_secs(60)
+                        })
+                    {
+                        let (laravel, detected_root) =
+                            detect_laravel(root.as_deref());
+                        laravel_probe =
+                            Some((Instant::now(), laravel, detected_root));
+                    }
+                    let (laravel_project, laravel_root) = laravel_probe
+                        .as_ref()
+                        .map(|(_, laravel, detected)| (*laravel, detected.clone()))
+                        .unwrap_or_default();
                     let (name, server) = registry
-                        .server(buffer.language_id)
+                        .server(buffer.language_id, laravel_project)
                         .context("No enabled language server for this file")?;
                     if clients.get(&name).is_some_and(|client| !client.alive()) {
                         clients.remove(&name);
@@ -509,11 +550,16 @@ impl Manager {
                                 message: format!("Preparing {name} language server"),
                             },
                         });
+                        let server_root = if server.requires_laravel {
+                            laravel_root.as_deref().or(root.as_deref())
+                        } else {
+                            root.as_deref()
+                        };
                         let launch =
                             registry.command(&name, &server).and_then(|command| {
                                 Client::start(
                                     command,
-                                    root.as_deref(),
+                                    server_root,
                                     server.initialization_options,
                                     core.clone(),
                                     &name,
@@ -617,8 +663,97 @@ mod tests {
         let registry = registry::Registry::default();
         let text = toml::to_string_pretty(&registry).unwrap();
         let loaded: registry::Registry = toml::from_str(&text).unwrap();
-        assert_eq!(loaded.server("python").unwrap().0, "python");
-        assert!(loaded.server("unknown").is_none());
+        assert_eq!(loaded.server("python", false).unwrap().0, "python");
+        assert!(loaded.server("unknown", false).is_none());
+        assert!(loaded.servers["laravel-lsp"].requires_laravel);
+        assert!(!loaded.servers["php"].requires_laravel);
+    }
+    #[test]
+    fn detect_laravel_roots() {
+        let plain = tempfile::tempdir().unwrap();
+        assert_eq!(detect_laravel(Some(plain.path())), (false, None));
+        assert_eq!(detect_laravel(None), (false, None));
+        let app = tempfile::tempdir().unwrap();
+        std::fs::write(app.path().join("artisan"), "<?php").unwrap();
+        assert_eq!(
+            detect_laravel(Some(app.path())),
+            (true, Some(app.path().to_path_buf()))
+        );
+        // Composer-only detection matches the LexLaravel lexer routing.
+        let composer = tempfile::tempdir().unwrap();
+        std::fs::write(
+            composer.path().join("composer.json"),
+            r#"{"require":{"laravel/framework":"^12"}}"#,
+        )
+        .unwrap();
+        assert_eq!(detect_laravel(Some(composer.path())).0, true);
+        // A subdirectory of a Laravel app resolves the application root.
+        let nested = app.path().join("app/Models");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert_eq!(
+            detect_laravel(Some(&nested)),
+            (true, Some(app.path().to_path_buf()))
+        );
+    }
+    #[test]
+    fn laravel_gated_server_skips_plain_projects_and_serves_laravel() {
+        use lapce_rpc::buffer::BufferId;
+        let registry = || registry::Registry {
+            enabled: true,
+            auto_install: false,
+            servers: HashMap::from([(
+                "mock-laravel".into(),
+                registry::Server {
+                    languages: vec!["python".into()],
+                    command: "python3".into(),
+                    args: vec![
+                        concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/lsp/mock_server.py"
+                        )
+                        .into(),
+                    ],
+                    requires_laravel: true,
+                    ..registry::Server::default()
+                },
+            )]),
+        };
+        let request = |root: &std::path::Path| {
+            let manager = Manager::with_registry(
+                Some(root.to_path_buf()),
+                CoreRpcHandler::new(),
+                Ok(registry()),
+            );
+            let path = root.join("file.py");
+            std::fs::write(&path, "orig").unwrap();
+            let mut buffer =
+                crate::buffer::Buffer::new(BufferId::next(), path.clone());
+            buffer.language_id = "python";
+            manager.send(Job::Sync(buffer.clone()));
+            let (tx, rx) = crossbeam_channel::bounded(1);
+            let uri = Url::from_file_path(&path).unwrap();
+            manager.send(Job::Request {
+                buffer,
+                method: "textDocument/completion".into(),
+                params: json!({"textDocument":{"uri":uri},"position":{"line":0,"character":0}}),
+                callback: Box::new(move |result| {
+                    tx.send(result).unwrap();
+                }),
+            });
+            rx.recv_timeout(Duration::from_secs(10)).unwrap()
+        };
+        // Plain project: the gated server is skipped, no server serves python.
+        let plain = tempfile::tempdir().unwrap();
+        let error = request(plain.path()).unwrap_err();
+        assert!(
+            error.message.contains("No enabled language server"),
+            "{error:?}"
+        );
+        // Laravel project (artisan at the root): the gated server answers.
+        let app = tempfile::tempdir().unwrap();
+        std::fs::write(app.path().join("artisan"), "<?php").unwrap();
+        let (_, value) = request(app.path()).unwrap();
+        assert_eq!(value[0]["label"], "mock_completion");
     }
     #[test]
     fn mock_stdio_roundtrip_sync_completion_hover_definition() {

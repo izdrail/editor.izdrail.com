@@ -11,6 +11,11 @@ pub struct Server {
     pub command: String,
     pub args: Vec<String>,
     pub enabled: bool,
+    /// Only offer this server inside a detected Laravel project: artisan at
+    /// the nearest project root or a composer.json requiring
+    /// laravel/framework. Gated-out servers fall through to the next enabled
+    /// entry for the language.
+    pub requires_laravel: bool,
     pub initialization_options: Value,
     pub packages: Vec<String>,
 }
@@ -21,6 +26,7 @@ impl Default for Server {
             command: String::new(),
             args: vec![],
             enabled: true,
+            requires_laravel: false,
             initialization_options: serde_json::json!({}),
             packages: vec![],
         }
@@ -98,6 +104,24 @@ impl Default for Registry {
                 },
             );
         }
+        // Official Laravel language server. Disabled by default: phpactor
+        // stays the PHP server until the user switches in
+        // language-servers.toml (docs/language-servers.md). Self-contained
+        // managed binary, so no php is needed to run the server itself.
+        servers.insert(
+            "laravel-lsp".into(),
+            Server {
+                languages: vec!["php".into(), "blade".into()],
+                command: "laravel-lsp".into(),
+                enabled: false,
+                requires_laravel: true,
+                initialization_options: serde_json::json!({
+                    "phpEnvironment": "auto",
+                    "pestGenerateDocBlocks": false,
+                }),
+                ..Server::default()
+            },
+        );
         Self {
             enabled: true,
             auto_install: true,
@@ -149,6 +173,54 @@ fn is_phpactor_default(server: &Server) -> bool {
         && server.packages.is_empty()
         && server.args == ["language-server"]
 }
+/// Pinned laravel-lsp release (the official Laravel language server). Bump
+/// the version and every platform digest together after checking the new
+/// assets on the GitHub release page.
+pub const LARAVEL_LSP_VERSION: &str = "0.0.32";
+const LARAVEL_LSP_X64_LINUX_SHA256: &str =
+    "6ff952fa518d8b304fb8a4f8ddd18c3d67358a7fde38358066e5f3e611ea96cf";
+const LARAVEL_LSP_ARM64_LINUX_SHA256: &str =
+    "fadf14d1e63ba57b72ec43e5ec5b421e284b4595647d1a2b2c2ea3adea942a4c";
+const LARAVEL_LSP_X64_DARWIN_SHA256: &str =
+    "6894b04d505c9556a59363407bd40da45f60540fb061df8046e52299082962ec";
+const LARAVEL_LSP_ARM64_DARWIN_SHA256: &str =
+    "61574921e252f477151efc4c6b714bf8175d33e3a0da95ae9bc2a9fd02b69765";
+const LARAVEL_LSP_X64_WIN32_SHA256: &str =
+    "29880d0d331f82a5af2dfb23d932ee0058bf84c468feb7b70ed0f3888c15c00b";
+/// Release asset suffix and digest for this platform, when laravel ships one.
+fn laravel_lsp_asset() -> Option<(&'static str, &'static str)> {
+    match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "linux") => Some(("x64-linux", LARAVEL_LSP_X64_LINUX_SHA256)),
+        ("aarch64", "linux") => {
+            Some(("arm64-linux", LARAVEL_LSP_ARM64_LINUX_SHA256))
+        }
+        ("x86_64", "macos") => Some(("x64-darwin", LARAVEL_LSP_X64_DARWIN_SHA256)),
+        ("aarch64", "macos") => {
+            Some(("arm64-darwin", LARAVEL_LSP_ARM64_DARWIN_SHA256))
+        }
+        ("x86_64", "windows") => {
+            Some(("x64-win32.exe", LARAVEL_LSP_X64_WIN32_SHA256))
+        }
+        _ => None,
+    }
+}
+fn laravel_lsp_binary() -> Option<PathBuf> {
+    let extension = if cfg!(windows) { ".exe" } else { "" };
+    Some(
+        Directory::data_local_directory()?
+            .join("language-servers")
+            .join("laravel-lsp")
+            .join(format!("laravel-lsp-{LARAVEL_LSP_VERSION}{extension}")),
+    )
+}
+/// The stock registry entry (command `laravel-lsp`, no packages). When that
+/// command is not on PATH the editor falls back to the managed binary. Any
+/// other command, such as a user override, is launched exactly as configured.
+fn is_laravel_lsp_default(server: &Server) -> bool {
+    server.command == "laravel-lsp"
+        && server.packages.is_empty()
+        && server.args.is_empty()
+}
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(bytes)
@@ -171,7 +243,14 @@ impl Registry {
         }
         Ok(toml::from_str(&std::fs::read_to_string(path)?)?)
     }
-    pub fn server(&self, language: &str) -> Option<(String, Server)> {
+    /// First enabled server claiming the language, alphabetically. Servers
+    /// with `requires-laravel` are skipped outside a detected Laravel project
+    /// so the next enabled entry (for example phpactor) serves the file.
+    pub fn server(
+        &self,
+        language: &str,
+        laravel_project: bool,
+    ) -> Option<(String, Server)> {
         if !self.enabled {
             return None;
         }
@@ -179,8 +258,10 @@ impl Registry {
         names.sort();
         names.into_iter().find_map(|name| {
             let server = &self.servers[name];
-            (server.enabled && server.languages.iter().any(|lang| lang == language))
-                .then(|| (name.clone(), server.clone()))
+            (server.enabled
+                && (!server.requires_laravel || laravel_project)
+                && server.languages.iter().any(|lang| lang == language))
+            .then(|| (name.clone(), server.clone()))
         })
     }
     /// True when launching this server cannot work and would only produce a
@@ -201,6 +282,11 @@ impl Registry {
             }
             return !self.auto_install
                 && !phpactor_phar().is_some_and(|p| p.is_file());
+        }
+        if is_laravel_lsp_default(server) {
+            // The managed binary bundles its own runtime: no php needed.
+            return !self.auto_install
+                && !laravel_lsp_binary().is_some_and(|p| p.is_file());
         }
         true
     }
@@ -251,6 +337,12 @@ impl Registry {
             let mut command = Command::new("php");
             command.arg(phar).args(&server.args);
             return Ok(command);
+        } else if !command_exists(&server.command) && is_laravel_lsp_default(server)
+        {
+            let binary = self.ensure_laravel_lsp()?;
+            let mut command = Command::new(binary);
+            command.args(&server.args);
+            return Ok(command);
         } else {
             PathBuf::from(&server.command)
         };
@@ -299,6 +391,62 @@ impl Registry {
         std::io::Write::write_all(&mut tmp, &bytes)?;
         tmp.persist(&phar)?;
         Ok(phar)
+    }
+    /// Download the pinned laravel-lsp server binary into the managed
+    /// directory (once) and verify its SHA-256 before it is ever executed. A
+    /// binary already on disk is re-hashed, so a damaged or swapped file is
+    /// replaced, never run. The asset is a self-contained executable; no php
+    /// or composer is required to launch the server.
+    fn ensure_laravel_lsp(&self) -> Result<PathBuf> {
+        let binary = laravel_lsp_binary().context("No data directory")?;
+        let (suffix, sha256) = laravel_lsp_asset().context(
+            "No managed laravel-lsp binary for this platform; install              laravel-lsp yourself (composer global require laravel/lsp)",
+        )?;
+        if binary.is_file() && file_sha256(&binary).ok().as_deref() == Some(sha256) {
+            return Ok(binary);
+        }
+        ensure!(
+            self.auto_install,
+            "laravel-lsp is not installed and auto-install is disabled"
+        );
+        let dir = binary.parent().context("Invalid laravel-lsp directory")?;
+        std::fs::create_dir_all(dir)?;
+        let url = format!(
+            "https://github.com/laravel/lsp/releases/download/             v{LARAVEL_LSP_VERSION}/server-v{LARAVEL_LSP_VERSION}-{suffix}"
+        );
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .user_agent("editor.izdrail.com")
+            .build()?;
+        let response = client.get(&url).send()?;
+        ensure!(
+            response.status().is_success(),
+            "laravel-lsp download failed: HTTP {}",
+            response.status()
+        );
+        let bytes = response.bytes()?;
+        ensure!(
+            bytes.len() < 128 * 1024 * 1024,
+            "laravel-lsp download too large"
+        );
+        ensure!(
+            sha256_hex(&bytes) == sha256,
+            "laravel-lsp download failed its SHA-256 check"
+        );
+        let mut tmp = tempfile::Builder::new()
+            .prefix(".laravel-lsp-")
+            .tempfile_in(dir)?;
+        std::io::Write::write_all(&mut tmp, &bytes)?;
+        tmp.persist(&binary)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                &binary,
+                std::fs::Permissions::from_mode(0o755),
+            )?;
+        }
+        Ok(binary)
     }
     fn install(&self, root: &std::path::Path, server: &Server) -> Result<()> {
         let parent = root.parent().context("Invalid managed server directory")?;
@@ -478,5 +626,42 @@ mod tests {
                 .join("node_modules/.bin/pyright-langserver")
                 .is_file()
         );
+    }
+    #[test]
+    fn laravel_lsp_entry_is_seeded_disabled_and_gated() {
+        let registry = Registry::default();
+        let server = &registry.servers["laravel-lsp"];
+        assert!(!server.enabled);
+        assert!(server.requires_laravel);
+        assert_eq!(server.languages, ["php", "blade"]);
+        assert_eq!(server.command, "laravel-lsp");
+        assert_eq!(server.initialization_options["phpEnvironment"], "auto");
+        assert_eq!(
+            server.initialization_options["pestGenerateDocBlocks"],
+            false
+        );
+        assert!(is_laravel_lsp_default(server));
+        // phpactor stays the PHP server, in and out of Laravel projects.
+        assert_eq!(registry.server("php", true).unwrap().0, "php");
+        assert_eq!(registry.server("blade", false).unwrap().0, "php");
+        let mut own = server.clone();
+        own.command = "/opt/laravel-lsp".into();
+        assert!(!is_laravel_lsp_default(&own));
+        assert!(registry.is_missing(&own));
+    }
+    #[test]
+    fn enabled_laravel_lsp_wins_in_laravel_and_falls_back_elsewhere() {
+        let mut registry = Registry::default();
+        registry.servers.get_mut("laravel-lsp").unwrap().enabled = true;
+        assert_eq!(registry.server("php", true).unwrap().0, "laravel-lsp");
+        assert_eq!(registry.server("blade", true).unwrap().0, "laravel-lsp");
+        // Outside a Laravel project the gated entry falls through to phpactor.
+        assert_eq!(registry.server("php", false).unwrap().0, "php");
+        registry.servers.get_mut("php").unwrap().enabled = false;
+        assert!(registry.server("php", false).is_none());
+        assert_eq!(registry.server("php", true).unwrap().0, "laravel-lsp");
+        // The managed default bundles its runtime: installable without php.
+        let stock = registry.servers["laravel-lsp"].clone();
+        assert!(!registry.is_missing(&stock));
     }
 }

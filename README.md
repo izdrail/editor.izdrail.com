@@ -26,7 +26,7 @@ editor.izdrail.com is a native code editor written in Rust with a [Floem](https:
 * Syntax highlighting with Lexilla ([docs/lexilla-highlighting.md](docs/lexilla-highlighting.md)), including dedicated PHP and Laravel lexers ([docs/php-lexers.md](docs/php-lexers.md)), plus TextMate grammars imported from `.vsix` files for languages Lexilla has no lexer for
 
 ### Language server client
-Independent stdio LSP client: completion (with resolve), hover, go to definition and diagnostics. A global `language-servers.toml` registry seeds TypeScript/JavaScript, Python, HTML, CSS and JSON (npm-managed) and Rust, Go and PHP (command-managed, must be installed). Custom servers are supported. See [docs/language-servers.md](docs/language-servers.md).
+Independent stdio LSP client: completion (with resolve), hover, go to definition and diagnostics. A global `language-servers.toml` registry seeds TypeScript/JavaScript, Python, HTML, CSS and JSON (npm-managed) and Rust, Go and PHP (command-managed, must be installed), plus an opt-in, Laravel-gated laravel-lsp entry with a managed, hash-verified binary download. Custom servers are supported. See [docs/language-servers.md](docs/language-servers.md).
 
 ### Executable plugins (WASI)
 Lapce-style WASI plugins run in the proxy's plugin catalog: they can provide language features (completion, hover, code actions, formatting, ...), spawn their own language servers and react to editor events. Editor requests fan out to both the built-in language server client and plugins. See [docs/wasi-plugins.md](docs/wasi-plugins.md).
