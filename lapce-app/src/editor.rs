@@ -1328,6 +1328,31 @@ impl EditorData {
         };
 
         let offset = self.cursor().with_untracked(|c| c.offset());
+        // A Blade/Twig template or component under the cursor opens directly,
+        // before any language server is asked.
+        if let Some(root) = self.common.workspace.path.as_ref() {
+            let (line_text, col) = doc.buffer.with_untracked(|buffer| {
+                let line = buffer.line_of_offset(offset);
+                (
+                    buffer.line_content(line).to_string(),
+                    offset - buffer.offset_of_line(line),
+                )
+            });
+            if let Some(target) =
+                crate::template_refs::resolve(root, &path, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: None,
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
+        }
         let (start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
             let start_position = buffer.offset_to_position(start_offset);
