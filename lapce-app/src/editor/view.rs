@@ -1447,7 +1447,9 @@ fn editor_gutter_breakpoint_view(
     )
     .on_click_stop(move |_| {
         let screen_lines = screen_lines.get_untracked();
-        let line = screen_lines.lines.get(i).map(|r| r.line).unwrap_or(0);
+        let Some(line) = screen_lines.lines.get(i).map(|r| r.line) else {
+            return;
+        };
         // let line = (viewport.get_untracked().y0
         //     / config.get_untracked().editor.line_height() as f64)
         //     .floor() as usize

@@ -80,6 +80,22 @@ impl RunDebugData {
         }
     }
 
+    /// Send the complete file list, including an empty list when the last
+    /// breakpoint is removed. Local panel edits must also reach live adapters.
+    pub fn sync_breakpoints(&self, path: &std::path::Path, common: &CommonData) {
+        let breakpoints = self.source_breakpoints().remove(path).unwrap_or_default();
+        let ids: Vec<_> = self
+            .daps
+            .with_untracked(|daps| daps.keys().copied().collect());
+        for dap_id in ids {
+            common.proxy.dap_set_breakpoints(
+                dap_id,
+                path.to_path_buf(),
+                breakpoints.clone(),
+            );
+        }
+    }
+
     pub fn source_breakpoints(&self) -> HashMap<PathBuf, Vec<SourceBreakpoint>> {
         self.breakpoints
             .get_untracked()
@@ -334,6 +350,9 @@ impl DapData {
     }
 
     pub fn toggle_expand(&self, parent: Vec<usize>, reference: usize) {
+        if reference == 0 || !self.stopped.get_untracked() {
+            return;
+        }
         self.variables_id.update(|id| {
             *id += 1;
         });
@@ -360,7 +379,11 @@ impl DapData {
         let parent = parent.to_vec();
         let variables_id = self.variables_id;
 
+        let stopped = self.stopped;
         let send = create_ext_action(self.common.scope, move |result| {
+            if !stopped.get_untracked() {
+                return;
+            }
             if let Ok(ProxyResponse::DapVariableResponse { variables }) = result {
                 variables_id.update(|id| {
                     *id += 1;
@@ -382,6 +405,12 @@ impl DapData {
                             })
                             .collect();
                         root.update_count_recursive(&parent, reference);
+                    }
+                });
+            } else {
+                root.update(|root| {
+                    if let Some(var) = root.get_var_mut(&parent, reference) {
+                        var.read = false;
                     }
                 });
             }
@@ -415,8 +444,8 @@ impl VirtualVector<DapVariableViewdata> for DapVariable {
         let mut i = 0;
         let mut view_items = Vec::new();
         for item in self.children.iter() {
-            i = item.append_view_slice(&mut view_items, min, max, i + 1, 0);
-            if i > max {
+            i = item.append_view_slice(&mut view_items, min, max, i, 0);
+            if i >= max {
                 return view_items.into_iter();
             }
         }
@@ -434,14 +463,14 @@ impl DapVariable {
         current: usize,
         level: usize,
     ) -> usize {
-        if current > max {
+        if current >= max {
             return current;
         }
-        if current + self.children_expanded_count < min {
-            return current + self.children_expanded_count;
+        if current + self.children_expanded_count + 1 <= min {
+            return current + self.children_expanded_count + 1;
         }
 
-        let mut i = current;
+        let mut i = current + 1;
         if current >= min {
             view_items.push(DapVariableViewdata {
                 item: self.item.clone(),
@@ -453,8 +482,8 @@ impl DapVariable {
 
         if self.expanded {
             for item in self.children.iter() {
-                i = item.append_view_slice(view_items, min, max, i + 1, level + 1);
-                if i > max {
+                i = item.append_view_slice(view_items, min, max, i, level + 1);
+                if i >= max {
                     return i;
                 }
             }
@@ -518,6 +547,82 @@ mod tests {
     use lapce_rpc::dap_types::{Scope, Variable};
 
     use super::{DapVariable, ScopeOrVar};
+
+    #[test]
+    fn variable_slices_are_zero_based_and_half_open() {
+        use floem::views::VirtualVector;
+        let mut root = DapVariable {
+            expanded: true,
+            children_expanded_count: 3,
+            children: (0..3)
+                .map(|i| DapVariable {
+                    item: ScopeOrVar::Var(Variable {
+                        name: format!("v{i}"),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        assert!(root.slice(0..0).next().is_none());
+        assert_eq!(
+            root.slice(0..1)
+                .map(|v| v.item.name().to_string())
+                .collect::<Vec<_>>(),
+            vec!["v0"]
+        );
+        assert_eq!(
+            root.slice(1..3)
+                .map(|v| v.item.name().to_string())
+                .collect::<Vec<_>>(),
+            vec!["v1", "v2"]
+        );
+        assert!(root.slice(3..4).next().is_none());
+    }
+
+    #[test]
+    fn nested_variable_slices_skip_subtrees() {
+        use floem::views::VirtualVector;
+        let leaf = |name: &str| DapVariable {
+            item: ScopeOrVar::Var(Variable {
+                name: name.to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut branch = leaf("object");
+        branch.expanded = true;
+        branch.children = vec![leaf("child")];
+        branch.children_expanded_count = 1;
+        let mut root = DapVariable {
+            expanded: true,
+            children: vec![branch, leaf("next")],
+            children_expanded_count: 3,
+            ..Default::default()
+        };
+        let names = |items: Vec<super::DapVariableViewdata>| {
+            items
+                .into_iter()
+                .map(|v| (v.item.name().to_string(), v.level))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names(root.slice(1..2).collect()),
+            vec![("child".to_string(), 1)]
+        );
+        assert_eq!(
+            names(root.slice(2..3).collect()),
+            vec![("next".to_string(), 0)]
+        );
+        root.children[0].expanded = false;
+        root.children[0].children_expanded_count = 0;
+        root.children_expanded_count = 2;
+        assert_eq!(
+            names(root.slice(1..2).collect()),
+            vec![("next".to_string(), 0)]
+        );
+    }
 
     #[test]
     fn test_update_count() {
