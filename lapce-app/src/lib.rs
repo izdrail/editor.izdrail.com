@@ -10,6 +10,7 @@ pub mod agent_changes;
 pub mod agent_checkpoint;
 pub mod agent_review_ui;
 pub mod agent_loop;
+pub mod agent_act_contract;
 pub mod about;
 pub mod alert;
 pub mod app;
