@@ -468,6 +468,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .flex_basis(0.0)
                 .min_height(0.0)
         }),
+        label(move || format!("Session: {:?}", data.state.get()))
+            .style(|s| s.font_size(11.0).max_width_full()),
         label(move || data.error.get()).style(move |s| {
             s.max_width_full()
                 .color(config.get().color(LapceColor::LAPCE_ERROR))

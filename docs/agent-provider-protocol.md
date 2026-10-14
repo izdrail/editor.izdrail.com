@@ -68,3 +68,14 @@ has no paid execution path, history browser or provider-manager UI yet.
 Tests cover lock contention, persisted reservations on reopen, corruption,
 account partitioning, persisted price overruns and stale-lock denial. Linux only;
 Windows replacement semantics and all GUI work remain unverified.
+
+## Explicit Ollama tool transport (2c)
+
+agent_transport can send validated non-streaming tool-aware requests to an
+explicitly supplied Ollama-compatible endpoint. It bounds responses, disables
+redirects, validates final calls and aborts on Stop/timeout. It returns proposed
+calls as data; it cannot execute them. There is no automatic request from this
+module or connection to the chat Send button yet. Loopback protocol tests do not
+establish the configured server/model's capability or quality. Paid adapters remain
+unavailable. A journal write failure poisons that guard, preventing further
+reservation attempts until reconciliation.

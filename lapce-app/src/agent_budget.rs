@@ -11,6 +11,7 @@ pub struct BudgetGuard {
     lock: PathBuf,
     record: PathBuf,
     ledger: SpendLedger,
+    poisoned: bool,
 }
 impl BudgetGuard {
     pub fn acquire(
@@ -80,6 +81,7 @@ impl BudgetGuard {
                 lock,
                 record,
                 ledger,
+                poisoned: false,
             }),
             Err(e) => {
                 drop(file);
@@ -118,6 +120,7 @@ impl BudgetGuard {
             Ok(())
         })();
         if outcome.is_err() {
+            self.poisoned = true;
             return outcome;
         }
         self.ledger = ledger;
@@ -130,11 +133,21 @@ impl BudgetGuard {
         request_limit: u64,
         lifetime_limit: u64,
     ) -> Result<(), String> {
+        if self.poisoned {
+            return Err(
+                "Budget journal write failed; reconciliation required".into()
+            );
+        }
         let mut ledger = self.ledger.clone();
         ledger.reserve(id, max, request_limit, lifetime_limit)?;
         self.commit(ledger)
     }
     pub fn settle(&mut self, id: &str, actual: Option<u64>) -> Result<(), String> {
+        if self.poisoned {
+            return Err(
+                "Budget journal write failed; reconciliation required".into()
+            );
+        }
         let mut ledger = self.ledger.clone();
         let result = ledger.settle(id, actual);
         self.commit(ledger)?;

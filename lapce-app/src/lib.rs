@@ -4,6 +4,7 @@ pub mod chat_session;
 pub mod agent_protocol;
 pub mod agent_wire;
 pub mod agent_budget;
+pub mod agent_transport;
 pub mod about;
 pub mod alert;
 pub mod app;
