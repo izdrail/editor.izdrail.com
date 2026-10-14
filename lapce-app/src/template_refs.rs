@@ -1,6 +1,6 @@
 //! Go to a template or component referenced under the cursor, without a
 //! language server: Blade (`@include('a.b')`, `@extends`, `view('a.b')`,
-//! `<x-forms.input>`) and Twig (`{% extends 'base.html.twig' %}`, `include`,
+//! `<x-forms.input>`, `<livewire:user-profile>`, `@livewire('user-profile')`) and Twig (`{% extends 'base.html.twig' %}`, `include`,
 //! `embed`, `<twig:Alert>`, `component('Alert')`).
 //!
 //! Purely textual: it reads the cursor's line and checks which files exist
@@ -142,6 +142,23 @@ fn blade_component(root: &Path, name: &str) -> Option<PathBuf> {
     ])
 }
 
+
+/// `<livewire:admin.user-profile` / `@livewire('admin.user-profile')` ->
+/// `app/Livewire/Admin/UserProfile.php` (v3), `app/Http/Livewire/...` (v2),
+/// else `resources/views/livewire/admin/user-profile.blade.php`.
+fn livewire_component(root: &Path, name: &str) -> Option<PathBuf> {
+    if !safe(name) || name.contains('/') || name.contains(':') {
+        return None;
+    }
+    let rel = name.replace('.', "/");
+    let class: PathBuf = name.split('.').map(studly).collect::<Vec<_>>().join("/").into();
+    first_existing(vec![
+        root.join("app").join("Livewire").join(&class).with_extension("php"),
+        root.join("app").join("Http").join("Livewire").join(&class).with_extension("php"),
+        root.join("resources").join("views").join("livewire").join(format!("{rel}.blade.php")),
+    ])
+}
+
 /// `<twig:Alert` / `<twig:Form:Input` -> `templates/components/Form/Input.html.twig`.
 fn twig_component(root: &Path, name: &str) -> Option<PathBuf> {
     if !safe(name) || name.contains('/') || name.contains('.') || name.contains('@') {
@@ -181,6 +198,11 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathB
             return blade_component(root, tag);
         }
     }
+    if blade || php {
+        if let Some(tag) = tag_name_at(line, col, "livewire:") {
+            return livewire_component(root, tag);
+        }
+    }
     if twig {
         if let Some(tag) = tag_name_at(line, col, "twig:") {
             return twig_component(root, tag);
@@ -195,6 +217,9 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathB
             return twig_template(root, s);
         }
         return None;
+    }
+    if (blade || php) && called_by(before, &["@livewire"]) {
+        return livewire_component(root, s);
     }
     if called_by(before, VIEW_CALLERS) {
         return blade_view(root, s);
@@ -307,5 +332,28 @@ mod tests {
         }
         assert_eq!(resolve(r, Path::new("a.rs"), "view('x')", 7), None);
         assert_eq!(resolve(r, &f, "", 0), None);
+    }
+
+    #[test]
+    fn livewire_components() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let v3 = touch(r, "app/Livewire/Admin/UserProfile.php");
+        let v2 = touch(r, "app/Http/Livewire/Counter.php");
+        let view = touch(r, "resources/views/livewire/only-view.blade.php");
+        let f = r.join("resources/views/home.blade.php");
+        let l = "<livewire:admin.user-profile :user=\"$u\" />";
+        assert_eq!(resolve(r, &f, l, at(l, "user-profile")), Some(v3.clone()));
+        let l = "@livewire('admin.user-profile')";
+        assert_eq!(resolve(r, &f, l, at(l, "admin")), Some(v3));
+        let l = "<livewire:counter />";
+        assert_eq!(resolve(r, &f, l, at(l, "counter")), Some(v2));
+        let l = "<livewire:only-view/>";
+        assert_eq!(resolve(r, &f, l, at(l, "only")), Some(view));
+        // Attribute value and unknown components are not references.
+        let l = "<livewire:counter wire:key=\"x\" />";
+        assert_eq!(resolve(r, &f, l, at(l, "wire:key")), None);
+        let l = "<livewire:missing />";
+        assert_eq!(resolve(r, &f, l, at(l, "missing")), None);
     }
 }
