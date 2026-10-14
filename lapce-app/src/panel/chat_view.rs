@@ -43,6 +43,9 @@ pub struct ChatData {
     pub history: RwSignal<Vec<Message>>,
     pub session: RwSignal<Session>,
     pub state: RwSignal<RunState>,
+    pub mode: RwSignal<Option<crate::agent_loop::Mode>>,
+    pub trust_reads: RwSignal<bool>,
+    pub trusted_endpoint: RwSignal<String>,
     gate: RunGate,
     cancellation: RwSignal<Arc<AtomicBool>>,
     storage: Option<PathBuf>,
@@ -89,6 +92,9 @@ impl ChatData {
         Self {
             session: cx.create_rw_signal(session.clone()),
             state: cx.create_rw_signal(session.state.clone()),
+            mode: cx.create_rw_signal(None),
+            trust_reads: cx.create_rw_signal(false),
+            trusted_endpoint: cx.create_rw_signal(String::new()),
             gate: RunGate::default(),
             cancellation: cx.create_rw_signal(Arc::new(AtomicBool::new(false))),
             storage,
@@ -198,6 +204,10 @@ fn send(tab: &WindowTabData) {
     let prompt = data.input.get_untracked().trim().to_string();
     if prompt.is_empty() {
         data.error.set("Type a message first.".into());
+        return;
+    }
+    if let Some(mode) = data.mode.get_untracked() {
+        send_agent(tab, mode, &prompt);
         return;
     }
     let ctx = context(tab);
@@ -332,6 +342,155 @@ fn send(tab: &WindowTabData) {
         let _ = tx.send(Update::Error("Backend must be local or ollama".into()));
     }
 }
+#[cfg(target_os = "linux")]
+fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) {
+    let data = tab.chat.clone();
+    let settings = tab.common.config.get_untracked().ai_chat.clone();
+    if settings.backend != "ollama" {
+        data.error.set("Ask/Plan requires a tool-capable Ollama model. Simple Chat still works locally.".into());
+        return;
+    }
+    if !data.trust_reads.get_untracked()
+        || data.trusted_endpoint.get_untracked() != settings.endpoint
+        || !tab.workspace.kind.is_local()
+    {
+        data.error.set(
+            "Approve project reads in this panel for a local workspace first."
+                .into(),
+        );
+        return;
+    }
+    let Some(root) = tab.workspace.path.clone() else {
+        data.error.set("Open a local project folder first.".into());
+        return;
+    };
+    let run = data.gate.begin();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    data.cancellation.set(cancelled.clone());
+    *data.worker.network.borrow_mut() = cancelled.clone();
+    data.state.set(RunState::Running);
+    data.busy.set(true);
+    data.error.set(String::new());
+    let reply = tab.scope.create_rw_signal(String::new());
+    data.turns.update(|turns| {
+        turns.push(Turn {
+            role: "You",
+            text: tab.scope.create_rw_signal(prompt.into()),
+            context: format!(
+                "{:?}: approved project reads from {}",
+                mode,
+                root.display()
+            ),
+        });
+        turns.push(Turn {
+            role: "Assistant",
+            text: reply,
+            context: String::new(),
+        });
+    });
+    data.input.set(String::new());
+    data.persist(settings.save_history);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let progress = floem::ext_event::create_signal_from_channel(rx);
+    let done = data.clone();
+    let save = settings.save_history;
+    create_effect(move |_| {
+        if let Some(update) = progress.get() {
+            if !done.gate.accepts(run) {
+                return;
+            }
+            match update {
+                Update::Delta(text) => reply.set(text),
+                Update::Done(text) => {
+                    reply.set(text);
+                    done.busy.set(false);
+                    done.state.set(RunState::Done);
+                    done.persist(save);
+                }
+                Update::Error(error) => {
+                    done.error.set(error);
+                    done.busy.set(false);
+                    done.state.set(RunState::Error);
+                    done.persist(save);
+                }
+            }
+        }
+    });
+    let prompt = prompt.to_string();
+    std::thread::spawn(move || {
+        let result = (|| {
+            let reader = crate::agent_read::ReadRoot::new(&root, true)?;
+            crate::agent_loop::run(
+                mode,
+                &prompt,
+                crate::agent_loop::Limits::default(),
+                cancelled.clone(),
+                |messages, tools| {
+                    crate::agent_transport::ollama(
+                        &settings.endpoint,
+                        &settings.model,
+                        messages,
+                        tools,
+                        1024,
+                        cancelled.clone(),
+                    )
+                },
+                |call| match call.name.as_str() {
+                    "read_file" => reader.read(std::path::Path::new(
+                        call.arguments["path"].as_str().ok_or("Missing path")?,
+                    )),
+                    "search" => {
+                        let result = reader.search(
+                            call.arguments["literal"]
+                                .as_str()
+                                .ok_or("Missing literal")?,
+                        )?;
+                        Ok(serde_json::json!({"matches":result.matches,"truncated":result.truncated,"skipped_files":result.skipped_files}).to_string())
+                    }
+                    _ => Err("Unregistered tool".into()),
+                },
+                |event| {
+                    let text = match event {
+                        crate::agent_loop::Event::Step(n) => format!(
+                            "Agent step {n}: reading and reasoning. No files will be changed."
+                        ),
+                        crate::agent_loop::Event::ProposedCalls(calls) => format!(
+                            "Proposed read tools: {}",
+                            calls
+                                .iter()
+                                .map(|c| c.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        crate::agent_loop::Event::ToolResult { id, error } => {
+                            format!(
+                                "Tool {id}: {}",
+                                if error {
+                                    "denied or failed"
+                                } else {
+                                    "read completed"
+                                }
+                            )
+                        }
+                        crate::agent_loop::Event::Finished(_) => return,
+                    };
+                    let _ = tx.send(Update::Delta(text));
+                },
+            )
+        })();
+        let _ = tx.send(match result {
+            Ok(text) => Update::Done(text),
+            Err(error) => Update::Error(error),
+        });
+    });
+}
+#[cfg(not(target_os = "linux"))]
+fn send_agent(tab: &WindowTabData, _: crate::agent_loop::Mode, _: &str) {
+    tab.chat
+        .error
+        .set("Secure Ask/Plan project tools are Linux-only in this version.".into());
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let config = tab.common.config;
@@ -340,6 +499,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let indicator_tab = tab.clone();
     let clear = data.clone();
     let stop = data.clone();
+    let chat_mode = data.clone();
+    let ask_mode = data.clone();
+    let plan_mode = data.clone();
+    let trust = data.clone();
+    let revoke = data.clone();
     let input_signal = data.input;
     let composer = text_editor(data.input.get_untracked())
         .placeholder("Ask about this file or selection...")
@@ -391,6 +555,22 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .on_click_stop(move |_| { if stop.busy.get_untracked() { stop.stop(); stop.persist(config.get_untracked().ai_chat.save_history); } })
                 .style(move |s| s.padding(6.0).cursor(CursorStyle::Pointer).selectable(false)),
         )),
+        h_stack((
+            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); } }),
+            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); } }),
+            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); } }),
+        )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
+        label(move || format!("Mode: {}. Act is unavailable; Ask/Plan never write files.", match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" }))
+            .style(|s| s.font_size(11.0).max_width_full()),
+        label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them.", config.get().ai_chat.endpoint))
+            .style(|s| s.font_size(11.0).max_width_full()),
+        h_stack((
+            label(|| "Approve project reads for this window".to_string()).on_click_stop(move |_| { if !trust.busy.get_untracked() { trust.trusted_endpoint.set(config.get_untracked().ai_chat.endpoint.clone());
+                    trust.trust_reads.set(true); } }),
+            label(|| "Revoke".to_string()).on_click_stop(move |_| { revoke.trust_reads.set(false); if revoke.busy.get_untracked() { revoke.stop(); revoke.persist(config.get_untracked().ai_chat.save_history); } }),
+        )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
+        label(move || format!("Project read permission: {}", if data.trust_reads.get() { "approved for this window" } else { "not approved" }))
+            .style(|s| s.font_size(11.0).max_width_full()),
         label(move || {
             let c = config.get();
             format!(

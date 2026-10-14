@@ -25,3 +25,24 @@ claimed before those pieces and real model/pixel tests pass.
 Verification: four pure coordinator tests cover tool-result routing, Plan not Act,
 unknown-tool rejection, cancellation/step limits, error data and invalid arguments.
 Full local app check passes. Host code/build tests and GUI verification still apply.
+
+## Linux UI integration (5b)
+
+The chat panel now has Chat, Ask and Plan choices. Ask/Plan require a local Linux
+project, an explicitly configured tool-capable Ollama backend, and the owner
+clicking Approve Project Reads for this window after the endpoint disclosure.
+Approval is memory-only and bound to the exact configured endpoint. Changing that
+endpoint requires another approval. Revoke invalidates the run and aborts its
+request; the server may still complete inference after client disconnect.
+
+Chat remains the default and preserves existing local behavior. Local Candle
+agent tool messages are not supported and no hosted fallback is used. Ask/Plan
+run in a worker thread with the bounded read/search executor and tool-aware Ollama
+transport. Live step/tool status appears in the answer slot; the final answer/plan
+replaces it. No artifact panel, persistent agent tool transcript or multi-turn agent
+history is included yet. Each Ask/Plan invocation starts a bounded fresh run.
+
+Act remains unavailable, and no files are written. The UI does not claim model
+quality parity. A real tool-capable model on the configured endpoint and interactive
+pixel/Stop/trust tests are still required. Compilation and loopback mocks are not
+that evidence. Existing prompts/replies history remains opt-in.
