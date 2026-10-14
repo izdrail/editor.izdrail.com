@@ -4,6 +4,7 @@ pub mod alert;
 pub mod app;
 pub mod code_action;
 pub mod code_lens;
+pub mod color_swatch;
 pub mod command;
 pub mod completion;
 pub mod browser_preview;

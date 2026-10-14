@@ -2146,6 +2146,32 @@ impl DocumentPhantom for Doc {
             text.push(preedit)
         }
 
+        // Colour swatches (see color_swatch.rs). Skipped for very long lines.
+        if config.editor.enable_color_swatches
+            && end_offset - start_offset <= 20_000
+            && matches!(
+                self.content.get_untracked(),
+                DocContent::File { ref path, .. } if crate::color_swatch::enabled_for(path)
+            )
+        {
+            let line_text = self
+                .buffer
+                .with_untracked(|b| b.slice_to_cow(start_offset..end_offset).to_string());
+            for sw in crate::color_swatch::find(&line_text) {
+                let [r, g, b, a] = sw.rgba;
+                text.push(PhantomText {
+                    kind: PhantomTextKind::InlayHint,
+                    col: sw.col,
+                    text: "\u{25A0} ".to_string(),
+                    affinity: Some(CursorAffinity::Backward),
+                    fg: Some(floem::peniko::Color::from_rgba8(r, g, b, a)),
+                    font_size: None,
+                    bg: None,
+                    under_line: None,
+                });
+            }
+        }
+
         text.sort_by(|a, b| {
             if a.col == b.col {
                 a.kind.cmp(&b.kind)

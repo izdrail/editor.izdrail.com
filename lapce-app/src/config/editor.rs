@@ -154,6 +154,11 @@ pub struct EditorConfig {
     pub enable_inlay_hints: bool,
 
     #[field_names(
+        desc = "Show a colour square before CSS colour literals (#rgb, rgb(), hsl()) in stylesheets, templates and scripts"
+    )]
+    pub enable_color_swatches: bool,
+
+    #[field_names(
         desc = "Set the inlay hint font family. If empty, it uses the editor font family."
     )]
     pub inlay_hint_font_family: String,

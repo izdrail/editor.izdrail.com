@@ -46,6 +46,9 @@ Projects with a Prettier config and binary are formatted through it on save. See
 ### Auto-close tags
 Typing `>` after an opening tag in HTML, Twig, Blade and Vue files inserts the closing tag, and Enter after a Blade `@if`/`@foreach`/... adds the `@end...` line (`auto-close-tags` setting). See [docs/auto-close-tags.md](docs/auto-close-tags.md).
 
+### Colour swatches
+A colour square before `#rrggbb`, `rgb()` and `hsl()` literals in CSS, templates and scripts (`enable-color-swatches` setting). See [docs/color-swatches.md](docs/color-swatches.md).
+
 ### Rename Tag
 Palette command that renames the opening and closing tag of the element around the caret. See [docs/rename-tag.md](docs/rename-tag.md).
 

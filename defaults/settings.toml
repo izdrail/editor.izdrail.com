@@ -42,6 +42,7 @@ autosave-interval = 0
 format-on-autosave = true
 normalize-line-endings = true
 enable-inlay-hints = false
+enable-color-swatches = true
 inlay-hint-font-family = ""
 inlay-hint-font-size = 0
 enable-error-lens = true
