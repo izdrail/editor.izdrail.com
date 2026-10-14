@@ -11,6 +11,10 @@ pub struct ChatConfig {
         desc = "Save chat prompts and replies on this device. May contain private code; default off."
     )]
     pub save_history: bool,
+    #[field_names(
+        desc = "Optional hosted provider configurations. Disabled by default; agent transport not yet enabled."
+    )]
+    pub hosted_providers: Vec<crate::agent_protocol::ProviderConfig>,
     #[field_names(desc = "Backend: local (CPU Candle) or ollama (your server).")]
     pub backend: String,
     #[field_names(desc = "Curated local instruct model. Pick and download below.")]
@@ -27,6 +31,17 @@ impl Default for ChatConfig {
         Self {
             enabled: true,
             save_history: false,
+            hosted_providers: vec![
+                crate::agent_protocol::ProviderConfig::hosted(
+                    crate::agent_protocol::ProviderKind::Anthropic,
+                ),
+                crate::agent_protocol::ProviderConfig::hosted(
+                    crate::agent_protocol::ProviderKind::OpenAi,
+                ),
+                crate::agent_protocol::ProviderConfig::hosted(
+                    crate::agent_protocol::ProviderKind::OpenRouter,
+                ),
+            ],
             backend: "local".into(),
             local_model: "qwen-chat-1.5b".into(),
             endpoint: "https://ai.izdrail.com".into(),
