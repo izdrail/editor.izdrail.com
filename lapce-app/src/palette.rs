@@ -960,7 +960,12 @@ impl PaletteData {
 
     fn set_run_configs(&self, content: String) {
         let configs: Option<RunDebugConfigs> = toml::from_str(&content).ok();
-        if configs.is_none() {
+        let has_project_scripts = self
+            .workspace
+            .path
+            .as_deref()
+            .is_some_and(|root| !crate::project_scripts::discover(root).is_empty());
+        if configs.is_none() && !has_project_scripts {
             if let Some(path) = self.workspace.path.as_ref() {
                 let path = path.join(".lapce").join("run.toml");
                 self.common
@@ -971,8 +976,18 @@ impl PaletteData {
 
         let executed_run_configs = self.executed_run_configs.borrow();
         let mut items = Vec::new();
-        if let Some(configs) = configs.as_ref() {
-            for config in &configs.configs {
+        // Project scripts (package.json, composer.json, artisan) after the
+        // user's own run.toml entries; a run.toml entry of the same name wins.
+        let mut all_configs = configs.map(|c| c.configs).unwrap_or_default();
+        if let Some(root) = self.workspace.path.as_deref() {
+            for found in crate::project_scripts::discover(root) {
+                if !all_configs.iter().any(|c| c.name == found.name) {
+                    all_configs.push(found);
+                }
+            }
+        }
+        {
+            for config in &all_configs {
                 items.push((
                     executed_run_configs
                         .get(&(RunDebugMode::Run, config.name.clone())),

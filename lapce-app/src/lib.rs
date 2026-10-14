@@ -31,6 +31,7 @@ pub mod main_split;
 pub mod markdown;
 pub mod palette;
 pub mod panel;
+pub mod project_scripts;
 pub mod plugin;
 pub mod vsx_market;
 pub mod proxy;

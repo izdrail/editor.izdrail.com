@@ -34,6 +34,9 @@ Lapce-style WASI plugins run in the proxy's plugin catalog: they can provide lan
 ### Snippet packs
 Laravel, WordPress, Symfony and Twig snippets, offered by project type. See [docs/snippet-packs.md](docs/snippet-packs.md).
 
+### Project scripts
+Run and Debug lists `npm`/`composer`/`artisan` scripts from your project. See [docs/project-scripts.md](docs/project-scripts.md).
+
 ### Emmet
 Expand HTML abbreviations (`ul>li.item*3`) with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
 
