@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Static extraction of pinned permissive declaration sources. Never runs PHP.
-Usage: generate-web-metadata.py WP_STUBS TWIG_SOURCE SYMFONY_SOURCE
+Usage: generate-web-metadata.py WP_STUBS TWIG_SOURCE SYMFONY_SOURCE PHPSTORM_STUBS
 Not an AST parser: deliberately limited to the audited pinned declaration forms.
 """
 import hashlib, json, re, subprocess, sys
@@ -10,7 +10,23 @@ SOURCES = [
     ('wordpress', '6.8.3', 'abeb5a8b58fda7ac21f15ee596f302f2959a7114', 'https://github.com/php-stubs/wordpress-stubs', 'MIT'),
     ('twig', '3.21.1', '285123877d4dd97dd7c11842ac5fb7e86e60d81d', 'https://github.com/twigphp/Twig', 'BSD-3-Clause'),
     ('symfony', '7.3.0', '5babe8da13d379288ec141f9b5e325a1a6c39611', 'https://github.com/symfony/symfony', 'MIT'),
+    ('php', 'phpstorm-stubs@2049ca3', '2049ca3cfa1feabf52db074108fe776a5713cf02', 'https://github.com/JetBrains/phpstorm-stubs', 'Apache-2.0'),
 ]
+PHP_EXTENSIONS = ['Core', 'standard', 'date', 'json', 'mbstring', 'ctype', 'pcre', 'SPL', 'filter', 'hash', 'random', 'session', 'iconv', 'fileinfo', 'PDO', 'curl', 'openssl']
+
+def stub_declarations(text):
+    # phpstorm-stubs are un-namespaced: top-level (depth 0) functions and classes.
+    clean = re.sub(r'/\*.*?\*/|//[^\n]*|\#[^\[\n][^\n]*|\'(?:\\.|[^\'\\])*\'|"(?:\\.|[^"\\])*"', lambda m: ' ' * len(m[0]), text, flags=re.S)
+    depth = 0
+    for m in re.finditer(r'[{}]|^\s*(?:(?:final|abstract|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_]\w*)|\bfunction\s+([A-Za-z_]\w*)\s*\(', clean, re.M):
+        if m[0] == '{': depth += 1
+        elif m[0] == '}': depth -= 1
+        elif depth == 0:
+            start = m.start(); end = text.find('\n', start)
+            sig = text[start:end if end >= 0 else len(text)].strip().rstrip('{;').strip()
+            if m[3]: yield 'function', m[3], sig
+            else: yield 'class', m[2], sig
+
 
 def declarations(text):
     # Strip strings/comments while preserving offsets; then track class braces.
@@ -40,6 +56,18 @@ for source, directory in zip(SOURCES, sys.argv[1:]):
     if framework=='wordpress':
         for name,signature in declarations(read(path/'wordpress-stubs.php')):
             add(name,'function','wordpress/core',signature=signature,doc_url='https://developer.wordpress.org/reference/')
+    elif framework=='php':
+        seen=set()
+        for ext in PHP_EXTENSIONS:
+            for file in sorted((path/ext).glob('*.php')):
+                if file.name.startswith('_'): continue
+                for kind,name,signature in stub_declarations(read(file)):
+                    if (kind,name) in seen: continue
+                    seen.add((kind,name))
+                    if kind=='function':
+                        add(name,'function','php/'+ext,signature=signature,doc_url='https://www.php.net/manual/en/function.'+name.replace('_','-')+'.php')
+                    else:
+                        add(name,'class','php/'+ext,qualified_name=name,doc_url='https://www.php.net/manual/en/class.'+name.lower()+'.php')
     elif framework=='twig':
         text=read(path/'src/Extension/CoreExtension.php')
         for kind in ['Filter','Function','Test']:

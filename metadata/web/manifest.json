@@ -14521,5 +14521,182 @@
     "licence": "MIT",
     "url": "https://github.com/symfony/symfony",
     "version": "7.3.0"
+  },
+  {
+    "commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "framework": "php",
+    "inputs": [
+      {
+        "path": "Core/Core.php",
+        "sha256": "4873d7429937625c4ed292a2b4a92bde6f7a3b52c1d4d98604f31a19a32f9842"
+      },
+      {
+        "path": "Core/Core_c.php",
+        "sha256": "125e460f30f389cba8eabbb15a2d46c0dbc774a828d7c9c906b6ba2b23e9c66a"
+      },
+      {
+        "path": "Core/Core_d.php",
+        "sha256": "5d6d3b27844a1637c6528f99fc6593c86b6d8996e50403e6abc6c505c2a843a7"
+      },
+      {
+        "path": "PDO/PDO.php",
+        "sha256": "a6cb51066e42409d722762d7cea5d873886a5abce17b73d2cc7ecf1c9988e111"
+      },
+      {
+        "path": "SPL/SPL.php",
+        "sha256": "cacc884b1d08605694d74d70d459dabe692667f2de2e1ccbca4ca9fc8d04336c"
+      },
+      {
+        "path": "SPL/SPL_c1.php",
+        "sha256": "f2498071be9cfbfb67b2fa6f63961888a5f9fcd14d3cad6973604644fe12b1d1"
+      },
+      {
+        "path": "SPL/SPL_f.php",
+        "sha256": "b9332ef0ddf33859c85b7055ee6944cc289a83a35502c0ebf88213e9e72eaae5"
+      },
+      {
+        "path": "ctype/ctype.php",
+        "sha256": "3342e99938e724070f579b412ad80cd117ab535b3379bcf726c51f5545960564"
+      },
+      {
+        "path": "curl/CURLStringFile.php",
+        "sha256": "658a070e7b21ba10ba8e852edb0f0f7329514f7fa883f880ca629d5c08c663a2"
+      },
+      {
+        "path": "curl/curl.php",
+        "sha256": "ad5b6f65ad223d5cb94585f97a13000afad8bbcf9a1966b82d5f0be0a21f1db5"
+      },
+      {
+        "path": "curl/curl_d.php",
+        "sha256": "b1edee7bdbc4a51f06e5173d61aad38343c9f79ba6f74a2181297a806e1f887a"
+      },
+      {
+        "path": "date/date.php",
+        "sha256": "1df697c01e0a405a4608aa62b77c2b19c3cb6618debd521229ede0228228165b"
+      },
+      {
+        "path": "date/date_c.php",
+        "sha256": "777144b5ecadfcb4509f5b09039427f9d7a1a443a289591a2e651ecf155ee338"
+      },
+      {
+        "path": "date/date_d.php",
+        "sha256": "b74791c8b4ba5c709bec180f3561e816e0a796e1924c932873e629b0f6efa489"
+      },
+      {
+        "path": "fileinfo/fileinfo.php",
+        "sha256": "b8326bec21a5854126133767714e33586b0301842f9c97f0eb20b8552def667c"
+      },
+      {
+        "path": "filter/filter.php",
+        "sha256": "25bebb5b5af9dd98f63f4b8add2fc92bbcb7243b1fa51a84c5ddbe5b39969758"
+      },
+      {
+        "path": "filter/filter_c.php",
+        "sha256": "7f09ea982b1c31bcd57e93de9ed320b68813c4bebcf96e750c6851dd8c452ed1"
+      },
+      {
+        "path": "hash/hash.php",
+        "sha256": "bc907669f2e69aa01a8f0171ca20f0a80065318479c94d0e64af38e486a5f614"
+      },
+      {
+        "path": "iconv/iconv.php",
+        "sha256": "e16833de5aeb422ca57aedbb418aac0d469847a96f11487ea915855c7059fd18"
+      },
+      {
+        "path": "json/json.php",
+        "sha256": "43833848948d069e0573a5d8258aa9e88d792de9cab74a23d6423bca6aaf867e"
+      },
+      {
+        "path": "mbstring/mbstring.php",
+        "sha256": "e80182a8ca9a6678c2515e589bd020604118cf6e864a9a496ea7dfbb99db6654"
+      },
+      {
+        "path": "openssl/openssl.php",
+        "sha256": "e999a6b7002b7f65d44266db190444b7c464685a76602ba672f5aa9be0842281"
+      },
+      {
+        "path": "openssl/openssl_ns.php",
+        "sha256": "d9e4d4706f27880db71138942f693341025aa346df05d6da956a0b123fc615fd"
+      },
+      {
+        "path": "pcre/pcre.php",
+        "sha256": "bcd56a137e0edd91718b784b0042e3510f8a8f808f2ff6adc841658ea5b49db9"
+      },
+      {
+        "path": "random/random.php",
+        "sha256": "d4f50b6ef7a3234b4438ebef76062d44f01396ef7af4a8b13192789947dbd2e3"
+      },
+      {
+        "path": "session/SessionHandler.php",
+        "sha256": "fba061dfe027a861a48497208accd91df934af688ce757dc258cc3de408fd1fc"
+      },
+      {
+        "path": "session/session.php",
+        "sha256": "92106bb953b9c7d39823c7bfbf1081427bb1cf84e11ed97b6e3f2502b56490a1"
+      },
+      {
+        "path": "standard/basic.php",
+        "sha256": "610d395626ec103cef77e1a07ed6b7d0a8bd8d47c08e988bf7471c8196756409"
+      },
+      {
+        "path": "standard/password.php",
+        "sha256": "4cbfe89b0df26c537ce245b2a3201d3c659b8eb9781e41561585fd108ef62ce9"
+      },
+      {
+        "path": "standard/standard_0.php",
+        "sha256": "f32a07db2c6e13488c2e92084d1abfc0cfd7579cb49337e8688fcc4c887063b1"
+      },
+      {
+        "path": "standard/standard_1.php",
+        "sha256": "3331b25cd766a9a0ccfabb05dbbba3a4a1817b25842ea3de6e094fa18a37cd74"
+      },
+      {
+        "path": "standard/standard_10.php",
+        "sha256": "a61a2db3dd9c4902ed8e89121a7ead36dd1e6fa2eb4b76fa349b573c9550ab49"
+      },
+      {
+        "path": "standard/standard_2.php",
+        "sha256": "59c7ea181e3ff7e97efafd94ba752499e2491207e34b59f09cf6db9ca71dd832"
+      },
+      {
+        "path": "standard/standard_3.php",
+        "sha256": "06a1d8d67f89690b8622cc8ae68b3ca8e055e268fe4b6be0bec6723dc00731cd"
+      },
+      {
+        "path": "standard/standard_4.php",
+        "sha256": "44a72939f7deac214542af16ce6c109b8f7eb551e72fb5333283ad139407d60c"
+      },
+      {
+        "path": "standard/standard_5.php",
+        "sha256": "d00daf61b3590b94ef6edc245433b37e10b79a5781fdf5dfe4dc1ca86f0134b3"
+      },
+      {
+        "path": "standard/standard_6.php",
+        "sha256": "014afeb401ad6db7511df56a5d29b8dddd1ca2a5630824ab1825d8254320bcf5"
+      },
+      {
+        "path": "standard/standard_7.php",
+        "sha256": "39f6d61bc0ddf9d307b843c08a5303292a44eb49655ec1d95ce14cb72ff8ae0c"
+      },
+      {
+        "path": "standard/standard_8.php",
+        "sha256": "efc01fe4357097e79eda98838ec125009442610d773ea26b628c68bf4a4c4bbc"
+      },
+      {
+        "path": "standard/standard_9.php",
+        "sha256": "6977ce2dce7844983738add11c833b5d1ac400b66bfa3ed7fd9aaad7a258ffde"
+      },
+      {
+        "path": "standard/standard_defines.php",
+        "sha256": "3a304a36d36a1122c4138aebaa2da9440439292b0d4f7e0f5f09f8d6a35bc76c"
+      },
+      {
+        "path": "standard/streams.php",
+        "sha256": "202c346bcb7e8e561ae7606281f159705d330fd0f5aa93d2556a95a24a87dc67"
+      }
+    ],
+    "licence": "Apache-2.0",
+    "url": "https://github.com/JetBrains/phpstorm-stubs",
+    "version": "phpstorm-stubs@2049ca3"
   }
 ]

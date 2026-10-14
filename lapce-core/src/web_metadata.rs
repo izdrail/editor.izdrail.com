@@ -45,6 +45,8 @@ pub fn php_symbols(
     symbols()
         .iter()
         .filter(move |s| match s.framework.as_str() {
+            // PHP standard library (phpstorm-stubs): applies to every PHP file.
+            "php" => true,
             "wordpress" => {
                 profile.wordpress
                     && profile
@@ -99,7 +101,12 @@ mod tests {
         assert!(php_symbols(&sf).any(|s| s.name == "Command"));
         sf.packages
             .insert("symfony/console".into(), "v6.4.0".into());
-        assert_eq!(php_symbols(&sf).count(), 0);
+        assert_eq!(php_symbols(&sf).filter(|s| s.framework != "php").count(), 0);
+        let plain = ProjectProfile::default();
+        for name in ["strlen", "array_map", "json_encode", "mb_strlen", "DateTime", "Countable"] {
+            assert!(php_symbols(&plain).any(|s| s.name == name && s.framework == "php"), "{name}");
+        }
+        assert!(php_lists(&plain)[1].contains(" mb_strlen"));
         assert!(symbols().iter().any(|s| s.framework == "twig"
             && s.kind == "filter"
             && s.name == "upper"));

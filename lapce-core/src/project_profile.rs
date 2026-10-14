@@ -186,6 +186,7 @@ mod wordpress_tests {
         .unwrap();
         assert_eq!(
             crate::web_metadata::php_symbols(&detect(&root.join("functions.php")))
+                .filter(|s| s.framework != "php")
                 .count(),
             0
         );
