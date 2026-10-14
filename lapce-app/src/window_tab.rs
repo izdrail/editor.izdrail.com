@@ -2903,9 +2903,7 @@ impl WindowTabData {
     }
 
     fn show_message(&self, title: &str, message: &ShowMessageParams) {
-        self.messages.update(|messages| {
-            messages.push((title.to_string(), message.clone()));
-        });
+        push_unique_message(&self.messages, title, message);
     }
 
     pub fn update_code_lens_id(&self, view_id: Option<ViewId>) {
@@ -3005,5 +3003,74 @@ fn open_uri(path: &Path) {
         Err(e) => {
             error!("failed to open active file: {path:?}, error: {e}");
         }
+    }
+}
+
+/// Maximum number of toast messages kept on screen at once.
+const MAX_TOASTS: usize = 3;
+
+/// Add a toast unless an identical one (same title, text and severity) is
+/// already showing, and keep only the newest `MAX_TOASTS`. Language servers
+/// such as phpactor repeat `window/showMessage` on every document event, which
+/// otherwise stacks dozens of identical cards. Blank messages are dropped.
+fn push_unique_message(
+    messages: &RwSignal<Vec<(String, ShowMessageParams)>>,
+    title: &str,
+    message: &ShowMessageParams,
+) {
+    if message.message.trim().is_empty() {
+        return;
+    }
+    messages.update(|messages| {
+        add_toast(messages, title, message);
+    });
+}
+
+fn add_toast(
+    messages: &mut Vec<(String, ShowMessageParams)>,
+    title: &str,
+    message: &ShowMessageParams,
+) {
+    if messages.iter().any(|(t, m)| {
+        t == title && m.typ == message.typ && m.message == message.message
+    }) {
+        return;
+    }
+    messages.push((title.to_string(), message.clone()));
+    if messages.len() > MAX_TOASTS {
+        let excess = messages.len() - MAX_TOASTS;
+        messages.drain(..excess);
+    }
+}
+
+#[cfg(test)]
+mod toast_tests {
+    use super::*;
+    use lsp_types::MessageType;
+
+    fn m(text: &str) -> ShowMessageParams {
+        ShowMessageParams {
+            typ: MessageType::WARNING,
+            message: text.into(),
+        }
+    }
+
+    #[test]
+    fn duplicates_are_collapsed() {
+        let mut v = Vec::new();
+        for _ in 0..10 {
+            add_toast(&mut v, "php", &m("same"));
+        }
+        assert_eq!(v.len(), 1);
+    }
+
+    #[test]
+    fn stack_is_capped() {
+        let mut v = Vec::new();
+        for i in 0..10 {
+            add_toast(&mut v, "php", &m(&format!("msg {i}")));
+        }
+        assert_eq!(v.len(), MAX_TOASTS);
+        assert_eq!(v.last().unwrap().1.message, "msg 9");
     }
 }
