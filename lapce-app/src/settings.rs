@@ -515,8 +515,17 @@ pub fn settings_view(
                     .request_focus(|| {})
             })
             .style(|s| s.padding_horiz(50.0).padding_vert(20.0)),
-            ai_download_view(ai_common.clone()),
-            curated_models_view(ai_common),
+            // The model list is long (one block per curated model). It lives in
+            // its own fixed-height scroll so it can never push the settings
+            // content past the bottom of the editor area, over the panels.
+            scroll(
+                stack((
+                    ai_download_view(ai_common.clone()),
+                    curated_models_view(ai_common),
+                ))
+                .style(|s| s.flex_col().width_pct(100.0)),
+            )
+            .style(|s| s.width_pct(100.0).height(170.0).flex_shrink(0.0)),
             container({
                 scroll({
                     dyn_stack(

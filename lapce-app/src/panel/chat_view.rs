@@ -7,6 +7,7 @@ use crate::{
 };
 use floem::{
     IntoView, View,
+    style::CursorStyle,
     reactive::{
         RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
     },
@@ -96,6 +97,7 @@ fn send(tab: &WindowTabData) {
     }
     let prompt = data.input.get_untracked().trim().to_string();
     if prompt.is_empty() {
+        data.error.set("Type a message first.".into());
         return;
     }
     let ctx = context(tab);
@@ -228,7 +230,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         clear.error.set(String::new());
                     }
                 })
-                .style(|s| s.padding(6.0)),
+                .style(move |s| {
+                    s.padding(6.0)
+                        .margin_left(8.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
+                }),
         )),
         label(move || {
             let c = config.get();
@@ -333,12 +343,23 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .style(|s| s.flex_grow(1.0).min_width(0.0)),
             label(|| "Send".to_string())
                 .on_click_stop(move |_| send(&click_tab))
-                .style(|s| s.padding(8.0)),
+                .style(move |s| {
+                    s.padding(8.0)
+                        .margin_left(6.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
+                }),
         ))
         .style(|s| s.width_full().padding_bottom(8.0)),
     ))
     .style(move |s| {
-        s.size_full()
+        // Absolute and sized to the panel, like the other panels, so the
+        // chat can neither overflow its slot nor sit under a sibling.
+        s.absolute()
+            .size_pct(100.0, 100.0)
             .padding(8.0)
             .gap(8.0)
             .background(config.get().color(LapceColor::PANEL_BACKGROUND))
