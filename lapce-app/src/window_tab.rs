@@ -1210,6 +1210,9 @@ impl WindowTabData {
             PaletteTests => {
                 self.palette.run(PaletteKind::Tests);
             }
+            PaletteMigrations => {
+                self.palette.run(PaletteKind::Migrations);
+            }
             PaletteSCMReferences => {
                 self.palette.run(PaletteKind::SCMReferences);
             }

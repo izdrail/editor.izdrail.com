@@ -423,6 +423,9 @@ impl PaletteData {
             PaletteKind::Tests => {
                 self.set_route_items(crate::test_index::discover);
             }
+            PaletteKind::Migrations => {
+                self.set_route_items(crate::migration_index::discover);
+            }
             PaletteKind::Routes => {
                 self.get_routes();
             }
