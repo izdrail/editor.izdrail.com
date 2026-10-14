@@ -8,8 +8,10 @@ No keybinding is assigned; add one in `keymaps.toml` for `run_test_at_cursor` / 
   else `vendor/bin/phpunit`, run from the workspace root. Nothing is run unless you pick the command.
 - Test at cursor: the enclosing PHPUnit method named `test*` or marked `#[Test]` / `@test`
   (`--filter testName`, which also matches names that start with the same text and data-set variants),
-  or the enclosing top-level Pest `it('...')` / `test('...')` (`--filter` with its description; regex
-  characters in it match any character). Between tests, in a helper method, or at class level, the
+  or the enclosing Pest `it('...')` / `test('...')`, including ones nested in `describe()` blocks
+  (`--filter` with its description; regex characters in it match any character). With the cursor on a
+  `describe('Group', ...)` line or between its tests, the filter is the group description, which
+  Pest includes in the names of the tests inside it. Between tests, in a helper method, or at class level, the
   whole file runs instead.
 - Save first: the runner reads the file from disk, while the test under the cursor is found in the
   open buffer. Buffers over 1 MB run as a whole file.

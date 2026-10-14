@@ -65,24 +65,57 @@ fn phpunit_method(lines: &[&str], line: usize) -> Option<String> {
     }
 }
 
-/// Description of the top-level Pest `it`/`test` enclosing `line`.
+/// `(is_describe, description)` when `l` opens a Pest `it`/`test`/`describe`.
+fn pest_opener(l: &str) -> Option<(bool, String)> {
+    let t = l.trim_start();
+    for (call, describe) in [("it", false), ("test", false), ("describe", true)] {
+        if let Some(rest) = t.strip_prefix(call).and_then(|r| r.trim_start().strip_prefix('(')) {
+            let rest = rest.trim_start();
+            let q = rest.chars().next().filter(|c| *c == '\'' || *c == '"')?;
+            let body = &rest[1..];
+            let d = body[..body.find(q)?].trim();
+            return (!d.is_empty()).then(|| (describe, d.to_string()));
+        }
+    }
+    None
+}
+
+fn indent_of(l: &str) -> usize {
+    l.len() - l.trim_start().len()
+}
+
+/// Parentheses opened minus closed on a line (quotes ignored; only used to
+/// spot one-line tests like `it('x', fn () => 1);`).
+fn paren_balance(l: &str) -> i32 {
+    l.chars().fold(0, |n, c| match c {
+        '(' => n + 1,
+        ')' => n - 1,
+        _ => n,
+    })
+}
+
+/// Description of the Pest `it`/`test` (or `describe` block) enclosing `line`.
+/// Closing lines (`});`) and one-line tests above the cursor cancel the
+/// opener at their own indent, so the cursor between tests finds the
+/// surrounding `describe`, or nothing at the top level.
 fn pest_description(lines: &[&str], line: usize) -> Option<String> {
     let mut i = line.min(lines.len().saturating_sub(1));
+    let mut closed: Vec<usize> = Vec::new();
     loop {
         let l = lines[i];
-        for call in ["it", "test"] {
-            if let Some(rest) = l.strip_prefix(call).and_then(|r| r.trim_start().strip_prefix('(')) {
-                let rest = rest.trim_start();
-                let q = rest.chars().next().filter(|c| *c == '\'' || *c == '"')?;
-                let body = &rest[1..];
-                let end = body.find(q)?;
-                let d = body[..end].trim();
-                return (!d.is_empty()).then(|| d.to_string());
+        let above = i < line;
+        if let Some((_, d)) = pest_opener(l) {
+            let k = indent_of(l);
+            if above && paren_balance(l) <= 0 {
+                // A complete one-line test: not enclosing.
+            } else if above && closed.contains(&k) {
+                let pos = closed.iter().position(|c| *c == k).unwrap();
+                closed.remove(pos);
+            } else {
+                return Some(d);
             }
-        }
-        // A top-level closing line above the cursor means we are between tests.
-        if i < line && (l.starts_with("});") || l.starts_with('}') || l.starts_with("describe(")) {
-            return None;
+        } else if above && l.trim_start().starts_with('}') {
+            closed.push(indent_of(l));
         }
         if i == 0 {
             return None;
@@ -199,6 +232,39 @@ class UserTest extends TestCase
         assert_eq!(pest_description(&lines, 7).as_deref(), Some("lists"));
         assert_eq!(pest_description(&lines, 5), None); // between tests
         assert_eq!(filter_text("creates a user (admin)"), "creates a user .admin.");
+    }
+
+    #[test]
+    fn pest_describe_blocks_and_nested_tests() {
+        let t = "<?php
+describe('Auth', function () {
+    it('logs in', function () {
+        expect(1)->toBe(1);
+    });
+
+    it('is quick', fn () => 1);
+
+    test('logs out', function () {
+        //
+    });
+});
+
+it('top level', function () {
+});
+";
+        let lines: Vec<&str> = t.lines().collect();
+        let d = |n: usize| pest_description(&lines, n);
+        assert_eq!(d(3).as_deref(), Some("logs in")); // inside a nested test
+        assert_eq!(d(2).as_deref(), Some("logs in"));
+        assert_eq!(d(4).as_deref(), Some("logs in")); // its closing line
+        assert_eq!(d(5).as_deref(), Some("Auth")); // blank between nested tests
+        assert_eq!(d(6).as_deref(), Some("is quick")); // one-line test
+        assert_eq!(d(7).as_deref(), Some("Auth")); // after a one-line test
+        assert_eq!(d(9).as_deref(), Some("logs out"));
+        assert_eq!(d(1).as_deref(), Some("Auth")); // on the describe line
+        assert_eq!(d(11).as_deref(), Some("Auth")); // describe closing line
+        assert_eq!(d(12), None); // between top-level blocks
+        assert_eq!(d(14).as_deref(), Some("top level"));
     }
 
     fn project(files: &[&str]) -> tempfile::TempDir {
