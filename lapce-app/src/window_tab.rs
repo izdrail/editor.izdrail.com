@@ -1508,6 +1508,29 @@ impl WindowTabData {
                     }
                 }
             }
+            RefreshArtisanCommands => {
+                let Some(root) = self.workspace.path.clone() else { return };
+                let messages = self.messages;
+                let toast = move |typ: lsp_types::MessageType, message: String| {
+                    push_unique_message(
+                        &messages,
+                        "Artisan",
+                        &ShowMessageParams { typ, message },
+                    );
+                };
+                let send = create_ext_action(self.scope, move |r: Result<usize, String>| {
+                    match r {
+                        Ok(n) => toast(
+                            lsp_types::MessageType::INFO,
+                            format!("Loaded {n} artisan commands. They are in Run and Debug until you close the editor."),
+                        ),
+                        Err(e) => toast(lsp_types::MessageType::WARNING, format!("Refresh failed: {e}.")),
+                    }
+                });
+                std::thread::spawn(move || {
+                    send(crate::project_scripts::refresh_artisan(&root, "php"));
+                });
+            }
             RunTestAtCursor | RunTestFile => {
                 let at_cursor = matches!(cmd, RunTestAtCursor);
                 self.run_php_test(at_cursor);

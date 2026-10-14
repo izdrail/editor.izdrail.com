@@ -5,7 +5,14 @@
 //! Only `package.json`, `composer.json`, lockfiles, `artisan` and
 //! `bin/console` in the workspace root are looked at (size bounded). Nothing
 //! is executed.
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    io::Read,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 use lapce_rpc::dap_types::{ConfigSource, DapId, RunDebugConfig};
 use serde_json::Value;
@@ -189,7 +196,100 @@ fn artisan_commands(root: &Path) -> Vec<String> {
             names.push(name);
         }
     }
+    for name in refreshed_artisan(root) {
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
     names
+}
+
+const REFRESH_TIMEOUT: Duration = Duration::from_secs(20);
+const MAX_REFRESH_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_REFRESHED: usize = 600;
+
+fn refreshed() -> &'static Mutex<HashMap<PathBuf, Vec<String>>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, Vec<String>>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Commands loaded by an explicit refresh in this session (empty before one).
+fn refreshed_artisan(root: &Path) -> Vec<String> {
+    refreshed()
+        .lock()
+        .ok()
+        .and_then(|c| c.get(root).cloned())
+        .unwrap_or_default()
+}
+
+/// Command names from `php artisan list --format=json`.
+fn parse_artisan_list(json: &str) -> Vec<String> {
+    let Ok(doc) = serde_json::from_str::<Value>(json) else {
+        return Vec::new();
+    };
+    doc.get("commands")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c.get("name").and_then(Value::as_str))
+        .filter(|n| !matches!(*n, "help" | "list" | "_complete" | "completion"))
+        .filter_map(signature_name)
+        .take(MAX_REFRESHED)
+        .collect()
+}
+
+/// Runs `<php> artisan list --format=json` in `root` and caches the command
+/// names for this session. This EXECUTES the project's PHP (service providers
+/// boot), so it is only called from an explicit user command, never from
+/// palette discovery. Returns the number of commands found.
+pub fn refresh_artisan(root: &Path, php: &str) -> Result<usize, String> {
+    if !root.join("artisan").is_file() {
+        return Err("no artisan file in the workspace root".into());
+    }
+    let mut child = Command::new(php)
+        .args(["artisan", "list", "--format=json", "--no-interaction"])
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("could not start {php}: {e}"))?;
+    let mut stdout = child.stdout.take().ok_or("no output pipe")?;
+    let reader = std::thread::spawn(move || {
+        let mut out = String::new();
+        let _ = (&mut stdout).take(MAX_REFRESH_BYTES + 1).read_to_string(&mut out);
+        out
+    });
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) if start.elapsed() < REFRESH_TIMEOUT => {
+                std::thread::sleep(Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("php artisan list timed out after 20 seconds".into());
+            }
+        }
+    };
+    let out = reader.join().unwrap_or_default();
+    if !status.success() {
+        return Err(format!("php artisan list failed ({status})"));
+    }
+    if out.len() as u64 > MAX_REFRESH_BYTES {
+        return Err("php artisan list produced too much output".into());
+    }
+    let names = parse_artisan_list(&out);
+    if names.is_empty() {
+        return Err("php artisan list returned no commands".into());
+    }
+    let n = names.len();
+    if let Ok(mut c) = refreshed().lock() {
+        c.insert(root.to_path_buf(), names);
+    }
+    Ok(n)
 }
 
 /// Run configurations for the project at `root`, in a stable order.
@@ -349,5 +449,41 @@ mod tests {
         assert_eq!(signatures_in("$signature='a b'"), vec!["a".to_string()]);
         assert!(signature_name("").is_none());
         assert!(signature_name("bad;name x").is_none());
+    }
+
+    #[test]
+    fn parses_artisan_list_json() {
+        let json = r#"{"application":{"name":"Laravel"},"commands":[
+            {"name":"about"},{"name":"help"},{"name":"list"},{"name":"_complete"},
+            {"name":"horizon:status"},{"name":"bad name;x"}],"namespaces":[]}"#;
+        assert_eq!(parse_artisan_list(json), vec!["about", "horizon:status", "bad"]);
+        assert!(parse_artisan_list("not json").is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refresh_runs_the_given_php_and_merges_into_the_list() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "artisan", "<?php");
+        let fake = dir.path().join("fakephp");
+        std::fs::write(&fake, "#!/bin/sh\n[ \"$1\" = artisan ] && [ \"$2\" = list ] || exit 3\necho '{\"commands\":[{\"name\":\"horizon:status\"},{\"name\":\"serve\"}]}'\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Before a refresh, package commands are not listed and nothing runs.
+        let before: Vec<_> = discover(dir.path()).into_iter().map(|c| c.name).collect();
+        assert!(!before.contains(&"artisan: horizon:status".to_string()));
+        assert_eq!(refresh_artisan(dir.path(), fake.to_str().unwrap()), Ok(2));
+        let after: Vec<_> = discover(dir.path()).into_iter().map(|c| c.name).collect();
+        assert!(after.contains(&"artisan: horizon:status".to_string()));
+        assert_eq!(after.iter().filter(|n| *n == "artisan: serve").count(), 1);
+        // Failures leave the cache alone and report an error.
+        let bad = dir.path().join("badphp");
+        std::fs::write(&bad, "#!/bin/sh\nexit 1\n").unwrap();
+        std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(refresh_artisan(dir.path(), bad.to_str().unwrap()).is_err());
+        assert!(refresh_artisan(dir.path(), "/nonexistent/php").is_err());
+        let other = tempfile::tempdir().unwrap();
+        assert!(refresh_artisan(other.path(), "php").is_err());
+        assert!(discover(dir.path()).iter().any(|c| c.name == "artisan: horizon:status"));
     }
 }

@@ -24,3 +24,13 @@ Composer projects also list `composer: install`, `update`, `dump-autoload`, `out
 (a script of the same name in `composer.json` replaces the built-in). When `bin/console` exists,
 Symfony projects list `symfony: <command>` for cache:clear, debug:router/container/config,
 lint:twig/yaml, Doctrine migrations and schema validate, messenger:consume and make:controller/entity/migration.
+
+## Refresh Artisan Commands
+
+The command palette entry "Refresh Artisan Commands (runs php artisan list)" runs
+`php artisan list --format=json` once in the workspace root (20 second limit, 4 MB output limit) and
+adds every command it reports, including package commands such as `horizon:status`, to the
+`artisan: ...` entries. This executes the project's PHP (service providers boot), so it only happens
+when you pick that command; opening the palette never runs PHP. `php` must be on `PATH`. The result is
+kept in memory for this editor session; run the command again after adding packages. A toast reports
+the count or the failure.

@@ -225,6 +225,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Run Test at Cursor")]
     RunTestAtCursor,
 
+    #[strum(serialize = "refresh_artisan_commands")]
+    #[strum(message = "Refresh Artisan Commands (runs php artisan list)")]
+    RefreshArtisanCommands,
+
     #[strum(serialize = "run_test_file")]
     #[strum(message = "Run Test File")]
     RunTestFile,
