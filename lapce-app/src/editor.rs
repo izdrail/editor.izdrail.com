@@ -1383,6 +1383,21 @@ impl EditorData {
                 });
                 return;
             }
+            // Laravel config('a.b') and __('file.key') / __('Text').
+            if let Some((target, line)) =
+                crate::laravel_keys::resolve(root, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: Some(EditorPosition::Line(line)),
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
         }
         let (start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
