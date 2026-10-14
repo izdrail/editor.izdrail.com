@@ -2195,15 +2195,34 @@ impl EditorData {
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);
                 let indent = leading_indent(&line_text).to_string();
+                // `.blade.php` is PHP for imported snippets but has its own bundled pack.
+                let snippet_lang = lang
+                    .map(|l| crate::builtin_snippets::snippet_language(path, l));
+                // Snippet bodies for Blade start with `@` or `<`; replace the one typed.
+                let range_start = if start_offset > 0
+                    && crate::builtin_snippets::replaces_leading_char(
+                        snippet_lang.unwrap_or(""),
+                        buffer
+                            .slice_to_cow(start_offset - 1..start_offset)
+                            .chars()
+                            .next(),
+                    ) {
+                    start_offset - 1
+                } else {
+                    start_offset
+                };
                 let range = lsp_types::Range {
-                    start: buffer.offset_to_position(start_offset),
+                    start: buffer.offset_to_position(range_start),
                     end: buffer.offset_to_position(offset),
                 };
                 let snippets = match lang {
                     Some(lang) => {
                         let loaded = lapce_core::textmate::loaded();
                         let mut all = loaded.snippets_for(lang);
-                        all.extend(crate::builtin_snippets::for_context(lang, &project));
+                        all.extend(crate::builtin_snippets::for_context(
+                            snippet_lang.unwrap_or(lang),
+                            &project,
+                        ));
                         snippet_items(&all, &indent, range)
                     }
                     None => Vec::new(),

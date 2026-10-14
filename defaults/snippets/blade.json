@@ -1,0 +1,442 @@
+{
+ "if": {
+  "prefix": "if",
+  "body": [
+   "@if (${1:condition})",
+   "\t$0",
+   "@endif"
+  ],
+  "description": "Blade @if"
+ },
+ "ifelse": {
+  "prefix": "ifelse",
+  "body": [
+   "@if (${1:condition})",
+   "\t$2",
+   "@else",
+   "\t$0",
+   "@endif"
+  ],
+  "description": "Blade @if / @else"
+ },
+ "elseif": {
+  "prefix": "elseif",
+  "body": [
+   "@elseif (${1:condition})",
+   "\t$0"
+  ],
+  "description": "Blade @elseif"
+ },
+ "unless": {
+  "prefix": "unless",
+  "body": [
+   "@unless (${1:condition})",
+   "\t$0",
+   "@endunless"
+  ],
+  "description": "Blade @unless"
+ },
+ "isset": {
+  "prefix": "isset",
+  "body": [
+   "@isset(${1:\\$var})",
+   "\t$0",
+   "@endisset"
+  ],
+  "description": "Blade @isset"
+ },
+ "empty": {
+  "prefix": "empty",
+  "body": [
+   "@empty(${1:\\$var})",
+   "\t$0",
+   "@endempty"
+  ],
+  "description": "Blade @empty"
+ },
+ "foreach": {
+  "prefix": "foreach",
+  "body": [
+   "@foreach (${1:\\$items} as ${2:\\$item})",
+   "\t$0",
+   "@endforeach"
+  ],
+  "description": "Blade @foreach"
+ },
+ "forelse": {
+  "prefix": "forelse",
+  "body": [
+   "@forelse (${1:\\$items} as ${2:\\$item})",
+   "\t$3",
+   "@empty",
+   "\t$0",
+   "@endforelse"
+  ],
+  "description": "Blade @forelse with empty case"
+ },
+ "for": {
+  "prefix": "for",
+  "body": [
+   "@for (${1:\\$i = 0}; ${2:\\$i < 10}; ${3:\\$i++})",
+   "\t$0",
+   "@endfor"
+  ],
+  "description": "Blade @for"
+ },
+ "while": {
+  "prefix": "while",
+  "body": [
+   "@while (${1:condition})",
+   "\t$0",
+   "@endwhile"
+  ],
+  "description": "Blade @while"
+ },
+ "switch": {
+  "prefix": "switch",
+  "body": [
+   "@switch(${1:\\$value})",
+   "\t@case(${2:1})",
+   "\t\t$3",
+   "\t\t@break",
+   "\t@default",
+   "\t\t$0",
+   "@endswitch"
+  ],
+  "description": "Blade @switch"
+ },
+ "auth": {
+  "prefix": "auth",
+  "body": [
+   "@auth",
+   "\t$0",
+   "@endauth"
+  ],
+  "description": "Blade @auth"
+ },
+ "guest": {
+  "prefix": "guest",
+  "body": [
+   "@guest",
+   "\t$0",
+   "@endguest"
+  ],
+  "description": "Blade @guest"
+ },
+ "can": {
+  "prefix": "can",
+  "body": [
+   "@can('${1:update}', ${2:\\$post})",
+   "\t$0",
+   "@endcan"
+  ],
+  "description": "Blade @can"
+ },
+ "env": {
+  "prefix": "env",
+  "body": [
+   "@env('${1:local}')",
+   "\t$0",
+   "@endenv"
+  ],
+  "description": "Blade @env"
+ },
+ "production": {
+  "prefix": "production",
+  "body": [
+   "@production",
+   "\t$0",
+   "@endproduction"
+  ],
+  "description": "Blade @production"
+ },
+ "php": {
+  "prefix": "php",
+  "body": [
+   "@php",
+   "\t$0",
+   "@endphp"
+  ],
+  "description": "Blade @php block"
+ },
+ "once": {
+  "prefix": "once",
+  "body": [
+   "@once",
+   "\t$0",
+   "@endonce"
+  ],
+  "description": "Blade @once"
+ },
+ "extends": {
+  "prefix": "extends",
+  "body": [
+   "@extends('${1:layouts.app}')"
+  ],
+  "description": "Blade @extends"
+ },
+ "section": {
+  "prefix": "section",
+  "body": [
+   "@section('${1:content}')",
+   "\t$0",
+   "@endsection"
+  ],
+  "description": "Blade @section"
+ },
+ "yield": {
+  "prefix": "yield",
+  "body": [
+   "@yield('${1:content}')"
+  ],
+  "description": "Blade @yield"
+ },
+ "include": {
+  "prefix": "include",
+  "body": [
+   "@include('${1:partials.name}')"
+  ],
+  "description": "Blade @include"
+ },
+ "includeif": {
+  "prefix": "includeif",
+  "body": [
+   "@includeIf('${1:partials.name}')"
+  ],
+  "description": "Blade @includeIf"
+ },
+ "includewhen": {
+  "prefix": "includewhen",
+  "body": [
+   "@includeWhen(${1:condition}, '${2:partials.name}')"
+  ],
+  "description": "Blade @includeWhen"
+ },
+ "push": {
+  "prefix": "push",
+  "body": [
+   "@push('${1:scripts}')",
+   "\t$0",
+   "@endpush"
+  ],
+  "description": "Blade @push"
+ },
+ "stack": {
+  "prefix": "stack",
+  "body": [
+   "@stack('${1:scripts}')"
+  ],
+  "description": "Blade @stack"
+ },
+ "props": {
+  "prefix": "props",
+  "body": [
+   "@props(['${1:type}' => '${2:info}'])"
+  ],
+  "description": "Blade component @props"
+ },
+ "component": {
+  "prefix": "component",
+  "body": [
+   "@component('${1:components.alert}')",
+   "\t$0",
+   "@endcomponent"
+  ],
+  "description": "Blade @component"
+ },
+ "slot": {
+  "prefix": "slot",
+  "body": [
+   "@slot('${1:title}')",
+   "\t$0",
+   "@endslot"
+  ],
+  "description": "Blade @slot"
+ },
+ "csrf": {
+  "prefix": "csrf",
+  "body": [
+   "@csrf"
+  ],
+  "description": "CSRF token field"
+ },
+ "method": {
+  "prefix": "method",
+  "body": [
+   "@method('${1:PUT}')"
+  ],
+  "description": "Method spoofing field"
+ },
+ "error": {
+  "prefix": "error",
+  "body": [
+   "@error('${1:field}')",
+   "\t<span class=\"error\">{{ \\$message }}</span>",
+   "@enderror"
+  ],
+  "description": "Validation error for a field"
+ },
+ "class": {
+  "prefix": "class",
+  "body": [
+   "@class([",
+   "\t'${1:p-4}',",
+   "\t'${2:font-bold}' => ${3:\\$active},",
+   "])"
+  ],
+  "description": "Conditional classes"
+ },
+ "json": {
+  "prefix": "json",
+  "body": [
+   "@json(${1:\\$data})"
+  ],
+  "description": "Blade @json"
+ },
+ "vite": {
+  "prefix": "vite",
+  "body": [
+   "@vite(['resources/css/app.css', 'resources/js/app.js'])"
+  ],
+  "description": "Vite assets"
+ },
+ "lang": {
+  "prefix": "lang",
+  "body": [
+   "@lang('${1:messages.key}')"
+  ],
+  "description": "Translation"
+ },
+ "echo": {
+  "prefix": "echo",
+  "body": [
+   "{{ ${1:\\$var} }}"
+  ],
+  "description": "Escaped output"
+ },
+ "raw": {
+  "prefix": "raw",
+  "body": [
+   "{!! ${1:\\$html} !!}"
+  ],
+  "description": "Unescaped output"
+ },
+ "comment": {
+  "prefix": "comment",
+  "body": [
+   "{{-- ${1:comment} --}}"
+  ],
+  "description": "Blade comment"
+ },
+ "xcomponent": {
+  "prefix": "x-",
+  "body": [
+   "<x-${1:name}${2: attr=\"value\"} />"
+  ],
+  "description": "Blade component tag"
+ },
+ "xslot": {
+  "prefix": "x-slot",
+  "body": [
+   "<x-slot:${1:name}>",
+   "\t$0",
+   "</x-slot>"
+  ],
+  "description": "Named component slot"
+ },
+ "livewire": {
+  "prefix": "livewire",
+  "body": [
+   "<livewire:${1:component-name} />"
+  ],
+  "description": "Livewire component tag"
+ },
+ "atlivewire": {
+  "prefix": "atlivewire",
+  "body": [
+   "@livewire('${1:component-name}')"
+  ],
+  "description": "Livewire @livewire directive"
+ },
+ "livewire-styles": {
+  "prefix": "livewire-assets",
+  "body": [
+   "@livewireStyles",
+   "$0",
+   "@livewireScripts"
+  ],
+  "description": "Livewire styles and scripts"
+ },
+ "wire-click": {
+  "prefix": "wire-click",
+  "body": [
+   "wire:click=\"${1:method}\""
+  ],
+  "description": "Livewire click action"
+ },
+ "wire-model": {
+  "prefix": "wire-model",
+  "body": [
+   "wire:model=\"${1:property}\""
+  ],
+  "description": "Livewire model binding"
+ },
+ "wire-model-live": {
+  "prefix": "wire-model-live",
+  "body": [
+   "wire:model.live=\"${1:property}\""
+  ],
+  "description": "Livewire live model binding (v3)"
+ },
+ "wire-model-blur": {
+  "prefix": "wire-model-blur",
+  "body": [
+   "wire:model.blur=\"${1:property}\""
+  ],
+  "description": "Livewire blur model binding (v3)"
+ },
+ "wire-submit": {
+  "prefix": "wire-submit",
+  "body": [
+   "wire:submit=\"${1:save}\""
+  ],
+  "description": "Livewire form submit (v3)"
+ },
+ "wire-submit-prevent": {
+  "prefix": "wire-submit-prevent",
+  "body": [
+   "wire:submit.prevent=\"${1:save}\""
+  ],
+  "description": "Livewire form submit (v2)"
+ },
+ "wire-loading": {
+  "prefix": "wire-loading",
+  "body": [
+   "<div wire:loading${1: wire:target=\"${2:method}\"}>",
+   "\t$0",
+   "</div>"
+  ],
+  "description": "Livewire loading state"
+ },
+ "wire-key": {
+  "prefix": "wire-key",
+  "body": [
+   "wire:key=\"${1:item-\\$id}\""
+  ],
+  "description": "Livewire key for loops"
+ },
+ "wire-poll": {
+  "prefix": "wire-poll",
+  "body": [
+   "wire:poll.${1:5s}"
+  ],
+  "description": "Livewire polling"
+ },
+ "entangle": {
+  "prefix": "entangle",
+  "body": [
+   "@entangle('${1:property}')"
+  ],
+  "description": "Livewire/Alpine entangle"
+ }
+}

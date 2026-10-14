@@ -78,5 +78,182 @@
    "{{ '${1:key}'|trans }}"
   ],
   "description": "Translation filter"
+ },
+ "elsefor": {
+  "prefix": "forelse",
+  "body": [
+   "{% for ${1:item} in ${2:items} %}",
+   "\t$3",
+   "{% else %}",
+   "\t$0",
+   "{% endfor %}"
+  ],
+  "description": "Twig for / else"
+ },
+ "macro": {
+  "prefix": "macro",
+  "body": [
+   "{% macro ${1:name}(${2:args}) %}",
+   "\t$0",
+   "{% endmacro %}"
+  ],
+  "description": "Twig macro"
+ },
+ "import": {
+  "prefix": "import",
+  "body": [
+   "{% import '${1:macros.html.twig}' as ${2:macros} %}"
+  ],
+  "description": "Twig import"
+ },
+ "from": {
+  "prefix": "from",
+  "body": [
+   "{% from '${1:macros.html.twig}' import ${2:name} %}"
+  ],
+  "description": "Twig from import"
+ },
+ "embed": {
+  "prefix": "embed",
+  "body": [
+   "{% embed '${1:base.html.twig}' %}",
+   "\t{% block ${2:body} %}$0{% endblock %}",
+   "{% endembed %}"
+  ],
+  "description": "Twig embed"
+ },
+ "with": {
+  "prefix": "with",
+  "body": [
+   "{% with {${1:key}: ${2:value}} %}",
+   "\t$0",
+   "{% endwith %}"
+  ],
+  "description": "Twig with"
+ },
+ "apply": {
+  "prefix": "apply",
+  "body": [
+   "{% apply ${1:upper} %}",
+   "\t$0",
+   "{% endapply %}"
+  ],
+  "description": "Twig apply filter"
+ },
+ "autoescape": {
+  "prefix": "autoescape",
+  "body": [
+   "{% autoescape '${1:html}' %}",
+   "\t$0",
+   "{% endautoescape %}"
+  ],
+  "description": "Twig autoescape"
+ },
+ "includewith": {
+  "prefix": "includewith",
+  "body": [
+   "{% include '${1:partial.html.twig}' with {${2:key}: ${3:value}} only %}"
+  ],
+  "description": "Twig include with variables"
+ },
+ "comment": {
+  "prefix": "comment",
+  "body": [
+   "{# ${1:comment} #}"
+  ],
+  "description": "Twig comment"
+ },
+ "echo": {
+  "prefix": "echo",
+  "body": [
+   "{{ ${1:variable} }}"
+  ],
+  "description": "Twig output"
+ },
+ "pathparams": {
+  "prefix": "pathp",
+  "body": [
+   "{{ path('${1:route_name}', {${2:id}: ${3:entity.id}}) }}"
+  ],
+  "description": "Twig path with parameters"
+ },
+ "url": {
+  "prefix": "url",
+  "body": [
+   "{{ url('${1:route_name}') }}"
+  ],
+  "description": "Twig absolute url"
+ },
+ "dump": {
+  "prefix": "dump",
+  "body": [
+   "{{ dump(${1:variable}) }}"
+  ],
+  "description": "Twig dump"
+ },
+ "form": {
+  "prefix": "form",
+  "body": [
+   "{{ form_start(${1:form}) }}",
+   "\t{{ form_widget($1) }}",
+   "\t<button type=\"submit\">${2:Save}</button>",
+   "{{ form_end($1) }}"
+  ],
+  "description": "Symfony form rendering"
+ },
+ "form_row": {
+  "prefix": "form_row",
+  "body": [
+   "{{ form_row(${1:form}.${2:field}) }}"
+  ],
+  "description": "Symfony form row"
+ },
+ "csrf": {
+  "prefix": "csrf",
+  "body": [
+   "<input type=\"hidden\" name=\"_token\" value=\"{{ csrf_token('${1:intention}') }}\">"
+  ],
+  "description": "Symfony CSRF token"
+ },
+ "flash": {
+  "prefix": "flash",
+  "body": [
+   "{% for ${1:message} in app.flashes('${2:success}') %}",
+   "\t<div class=\"alert\">{{ $1 }}</div>",
+   "{% endfor %}"
+  ],
+  "description": "Symfony flash messages"
+ },
+ "isgranted": {
+  "prefix": "isgranted",
+  "body": [
+   "{% if is_granted('${1:ROLE_ADMIN}') %}",
+   "\t$0",
+   "{% endif %}"
+  ],
+  "description": "Symfony is_granted"
+ },
+ "twigcomponent": {
+  "prefix": "twig-component",
+  "body": [
+   "<twig:${1:Alert}${2: type=\"success\"} />"
+  ],
+  "description": "Twig component tag"
+ },
+ "block-super": {
+  "prefix": "parent",
+  "body": [
+   "{{ parent() }}"
+  ],
+  "description": "Twig parent block"
+ },
+ "setblock": {
+  "prefix": "setblock",
+  "body": [
+   "{% set ${1:name} %}",
+   "\t$0",
+   "{% endset %}"
+  ],
+  "description": "Twig set block"
  }
 }

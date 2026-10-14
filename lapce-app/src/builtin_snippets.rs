@@ -2,7 +2,8 @@
 //!
 //! Packs are chosen from the file's language and the detected project profile:
 //! Laravel, WordPress and Symfony snippets are offered for PHP only when the
-//! project shows that framework, Twig snippets for `.twig` files.
+//! project shows that framework, Twig snippets for `.twig` files and Blade
+//! directive/Livewire snippets for `.blade.php` files.
 use std::sync::OnceLock;
 
 use lapce_core::project_profile::ProjectProfile;
@@ -12,6 +13,25 @@ const LARAVEL: &str = include_str!("../../defaults/snippets/laravel.json");
 const WORDPRESS: &str = include_str!("../../defaults/snippets/wordpress.json");
 const SYMFONY: &str = include_str!("../../defaults/snippets/symfony.json");
 const TWIG: &str = include_str!("../../defaults/snippets/twig.json");
+const BLADE: &str = include_str!("../../defaults/snippets/blade.json");
+const LIVEWIRE: &str = include_str!("../../defaults/snippets/livewire.json");
+
+/// The language id used for bundled snippets: `.blade.php` files are PHP to
+/// the language server but get their own pack.
+pub fn snippet_language<'a>(path: &std::path::Path, language_id: &'a str) -> &'a str {
+    let blade = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.to_ascii_lowercase().ends_with(".blade.php"));
+    if blade { "blade" } else { language_id }
+}
+
+/// Characters typed in front of the word that a snippet body repeats itself
+/// (`@foreach`, `<livewire:`). The completion range is widened to cover one
+/// so choosing the snippet does not leave `@@foreach`.
+pub fn replaces_leading_char(language_id: &str, before: Option<char>) -> bool {
+    language_id == "blade" && matches!(before, Some('@') | Some('<'))
+}
 
 fn parse(text: &str) -> Vec<Snippet> {
     serde_json::from_str(text)
@@ -24,6 +44,8 @@ struct Packs {
     wordpress: Vec<Snippet>,
     symfony: Vec<Snippet>,
     twig: Vec<Snippet>,
+    blade: Vec<Snippet>,
+    livewire: Vec<Snippet>,
 }
 
 fn packs() -> &'static Packs {
@@ -33,6 +55,8 @@ fn packs() -> &'static Packs {
         wordpress: parse(WORDPRESS),
         symfony: parse(SYMFONY),
         twig: parse(TWIG),
+        blade: parse(BLADE),
+        livewire: parse(LIVEWIRE),
     })
 }
 
@@ -44,6 +68,7 @@ pub fn for_context(language_id: &str, profile: &ProjectProfile) -> Vec<&'static 
         "php" => {
             if profile.laravel {
                 out.extend(&p.laravel);
+                out.extend(&p.livewire);
             }
             if profile.wordpress {
                 out.extend(&p.wordpress);
@@ -53,6 +78,7 @@ pub fn for_context(language_id: &str, profile: &ProjectProfile) -> Vec<&'static 
             }
         }
         "twig" => out.extend(&p.twig),
+        "blade" => out.extend(&p.blade),
         _ => {}
     }
     out
@@ -68,7 +94,7 @@ mod tests {
     #[test]
     fn every_bundled_snippet_parses_and_has_a_prefix() {
         let p = packs();
-        for pack in [&p.laravel, &p.wordpress, &p.symfony, &p.twig] {
+        for pack in [&p.laravel, &p.wordpress, &p.symfony, &p.twig, &p.blade, &p.livewire] {
             assert!(pack.len() >= 8);
             for s in pack {
                 assert!(!s.prefix.is_empty(), "{}", s.name);
@@ -103,5 +129,40 @@ mod tests {
         let text = Parsed::from_str(&model.body).unwrap().text();
         assert!(text.contains("namespace App\\Models;"), "{text}");
         assert!(text.contains("$fillable"), "{text}");
+    }
+
+    #[test]
+    fn blade_files_get_the_blade_pack_and_php_gets_livewire() {
+        let none = ProjectProfile::default();
+        let b = for_context("blade", &none);
+        for want in ["foreach", "csrf", "wire-click", "livewire", "forelse"] {
+            assert!(b.iter().any(|s| s.prefix.iter().any(|x| x == want)), "{want}");
+        }
+        // Blade directives are not offered in plain PHP or Twig files.
+        assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "foreach")));
+        let laravel = ProjectProfile { laravel: true, ..Default::default() };
+        assert!(for_context("php", &laravel).iter().any(|s| s.prefix.iter().any(|x| x == "lw-component")));
+        assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "lw-component")));
+        assert!(for_context("twig", &none).iter().any(|s| s.prefix.iter().any(|x| x == "macro")));
+    }
+
+    #[test]
+    fn blade_path_detection_and_leading_chars() {
+        use std::path::Path;
+        assert_eq!(snippet_language(Path::new("/p/resources/views/a.blade.php"), "php"), "blade");
+        assert_eq!(snippet_language(Path::new("/p/A.BLADE.PHP"), "php"), "blade");
+        assert_eq!(snippet_language(Path::new("/p/app/User.php"), "php"), "php");
+        assert!(replaces_leading_char("blade", Some('@')));
+        assert!(replaces_leading_char("blade", Some('<')));
+        assert!(!replaces_leading_char("blade", Some(' ')));
+        assert!(!replaces_leading_char("php", Some('@')));
+        assert!(!replaces_leading_char("blade", None));
+    }
+
+    #[test]
+    fn blade_bodies_keep_their_dollar_variables() {
+        let each = packs().blade.iter().find(|s| s.prefix.iter().any(|x| x == "foreach")).unwrap();
+        let text = Parsed::from_str(&each.body).unwrap().text();
+        assert!(text.starts_with("@foreach ($items as $item)"), "{text}");
     }
 }

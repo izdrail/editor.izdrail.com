@@ -1,0 +1,103 @@
+{
+ "lw-component": {
+  "prefix": "lw-component",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Livewire;",
+   "",
+   "use Livewire\\\\Component;",
+   "",
+   "class ${1:Counter} extends Component",
+   "{",
+   "\tpublic \\$${2:count} = 0;",
+   "",
+   "\tpublic function ${3:increment}()",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "",
+   "\tpublic function render()",
+   "\t{",
+   "\t\treturn view('livewire.${4:counter}');",
+   "\t}",
+   "}"
+  ],
+  "description": "Livewire 3 component class"
+ },
+ "lw-rule": {
+  "prefix": "lw-rule",
+  "body": [
+   "#[Rule('${1:required|min:3}')]",
+   "public \\$${2:name} = '';"
+  ],
+  "description": "Livewire 3 #[Rule] property"
+ },
+ "lw-on": {
+  "prefix": "lw-on",
+  "body": [
+   "#[On('${1:event}')]",
+   "public function ${2:handle}()",
+   "{",
+   "\t$0",
+   "}"
+  ],
+  "description": "Livewire 3 #[On] listener"
+ },
+ "lw-computed": {
+  "prefix": "lw-computed",
+  "body": [
+   "#[Computed]",
+   "public function ${1:items}()",
+   "{",
+   "\treturn $0;",
+   "}"
+  ],
+  "description": "Livewire 3 #[Computed] property"
+ },
+ "lw-dispatch": {
+  "prefix": "lw-dispatch",
+  "body": [
+   "\\$this->dispatch('${1:event}'${2:, ${3:key}: ${4:\\$value}});"
+  ],
+  "description": "Livewire 3 dispatch event"
+ },
+ "lw-validate": {
+  "prefix": "lw-validate",
+  "body": [
+   "\\$this->validate();"
+  ],
+  "description": "Livewire validate"
+ },
+ "lw-redirect": {
+  "prefix": "lw-redirect",
+  "body": [
+   "return \\$this->redirect('${1:/}', navigate: true);"
+  ],
+  "description": "Livewire redirect"
+ },
+ "lw-mount": {
+  "prefix": "lw-mount",
+  "body": [
+   "public function mount(${1:\\$param})",
+   "{",
+   "\t$0",
+   "}"
+  ],
+  "description": "Livewire mount"
+ },
+ "lw-reset": {
+  "prefix": "lw-reset",
+  "body": [
+   "\\$this->reset('${1:property}');"
+  ],
+  "description": "Livewire reset property"
+ },
+ "lw-pagination": {
+  "prefix": "lw-pagination",
+  "body": [
+   "use WithPagination;"
+  ],
+  "description": "Livewire pagination trait"
+ }
+}
