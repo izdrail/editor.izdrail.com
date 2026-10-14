@@ -19,6 +19,7 @@ pub enum PaletteKind {
     RunAndDebug,
     Routes,
     ImportClass,
+    WrapTag,
     ColorTheme,
     IconTheme,
     Language,
@@ -48,6 +49,7 @@ impl PaletteKind {
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
             | PaletteKind::ImportClass
+            | PaletteKind::WrapTag
             | PaletteKind::ColorTheme
             | PaletteKind::IconTheme
             | PaletteKind::Language
@@ -101,6 +103,7 @@ impl PaletteKind {
             }
             PaletteKind::Routes => Some(LapceWorkbenchCommand::PaletteRoutes),
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
+            PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::ColorTheme => Some(LapceWorkbenchCommand::ChangeColorTheme),
             PaletteKind::IconTheme => Some(LapceWorkbenchCommand::ChangeIconTheme),
             PaletteKind::Language => Some(LapceWorkbenchCommand::ChangeFileLanguage),
@@ -137,6 +140,7 @@ impl PaletteKind {
             | PaletteKind::RunAndDebug
             | PaletteKind::Routes
             | PaletteKind::ImportClass
+            | PaletteKind::WrapTag
             | PaletteKind::ColorTheme
             | PaletteKind::IconTheme
             | PaletteKind::Language

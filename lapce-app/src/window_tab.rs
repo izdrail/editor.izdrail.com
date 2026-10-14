@@ -1168,6 +1168,9 @@ impl WindowTabData {
                 self.palette.run(PaletteKind::RunAndDebug);
             }
             ImportPhpClass => self.import_php_class(),
+            WrapSelectionInTag => {
+                self.palette.run(PaletteKind::WrapTag);
+            }
             PaletteRoutes => {
                 self.palette.run(PaletteKind::Routes);
             }

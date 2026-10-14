@@ -3154,6 +3154,49 @@ impl EditorData {
             });
     }
 
+    /// Wraps each selection (or the word at each caret) in `<tag>...</tag>`.
+    pub fn wrap_in_tag(&self, tag: &str) -> bool {
+        if !crate::tag_wrap::is_valid_tag(tag) {
+            return false;
+        }
+        let doc = self.doc();
+        let (selection, edits) = doc.buffer.with_untracked(|buffer| {
+            let selection = self.cursor().get_untracked().edit_selection(buffer);
+            let nl = buffer.line_ending().get_chars();
+            let mut edits = Vec::new();
+            for r in selection.regions() {
+                let (mut start, mut end) = (r.min(), r.max());
+                if start == end {
+                    let (s, e) = buffer.select_word(start);
+                    start = s;
+                    end = e;
+                }
+                if end - start > 1024 * 1024 {
+                    continue;
+                }
+                let selected = buffer.slice_to_cow(start..end).to_string();
+                let line_start = buffer.offset_of_line(buffer.line_of_offset(start));
+                let indent: String = buffer
+                    .slice_to_cow(line_start..start)
+                    .chars()
+                    .take_while(|c| *c == ' ' || *c == '\t')
+                    .collect();
+                edits.push((
+                    Selection::region(start, end),
+                    crate::tag_wrap::wrap(&selected, tag, &indent, nl),
+                ));
+            }
+            (selection, edits)
+        });
+        if edits.is_empty() {
+            return false;
+        }
+        let edits: Vec<(Selection, &str)> =
+            edits.iter().map(|(s, t)| (s.clone(), t.as_str())).collect();
+        self.do_edit(&selection, &edits);
+        true
+    }
+
     /// Inserts `use <fqcn>;` into the current PHP file in sorted position.
     /// Returns false when the file has no `<?php` header to anchor on.
     pub fn import_php_class(&self, fqcn: &str) -> bool {

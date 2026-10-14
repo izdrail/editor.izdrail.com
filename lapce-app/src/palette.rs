@@ -414,6 +414,18 @@ impl PaletteData {
             PaletteKind::Routes => {
                 self.get_routes();
             }
+            PaletteKind::WrapTag => {
+                let items = crate::tag_wrap::TAGS
+                    .iter()
+                    .map(|tag| PaletteItem {
+                        filter_text: tag.to_string(),
+                        content: PaletteItemContent::WrapTag { tag: tag.to_string() },
+                        score: 0,
+                        indices: vec![],
+                    })
+                    .collect::<Vec<_>>();
+                self.items.set(items.into_iter().collect());
+            }
             PaletteKind::ImportClass => {
                 let items = self
                     .import_candidates
@@ -1375,6 +1387,12 @@ impl PaletteData {
                         },
                     );
                 }
+                PaletteItemContent::WrapTag { tag } => {
+                    if let Some(editor) = self.main_split.active_editor.get_untracked()
+                    {
+                        editor.wrap_in_tag(tag);
+                    }
+                }
                 PaletteItemContent::ImportClass { fqcn } => {
                     if let Some(editor) = self.main_split.active_editor.get_untracked()
                     {
@@ -1576,6 +1594,7 @@ impl PaletteData {
                 PaletteItemContent::Language { .. } => {}
                 PaletteItemContent::LineEnding { .. } => {}
                 PaletteItemContent::ImportClass { .. } => {}
+                PaletteItemContent::WrapTag { .. } => {}
                 PaletteItemContent::Reference { location, .. }
                 | PaletteItemContent::Route { location } => {
                     self.has_preview.set(true);

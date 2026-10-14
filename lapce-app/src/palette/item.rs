@@ -56,6 +56,9 @@ pub enum PaletteItemContent {
     ImportClass {
         fqcn: String,
     },
+    WrapTag {
+        tag: String,
+    },
     DocumentSymbol {
         kind: SymbolKind,
         name: String,
