@@ -1398,6 +1398,21 @@ impl EditorData {
                 });
                 return;
             }
+            // Named routes: route('x'), path('x'), generateUrl('x').
+            if let Some((target, line)) =
+                crate::route_names::resolve(root, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: Some(EditorPosition::Line(line)),
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
         }
         let (start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
