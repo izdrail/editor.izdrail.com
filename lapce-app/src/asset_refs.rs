@@ -8,7 +8,7 @@
 //!
 //! Textual only; nothing is executed. A `?v=1` query or `#hash` is ignored,
 //! `..`, absolute paths and URLs are refused, symlinks are not followed and
-//! the file must be under the workspace. Vite aliases (`@/...`) are not read.
+//! the file must be under the workspace. Vite aliases are not read here; see go-to-js-import.md for `@/` imports.
 use std::path::{Path, PathBuf};
 
 const MAX_NAME: usize = 300;

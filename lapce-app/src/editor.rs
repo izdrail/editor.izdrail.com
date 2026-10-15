@@ -1403,6 +1403,13 @@ impl EditorData {
             {
                 if let Some(target) =
                     crate::vue_components::resolve(root, &line_text, col)
+            // `import X from '@/Components/X.vue'` and relative imports in
+            // JS / TS / Vue / Svelte files open the imported file.
+            if path.extension().is_some_and(|e| {
+                ["vue", "svelte", "ts", "tsx", "js", "jsx", "mjs"].iter().any(|k| e == *k)
+            }) {
+                if let Some(target) =
+                    crate::js_imports::resolve(root, &path, &line_text, col)
                 {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation {

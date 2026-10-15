@@ -37,6 +37,7 @@ pub mod tw_usage_index;
 pub mod view_usages;
 pub mod inertia_pages;
 pub mod vue_components;
+pub mod js_imports;
 pub mod wp_templates;
 pub mod asset_refs;
 pub mod color_swatch;
