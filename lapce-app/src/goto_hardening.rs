@@ -44,6 +44,7 @@ fn all_resolvers(root: &Path, line: &str, col: usize) {
         let _ = crate::blade_props::resolve(root, &f, line, col);
     }
     let _ = crate::inertia_pages::resolve(root, line, col);
+    let _ = crate::vue_components::resolve(root, line, col);
     let _ = crate::wp_templates::resolve(root, &root.join("a.php"), line, col);
     let _ = crate::asset_refs::resolve(root, &root.join("a.blade.php"), line, col);
     let _ = crate::asset_refs::resolve(root, &root.join("a.twig"), line, col);
