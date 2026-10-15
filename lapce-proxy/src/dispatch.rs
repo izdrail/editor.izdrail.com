@@ -58,6 +58,7 @@ pub struct Dispatcher {
     window_id: usize,
     tab_id: usize,
     lsp: Option<crate::lsp::Manager>,
+    dap: crate::dap::Manager,
     ai: lapce_ai::process::Worker,
 }
 
@@ -76,6 +77,7 @@ impl ProxyHandler for Dispatcher {
             } => {
                 self.window_id = window_id;
                 self.tab_id = tab_id;
+                self.dap.shutdown_all();
                 self.workspace = workspace;
                 if let Some(old) = self.lsp.take() {
                     old.send(crate::lsp::Job::Shutdown);
@@ -157,6 +159,7 @@ impl ProxyHandler for Dispatcher {
                 }
             }
             Shutdown {} => {
+                self.dap.shutdown_all();
                 self.ai.cancel();
                 self.catalog_rpc.shutdown();
                 if let Some(lsp) = self.lsp.take() {
@@ -385,17 +388,27 @@ impl ProxyHandler for Dispatcher {
                     tracing::error!("{:?}", err);
                 }
             }
-            DapStart { .. }
-            | DapProcessId { .. }
-            | DapContinue { .. }
-            | DapPause { .. }
-            | DapStepOver { .. }
-            | DapStepInto { .. }
-            | DapStepOut { .. }
-            | DapStop { .. }
-            | DapDisconnect { .. }
-            | DapRestart { .. }
-            | DapSetBreakpoints { .. }
+            DapStart { config, breakpoints } => {
+                self.dap.start(config, breakpoints, self.workspace.clone());
+            }
+            DapRestart { dap_id, breakpoints } => {
+                self.dap.restart(dap_id, breakpoints, self.workspace.clone());
+            }
+            DapContinue { dap_id, thread_id } => self.dap.continue_(dap_id, thread_id),
+            DapPause { dap_id, thread_id } => self.dap.pause(dap_id, thread_id),
+            DapStepOver { dap_id, thread_id } => self.dap.step_over(dap_id, thread_id),
+            DapStepInto { dap_id, thread_id } => self.dap.step_into(dap_id, thread_id),
+            DapStepOut { dap_id, thread_id } => self.dap.step_out(dap_id, thread_id),
+            DapStop { dap_id } => self.dap.stop(dap_id),
+            DapDisconnect { dap_id } => self.dap.disconnect(dap_id),
+            DapSetBreakpoints {
+                dap_id,
+                path,
+                breakpoints,
+            } => self.dap.set_breakpoints(dap_id, path, breakpoints),
+            // Process ids only matter for run-in-terminal, which we do not
+            // advertise to adapters.
+            DapProcessId { .. }
             | LspCancel { .. } => {}
         }
     }
@@ -1544,10 +1557,29 @@ impl ProxyHandler for Dispatcher {
                     },
                 );
             }
-            GetSignature { .. }
-            | DapVariable { .. }
-            | DapGetScopes { .. }
-            | GetDocumentHighlights { .. } => {
+            DapVariable { dap_id, reference } => {
+                let session = self.dap.session(dap_id);
+                let rpc = self.proxy_rpc.clone();
+                thread::spawn(move || {
+                    let result = session.context("no such debug session")
+                        .and_then(|session| session.variables(reference))
+                        .map(|variables| ProxyResponse::DapVariableResponse { variables })
+                        .map_err(dap_error);
+                    rpc.handle_response(id, result);
+                });
+            }
+            DapGetScopes { dap_id, frame_id } => {
+                let session = self.dap.session(dap_id);
+                let rpc = self.proxy_rpc.clone();
+                thread::spawn(move || {
+                    let result = session.context("no such debug session")
+                        .and_then(|session| session.scopes_with_variables(frame_id))
+                        .map(|scopes| ProxyResponse::DapGetScopesResponse { scopes })
+                        .map_err(dap_error);
+                    rpc.handle_response(id, result);
+                });
+            }
+            GetSignature { .. } | GetDocumentHighlights { .. } => {
                 self.respond_rpc(id, Err(language_services_disabled()));
             }
         }
@@ -1613,9 +1645,17 @@ impl<T: Send + 'static> FirstOk<T> {
     }
 }
 
+fn dap_error(err: anyhow::Error) -> RpcError {
+    RpcError {
+        code: -32603,
+        message: format!("{err:#}"),
+    }
+}
+
 impl Dispatcher {
     pub fn new(core_rpc: CoreRpcHandler, proxy_rpc: ProxyRpcHandler) -> Self {
         let file_watcher = FileWatcher::new();
+        let dap = crate::dap::Manager::new(core_rpc.clone());
         let catalog_rpc =
             PluginCatalogRpcHandler::new(core_rpc.clone(), proxy_rpc.clone());
 
@@ -1630,6 +1670,7 @@ impl Dispatcher {
             window_id: 1,
             tab_id: 1,
             lsp: None,
+            dap,
             ai: lapce_ai::process::Worker::new(
                 std::env::current_exe().expect("proxy executable"),
             ),

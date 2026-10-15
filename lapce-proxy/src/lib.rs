@@ -2,6 +2,7 @@
 
 pub mod buffer;
 pub mod cli;
+pub mod dap;
 pub mod dispatch;
 pub mod external_format;
 pub mod lsp;
