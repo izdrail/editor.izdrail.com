@@ -11,6 +11,10 @@
   (also `_ref_array`) that fires it.
 - On a hook name in `do_action` / `apply_filters`: opens the first `add_action` / `add_filter`
   that registers it.
+- On a shortcode tag inside `do_shortcode('[gallery id="1"]')` (also `[/gallery]`), or the name in
+  `shortcode_exists('gallery')` / `remove_shortcode('gallery')` / `has_shortcode($content, 'gallery')`:
+  opens the first `add_shortcode('gallery', ...)`. Shortcodes written in post content or
+  `.html` templates (outside a PHP string) are not scanned.
 
 Only the hook-name and callback arguments count (not priority or arg count), and quoted names only.
 

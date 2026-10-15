@@ -7,6 +7,8 @@
 //!   `do_action('my_hook'` / `apply_filters('my_hook'` that fires it.
 //! - On a hook name in `do_action('my_hook')` / `apply_filters('my_hook', ...)`:
 //!   go to the first `add_action` / `add_filter` that registers it.
+//! - On a shortcode tag in `do_shortcode('[gallery id="1"]')`, `shortcode_exists('gallery')`
+//!   or `has_shortcode($c, 'gallery')`: go to its `add_shortcode('gallery', ...)` call.
 //!
 //! Textual only: the current file is searched first, then PHP files under the
 //! workspace root (skipping `.git`, `node_modules`, `vendor`; at most 4000
@@ -36,6 +38,29 @@ enum Ref {
     Callback(String),
     HookRegistered(String),
     HookFired(String),
+    /// A shortcode tag used in `do_shortcode('[tag]')` or named in
+    /// `shortcode_exists('tag')`; goes to its `add_shortcode('tag', ...)`.
+    Shortcode(String),
+}
+
+const SHORTCODE_NAME_CALLS: &[&str] = &["shortcode_exists", "remove_shortcode"];
+
+/// The shortcode tag at byte `rel` of string `s`: `[tag a="1"]`, `[/tag]`.
+fn shortcode_tag_at(s: &str, rel: usize) -> Option<String> {
+    let mut rel = rel.min(s.len());
+    while !s.is_char_boundary(rel) {
+        rel -= 1;
+    }
+    let open = s[..rel].rfind('[')?;
+    // The cursor must still be inside the tag name (no `]` or space between).
+    let after = &s[open + 1..];
+    let after = after.strip_prefix('/').unwrap_or(after);
+    let name: String = after
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    let name_start = s.len() - after.len();
+    (!name.is_empty() && rel >= name_start && rel <= name_start + name.len()).then_some(name)
 }
 
 fn is_ident(c: char) -> bool {
@@ -108,10 +133,38 @@ fn callback_position(rest: &str) -> Option<bool> {
     ok.then_some(true)
 }
 
+/// `$content,` -> rest after the first argument when it is a plain
+/// variable or call-free expression (used for `has_shortcode($content, 'x')`).
+fn skip_first_arg_expr(args: &str) -> Option<&str> {
+    let (first, rest) = args.split_once(',')?;
+    let f = first.trim();
+    let ok = !f.is_empty()
+        && f.len() < 80
+        && f.chars().all(|c| is_ident(c) || matches!(c, '$' | '>' | '-' | ' '));
+    (ok && rest.trim().is_empty()).then_some(rest)
+}
+
 fn classify(line: &str, col: usize) -> Option<Ref> {
     let (s, before) = string_at(line, col.min(line.len()))?;
     if s.is_empty() || s.len() > 200 {
         return None;
+    }
+    // Shortcode: a `[tag]` inside do_shortcode(), or a tag name argument.
+    if args_after(before, "do_shortcode").is_some_and(|a| a.trim().is_empty()) {
+        let rel = col.saturating_sub(before.len() + 1);
+        return shortcode_tag_at(s, rel).map(Ref::Shortcode);
+    }
+    for c in SHORTCODE_NAME_CALLS {
+        if args_after(before, c).is_some_and(|a| a.trim().is_empty()) {
+            let ok = s.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
+            return ok.then(|| Ref::Shortcode(s.to_string()));
+        }
+    }
+    if let Some(a) = args_after(before, "has_shortcode") {
+        if skip_first_arg_expr(a).is_some() {
+            let ok = s.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
+            return ok.then(|| Ref::Shortcode(s.to_string()));
+        }
     }
     // Hook name: first argument of a registering or firing call.
     for (calls, fired) in [(REGISTER, false), (FIRE, true)] {
@@ -248,6 +301,9 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<(Path
         Ref::Callback(name) => search(root, file, |t| find_function(t, &name)),
         Ref::HookRegistered(h) => search(root, file, |t| find_hook_call(t, FIRE, &h)),
         Ref::HookFired(h) => search(root, file, |t| find_hook_call(t, REGISTER, &h)),
+        Ref::Shortcode(t) => {
+            search(root, file, |text| find_hook_call(text, &["add_shortcode"], &t))
+        }
     }
 }
 
@@ -261,6 +317,36 @@ mod tests {
 
     fn cb(line: &str, needle: &str) -> Option<Ref> {
         classify(line, at(line, needle))
+    }
+
+    #[test]
+    fn shortcode_usage_goes_to_add_shortcode() {
+        let l = "echo do_shortcode('[gallery id=\"1\"] and [/box]');";
+        assert_eq!(cb(l, "gallery"), Some(Ref::Shortcode("gallery".into())));
+        assert_eq!(cb(l, "box"), Some(Ref::Shortcode("box".into())));
+        // On an attribute, not the tag.
+        assert_eq!(cb(l, "id="), None);
+        assert_eq!(cb("echo do_shortcode( \"[my-code]\" );", "my-code"), Some(Ref::Shortcode("my-code".into())));
+        assert_eq!(cb("if (shortcode_exists('gallery')) {", "gallery"), Some(Ref::Shortcode("gallery".into())));
+        assert_eq!(cb("has_shortcode($post->post_content, 'gallery')", "gallery"), Some(Ref::Shortcode("gallery".into())));
+        assert_eq!(cb("echo esc_html('[gallery]');", "gallery"), None);
+        assert_eq!(cb("do_shortcode('[ gallery]');", "gallery"), None);
+        assert_eq!(cb("shortcode_exists('a b');", "a b"), None);
+    }
+
+    #[test]
+    fn shortcode_lookup_finds_add_shortcode() {
+        let t = "<?php\nfunction x() {}\nadd_shortcode( 'gallery', 'render_gallery' );\nadd_shortcode('galleryx', 'y');\n";
+        assert_eq!(find_hook_call(t, &["add_shortcode"], "gallery"), Some(2));
+        assert_eq!(find_hook_call(t, &["add_shortcode"], "gal"), None);
+    }
+
+    #[test]
+    fn shortcode_classify_never_panics() {
+        let l = "do_shortcode('[日本語 [é]] [/');";
+        for c in 0..=l.len() + 3 {
+            let _ = classify(l, c);
+        }
     }
 
     #[test]
