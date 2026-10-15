@@ -11,7 +11,7 @@ defines it, without a language server. Recognised forms, in any file:
 Files are tried in this order and the first that defines the key wins: `.env`, `.env.local`,
 `.env.example`, `.env.dist` (workspace root only, each read up to 1 MB). A line defines a key when it
 reads `KEY=...` (optionally `export KEY=...`); `KEY_2=` does not match `KEY`. Only the variable name
-counts; the default value argument and unrelated strings do nothing. When the key is defined nowhere,
+counts; if no file has a real `KEY=...` line, the first commented-out `# KEY=...` line is used instead (Laravel's `.env.example` ships many defaults that way, for example `# DB_HOST=127.0.0.1`); the default value argument and unrelated strings do nothing. When the key is defined nowhere,
 normal Go to Definition runs. Nothing is executed and values are never shown or copied.
 
 Not included: `.env` key completion, which would go through the completion popup that is in

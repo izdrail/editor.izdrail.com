@@ -47,22 +47,31 @@ pub fn key_at(line: &str, col: usize) -> Option<&str> {
     hit.then(|| &line[start..end])
 }
 
-/// `(file, zero-based line)` of the first definition of `key`.
+/// `(file, zero-based line)` of the first definition of `key`. A real
+/// `KEY=value` line in any of the files wins; if there is none, the first
+/// commented-out `# KEY=value` line is used (Laravel's `.env.example` ships
+/// many defaults that way).
 pub fn find_definition(root: &Path, key: &str) -> Option<(PathBuf, usize)> {
-    for name in FILES {
-        let path = root.join(name);
-        let Ok(meta) = std::fs::metadata(&path) else { continue };
-        if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-        for (i, l) in text.lines().enumerate() {
-            let l = l.trim_start();
-            let l = l.strip_prefix("export ").map(str::trim_start).unwrap_or(l);
-            if let Some(rest) = l.strip_prefix(key) {
-                if rest.trim_start().starts_with('=') {
-                    return Some((path, i));
+    for commented in [false, true] {
+        for name in FILES {
+            let path = root.join(name);
+            let Ok(meta) = std::fs::metadata(&path) else { continue };
+            if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+            for (i, l) in text.lines().enumerate() {
+                let mut l = l.trim_start();
+                if commented {
+                    let Some(r) = l.strip_prefix('#') else { continue };
+                    l = r.trim_start();
+                }
+                let l = l.strip_prefix("export ").map(str::trim_start).unwrap_or(l);
+                if let Some(rest) = l.strip_prefix(key) {
+                    if rest.trim_start().starts_with('=') {
+                        return Some((path, i));
+                    }
                 }
             }
         }
@@ -130,5 +139,20 @@ mod tests {
         assert_eq!(find_definition(r, "MISSING"), None);
         let l = "env('ONLY_EXAMPLE')";
         assert_eq!(resolve(r, l, at(l, "ONLY")), Some((r.join(".env.example"), 2)));
+    }
+
+    #[test]
+    fn commented_default_is_a_fallback_after_real_definitions() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::write(r.join(".env.example"), "A=1\n# DB_HOST=127.0.0.1\n#DB_PORT = 3306\n# DB_HOST is the host\n").unwrap();
+        assert_eq!(find_definition(r, "DB_HOST"), Some((r.join(".env.example"), 1)));
+        assert_eq!(find_definition(r, "DB_PORT"), Some((r.join(".env.example"), 2)));
+        assert_eq!(find_definition(r, "DB"), None);
+        assert_eq!(find_definition(r, "MISSING"), None);
+        // A real line in a later file still beats a comment in an earlier one.
+        std::fs::write(r.join(".env"), "# DB_HOST=old\n").unwrap();
+        std::fs::write(r.join(".env.local"), "DB_HOST=real\n").unwrap();
+        assert_eq!(find_definition(r, "DB_HOST"), Some((r.join(".env.local"), 0)));
     }
 }
