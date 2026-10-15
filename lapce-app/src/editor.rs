@@ -1411,6 +1411,22 @@ impl EditorData {
                 });
                 return;
             }
+            // WordPress: get_template_part(), get_header(), locate_template()
+            // and `__DIR__ . '/x.php'` style includes open the file.
+            if let Some(target) =
+                crate::wp_templates::resolve(root, &path, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: None,
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
             // WordPress: hook callbacks and hook names (bounded text search).
             if let Some((target, line)) =
                 crate::wp_hooks::resolve(root, &path, &line_text, col)

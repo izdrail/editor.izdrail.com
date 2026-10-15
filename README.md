@@ -113,6 +113,9 @@ Palette list of every controller, route, mailable or Blade view that renders or 
 ### Go to Inertia page
 Go to Definition on the page name in `Inertia::render('Users/Index')`, `inertia(...)` or `Route::inertia(...)` opens the Vue/React/Svelte page under `resources/js/Pages`. See [docs/go-to-inertia.md](docs/go-to-inertia.md).
 
+### Go to WordPress template / include
+Go to Definition on `get_template_part()`, `get_header()`, `locate_template()` and `require __DIR__ . '/x.php'` strings opens the file. See [docs/go-to-wp-template.md](docs/go-to-wp-template.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 
