@@ -401,6 +401,30 @@ pub fn discover(root: &Path) -> Vec<RunDebugConfig> {
             out.push(config(format!("docker: {label}"), "docker", args));
         }
     }
+    // DDEV and Lando local environments (common for WordPress and Drupal).
+    if root.join(".ddev").join("config.yaml").is_file() {
+        for (label, args) in [
+            ("start", &["start"][..]),
+            ("stop", &["stop"]),
+            ("restart", &["restart"]),
+            ("launch", &["launch"]),
+            ("describe", &["describe"]),
+            ("logs", &["logs", "-f"]),
+        ] {
+            out.push(config(format!("ddev: {label}"), "ddev", args));
+        }
+    }
+    if root.join(".lando.yml").is_file() || root.join(".lando.yaml").is_file() {
+        for (label, args) in [
+            ("start", &["start"][..]),
+            ("stop", &["stop"]),
+            ("rebuild", &["rebuild", "-y"]),
+            ("info", &["info"]),
+            ("logs", &["logs", "-f"]),
+        ] {
+            out.push(config(format!("lando: {label}"), "lando", args));
+        }
+    }
     if let Some(text) = makefile(root) {
         for t in make_targets(&text) {
             out.push(config(format!("make: {t}"), "make", &[&t]));
@@ -602,5 +626,21 @@ mod tests {
         std::fs::remove_file(r.join("Makefile")).unwrap();
         write(r, "Makefile", &"# pad\n".repeat(300_000));
         assert!(makefile(r).is_none());
+    }
+
+    #[test]
+    fn ddev_and_lando_entries() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        assert!(discover(r).is_empty());
+        std::fs::create_dir_all(r.join(".ddev")).unwrap();
+        write(r, ".ddev/config.yaml", "name: x\n");
+        write(r, ".lando.yml", "name: x\n");
+        let all = discover(r);
+        let find = |n: &str| all.iter().find(|c| c.name == n).unwrap().clone();
+        assert_eq!(find("ddev: start").program, "ddev");
+        assert_eq!(find("ddev: logs").args, Some(vec!["logs".to_string(), "-f".to_string()]));
+        assert_eq!(find("lando: rebuild").args, Some(vec!["rebuild".to_string(), "-y".to_string()]));
+        assert_eq!(all.len(), 11);
     }
 }
