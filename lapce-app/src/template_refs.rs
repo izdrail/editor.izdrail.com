@@ -18,6 +18,10 @@ const VIEW_CALLERS: &[&str] = &[
     "@extends", "@each", "@component", "@componentFirst", "view", "View::make",
     "View::first", "markdown", "renderView", "render", "Route::view",
 ];
+/// Symfony controller and service calls whose first argument is a Twig template name.
+const SYMFONY_RENDER: &[&str] = &[
+    "render", "renderView", "renderForm", "renderBlock", "renderBlockView", "stream", "load",
+];
 const TWIG_CALLERS: &[&str] = &[
     "extends", "include", "embed", "import", "from", "use", "source", "include(",
     "render", "template_from_string",
@@ -232,6 +236,13 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathB
     if (blade || php) && called_by(before, &["@livewire"]) {
         return livewire_component(root, s);
     }
+    if php && s.ends_with(".twig") {
+        // Symfony controllers: `$this->render('blog/index.html.twig')`.
+        if called_by(before, SYMFONY_RENDER) {
+            return twig_template(root, s);
+        }
+        return None;
+    }
     if called_by(before, VIEW_CALLERS) {
         return blade_view(root, s);
     }
@@ -366,5 +377,29 @@ mod tests {
         assert_eq!(resolve(r, &f, l, at(l, "wire:key")), None);
         let l = "<livewire:missing />";
         assert_eq!(resolve(r, &f, l, at(l, "missing")), None);
+    }
+
+    #[test]
+    fn symfony_controller_render_opens_the_twig_template() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let t = touch(r, "templates/blog/index.html.twig");
+        touch(r, "resources/views/blog/index.twig.blade.php");
+        let f = r.join("src/Controller/BlogController.php");
+        for l in [
+            "return $this->render('blog/index.html.twig', ['a' => 1]);",
+            "return $this->renderForm(\"blog/index.html.twig\");",
+            "$html = $twig->render('blog/index.html.twig');",
+        ] {
+            assert_eq!(resolve(r, &f, l, at(l, "blog")), Some(t.clone()), "{l}");
+        }
+        let l = "return $this->render('blog/missing.html.twig');";
+        assert_eq!(resolve(r, &f, l, at(l, "blog")), None);
+        let l = "return $this->render('blog/index.'.$fmt.'.twig');";
+        assert_eq!(resolve(r, &f, l, at(l, "blog")), None);
+        let l = "return $this->fetch('blog/index.html.twig');";
+        assert_eq!(resolve(r, &f, l, at(l, "blog")), None);
+        let l = "return $this->render('../x.html.twig');";
+        assert_eq!(resolve(r, &f, l, at(l, "x.html")), None);
     }
 }

@@ -3,6 +3,8 @@
 "Go to Definition" (F12 / Ctrl+click as bound) opens the template or component under the
 cursor directly, before any language server is asked. It works without a language server.
 
+Symfony controllers and services (`.php`): a string ending in `.twig` in `$this->render('blog/index.html.twig')`, `renderView`, `renderForm`, `renderBlock`, `stream` or `$twig->render(...)` opens `templates/blog/index.html.twig`. Names built with concatenation (`'blog/index.'.$format.'.twig'`) and `@bundle/` names are not resolved.
+
 Blade (`.blade.php`, and `view(...)` calls in any `.php` file), relative to `resources/views`:
 
 - `@include`, `@includeIf`, `@includeWhen($cond, 'x')`, `@includeUnless`, `@includeFirst`,
