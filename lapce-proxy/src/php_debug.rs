@@ -434,6 +434,137 @@ fn toml_str(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }
 
+
+
+/// Adapter-specific DAP arguments merged OVER the generic launch arguments.
+/// Returns `None` (fail clearly, logged by the caller path) when the command
+/// line cannot be mapped safely.
+///
+/// Script expansion: listen mode (empty `program`) omits `program` entirely -
+/// never `program: ""`. When `program` is the PHP interpreter itself (php,
+/// php.exe, php8.3, /usr/bin/php8.3, ...) the script is `args[0]`, the
+/// remaining args replace the generic `args`, and `runtimeExecutable` carries
+/// the interpreter so an explicit path like /usr/bin/php8.3 is honored over
+/// PATH php. Interpreter flags before the script (`-d`, `-c`, ...) are
+/// rejected instead of being misread as the script. Anything else is vscode
+/// style: `program` IS the script and its args pass through untouched. The
+/// generic keys `name`/`type`/`request` are owned by the generic arguments
+/// and stripped here so the merge cannot clobber the session name.
+fn php_extra_arguments(root: &Path, config: &RunDebugConfig) -> Option<Value> {
+    let mut extra = launch_arguments(root, detect_layout(root), None, DEFAULT_XDEBUG_PORT);
+    if let Some(map) = extra.as_object_mut() {
+        map.remove("name");
+        map.remove("type");
+        map.remove("request");
+    }
+    if config.program.is_empty() {
+        return Some(extra);
+    }
+    if !is_php_interpreter(&config.program) {
+        extra["program"] = json!(config.program);
+        return Some(extra);
+    }
+    let cli_args = config.args.clone().unwrap_or_default();
+    match cli_args.first() {
+        Some(first) if first.starts_with('-') => {
+            tracing::warn!(
+                target: "dap",
+                "PHP debug config '{}': interpreter flags before the script ('{first}') are not supported",
+                config.name
+            );
+            None
+        }
+        Some(script) => {
+            extra["program"] = json!(script);
+            extra["args"] = json!(cli_args[1..]);
+            extra["runtimeExecutable"] = json!(config.program);
+            Some(extra)
+        }
+        None => {
+            tracing::warn!(
+                target: "dap",
+                "PHP debug config '{}' names the interpreter but no script",
+                config.name
+            );
+            None
+        }
+    }
+}
+
+/// Whether `program` names the PHP interpreter itself (any path depth):
+/// php, php.exe, php8, php8.3, /usr/bin/php8.3, C:\\php\\php.exe, ...
+fn is_php_interpreter(program: &str) -> bool {
+    let base = program
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+    let base = base.strip_suffix(".exe").unwrap_or(&base);
+    if base == "php" {
+        return true;
+    }
+    base.strip_prefix("php").is_some_and(|rest| {
+        !rest.is_empty()
+            && rest.chars().any(|c| c.is_ascii_digit())
+            && rest.chars().all(|c| c.is_ascii_digit() || c == '.')
+    })
+}
+
+// --------------------------------------------------------- DAP integration
+
+/// Build the PHP-aware adapter resolver installed in Dispatcher `Initialize`
+/// (the workspace root is only known there, not in `Dispatcher::new`).
+///
+/// `type = "php"` configs resolve to the managed vscode-php-debug adapter,
+/// installed on first use when `auto_install` is set; every other type falls
+/// back to the generic `debug_command` resolution. PHP listen mode is a
+/// `launch` request with `program` omitted (never `attach`, never
+/// `program: ""`): the adapter waits for Xdebug to connect on
+/// [`DEFAULT_XDEBUG_PORT`]. `config.env` stays the debuggee environment
+/// (the generic launch arguments carry it); `AdapterSpec.env` is the adapter
+/// process environment.
+pub fn php_adapter_resolver(
+    root: Option<PathBuf>,
+    auto_install: bool,
+) -> impl Fn(&RunDebugConfig) -> Option<crate::dap::AdapterSpec> + Send + Sync + 'static {
+    move |config: &RunDebugConfig| {
+        if config.ty.as_deref() != Some(PHP_DEBUG_TYPE) {
+            return crate::dap::default_adapter(config);
+        }
+        let root = root
+            .clone()
+            .or_else(|| config.cwd.as_ref().map(PathBuf::from))
+            .filter(|p| p.is_dir());
+        let Some(root) = root else {
+            tracing::warn!(
+                target: "dap",
+                "PHP debug config '{}' has no usable workspace root",
+                config.name
+            );
+            return None;
+        };
+        match launch_spec(auto_install) {
+            Ok(spec) => {
+                let adapter_env = spec.env.clone();
+                let server = spec.into_dap_server(None);
+                Some(crate::dap::AdapterSpec {
+                    env: adapter_env,
+                    request: crate::dap::RequestKind::Launch,
+                    extra_arguments: Some(php_extra_arguments(&root, config)?),
+                    ..crate::dap::AdapterSpec::from_dap_server(
+                        server,
+                        PHP_DEBUG_TYPE.to_string(),
+                    )
+                })
+            }
+            Err(err) => {
+                tracing::warn!(target: "dap", "PHP debug adapter unavailable: {err:#}");
+                None
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Write;
@@ -580,4 +711,126 @@ mod tests {
         assert_eq!(file.args.as_deref(), Some(&["${file}".to_string()][..]));
         assert_eq!(file.env.as_ref().unwrap()["XDEBUG_MODE"], "debug");
     }
+
+    fn resolver_config(ty: &str, cwd: Option<&str>) -> RunDebugConfig {
+        RunDebugConfig {
+            ty: Some(ty.to_string()),
+            name: format!("{ty} session"),
+            program: String::new(),
+            args: None,
+            cwd: cwd.map(|c| c.to_string()),
+            env: None,
+            prelaunch: None,
+            debug_command: None,
+            dap_id: DapId::default(),
+            tracing_output: false,
+            config_source: ConfigSource::Palette,
+        }
+    }
+
+    #[test]
+    fn resolver_falls_back_to_debug_command_for_other_types() {
+        let resolver = php_adapter_resolver(None, false);
+        let mut config = resolver_config("node", None);
+        assert!(resolver(&config).is_none());
+        config.debug_command = Some(vec!["adapter".to_string(), "--stdio".to_string()]);
+        let spec = resolver(&config).expect("debug_command should resolve");
+        assert_eq!(spec.program, "adapter");
+        assert_eq!(spec.adapter_id, "node");
+    }
+
+    #[test]
+    fn resolver_reports_none_when_adapter_unavailable_without_install() {
+        // auto_install = false and no verified adapter in the gate sandbox:
+        // the PHP type must not panic or fall through to debug_command.
+        let resolver = php_adapter_resolver(None, false);
+        let config = resolver_config(PHP_DEBUG_TYPE, Some("/definitely/not/a/workspace"));
+        assert!(resolver(&config).is_none());
+    }
+
+
+    #[test]
+    fn extra_arguments_listen_omits_program_and_session_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("artisan"), "").unwrap();
+        let config = resolver_config(PHP_DEBUG_TYPE, None);
+        let extra = php_extra_arguments(tmp.path(), &config).unwrap();
+        assert!(extra.get("program").is_none());
+        assert!(extra.get("name").is_none());
+        assert!(extra.get("type").is_none());
+        assert_eq!(extra["port"], 9003);
+        assert_eq!(
+            extra["pathMappings"]["/var/www/html"],
+            tmp.path().to_string_lossy().as_ref()
+        );
+    }
+
+    #[test]
+    fn extra_arguments_expand_command_line_script_into_program() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = resolver_config(PHP_DEBUG_TYPE, None);
+        config.program = "php".to_string();
+        config.args = Some(vec!["artisan".to_string(), "serve".to_string()]);
+        let extra = php_extra_arguments(tmp.path(), &config).unwrap();
+        assert_eq!(extra["program"], "artisan");
+        assert_eq!(extra["args"], serde_json::json!(["serve"]));
+        assert_eq!(extra["runtimeExecutable"], "php");
+    }
+
+    #[test]
+    fn extra_arguments_honor_explicit_interpreter_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = resolver_config(PHP_DEBUG_TYPE, None);
+        config.program = "/usr/bin/php8.3".to_string();
+        config.args = Some(vec!["bin/console".to_string()]);
+        let extra = php_extra_arguments(tmp.path(), &config).unwrap();
+        assert_eq!(extra["program"], "bin/console");
+        assert_eq!(extra["runtimeExecutable"], "/usr/bin/php8.3");
+    }
+
+    #[test]
+    fn extra_arguments_vscode_style_program_is_the_script() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = resolver_config(PHP_DEBUG_TYPE, None);
+        config.program = "bin/console".to_string();
+        let extra = php_extra_arguments(tmp.path(), &config).unwrap();
+        assert_eq!(extra["program"], "bin/console");
+        assert!(extra.get("args").is_none());
+        assert!(extra.get("runtimeExecutable").is_none());
+    }
+
+    #[test]
+    fn extra_arguments_vscode_style_keeps_script_args_unshifted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = resolver_config(PHP_DEBUG_TYPE, None);
+        config.program = "/w/index.php".to_string();
+        config.args = Some(vec!["--verbose".to_string()]);
+        let extra = php_extra_arguments(tmp.path(), &config).unwrap();
+        assert_eq!(extra["program"], "/w/index.php");
+        assert!(extra.get("args").is_none());
+    }
+
+    #[test]
+    fn extra_arguments_reject_interpreter_flags_before_script() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = resolver_config(PHP_DEBUG_TYPE, None);
+        config.program = "php".to_string();
+        config.args = Some(vec![
+            "-d".to_string(),
+            "xdebug.mode=debug".to_string(),
+            "a.php".to_string(),
+        ]);
+        assert!(php_extra_arguments(tmp.path(), &config).is_none());
+    }
+
+    #[test]
+    fn php_interpreter_detection() {
+        for yes in ["php", "php.exe", "PHP", "php8", "php8.3", "/usr/bin/php8.3", "php74"] {
+            assert!(is_php_interpreter(yes), "{yes} should be an interpreter");
+        }
+        for no in ["index.php", "/w/index.php", "phpstorm", "php-cs-fixer", "bin/console", ""] {
+            assert!(!is_php_interpreter(no), "{no} should not be an interpreter");
+        }
+    }
+
 }

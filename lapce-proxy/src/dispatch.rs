@@ -79,6 +79,15 @@ impl ProxyHandler for Dispatcher {
                 self.tab_id = tab_id;
                 self.dap.shutdown_all();
                 self.workspace = workspace;
+                // Workspace is known here, not in `new`: install the
+                // PHP-aware adapter resolver over a fresh manager.
+                self.dap = crate::dap::Manager::with_resolver(
+                    self.core_rpc.clone(),
+                    std::sync::Arc::new(crate::php_debug::php_adapter_resolver(
+                        self.workspace.clone(),
+                        true,
+                    )),
+                );
                 if let Some(old) = self.lsp.take() {
                     old.send(crate::lsp::Job::Shutdown);
                 }
