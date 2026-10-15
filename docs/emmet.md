@@ -38,3 +38,10 @@ into one declaration:
 The property list is a deliberate common subset (margin, padding, size, border,
 background, colour, font, position offsets, flex/grid basics), not the full Emmet
 table. Unknown abbreviations do nothing.
+
+## Colon snippets, lorem and CSS units
+
+- Emmet's colon snippets from emmetio/emmet `html.json`: `input:text|email|password|search|url|tel|number|date|time|color|checkbox|radio|range|file` (type, name, id), `input:submit|button|reset|image|hidden`, `a:link|mail|tel|blank`, `meta:vp|utf|compat|edge|redirect|refresh|kw|desc`, `link:print|favicon|manifest|touch|rss|atom`, `script:module`, `form:get`, `btn:s|r|b`, `html:5` (same as `!`). Only the first empty attribute gets a tabstop; Emmet's mirrored name/id tabstop is not reproduced.
+- An unknown colon name (`input:nope`), a name that starts with `@`, a digit or `-` is no longer expanded into a bogus `<input:nope>` tag; the abbreviation is left alone.
+- `lorem`, `lorem12`, `lipsum`: placeholder text (30 words by default, 1 to 500). `p>lorem5` fills the paragraph, a lone `lorem5` is just text. The words come from a fixed list, so the text is similar to Emmet's, not identical.
+- CSS: `m0-a` and `ml-a` mean `auto`; only real units are accepted after a number (`px em rem ex ch vw vh vmin vmax dvh svh lvh pt pc cm mm in fr s ms deg rad turn`, plus `p` for % and `e` for em), so `m0a` or `m10zz` no longer produce invalid CSS.

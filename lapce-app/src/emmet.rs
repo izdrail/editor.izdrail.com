@@ -25,6 +25,8 @@ struct Node {
     /// A `(group)` has no element of its own; only its children render.
     is_group: bool,
     repeat: usize,
+    /// `lorem` / `lorem12`: placeholder text of that many words.
+    lorem: Option<usize>,
 }
 
 struct Parser<'a> {
@@ -182,7 +184,12 @@ impl<'a> Parser<'a> {
                     _ => break,
                 }
             }
+            if let Some(n) = node.tag.as_deref().and_then(lorem_words) {
+                node.lorem = Some(n);
+                node.tag = None;
+            }
             if node.tag.is_none()
+                && node.lorem.is_none()
                 && node.id.is_none()
                 && node.classes.is_empty()
                 && node.attrs.is_empty()
@@ -292,6 +299,127 @@ fn number(s: &str, index: usize) -> String {
     out
 }
 
+const LOREM: &[&str] = &[
+    "lorem", "ipsum", "dolor", "sit", "amet", "consectetur", "adipisicing", "elit", "sed",
+    "do", "eiusmod", "tempor", "incididunt", "ut", "labore", "et", "dolore", "magna",
+    "aliqua", "enim", "ad", "minim", "veniam", "quis", "nostrud", "exercitation",
+    "ullamco", "laboris", "nisi", "aliquip", "ex", "ea", "commodo", "consequat",
+];
+
+/// `lorem` -> 30 words, `lorem5` -> 5 (also `lipsum`). Capped at 500.
+fn lorem_words(tag: &str) -> Option<usize> {
+    let rest = tag.strip_prefix("lorem").or_else(|| tag.strip_prefix("lipsum"))?;
+    if rest.is_empty() {
+        return Some(30);
+    }
+    let n: usize = rest.parse().ok()?;
+    (1..=500).contains(&n).then_some(n)
+}
+
+/// Placeholder text: the first `n` words of a fixed Latin word list, capitalised, with a full stop.
+/// This is an approximation of Emmet's `lorem`, not byte-identical to it.
+fn lorem_text(n: usize) -> String {
+    let mut words: Vec<String> = (0..n).map(|i| LOREM[i % LOREM.len()].to_string()).collect();
+    if let Some(w) = words.first_mut() {
+        let mut c = w.chars();
+        *w = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
+    }
+    format!("{}.", words.join(" "))
+}
+
+/// Moves a lorem-only child into its parent's text (`p>lorem5`).
+fn fold_lorem(nodes: &mut [Node]) {
+    for node in nodes {
+        for c in &mut node.children {
+            fold_lorem(std::slice::from_mut(c));
+        }
+        if node.text.is_none() {
+            if let Some(i) = node.children.iter().position(|c| {
+                c.lorem.is_some() && c.id.is_none() && c.classes.is_empty() && c.attrs.is_empty() && c.text.is_none()
+            }) {
+                let n = node.children[i].lorem.unwrap_or(30);
+                node.text = Some(lorem_text(n));
+                node.children.remove(i);
+            }
+        }
+    }
+}
+
+/// Emmet's colon snippets (`input:email`, `a:mail`, `meta:vp`, `btn:s`, ...) from
+/// emmetio/emmet `src/snippets/html.json`: `(tag, [(attr, value)])`. Empty values get a tabstop.
+fn alias(name: &str) -> Option<(&'static str, Vec<(&'static str, &'static str)>)> {
+    let input = |t: &'static str| ("input", vec![("type", t), ("name", ""), ("id", "")]);
+    Some(match name {
+        "a:blank" => ("a", vec![("href", "http://"), ("target", "_blank"), ("rel", "noopener noreferrer")]),
+        "a:link" => ("a", vec![("href", "http://")]),
+        "a:mail" => ("a", vec![("href", "mailto:")]),
+        "a:tel" => ("a", vec![("href", "tel:+")]),
+        "link:print" => ("link", vec![("href", "print.css"), ("media", "print")]),
+        "link:favicon" => ("link", vec![("rel", "icon"), ("type", "image/x-icon"), ("href", "favicon.ico")]),
+        "link:mf" | "link:manifest" => ("link", vec![("rel", "manifest"), ("href", "manifest.json")]),
+        "link:touch" => ("link", vec![("rel", "apple-touch-icon"), ("href", "favicon.png")]),
+        "link:rss" => ("link", vec![("rel", "alternate"), ("type", "application/rss+xml"), ("title", "RSS"), ("href", "rss.xml")]),
+        "link:atom" => ("link", vec![("rel", "alternate"), ("type", "application/atom+xml"), ("title", "Atom"), ("href", "atom.xml")]),
+        "meta:utf" => ("meta", vec![("http-equiv", "Content-Type"), ("content", "text/html;charset=UTF-8")]),
+        "meta:vp" => ("meta", vec![("name", "viewport"), ("content", "width=device-width, initial-scale=1.0")]),
+        "meta:compat" => ("meta", vec![("http-equiv", "X-UA-Compatible"), ("content", "IE=7")]),
+        "meta:edge" => ("meta", vec![("http-equiv", "X-UA-Compatible"), ("content", "ie=edge")]),
+        "meta:redirect" => ("meta", vec![("http-equiv", "refresh"), ("content", "0; url=http://example.com")]),
+        "meta:refresh" => ("meta", vec![("http-equiv", "refresh"), ("content", "5")]),
+        "meta:kw" => ("meta", vec![("name", "keywords"), ("content", "")]),
+        "meta:desc" => ("meta", vec![("name", "description"), ("content", "")]),
+        "script:module" => ("script", vec![("type", "module"), ("src", "")]),
+        "form:get" => ("form", vec![("action", ""), ("method", "get")]),
+        "btn:s" | "button:s" | "button:submit" | "btn:submit" => ("button", vec![("type", "submit")]),
+        "btn:r" | "button:r" | "button:reset" | "btn:reset" => ("button", vec![("type", "reset")]),
+        "btn:b" | "button:b" | "button:button" | "btn:button" => ("button", vec![("type", "button")]),
+        "input:h" | "input:hidden" => ("input", vec![("type", "hidden"), ("name", "")]),
+        "input:t" | "input:text" => input("text"),
+        "input:search" => input("search"),
+        "input:email" => input("email"),
+        "input:url" => input("url"),
+        "input:p" | "input:password" => input("password"),
+        "input:datetime" => input("datetime"),
+        "input:date" => input("date"),
+        "input:datetime-local" => input("datetime-local"),
+        "input:month" => input("month"),
+        "input:week" => input("week"),
+        "input:time" => input("time"),
+        "input:tel" => input("tel"),
+        "input:number" => input("number"),
+        "input:color" => input("color"),
+        "input:c" | "input:checkbox" => input("checkbox"),
+        "input:r" | "input:radio" => input("radio"),
+        "input:range" => input("range"),
+        "input:f" | "input:file" => input("file"),
+        "input:s" | "input:submit" => ("input", vec![("type", "submit"), ("value", "")]),
+        "input:i" | "input:image" => ("input", vec![("type", "image"), ("src", ""), ("alt", "")]),
+        "input:b" | "input:btn" | "input:button" => ("input", vec![("type", "button"), ("value", "")]),
+        "input:reset" => ("input", vec![("type", "reset"), ("value", "")]),
+        _ => return None,
+    })
+}
+
+/// A tag name that is a plain element (`div`, `my-element`, `h1`); anything else
+/// (`@media`, `input:nope`, `a:`) is not an HTML abbreviation.
+fn valid_tag(name: &str) -> bool {
+    for p in ["lorem", "lipsum"] {
+        if name.strip_prefix(p).is_some_and(|r| !r.is_empty() && r.chars().all(|c| c.is_ascii_digit())) {
+            return lorem_words(name).is_some();
+        }
+    }
+    name == "!"
+        || name == "html:5"
+        || alias(name).is_some()
+        || matches!(name, "link:css" | "script:src" | "form:post")
+        || (name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '$'))
+}
+
+fn all_tags_valid(nodes: &[Node]) -> bool {
+    nodes.iter().all(|n| n.tag.as_deref().is_none_or(valid_tag) && all_tags_valid(&n.children))
+}
+
 fn implicit_tag(parent: Option<&str>) -> &'static str {
     match parent {
         Some("ul" | "ol") => "li",
@@ -326,7 +454,7 @@ fn render(
             }
             let pad = ctx.indent.repeat(depth);
             let mut tag = node.tag.clone();
-            if tag.as_deref() == Some("!") {
+            if matches!(tag.as_deref(), Some("!") | Some("html:5")) {
                 let doc = DOCTYPE.replace("{I}", &ctx.indent);
                 ctx.stop = true;
                 for line in doc.split('\n') {
@@ -367,6 +495,10 @@ fn render(
                 }
                 _ => {}
             }
+            if let Some((t, a)) = alias(&name) {
+                tag = Some(t.into());
+                attrs = a.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            }
             let tag = tag.unwrap_or_else(|| implicit_tag(parent).to_string());
             if let Some(id) = &node.id {
                 attrs.push(("id".into(), number(id, n)));
@@ -400,7 +532,8 @@ fn render(
                 out.push(format!("{pad}{}", open));
                 continue;
             }
-            let text = node.text.as_deref().map(|t| esc(&number(t, n)));
+            let lorem = node.lorem.map(lorem_text);
+            let text = node.text.clone().or(lorem).map(|t| esc(&number(&t, n)));
             if node.children.is_empty() {
                 let inner = match text {
                     Some(t) => t,
@@ -432,9 +565,16 @@ pub fn expand_html(abbr: &str, indent: &str) -> Option<String> {
     }
     let chars: Vec<char> = abbr.chars().collect();
     let mut p = Parser { s: &chars, i: 0 };
-    let nodes = p.sequence()?;
-    if p.i != chars.len() {
+    let mut nodes = p.sequence()?;
+    if p.i != chars.len() || !all_tags_valid(&nodes) {
         return None;
+    }
+    fold_lorem(&mut nodes);
+    // A lone `lorem5` is just the text.
+    if let [n] = nodes.as_slice() {
+        if let (Some(w), None, true) = (n.lorem, &n.text, n.id.is_none() && n.classes.is_empty() && n.attrs.is_empty() && n.repeat == 1) {
+            return Some(lorem_text(w));
+        }
     }
     let mut ctx = Ctx {
         indent: indent.to_string(),
@@ -564,6 +704,11 @@ const CSS_UNITLESS: &[&str] = &[
     "order",
 ];
 
+const CSS_UNITS: &[&str] = &[
+    "px", "em", "rem", "ex", "ch", "vw", "vh", "vmin", "vmax", "pt", "pc", "cm", "mm", "in",
+    "fr", "s", "ms", "deg", "rad", "turn", "dvh", "svh", "lvh",
+];
+
 fn css_value(prop: &str, raw: &str) -> Option<String> {
     let (neg, raw) = match raw.strip_prefix('-') {
         Some(r) => (true, r),
@@ -597,13 +742,15 @@ fn css_value(prop: &str, raw: &str) -> Option<String> {
                 "p" => "%",
                 "e" => "em",
                 "r" => "rem",
-                other if other.chars().all(|c| c.is_ascii_alphabetic()) => other,
+                other if CSS_UNITS.contains(&other) => other,
                 _ => return None,
             };
             let sign = if neg && i == 0 { "-" } else { "" };
             format!("{sign}{num}{unit}")
         } else if first == '#' {
             piece.to_string()
+        } else if piece == "a" {
+            "auto".to_string()
         } else if piece.chars().all(|c| c.is_ascii_alphabetic()) {
             piece.to_string()
         } else {
@@ -757,5 +904,69 @@ mod tests {
         assert!(expand_css("10px").is_none());
         assert!(expand_css("m10-").is_none());
         assert!(expand_css("hello").is_none());
+    }
+}
+
+#[cfg(test)]
+mod alias_tests {
+    use super::*;
+
+    fn x(s: &str) -> Option<String> {
+        expand_html(s, "  ")
+    }
+
+    #[test]
+    fn colon_snippets_match_emmet_html_json() {
+        assert_eq!(x("input:text").unwrap(), "<input type=\"text\" name=\"$1\" id=\"\">");
+        assert_eq!(x("input:email").unwrap(), "<input type=\"email\" name=\"$1\" id=\"\">");
+        assert_eq!(x("input:submit").unwrap(), "<input type=\"submit\" value=\"$1\">");
+        assert_eq!(x("a:mail").unwrap(), "<a href=\"mailto:\">$1</a>");
+        assert_eq!(x("a:blank").unwrap(), "<a href=\"http://\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
+        assert_eq!(
+            x("meta:vp").unwrap(),
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+        );
+        assert_eq!(x("btn:s").unwrap(), "<button type=\"submit\">$1</button>");
+        assert_eq!(x("form>input:password").unwrap().contains("type=\"password\""), true);
+        assert_eq!(x("html:5"), x("!"));
+        // The user's own attributes still win.
+        assert_eq!(x("input:text[name=q]").unwrap(), "<input type=\"text\" id=\"$1\" name=\"q\">");
+    }
+
+    #[test]
+    fn unknown_colon_and_at_names_are_not_tags() {
+        for a in ["input:nope", "a:", "@media", "meta:zzz", "1abc", "-x"] {
+            assert_eq!(x(a), None, "{a}");
+        }
+        assert!(x("my-element.x").is_some());
+        assert!(x("h1").is_some());
+    }
+
+    #[test]
+    fn lorem_fills_the_parent_or_stands_alone() {
+        assert_eq!(x("lorem3").unwrap(), "Lorem ipsum dolor.");
+        assert_eq!(x("p>lorem4").unwrap(), "<p>Lorem ipsum dolor sit.</p>");
+        assert!(x("p*2>lorem2").unwrap().matches("<p>Lorem ipsum.</p>").count() == 2);
+        assert!(x("lorem").unwrap().split(' ').count() == 30);
+        assert_eq!(x("lorem0"), None);
+        assert_eq!(x("lorem9999"), None);
+        assert!(x("lorem5.x").is_some());
+    }
+}
+
+#[cfg(test)]
+mod css_fix_tests {
+    use super::*;
+
+    #[test]
+    fn auto_and_unit_validation() {
+        assert_eq!(expand_css("m0-a").as_deref(), Some("margin: 0 auto;"));
+        assert_eq!(expand_css("ml-a").as_deref(), Some("margin-left: auto;"));
+        assert_eq!(expand_css("w50vw").as_deref(), Some("width: 50vw;"));
+        assert_eq!(expand_css("h100dvh").as_deref(), Some("height: 100dvh;"));
+        assert_eq!(expand_css("m0a"), None);
+        assert_eq!(expand_css("m10zz"), None);
+        assert_eq!(expand_css("m10-20").as_deref(), Some("margin: 10px 20px;"));
+        assert_eq!(expand_css("w100p").as_deref(), Some("width: 100%;"));
     }
 }
