@@ -293,6 +293,43 @@ pub fn refresh_artisan(root: &Path, php: &str) -> Result<usize, String> {
 }
 
 /// Run configurations for the project at `root`, in a stable order.
+/// Targets of a `Makefile`: `name:` lines, skipping special (`.PHONY`), pattern
+/// (`%.o`), variable-assignment (`A := 1`) and indented recipe lines.
+fn make_targets(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if line.starts_with(['\t', ' ', '#', '.']) || line.is_empty() {
+            continue;
+        }
+        let Some((head, tail)) = line.split_once(':') else { continue };
+        // `VAR := x`, `VAR ::= x`, `VAR:=x`; a rule's `:` is followed by a prerequisite or end.
+        if tail.starts_with('=') || tail.starts_with(":=") || head.contains(['=', '$', '%', '(']) {
+            continue;
+        }
+        for t in head.split_whitespace() {
+            let ok = !t.is_empty()
+                && t.len() <= 60
+                && t.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
+                && !t.starts_with(['-', '/']);
+            if ok && !out.iter().any(|o| o == t) && out.len() < MAX_SCRIPTS {
+                out.push(t.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn makefile(root: &Path) -> Option<String> {
+    for name in ["Makefile", "makefile", "GNUmakefile"] {
+        let p = root.join(name);
+        let Ok(meta) = std::fs::symlink_metadata(&p) else { continue };
+        if meta.file_type().is_file() && meta.len() <= MAX_FILE_BYTES {
+            return std::fs::read_to_string(&p).ok();
+        }
+    }
+    None
+}
+
 pub fn discover(root: &Path) -> Vec<RunDebugConfig> {
     let mut out = Vec::new();
 
@@ -332,6 +369,41 @@ pub fn discover(root: &Path) -> Vec<RunDebugConfig> {
         let runner = node_runner(root);
         for name in script_names(&doc) {
             out.push(config(format!("{runner}: {name}"), runner, &["run", &name]));
+        }
+    }
+
+    // Laravel Sail, when its wrapper script is installed.
+    let sail = root.join("vendor").join("bin").join("sail");
+    if std::fs::symlink_metadata(&sail).is_ok_and(|m| m.file_type().is_file()) {
+        let sail = sail.to_string_lossy().into_owned();
+        for (label, args) in [
+            ("up", &["up"][..]),
+            ("up -d", &["up", "-d"]),
+            ("down", &["down"]),
+            ("test", &["test"]),
+            ("shell", &["shell"]),
+        ] {
+            out.push(config(format!("sail: {label}"), &sail, args));
+        }
+    }
+    // Docker Compose, when a compose file is present.
+    if ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]
+        .iter()
+        .any(|f| root.join(f).is_file())
+    {
+        for (label, args) in [
+            ("up", &["compose", "up"][..]),
+            ("up -d", &["compose", "up", "-d"]),
+            ("down", &["compose", "down"]),
+            ("logs -f", &["compose", "logs", "-f"]),
+            ("ps", &["compose", "ps"]),
+        ] {
+            out.push(config(format!("docker: {label}"), "docker", args));
+        }
+    }
+    if let Some(text) = makefile(root) {
+        for t in make_targets(&text) {
+            out.push(config(format!("make: {t}"), "make", &[&t]));
         }
     }
     out
@@ -485,5 +557,50 @@ mod tests {
         let other = tempfile::tempdir().unwrap();
         assert!(refresh_artisan(other.path(), "php").is_err());
         assert!(discover(dir.path()).iter().any(|c| c.name == "artisan: horizon:status"));
+    }
+
+    #[test]
+    fn makefile_targets_are_listed() {
+        let t = "CC := gcc\nVERSION ?= 1\n.PHONY: test\n\nall: build test\n\tcc x\n\nbuild test:\n\techo\n%.o: %.c\n\tcc\nup-dev: ; docker compose up\nbad target$(X):\n# comment: x\nlint:\n  indented:\nlint:\n";
+        assert_eq!(make_targets(t), ["all", "build", "test", "up-dev", "lint"]);
+        assert!(make_targets("").is_empty());
+        assert_eq!(make_targets("a:b\n").len(), 1);
+        let many: String = (0..500).map(|i| format!("t{i}:\n")).collect();
+        assert_eq!(make_targets(&many).len(), MAX_SCRIPTS);
+    }
+
+    #[test]
+    fn sail_docker_and_make_configs() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        write(r, "Makefile", "deploy:\n\techo\n");
+        write(r, "compose.yaml", "services: {}\n");
+        std::fs::create_dir_all(r.join("vendor/bin")).unwrap();
+        write(r, "vendor/bin/sail", "#!/bin/sh\n");
+        let names: Vec<String> = discover(r).into_iter().map(|c| c.name).collect();
+        for n in ["sail: up -d", "sail: test", "docker: up", "docker: logs -f", "make: deploy"] {
+            assert!(names.iter().any(|x| x == n), "{n} in {names:?}");
+        }
+        let sail = discover(r).into_iter().find(|c| c.name == "sail: up -d").unwrap();
+        assert!(sail.program.ends_with("vendor/bin/sail"));
+        assert_eq!(sail.args, Some(vec!["up".to_string(), "-d".to_string()]));
+        let make = discover(r).into_iter().find(|c| c.name == "make: deploy").unwrap();
+        assert_eq!((make.program.as_str(), make.args), ("make", Some(vec!["deploy".to_string()])));
+        // None of the three without their files.
+        let e = tempfile::tempdir().unwrap();
+        assert!(discover(e.path()).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_or_huge_makefile_is_ignored() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        write(r, "real.mk", "evil:\n");
+        std::os::unix::fs::symlink(r.join("real.mk"), r.join("Makefile")).unwrap();
+        assert!(makefile(r).is_none());
+        std::fs::remove_file(r.join("Makefile")).unwrap();
+        write(r, "Makefile", &"# pad\n".repeat(300_000));
+        assert!(makefile(r).is_none());
     }
 }
