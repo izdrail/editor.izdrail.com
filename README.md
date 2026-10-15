@@ -116,6 +116,9 @@ Go to Definition on the page name in `Inertia::render('Users/Index')`, `inertia(
 ### Go to WordPress template / include
 Go to Definition on `get_template_part()`, `get_header()`, `locate_template()` and `require __DIR__ . '/x.php'` strings opens the file. See [docs/go-to-wp-template.md](docs/go-to-wp-template.md).
 
+### Go to Asset
+Go to Definition on `asset('css/app.css')`, `mix()` and `@vite([...])` opens the file under `public/`, `assets/` or the project root. See [docs/go-to-asset.md](docs/go-to-asset.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 

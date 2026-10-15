@@ -1395,6 +1395,21 @@ impl EditorData {
                 });
                 return;
             }
+            // `asset('css/app.css')`, `mix(...)`, `@vite([...])` open the file.
+            if let Some(target) =
+                crate::asset_refs::resolve(root, &path, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: None,
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
             // An env variable (`env('X')`, `%env(X)%`, `process.env.X`) opens
             // the `.env` line that defines it.
             if let Some((target, line)) =
