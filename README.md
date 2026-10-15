@@ -118,6 +118,8 @@ Go to Definition on `get_template_part()`, `get_header()`, `locate_template()` a
 
 ### Go to Asset
 Go to Definition on `asset('css/app.css')`, `mix()` and `@vite([...])` opens the file under `public/`, `assets/` or the project root. See [docs/go-to-asset.md](docs/go-to-asset.md).
+### Livewire: Go to Handler
+Go to Definition on `wire:click="save"`, `wire:model="email"` or `$wire.save()` in a Livewire view opens the component class at that method or property. See [docs/livewire-handlers.md](docs/livewire-handlers.md).
 
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).

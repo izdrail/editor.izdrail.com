@@ -1410,6 +1410,24 @@ impl EditorData {
                 });
                 return;
             }
+            // Livewire view: `wire:click="save"` / `$wire.save()` opens the
+            // component class at that method or property.
+            if path.to_string_lossy().ends_with(".blade.php") {
+                if let Some((target, line)) =
+                    crate::livewire_handlers::resolve(root, &path, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // An env variable (`env('X')`, `%env(X)%`, `process.env.X`) opens
             // the `.env` line that defines it.
             if let Some((target, line)) =
