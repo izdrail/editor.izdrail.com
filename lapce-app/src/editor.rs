@@ -1380,6 +1380,21 @@ impl EditorData {
                     return;
                 }
             }
+            // `Inertia::render('Users/Index')` opens the page component.
+            if let Some(target) =
+                crate::inertia_pages::resolve(root, &line_text, col)
+            {
+                self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    location: EditorLocation {
+                        path: target,
+                        position: None,
+                        scroll_offset: None,
+                        ignore_unconfirmed: false,
+                        same_editor_tab: false,
+                    },
+                });
+                return;
+            }
             // An env variable (`env('X')`, `%env(X)%`, `process.env.X`) opens
             // the `.env` line that defines it.
             if let Some((target, line)) =

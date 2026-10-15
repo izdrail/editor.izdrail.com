@@ -110,6 +110,9 @@ Palette list of every class name used in `class="..."` attributes under `resourc
 ### Find View Usages
 Palette list of every controller, route, mailable or Blade view that renders or includes the Blade view open in the editor (the reverse of Go to Template). See [docs/view-usages.md](docs/view-usages.md).
 
+### Go to Inertia page
+Go to Definition on the page name in `Inertia::render('Users/Index')`, `inertia(...)` or `Route::inertia(...)` opens the Vue/React/Svelte page under `resources/js/Pages`. See [docs/go-to-inertia.md](docs/go-to-inertia.md).
+
 ### Go to Model
 Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`, ...). See [docs/go-to-model.md](docs/go-to-model.md).
 
