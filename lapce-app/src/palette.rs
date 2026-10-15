@@ -441,6 +441,9 @@ impl PaletteData {
             PaletteKind::AppClasses => {
                 self.set_route_items(crate::app_class_index::discover);
             }
+            PaletteKind::LivewireUsages => {
+                self.get_active_file_route_items(crate::livewire_usages::discover);
+            }
             PaletteKind::ArtisanCommands => {
                 self.set_route_items(crate::artisan_index::discover);
             }

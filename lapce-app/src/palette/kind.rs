@@ -34,6 +34,7 @@ pub enum PaletteKind {
     KeymapPresets,
     CssClasses,
     ViewUsages,
+    LivewireUsages,
     ImportClass,
     WrapTag,
     RenameTag,
@@ -81,6 +82,7 @@ impl PaletteKind {
             | PaletteKind::KeymapPresets
             | PaletteKind::CssClasses
             | PaletteKind::ViewUsages
+            | PaletteKind::LivewireUsages
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag
@@ -176,6 +178,9 @@ impl PaletteKind {
             PaletteKind::ViewUsages => {
                 Some(LapceWorkbenchCommand::PaletteViewUsages)
             }
+            PaletteKind::LivewireUsages => {
+                Some(LapceWorkbenchCommand::PaletteLivewireUsages)
+            }
             PaletteKind::ImportClass => Some(LapceWorkbenchCommand::ImportPhpClass),
             PaletteKind::WrapTag => Some(LapceWorkbenchCommand::WrapSelectionInTag),
             PaletteKind::RenameTag => Some(LapceWorkbenchCommand::RenameTag),
@@ -230,6 +235,7 @@ impl PaletteKind {
             | PaletteKind::KeymapPresets
             | PaletteKind::CssClasses
             | PaletteKind::ViewUsages
+            | PaletteKind::LivewireUsages
             | PaletteKind::ImportClass
             | PaletteKind::WrapTag
             | PaletteKind::RenameTag

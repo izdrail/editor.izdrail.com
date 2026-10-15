@@ -92,6 +92,9 @@ Palette list of Laravel form request classes and the fields in their `rules()`. 
 ### Go to Middleware / Job / Event
 Palette list of Laravel middleware, jobs, events, listeners, observers, notifications and mailables, tagged by kind (also seeders and factories). See [docs/go-to-app-class.md](docs/go-to-app-class.md).
 
+### Livewire: Find Member Usages
+Palette list of where a Livewire view uses its component's methods and properties (`wire:click`, `wire:model`, `$wire.x`), from the class or the view. See [docs/livewire-usages.md](docs/livewire-usages.md).
+
 ### Go to Artisan Command
 Palette list of your custom Artisan commands (class `$signature` / `AsCommand` and `Artisan::command` closures), jump to the definition. Nothing is run. See [docs/go-to-artisan-command.md](docs/go-to-artisan-command.md).
 

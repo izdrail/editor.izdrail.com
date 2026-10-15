@@ -24,6 +24,7 @@ pub mod migration_index;
 pub mod model_index;
 pub mod test_index;
 pub mod livewire_handlers;
+pub mod livewire_usages;
 pub mod policy_index;
 pub mod component_usages;
 pub mod blade_layouts;

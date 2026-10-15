@@ -505,6 +505,9 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "palette.view_usages")]
     #[strum(message = "Find View Usages")]
     PaletteViewUsages,
+    #[strum(serialize = "palette.livewire_usages")]
+    #[strum(message = "Livewire: Find Member Usages")]
+    PaletteLivewireUsages,
 
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]

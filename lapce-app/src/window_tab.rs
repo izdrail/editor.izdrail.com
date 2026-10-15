@@ -1220,6 +1220,9 @@ impl WindowTabData {
             PaletteAppClasses => {
                 self.palette.run(PaletteKind::AppClasses);
             }
+            PaletteLivewireUsages => {
+                self.palette.run(PaletteKind::LivewireUsages);
+            }
             PaletteArtisanCommands => {
                 self.palette.run(PaletteKind::ArtisanCommands);
             }
