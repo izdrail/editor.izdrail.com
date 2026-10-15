@@ -242,3 +242,43 @@ mod tests {
         assert_eq!(o.removed.len(), 5000);
     }
 }
+
+#[cfg(test)]
+mod laravel_regressions {
+    use super::*;
+
+    fn apply(src: &str) -> (String, Vec<String>) {
+        let o = organize(src).unwrap_or_default();
+        let mut out = src.to_string();
+        for (r, t) in o.edits.iter().rev() {
+            out.replace_range(r.clone(), t);
+        }
+        (out, o.removed)
+    }
+
+    #[test]
+    fn controller_drops_unused_and_sorts() {
+        let src = "<?php\n\nnamespace App\\Http\\Controllers;\n\nuse Illuminate\\Http\\Request;\nuse App\\Models\\User;\nuse App\\Models\\Post;\nuse Illuminate\\Support\\Facades\\DB;\nuse App\\Http\\Requests\\StorePostRequest;\n\nclass PostController extends Controller\n{\n    public function store(StorePostRequest $r): User\n    {\n        return Post::first();\n    }\n}\n";
+        let (out, removed) = apply(src);
+        assert_eq!(removed, ["use Illuminate\\Http\\Request;", "use Illuminate\\Support\\Facades\\DB;"]);
+        assert!(out.contains("use App\\Http\\Requests\\StorePostRequest;\nuse App\\Models\\Post;\nuse App\\Models\\User;\n\nclass"));
+    }
+
+    #[test]
+    fn trait_use_inside_class_and_closure_use_are_not_imports() {
+        let src = "<?php\nnamespace App\\Models;\n\nuse Illuminate\\Database\\Eloquent\\Factories\\HasFactory;\nuse Illuminate\\Database\\Eloquent\\Model;\n\nclass User extends Model\n{\n    use HasFactory;\n}\n";
+        assert_eq!(apply(src).1, Vec::<String>::new());
+        let src = "<?php\nuse App\\Foo;\n$f = function() use ($x) { return 1; };\nclass K {}\n";
+        let (out, removed) = apply(src);
+        assert_eq!(removed, ["use App\\Foo;"]);
+        assert!(out.contains("use ($x)"));
+    }
+
+    #[test]
+    fn crlf_files_keep_crlf_and_aliases_count_as_used() {
+        let (out, _) = apply("<?php\r\nuse B\\Two;\r\nuse A\\One;\r\nclass K { One $a; Two $b; }\r\n");
+        assert!(out.contains("use A\\One;\r\nuse B\\Two;\r\n"));
+        let (out, removed) = apply("<?php\nuse Doctrine\\ORM\\Mapping as ORM;\n#[ORM\\Column]\nclass A {}\n");
+        assert!(removed.is_empty() && out.contains("Mapping as ORM"));
+    }
+}
