@@ -5,8 +5,10 @@
 //! jump to `#[Route(... name: 'blog_index')]` in `src/Controller` or to the
 //! route key in `config/routes*.yaml`.
 //!
-//! Textual: names assembled from a class-level prefix, `Route::resource` /
-//! `apiResource` implicit names and group `->name('prefix.')` prefixes are not
+//! `Route::resource('photos', ...)` / `apiResource` / `singleton` implicit names
+//! (`photos.index`, ...) open the line that declares the resource.
+//!
+//! Textual: names assembled from a class-level prefix and group `->name('prefix.')` prefixes are not
 //! resolved. Bounded: 1 MB per file, 60 route files, 2000 controller files.
 use std::path::{Path, PathBuf};
 
@@ -107,6 +109,50 @@ fn find_laravel(root: &Path, name: &str) -> Option<(PathBuf, usize)> {
     None
 }
 
+const RESOURCE_ACTIONS: &[&str] = &["index", "create", "store", "show", "edit", "update", "destroy"];
+const SINGLETON_ACTIONS: &[&str] = &["show", "edit", "update", "create", "store", "destroy"];
+
+/// `photos.index` from `Route::resource('photos', ...)` / `apiResource` /
+/// `singleton`: the line that declares the resource. Custom `->names(...)`,
+/// `->only()` / `->except()` limits and `->parameters()` are not checked.
+fn find_resource(root: &Path, name: &str) -> Option<(PathBuf, usize)> {
+    let (base, action) = name.rsplit_once('.')?;
+    if base.is_empty() || !(RESOURCE_ACTIONS.contains(&action) || SINGLETON_ACTIONS.contains(&action)) {
+        return None;
+    }
+    let mut files: Vec<PathBuf> = std::fs::read_dir(root.join("routes"))
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "php"))
+        .collect();
+    files.sort();
+    for p in files.into_iter().take(MAX_ROUTE_FILES) {
+        let Some(text) = read(&p) else { continue };
+        if !text.contains(base) {
+            continue;
+        }
+        let pos = text.lines().position(|l| {
+            ["resource", "apiResource", "singleton", "apiSingleton"].iter().any(|k| {
+                l.match_indices(k).any(|(i, _)| {
+                    let before_ok = l[..i].chars().next_back().is_none_or(|c| !is_ident(c));
+                    let rest = l[i + k.len()..].trim_start();
+                    let Some(rest) = rest.strip_prefix('(') else { return false };
+                    let rest = rest.trim_start();
+                    let Some(q) = rest.chars().next().filter(|q| *q == '\'' || *q == '"') else {
+                        return false;
+                    };
+                    before_ok && rest[1..].strip_prefix(base).is_some_and(|r| r.starts_with(q))
+                })
+            })
+        });
+        if let Some(i) = pos {
+            return Some((p, i));
+        }
+    }
+    None
+}
+
 fn collect_php(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -178,7 +224,9 @@ fn clamp_col(line: &str, col: usize) -> usize {
 pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> {
     let col = clamp_col(line, col);
     let name = route_name_at(line, col)?;
-    find_laravel(root, name).or_else(|| find_symfony(root, name))
+    find_laravel(root, name)
+        .or_else(|| find_resource(root, name))
+        .or_else(|| find_symfony(root, name))
 }
 
 #[cfg(test)]
@@ -233,5 +281,21 @@ mod tests {
         // A prefix of a longer name is not a match.
         let l = "route('users')";
         assert_eq!(resolve(r, l, at(l, "users")), None);
+    }
+
+    #[test]
+    fn resource_routes_open_the_declaring_line() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let web = put(r, "routes/web.php", "<?php\nRoute::get('/', fn() => 1)->name('home');\nRoute::resource('photos', PhotoController::class);\nRoute::apiResource( \"posts.comments\", C::class);\nRoute::resource('photosets', S::class);\n");
+        let go = |l: &str, n: &str| resolve(r, l, at(l, n));
+        assert_eq!(go("route('photos.index')", "photos"), Some((web.clone(), 2)));
+        assert_eq!(go("route('photos.destroy', $p)", "photos"), Some((web.clone(), 2)));
+        assert_eq!(go("route('posts.comments.show')", "posts"), Some((web.clone(), 3)));
+        assert_eq!(go("route('photosets.edit')", "photosets"), Some((web, 4)));
+        // Not a resource action, or no such resource.
+        assert_eq!(go("route('photos.publish')", "photos"), None);
+        assert_eq!(go("route('albums.index')", "albums"), None);
+        assert_eq!(go("route('photo.index')", "photo."), None);
     }
 }
