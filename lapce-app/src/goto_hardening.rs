@@ -15,7 +15,10 @@ fn lines() -> Vec<String> {
         "__('日本語')", "route('日本')", "😀😀 view('😀') 😀", "\u{0301}\u{0301}'",
         "}}'\"((", "@includeWhen(", "add_action( '", "App\\Élan\\Ünï", "App\\\\\\\\",
         "register_activation_hook(__FILE__, '", "class: 'App\\Ünï\\", "@App\\É::é",
-        "App\\Controller\\Home::", "::", "\\\\\\", "resource: '../src/'", "\"laravel/é\": \"^1\"", "\"name\": \"a/b",
+        "Inertia::render('é", "inertia(\"日本/", "Route::inertia('/é', '", "get_template_part('é', '日",
+        "get_header(", "require __DIR__ . '/é", "plugin_dir_path( __FILE__ ) . '", "do_shortcode('[é [/",
+        "shortcode_exists('é", "asset('é?#", "@vite(['é', '", "mix('/", "wire:click=\"é", "$wire.é",
+        "wire:model.live=\"", "x-on:click=\"$wire.", "App\\Controller\\Home::", "::", "\\\\\\", "resource: '../src/'", "\"laravel/é\": \"^1\"", "\"name\": \"a/b",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -40,6 +43,16 @@ fn all_resolvers(root: &Path, line: &str, col: usize) {
         let _ = wp_hooks::resolve(root, &f, line, col);
         let _ = crate::blade_props::resolve(root, &f, line, col);
     }
+    let _ = crate::inertia_pages::resolve(root, line, col);
+    let _ = crate::wp_templates::resolve(root, &root.join("a.php"), line, col);
+    let _ = crate::asset_refs::resolve(root, &root.join("a.blade.php"), line, col);
+    let _ = crate::asset_refs::resolve(root, &root.join("a.twig"), line, col);
+    let _ = crate::livewire_handlers::resolve(
+        root,
+        &root.join("resources/views/livewire/a.blade.php"),
+        line,
+        col,
+    );
     let _ = env_refs::resolve(root, line, col);
     let _ = laravel_keys::resolve(root, line, col);
     let _ = route_names::resolve(root, line, col);
@@ -164,4 +177,37 @@ fn class_refs_oversized_class_file_is_not_read() {
     let got = class_refs::resolve(r, &f, "class: App\\Big", 10);
     assert_eq!(got, Some((r.join("src/Big.php"), 0)));
     assert!(t.elapsed().as_secs() < 2);
+}
+
+#[test]
+fn new_resolvers_skip_oversized_and_hostile_trees() {
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    // Livewire class over 1 MB is not read.
+    std::fs::create_dir_all(r.join("app/Livewire")).unwrap();
+    std::fs::create_dir_all(r.join("resources/views/livewire")).unwrap();
+    let mut big = String::from("<?php\nclass Big {\n public function save() {}\n}\n");
+    big.push_str(&"// pad\n".repeat(200_000));
+    std::fs::write(r.join("app/Livewire/Big.php"), big).unwrap();
+    let view = r.join("resources/views/livewire/big.blade.php");
+    let l = "<b wire:click=\"save\">";
+    assert_eq!(crate::livewire_handlers::resolve(r, &view, l, 17), None);
+    // A directory named like an asset or page is not a file.
+    std::fs::create_dir_all(r.join("public/css/app.css")).unwrap();
+    std::fs::create_dir_all(r.join("resources/js/Pages/Users.vue")).unwrap();
+    let blade = r.join("v.blade.php");
+    assert_eq!(crate::asset_refs::resolve(r, &blade, "asset('css/app.css')", 10), None);
+    assert_eq!(crate::inertia_pages::resolve(r, "inertia('Users')", 10), None);
+    // Odd file names in a WordPress theme.
+    std::fs::write(r.join("style.css"), "/* Theme Name: x */").unwrap();
+    let f = r.join("page.php");
+    for l in [
+        "get_template_part('a\\0b');",
+        "get_template_part('con\u{301}tent', '\u{1F600}');",
+        "locate_template('');",
+    ] {
+        for c in 0..l.len() + 2 {
+            let _ = crate::wp_templates::resolve(r, &f, l, c);
+        }
+    }
 }
