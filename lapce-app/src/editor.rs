@@ -1489,6 +1489,23 @@ impl EditorData {
                     return;
                 }
             }
+            // `@stack('x')` <-> `@push('x')`, `@yield('x')` <-> `@section('x')`.
+            if path.to_string_lossy().ends_with(".blade.php") {
+                if let Some((target, line)) =
+                    crate::blade_slots::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `asset('css/app.css')`, `mix(...)`, `@vite([...])` open the file.
             if let Some(target) =
                 crate::asset_refs::resolve(root, &path, &line_text, col)

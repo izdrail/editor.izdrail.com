@@ -47,6 +47,7 @@ fn all_resolvers(root: &Path, line: &str, col: usize) {
         let _ = crate::blade_props::resolve(root, &f, line, col);
     }
     let _ = crate::inertia_pages::resolve(root, line, col);
+    let _ = crate::blade_slots::resolve(root, line, col);
     let _ = crate::eloquent_scopes::resolve(root, line, col);
     let _ = crate::vue_components::resolve(root, line, col);
     let _ = crate::js_imports::resolve(root, &root.join("a.vue"), line, col);
