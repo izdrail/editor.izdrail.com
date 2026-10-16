@@ -1506,6 +1506,24 @@ impl EditorData {
                     return;
                 }
             }
+            // `[PostController::class, 'show']` / `'PostController@show'`
+            // open the controller method.
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::controller_actions::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `asset('css/app.css')`, `mix(...)`, `@vite([...])` open the file.
             if let Some(target) =
                 crate::asset_refs::resolve(root, &path, &line_text, col)
