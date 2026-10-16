@@ -221,3 +221,63 @@ fn new_resolvers_skip_oversized_and_hostile_trees() {
         }
     }
 }
+
+#[test]
+fn laravel_and_vue_resolvers_skip_big_binary_and_symlinked_files() {
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    let pad = "// pad\n".repeat(200_000);
+    let put = |rel: &str, bytes: &[u8]| {
+        let p = r.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, bytes).unwrap();
+        p
+    };
+    let big = |head: &str| format!("{head}\n{pad}");
+    // Files over 1 MB are not read, even when the wanted line comes first.
+    put("config/filesystems.php", big("<?php\n's3' => [],").as_bytes());
+    put("app/Http/Kernel.php", big("<?php\n'auth' => A::class,").as_bytes());
+    put("app/Models/Post.php", big("<?php\nfunction scopeOld(").as_bytes());
+    put("app/Http/Controllers/BigController.php", big("<?php\nfunction show(").as_bytes());
+    put("resources/views/big.blade.php", big("@push('s')").as_bytes());
+    assert_eq!(crate::config_channels::resolve(r, "Storage::disk('s3')", 16), None);
+    assert_eq!(crate::middleware_alias::resolve(r, "->middleware('auth')", 16), None);
+    assert_eq!(crate::eloquent_scopes::resolve(r, "Post::old()", 8), None);
+    assert_eq!(crate::controller_actions::resolve(r, "'BigController@show'", 16), None);
+    assert_eq!(crate::blade_slots::resolve(r, "@stack('s')", 9), None);
+    // Files that are not UTF-8 are skipped without a panic.
+    put("config/logging.php", &[0xff, 0xfe, b'\'', b's', b'\'', 0x80]);
+    put("resources/views/bin.blade.php", &[0xff, 0xfe, b'@', 0x80]);
+    assert_eq!(crate::config_channels::resolve(r, "Log::channel('s')", 15), None);
+    assert_eq!(crate::blade_slots::resolve(r, "@stack('zz')", 9), None);
+    // CRLF files still resolve to the right line.
+    put("config/cache.php", b"<?php\r\nreturn [\r\n  'redis' => [],\r\n];\r\n");
+    let got = crate::config_channels::resolve(r, "Cache::store('redis')", 16);
+    assert_eq!(got.map(|(_, line)| line), Some(2));
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_targets_are_not_followed_by_new_resolvers() {
+    use std::os::unix::fs::symlink;
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    let outside = tempfile::tempdir().unwrap();
+    let real = outside.path().join("Real.vue");
+    std::fs::write(&real, "x").unwrap();
+    std::fs::create_dir_all(r.join("resources/js")).unwrap();
+    symlink(&real, r.join("resources/js/Linked.vue")).unwrap();
+    let page = r.join("resources/js/Home.vue");
+    assert_eq!(crate::vue_components::resolve(r, "<Linked />", 3), None);
+    assert_eq!(crate::js_imports::resolve(r, &page, "import x from '@/Linked.vue'", 20), None);
+    let ctl = outside.path().join("LinkController.php");
+    std::fs::write(&ctl, "<?php\nfunction show(").unwrap();
+    std::fs::create_dir_all(r.join("app/Http/Controllers")).unwrap();
+    symlink(&ctl, r.join("app/Http/Controllers/LinkController.php")).unwrap();
+    assert_eq!(crate::controller_actions::resolve(r, "'LinkController@show'", 17), None);
+    let view = outside.path().join("l.blade.php");
+    std::fs::write(&view, "@push('x')").unwrap();
+    std::fs::create_dir_all(r.join("resources/views")).unwrap();
+    symlink(&view, r.join("resources/views/l.blade.php")).unwrap();
+    assert_eq!(crate::blade_slots::resolve(r, "@stack('x')", 9), None);
+}
