@@ -277,9 +277,11 @@ fn esc(s: &str) -> String {
     out
 }
 
-/// Replaces `$` runs with the 1-based repeat index, zero padded to the run
-/// length (`$$` -> `01`).
-fn number(s: &str, index: usize) -> String {
+/// Replaces `$` runs with the repeat index, zero padded to the run length
+/// (`$$` -> `01`). Numbering modifiers follow the run: `$@-` counts down
+/// (`5,4,3,2,1` for `*5`), `$@3` starts at 3, and `$@-3` counts down ending
+/// at 3 (`7,6,5,4,3` for `*5`).
+fn number(s: &str, index: usize, count: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::new();
     let mut i = 0;
@@ -290,7 +292,28 @@ fn number(s: &str, index: usize) -> String {
                 n += 1;
                 i += 1;
             }
-            out.push_str(&format!("{index:0n$}"));
+            let (mut desc, mut start) = (false, 1usize);
+            if chars.get(i) == Some(&'@') && chars.get(i + 1).is_some_and(|c| *c == '-' || c.is_ascii_digit()) {
+                i += 1;
+                if chars.get(i) == Some(&'-') {
+                    desc = true;
+                    i += 1;
+                }
+                let mut digits = String::new();
+                while digits.len() < 6 && chars.get(i).is_some_and(|c| c.is_ascii_digit()) {
+                    digits.push(chars[i]);
+                    i += 1;
+                }
+                if let Ok(v) = digits.parse::<usize>() {
+                    start = v;
+                }
+            }
+            let value = if desc {
+                (start + count.saturating_sub(1)).saturating_sub(index.saturating_sub(1))
+            } else {
+                start + index.saturating_sub(1)
+            };
+            out.push_str(&format!("{value:0n$}"));
         } else {
             out.push(chars[i]);
             i += 1;
@@ -501,17 +524,17 @@ fn render(
             }
             let tag = tag.unwrap_or_else(|| implicit_tag(parent).to_string());
             if let Some(id) = &node.id {
-                attrs.push(("id".into(), number(id, n)));
+                attrs.push(("id".into(), number(id, n, node.repeat)));
             }
             if !node.classes.is_empty() {
                 let c: Vec<String> =
-                    node.classes.iter().map(|c| number(c, n)).collect();
+                    node.classes.iter().map(|c| number(c, n, node.repeat)).collect();
                 attrs.push(("class".into(), c.join(" ")));
             }
             for (k, v) in &node.attrs {
                 // User attributes replace a shortcut default of the same name.
                 attrs.retain(|(ek, _)| ek != k);
-                attrs.push((k.clone(), number(v, n)));
+                attrs.push((k.clone(), number(v, n, node.repeat)));
             }
             let mut open = format!("<{tag}");
             for (k, v) in &attrs {
@@ -533,7 +556,7 @@ fn render(
                 continue;
             }
             let lorem = node.lorem.map(lorem_text);
-            let text = node.text.clone().or(lorem).map(|t| esc(&number(&t, n)));
+            let text = node.text.clone().or(lorem).map(|t| esc(&number(&t, n, node.repeat)));
             if node.children.is_empty() {
                 let inner = match text {
                     Some(t) => t,
@@ -968,5 +991,21 @@ mod css_fix_tests {
         assert_eq!(expand_css("m10zz"), None);
         assert_eq!(expand_css("m10-20").as_deref(), Some("margin: 10px 20px;"));
         assert_eq!(expand_css("w100p").as_deref(), Some("width: 100%;"));
+    }
+
+    #[test]
+    fn numbering_modifiers() {
+        let l = x("ul>li.item$@-*3").unwrap();
+        let (a, b, c) = (l.find("item3").unwrap(), l.find("item2").unwrap(), l.find("item1").unwrap());
+        assert!(a < b && b < c, "{l}");
+        let l = x("li.n$@3*3").unwrap();
+        assert!(l.contains("n3") && l.contains("n4") && l.contains("n5"), "{l}");
+        let l = x("li.n$@-3*3").unwrap();
+        let (a, b) = (l.find("n5").unwrap(), l.find("n3").unwrap());
+        assert!(a < b && l.contains("n4"), "{l}");
+        assert!(x("li.n$$@-*2").unwrap().contains("n02"));
+        // Plain numbering and a lone `@` are unchanged.
+        assert!(x("li.n$*2").unwrap().contains("n2"));
+        assert_eq!(number("a$@b", 1, 1), "a1@b");
     }
 }

@@ -16,7 +16,7 @@ jumps to the first tabstop. Change the key in `keymaps.toml` (`emmet_expand`).
 | `a`, `img`, `input`, `link:css`, `script:src`, `form:post` | common defaults |
 | `!` | HTML5 document skeleton |
 
-Not yet: `lorem`, filters (`|c`), `@-` numbering modifiers and
+Numbering modifiers work after `$`: `li.item$@-*3` counts down (3, 2, 1), `li.n$@5*3` starts at 5, `li.n$@-5*3` counts down ending at 5. Not yet: filters (`|c`) and
 auto-trigger on Tab. Output uses the buffer's indent unit and keeps the current
 line's indentation. Invalid abbreviations do nothing.
 
