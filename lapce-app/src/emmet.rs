@@ -981,6 +981,10 @@ mod alias_tests {
 mod css_fix_tests {
     use super::*;
 
+    fn x(s: &str) -> Option<String> {
+        expand_html(s, "  ")
+    }
+
     #[test]
     fn auto_and_unit_validation() {
         assert_eq!(expand_css("m0-a").as_deref(), Some("margin: 0 auto;"));
