@@ -41,6 +41,9 @@ enum Ref {
     /// A shortcode tag used in `do_shortcode('[tag]')` or named in
     /// `shortcode_exists('tag')`; goes to its `add_shortcode('tag', ...)`.
     Shortcode(String),
+    /// A post type, taxonomy, script/style handle or option name used somewhere;
+    /// goes to the first call in the list that registers it.
+    Registered(&'static [&'static str], String),
 }
 
 const SHORTCODE_NAME_CALLS: &[&str] = &["shortcode_exists", "remove_shortcode"];
@@ -144,6 +147,38 @@ fn skip_first_arg_expr(args: &str) -> Option<&str> {
     (ok && rest.trim().is_empty()).then_some(rest)
 }
 
+/// Usage -> registration for names that are declared once and used by string:
+/// `(call whose first argument is the name, array key, registering calls)`.
+const USES: &[(&[&str], &str, &[&str])] = &[
+    (&["is_singular", "is_post_type_archive", "get_post_type_object", "post_type_exists"], "post_type", &["register_post_type"]),
+    (&["is_tax", "get_taxonomy", "taxonomy_exists"], "taxonomy", &["register_taxonomy"]),
+    (&["wp_enqueue_script", "wp_dequeue_script", "wp_deregister_script", "wp_script_is"], "", &["wp_register_script"]),
+    (&["wp_enqueue_style", "wp_dequeue_style", "wp_deregister_style", "wp_style_is"], "", &["wp_register_style"]),
+    (&["get_option", "delete_option"], "", &["add_option", "update_option"]),
+];
+
+/// `'post_type' => 'book'`: the array key before a string value.
+fn array_key_before(before: &str) -> Option<&str> {
+    let t = before.trim_end().strip_suffix("=>")?.trim_end();
+    let t = t.strip_suffix(['\'', '"'])?;
+    let start = t.char_indices().rev().find(|(_, c)| !is_ident(*c)).map_or(0, |(i, c)| i + c.len_utf8());
+    Some(&t[start..])
+}
+
+fn registered_name(s: &str, before: &str) -> Option<Ref> {
+    if s.len() > 60 || !s.chars().all(|c| is_ident(c) || matches!(c, '-' | '.')) {
+        return None;
+    }
+    for (calls, key, registers) in USES {
+        let by_call = calls.iter().any(|c| args_after(before, c).is_some_and(|a| a.trim().is_empty()));
+        let by_key = !key.is_empty() && array_key_before(before) == Some(*key);
+        if by_call || by_key {
+            return Some(Ref::Registered(registers, s.to_string()));
+        }
+    }
+    None
+}
+
 fn classify(line: &str, col: usize) -> Option<Ref> {
     let (s, before) = string_at(line, col.min(line.len()))?;
     if s.is_empty() || s.len() > 200 {
@@ -165,6 +200,9 @@ fn classify(line: &str, col: usize) -> Option<Ref> {
             let ok = s.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
             return ok.then(|| Ref::Shortcode(s.to_string()));
         }
+    }
+    if let Some(r) = registered_name(s, before) {
+        return Some(r);
     }
     // Hook name: first argument of a registering or firing call.
     for (calls, fired) in [(REGISTER, false), (FIRE, true)] {
@@ -304,6 +342,7 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<(Path
         Ref::Shortcode(t) => {
             search(root, file, |text| find_hook_call(text, &["add_shortcode"], &t))
         }
+        Ref::Registered(calls, name) => search(root, file, |t| find_hook_call(t, calls, &name)),
     }
 }
 
@@ -317,6 +356,46 @@ mod tests {
 
     fn cb(line: &str, needle: &str) -> Option<Ref> {
         classify(line, at(line, needle))
+    }
+
+    #[test]
+    fn registered_names_classify_from_their_uses() {
+        let r = |l: &str, n: &str| cb(l, n);
+        assert_eq!(r("$q = new WP_Query(['post_type' => 'book']);", "book"), Some(Ref::Registered(&["register_post_type"], "book".into())));
+        assert_eq!(r("if (is_singular('book')) {", "book"), Some(Ref::Registered(&["register_post_type"], "book".into())));
+        assert_eq!(r("'taxonomy' => \"genre\",", "genre"), Some(Ref::Registered(&["register_taxonomy"], "genre".into())));
+        assert_eq!(r("wp_enqueue_script('my-app', get_theme_file_uri('a.js'));", "my-app"), Some(Ref::Registered(&["wp_register_script"], "my-app".into())));
+        assert_eq!(r("wp_enqueue_style( 'my.css' );", "my.css"), Some(Ref::Registered(&["wp_register_style"], "my.css".into())));
+        assert_eq!(r("$v = get_option('my_plugin_opt', 1);", "my_plugin_opt"), Some(Ref::Registered(&["add_option", "update_option"], "my_plugin_opt".into())));
+        // The key itself, other keys and non-names are not registrations.
+        assert_eq!(r("['post_type' => 'book']", "post_type"), None);
+        assert_eq!(r("['post_status' => 'publish']", "publish"), None);
+        assert_eq!(r("get_option('a b')", "a b"), None);
+        assert_eq!(r("foo('book')", "book"), None);
+    }
+
+    #[test]
+    fn registered_names_find_their_registration() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let plugin = r.join("plugin.php");
+        std::fs::write(&plugin, "<?php\nadd_action('init', function () {\n    register_post_type('book', []);\n    register_taxonomy( \"genre\", 'book');\n});\nwp_register_script('my-app', 'a.js');\nadd_option('my_plugin_opt', 1);\n").unwrap();
+        let tpl = r.join("single.php");
+        let go = |l: &str, n: &str| resolve(r, &tpl, l, at(l, n));
+        assert_eq!(go("is_singular('book')", "book"), Some((plugin.clone(), 2)));
+        assert_eq!(go("'taxonomy' => 'genre'", "genre"), Some((plugin.clone(), 3)));
+        assert_eq!(go("wp_enqueue_script('my-app')", "my-app"), Some((plugin.clone(), 5)));
+        assert_eq!(go("get_option('my_plugin_opt')", "my_plugin_opt"), Some((plugin, 6)));
+        assert_eq!(go("is_singular('movie')", "movie"), None);
+    }
+
+    #[test]
+    fn registered_name_lines_with_odd_text_do_not_panic() {
+        for l in ["'post_type' =>", "'é' => 'é'", "is_singular('日本", "get_option(\"", "=> '", "'taxonomy'=>'😀'"] {
+            for c in 0..=l.len() + 2 {
+                let _ = classify(l, c);
+            }
+        }
     }
 
     #[test]

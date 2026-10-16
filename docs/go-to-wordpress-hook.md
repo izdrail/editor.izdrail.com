@@ -26,3 +26,19 @@ nothing is found, normal Go to Definition runs. Nothing is executed.
 
 Not included: hooks registered with variable names or constants, closures, and the WordPress core
 hook list.
+
+## Post types, taxonomies, script handles and options
+
+On the name in one of these uses, Go to Definition opens the first matching registration, found the same
+way as hooks:
+
+| On | Opens |
+| --- | --- |
+| `'post_type' => 'book'`, `is_singular('book')`, `is_post_type_archive(...)`, `get_post_type_object(...)` | `register_post_type('book'` |
+| `'taxonomy' => 'genre'`, `is_tax(...)`, `get_taxonomy(...)` | `register_taxonomy('genre'` |
+| `wp_enqueue_script('h')`, `wp_dequeue_script`, `wp_script_is` | `wp_register_script('h'` |
+| `wp_enqueue_style('h')` and friends | `wp_register_style('h'` |
+| `get_option('x')`, `delete_option('x')` | the first `add_option('x'` or `update_option('x'` |
+
+Names built at runtime, `'post_type' => ['a', 'b']` arrays, `register_setting()` and handles that are
+only enqueued with a source (no separate register call) are not found. Nothing is executed.
