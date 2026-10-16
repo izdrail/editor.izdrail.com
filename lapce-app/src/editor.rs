@@ -1472,6 +1472,23 @@ impl EditorData {
                     return;
                 }
             }
+            // `Post::published()` opens `scopePublished` in the model.
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::eloquent_scopes::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `asset('css/app.css')`, `mix(...)`, `@vite([...])` open the file.
             if let Some(target) =
                 crate::asset_refs::resolve(root, &path, &line_text, col)
