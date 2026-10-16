@@ -7,6 +7,9 @@ use std::ops::Range;
 const MAX_BYTES: usize = 1024 * 1024;
 const MAX_TAG: usize = 4096;
 const MAX_DEPTH: usize = 512;
+/// Total bytes `tag_end` may scan in one call, so a file of many unterminated
+/// `<a {{` tags (each scanning up to MAX_TAG) cannot take seconds.
+const MAX_WORK: usize = 8 * 1024 * 1024;
 const VOID: [&str; 14] = [
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
     "source", "track", "wbr",
@@ -74,6 +77,7 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
     let b = text.as_bytes();
     let mut stack: Vec<Open> = vec![];
     let mut best: Option<(usize, Pair)> = None; // (span length, pair)
+    let mut work = 0usize;
     let mut i = 0;
     while i < b.len() {
         if b[i] != b'<' {
@@ -129,10 +133,15 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
             let ns = i + 1;
             let ne = name_end(b, ns);
             let name = text[ns..ne].to_string();
+            if work > MAX_WORK {
+                break;
+            }
             let Some((end, self_closing)) = tag_end(b, ne) else {
+                work += MAX_TAG;
                 i += 1;
                 continue;
             };
+            work += end - ne;
             let lower = name.to_ascii_lowercase();
             if self_closing || VOID.contains(&lower.as_str()) {
                 i = end;
@@ -140,9 +149,12 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
             }
             if lower == "script" || lower == "style" {
                 let close = format!("</{lower}");
-                i = text[end..]
-                    .to_ascii_lowercase()
-                    .find(&close)
+                // Case-insensitive search without copying the rest of the file
+                // for every script/style tag.
+                let pat = close.as_bytes();
+                i = b[end..]
+                    .windows(pat.len())
+                    .position(|w| w.eq_ignore_ascii_case(pat))
                     .map(|p| p + end)
                     .unwrap_or(b.len());
                 // Re-enter at the closing tag so it pairs with this opener.
@@ -223,6 +235,22 @@ mod tests {
         assert_eq!(names("<a", 1), None);
         assert_eq!(names("", 0), None);
         assert_eq!(names("é<b>é</b>é", 2), Some(("b".into(), "b".into())));
+    }
+
+    #[test]
+    fn many_scripts_and_unterminated_tags_stay_fast() {
+        // Without the work budget each `<a {{` scans 4096 bytes; without the
+        // in-place search each `<script>` copied the rest of the file.
+        let start = std::time::Instant::now();
+        let braces = "<a {{".repeat(200_000);
+        let _ = pair_at(&braces, 3);
+        let scripts = "<script></script>".repeat(60_000);
+        let _ = pair_at(&scripts, 3);
+        assert!(start.elapsed() < std::time::Duration::from_secs(20));
+        // A mixed-case close tag still ends the script body (pairing is
+        // case-sensitive, as before).
+        let t = "<script>if (a<b) {}</SCRIPT><p>x</p>";
+        assert_eq!(names(t, t.find("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
     }
 
     #[test]
