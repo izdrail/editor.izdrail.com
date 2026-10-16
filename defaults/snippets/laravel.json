@@ -200,7 +200,7 @@
    "{",
    "\tuse Dispatchable, SerializesModels;",
    "",
-   "\tpublic function __construct(public ${2:Order} $${3:order})",
+   "\tpublic function __construct(public ${2:Order} \\$${3:order})",
    "\t{",
    "\t}",
    "}"
@@ -218,7 +218,7 @@
    "",
    "class ${2:Send}Listener",
    "{",
-   "\tpublic function handle(${1:Order}Event $event): void",
+   "\tpublic function handle(${1:Order}Event \\$event): void",
    "\t{",
    "\t\t$0",
    "\t}",
@@ -239,10 +239,10 @@
    "",
    "class ${1:Check}",
    "{",
-   "\tpublic function handle(Request $request, Closure $next): Response",
+   "\tpublic function handle(Request \\$request, Closure \\$next): Response",
    "\t{",
    "\t\t$0",
-   "\t\treturn $next($request);",
+   "\t\treturn \\$next(\\$request);",
    "\t}",
    "}"
   ],
@@ -260,10 +260,10 @@
    "",
    "class ${1:Post}Resource extends JsonResource",
    "{",
-   "\tpublic function toArray(Request $request): array",
+   "\tpublic function toArray(Request \\$request): array",
    "\t{",
    "\t\treturn [",
-   "\t\t\t'id' => $this->id,",
+   "\t\t\t'id' => \\$this->id,",
    "\t\t\t$0",
    "\t\t];",
    "\t}",
@@ -283,14 +283,14 @@
    "",
    "class ${1:Post}Policy",
    "{",
-   "\tpublic function view(User $user, ${1:Post} $${2:post}): bool",
+   "\tpublic function view(User \\$user, ${1:Post} \\$${2:post}): bool",
    "\t{",
    "\t\t$0",
    "\t}",
    "",
-   "\tpublic function update(User $user, ${1:Post} $${2:post}): bool",
+   "\tpublic function update(User \\$user, ${1:Post} \\$${2:post}): bool",
    "\t{",
-   "\t\treturn $user->id === $${2:post}->user_id;",
+   "\t\treturn \\$user->id === \\$${2:post}->user_id;",
    "\t}",
    "}"
   ],
@@ -307,9 +307,9 @@
    "",
    "class ${1:Sync}Command extends Command",
    "{",
-   "\tprotected $signature = '${2:app:sync}';",
+   "\tprotected \\$signature = '${2:app:sync}';",
    "",
-   "\tprotected $description = '${3:Describe the command}';",
+   "\tprotected \\$description = '${3:Describe the command}';",
    "",
    "\tpublic function handle(): int",
    "\t{",
@@ -323,9 +323,9 @@
  "Local scope": {
   "prefix": "lv-scope",
   "body": [
-   "public function scope${1:Published}($query)",
+   "public function scope${1:Published}(\\$query)",
    "{",
-   "\treturn $query->where('${2:published}', true);",
+   "\treturn \\$query->where('${2:published}', true);",
    "}"
   ],
   "description": "Eloquent local scope"
@@ -336,7 +336,7 @@
    "protected function ${1:name}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute",
    "{",
    "\treturn \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute::make(",
-   "\t\tget: fn (string $value) => $0,",
+   "\t\tget: fn (string \\$value) => $0,",
    "\t);",
    "}"
   ],
@@ -347,7 +347,7 @@
   "body": [
    "public function ${1:tags}()",
    "{",
-   "\treturn $this->belongsToMany(${2:Tag}::class);",
+   "\treturn \\$this->belongsToMany(${2:Tag}::class);",
    "}"
   ],
   "description": "belongsToMany relation"
@@ -357,7 +357,7 @@
   "body": [
    "public function ${1:profile}()",
    "{",
-   "\treturn $this->hasOne(${2:Profile}::class);",
+   "\treturn \\$this->hasOne(${2:Profile}::class);",
    "}"
   ],
   "description": "hasOne relation"
@@ -390,7 +390,7 @@
  "Dump and die": {
   "prefix": "lv-dd",
   "body": [
-   "dd($${1:var});"
+   "dd(\\$${1:var});"
   ],
   "description": "dd()"
  }
