@@ -1403,6 +1403,19 @@ impl EditorData {
             {
                 if let Some(target) =
                     crate::vue_components::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: None,
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `import X from '@/Components/X.vue'` and relative imports in
             // JS / TS / Vue / Svelte files open the imported file.
             if path.extension().is_some_and(|e| {
@@ -1410,11 +1423,37 @@ impl EditorData {
             }) {
                 if let Some(target) =
                     crate::js_imports::resolve(root, &path, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: None,
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `->middleware('auth')` opens the alias line in
             // `bootstrap/app.php` or `app/Http/Kernel.php`.
             if path.extension().is_some_and(|e| e == "php") {
                 if let Some((target, line)) =
                     crate::middleware_alias::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `Storage::disk('s3')`, `Log::channel(..)`, `DB::connection(..)`
             // open the matching entry in `config/*.php`.
             if path.extension().is_some_and(|e| e == "php") {
@@ -1424,7 +1463,6 @@ impl EditorData {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation {
                             path: target,
-                            position: None,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
                             ignore_unconfirmed: false,
