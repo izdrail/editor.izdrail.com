@@ -156,5 +156,242 @@
    "\\\\Log::info('${1:message}', [${2:}]);"
   ],
   "description": "Log::info call"
+ },
+ "Job": {
+  "prefix": "lv-job",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Jobs;",
+   "",
+   "use Illuminate\\\\Bus\\\\Queueable;",
+   "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldQueue;",
+   "use Illuminate\\\\Foundation\\\\Bus\\\\Dispatchable;",
+   "use Illuminate\\\\Queue\\\\InteractsWithQueue;",
+   "use Illuminate\\\\Queue\\\\SerializesModels;",
+   "",
+   "class ${1:Process}Job implements ShouldQueue",
+   "{",
+   "\tuse Dispatchable, InteractsWithQueue, Queueable, SerializesModels;",
+   "",
+   "\tpublic function __construct(${2:})",
+   "\t{",
+   "\t}",
+   "",
+   "\tpublic function handle(): void",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Queued job"
+ },
+ "Event": {
+  "prefix": "lv-event",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Events;",
+   "",
+   "use Illuminate\\\\Foundation\\\\Events\\\\Dispatchable;",
+   "use Illuminate\\\\Queue\\\\SerializesModels;",
+   "",
+   "class ${1:Order}Event",
+   "{",
+   "\tuse Dispatchable, SerializesModels;",
+   "",
+   "\tpublic function __construct(public ${2:Order} $${3:order})",
+   "\t{",
+   "\t}",
+   "}"
+  ],
+  "description": "Event class"
+ },
+ "Listener": {
+  "prefix": "lv-listener",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Listeners;",
+   "",
+   "use App\\\\Events\\\\${1:Order}Event;",
+   "",
+   "class ${2:Send}Listener",
+   "{",
+   "\tpublic function handle(${1:Order}Event $event): void",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Event listener"
+ },
+ "Middleware": {
+  "prefix": "lv-middleware",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Http\\\\Middleware;",
+   "",
+   "use Closure;",
+   "use Illuminate\\\\Http\\\\Request;",
+   "use Symfony\\\\Component\\\\HttpFoundation\\\\Response;",
+   "",
+   "class ${1:Check}",
+   "{",
+   "\tpublic function handle(Request $request, Closure $next): Response",
+   "\t{",
+   "\t\t$0",
+   "\t\treturn $next($request);",
+   "\t}",
+   "}"
+  ],
+  "description": "HTTP middleware"
+ },
+ "API resource": {
+  "prefix": "lv-resource",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Http\\\\Resources;",
+   "",
+   "use Illuminate\\\\Http\\\\Request;",
+   "use Illuminate\\\\Http\\\\Resources\\\\Json\\\\JsonResource;",
+   "",
+   "class ${1:Post}Resource extends JsonResource",
+   "{",
+   "\tpublic function toArray(Request $request): array",
+   "\t{",
+   "\t\treturn [",
+   "\t\t\t'id' => $this->id,",
+   "\t\t\t$0",
+   "\t\t];",
+   "\t}",
+   "}"
+  ],
+  "description": "JsonResource"
+ },
+ "Policy": {
+  "prefix": "lv-policy",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Policies;",
+   "",
+   "use App\\\\Models\\\\${1:Post};",
+   "use App\\\\Models\\\\User;",
+   "",
+   "class ${1:Post}Policy",
+   "{",
+   "\tpublic function view(User $user, ${1:Post} $${2:post}): bool",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "",
+   "\tpublic function update(User $user, ${1:Post} $${2:post}): bool",
+   "\t{",
+   "\t\treturn $user->id === $${2:post}->user_id;",
+   "\t}",
+   "}"
+  ],
+  "description": "Policy class"
+ },
+ "Artisan command": {
+  "prefix": "lv-command",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Console\\\\Commands;",
+   "",
+   "use Illuminate\\\\Console\\\\Command;",
+   "",
+   "class ${1:Sync}Command extends Command",
+   "{",
+   "\tprotected $signature = '${2:app:sync}';",
+   "",
+   "\tprotected $description = '${3:Describe the command}';",
+   "",
+   "\tpublic function handle(): int",
+   "\t{",
+   "\t\t$0",
+   "\t\treturn self::SUCCESS;",
+   "\t}",
+   "}"
+  ],
+  "description": "Console command"
+ },
+ "Local scope": {
+  "prefix": "lv-scope",
+  "body": [
+   "public function scope${1:Published}($query)",
+   "{",
+   "\treturn $query->where('${2:published}', true);",
+   "}"
+  ],
+  "description": "Eloquent local scope"
+ },
+ "Accessor": {
+  "prefix": "lv-accessor",
+  "body": [
+   "protected function ${1:name}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute",
+   "{",
+   "\treturn \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute::make(",
+   "\t\tget: fn (string $value) => $0,",
+   "\t);",
+   "}"
+  ],
+  "description": "Eloquent attribute accessor/mutator"
+ },
+ "Relation belongsToMany": {
+  "prefix": "lv-belongstomany",
+  "body": [
+   "public function ${1:tags}()",
+   "{",
+   "\treturn $this->belongsToMany(${2:Tag}::class);",
+   "}"
+  ],
+  "description": "belongsToMany relation"
+ },
+ "Relation hasOne": {
+  "prefix": "lv-hasone",
+  "body": [
+   "public function ${1:profile}()",
+   "{",
+   "\treturn $this->hasOne(${2:Profile}::class);",
+   "}"
+  ],
+  "description": "hasOne relation"
+ },
+ "Pest test": {
+  "prefix": "lv-pest",
+  "body": [
+   "it('${1:does something}', function () {",
+   "\t$0",
+   "});"
+  ],
+  "description": "Pest test"
+ },
+ "Route api resource": {
+  "prefix": "route-api",
+  "body": [
+   "Route::apiResource('${1:posts}', ${2:PostController}::class);"
+  ],
+  "description": "apiResource routes"
+ },
+ "Route middleware group": {
+  "prefix": "route-middleware",
+  "body": [
+   "Route::middleware(['${1:auth}'])->group(function () {",
+   "\t$0",
+   "});"
+  ],
+  "description": "Route group with middleware"
+ },
+ "Dump and die": {
+  "prefix": "lv-dd",
+  "body": [
+   "dd($${1:var});"
+  ],
+  "description": "dd()"
  }
 }

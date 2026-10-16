@@ -165,4 +165,26 @@ mod tests {
         let text = Parsed::from_str(&each.body).unwrap().text();
         assert!(text.starts_with("@foreach ($items as $item)"), "{text}");
     }
+
+    #[test]
+    fn laravel_pack_prefixes_are_unique_and_bodies_keep_php() {
+        let mut seen = std::collections::HashSet::new();
+        for s in &packs().laravel {
+            for p in &s.prefix {
+                assert!(seen.insert(p.clone()), "duplicate prefix {p}");
+            }
+        }
+        for want in ["lv-job", "lv-event", "lv-listener", "lv-middleware", "lv-resource", "lv-policy", "lv-command", "lv-scope", "lv-pest", "route-api"] {
+            assert!(seen.contains(want), "{want}");
+        }
+        let text_of = |prefix: &str| {
+            let s = packs().laravel.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        let job = text_of("lv-job");
+        assert!(job.contains("namespace App\\Jobs;"), "{job}");
+        assert!(job.contains("use Illuminate\\Bus\\Queueable;"), "{job}");
+        assert!(text_of("lv-policy").contains("User $user"));
+        assert!(text_of("lv-resource").contains("$this->id"));
+    }
 }
