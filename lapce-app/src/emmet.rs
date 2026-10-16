@@ -29,9 +29,17 @@ struct Node {
     lorem: Option<usize>,
 }
 
+/// Limits that keep a mistyped abbreviation (`li*500>li*500>li*500`, a long
+/// run of `(` or `>`) from hanging the editor or overflowing the stack.
+const MAX_GROUP_DEPTH: usize = 8;
+const MAX_CHAIN_DEPTH: usize = 32;
+const MAX_ELEMENTS: usize = 2000;
+
 struct Parser<'a> {
     s: &'a [char],
     i: usize,
+    /// Current `(group)` nesting.
+    depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -64,6 +72,9 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some('>') => {
                     self.i += 1;
+                    if path.len() >= MAX_CHAIN_DEPTH {
+                        return None;
+                    }
                     let n = self.item()?;
                     let parent = Self::at(&mut roots, &path);
                     parent.children.push(n);
@@ -132,7 +143,13 @@ impl<'a> Parser<'a> {
         };
         if self.peek() == Some('(') {
             self.i += 1;
-            let inner = self.sequence()?;
+            if self.depth >= MAX_GROUP_DEPTH {
+                return None;
+            }
+            self.depth += 1;
+            let inner = self.sequence();
+            self.depth -= 1;
+            let inner = inner?;
             if self.peek() != Some(')') {
                 return None;
             }
@@ -607,6 +624,20 @@ fn push_comment(ctx: &Ctx, pad: &str, attrs: &[(String, String)], out: &mut Vec<
     }
 }
 
+/// Number of elements the abbreviation would produce (repeats multiplied down
+/// the tree), saturating so a huge product cannot overflow.
+fn element_count(nodes: &[Node], times: usize) -> usize {
+    let mut total = 0usize;
+    for n in nodes {
+        let t = times.saturating_mul(n.repeat);
+        if !n.is_group {
+            total = total.saturating_add(t);
+        }
+        total = total.saturating_add(element_count(&n.children, t));
+    }
+    total
+}
+
 /// Splits `abbr|c` into the abbreviation and whether the comment filter is on.
 /// Only `c` is supported; any other filter makes the abbreviation invalid. A
 /// `|` inside `[]`, `{}` or `()` belongs to the abbreviation.
@@ -639,9 +670,9 @@ pub fn expand_html(abbr: &str, indent: &str) -> Option<String> {
         return None;
     }
     let chars: Vec<char> = abbr.chars().collect();
-    let mut p = Parser { s: &chars, i: 0 };
+    let mut p = Parser { s: &chars, i: 0, depth: 0 };
     let mut nodes = p.sequence()?;
-    if p.i != chars.len() || !all_tags_valid(&nodes) {
+    if p.i != chars.len() || !all_tags_valid(&nodes) || element_count(&nodes, 1) > MAX_ELEMENTS {
         return None;
     }
     fold_lorem(&mut nodes);
@@ -1042,6 +1073,21 @@ mod alias_tests {
         assert!(x("p|haml").is_none());
         assert!(x("p|").is_none());
         assert_eq!(x("p{a|b}").unwrap(), "<p>a|b</p>");
+    }
+
+    #[test]
+    fn runaway_abbreviations_are_refused_quickly() {
+        // Multiplied repeats, deep groups and long chains return None.
+        assert!(x("li*500>li*500>li*500").is_none());
+        assert!(x("ul*50>li*50").is_none());
+        assert!(x(&format!("{}a{}", "(".repeat(100_000), ")".repeat(100_000))).is_none());
+        assert!(x(&"a>".repeat(50_000)).is_none());
+        assert!(x(&format!("{}a", "(".repeat(100_000))).is_none());
+        // Ordinary large-ish and nested abbreviations still work.
+        assert!(x("ul>li*500").unwrap().matches("<li>").count() == 500);
+        assert!(x("ul*10>li*10").is_some());
+        assert!(x("((a+b)*2+c)*3").is_some());
+        assert!(x("div>div>div>div>div>div>div>p").is_some());
     }
 }
 

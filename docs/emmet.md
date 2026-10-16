@@ -20,7 +20,7 @@ Numbering modifiers work after `$`: `li.item$@-*3` counts down (3, 2, 1), `li.n$
 (`div#page>ul.nav|c` gives `<!-- /.nav -->` and `<!-- /#page -->`); it is after-only, an
 approximation of Emmet's comment filter. Other filters (`|e`, `|bem`) are not supported
 and make the abbreviation invalid. Not yet: auto-trigger on Tab. Output uses the buffer's indent unit and keeps the current
-line's indentation. Invalid abbreviations do nothing.
+line's indentation. Invalid abbreviations do nothing. So do runaway ones: more than 2000 elements after repeats are multiplied (`li*500>li*500`), more than 8 nested groups or 32 nested `>` levels.
 
 ## CSS, SCSS and Less files
 
