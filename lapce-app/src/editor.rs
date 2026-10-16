@@ -1524,6 +1524,24 @@ impl EditorData {
                     return;
                 }
             }
+            // `%app.admin_email%` / `getParameter('app.x')` open the Symfony
+            // parameter declaration under `parameters:` in `config/`.
+            if path.extension().is_some_and(|e| ["yaml", "yml", "xml", "php"].iter().any(|k| e == *k)) {
+                if let Some((target, line)) =
+                    crate::symfony_params::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `asset('css/app.css')`, `mix(...)`, `@vite([...])` open the file.
             if let Some(target) =
                 crate::asset_refs::resolve(root, &path, &line_text, col)

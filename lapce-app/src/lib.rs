@@ -40,6 +40,7 @@ pub mod eloquent_scopes;
 pub mod blade_slots;
 pub mod controller_actions;
 pub mod inertia_pages;
+pub mod symfony_params;
 pub mod tailwind_hover;
 pub mod vue_components;
 pub mod js_imports;
