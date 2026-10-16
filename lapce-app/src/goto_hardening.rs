@@ -19,6 +19,9 @@ fn lines() -> Vec<String> {
         "get_header(", "require __DIR__ . '/é", "plugin_dir_path( __FILE__ ) . '", "do_shortcode('[é [/",
         "shortcode_exists('é", "asset('é?#", "@vite(['é', '", "mix('/", "wire:click=\"é", "$wire.é",
         "wire:model.live=\"", "x-on:click=\"$wire.", "App\\Controller\\Home::", "::", "\\\\\\", "resource: '../src/'", "\"laravel/é\": \"^1\"", "\"name\": \"a/b",
+        "<é-card", "<Ünï.Panel />", "<日本 :x=\"1\">", "<<é", "import é from '@/é", "import('./日本", "require('../é?#", "from \"~/😀",
+        "->middleware(['é', 'a:é", "->withoutMiddleware('日本", "Storage::disk('é", "Log::channel(\"日", "DB::connection('😀",
+        "Auth::guard(", "\\App\\Models\\É::scopé(", "Post::é(", "É::日本()", "Route::resource('é',", "route('é.index",
     ]
     .iter()
     .map(|s| s.to_string())
