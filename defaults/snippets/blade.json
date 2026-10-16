@@ -438,5 +438,21 @@
    "@entangle('${1:property}')"
   ],
   "description": "Livewire/Alpine entangle"
- }
+ },
+ "pushonce": {"prefix": "pushonce", "body": ["@pushOnce('${1:scripts}')", "\t$0", "@endPushOnce"], "description": "Blade @pushOnce"},
+ "prepend": {"prefix": "prepend", "body": ["@prepend('${1:scripts}')", "\t$0", "@endprepend"], "description": "Blade @prepend"},
+ "session": {"prefix": "session", "body": ["@session('${1:status}')", "\t<div>{{ \\$value }}</div>", "@endsession"], "description": "Blade @session"},
+ "checked": {"prefix": "checked", "body": ["@checked(${1:\\$condition})"], "description": "Blade @checked"},
+ "selected": {"prefix": "selected", "body": ["@selected(${1:\\$condition})"], "description": "Blade @selected"},
+ "disabled": {"prefix": "disabled", "body": ["@disabled(${1:\\$condition})"], "description": "Blade @disabled"},
+ "required": {"prefix": "required", "body": ["@required(${1:\\$condition})"], "description": "Blade @required"},
+ "readonly": {"prefix": "readonly", "body": ["@readonly(${1:\\$condition})"], "description": "Blade @readonly"},
+ "style": {"prefix": "style", "body": ["@style([", "\t'${1:color: red}' => ${2:\\$active},", "])"], "description": "Conditional inline styles"},
+ "aware": {"prefix": "aware", "body": ["@aware(['${1:color}' => '${2:gray}'])"], "description": "Blade @aware"},
+ "fragment": {"prefix": "fragment", "body": ["@fragment('${1:name}')", "\t$0", "@endfragment"], "description": "Blade @fragment"},
+ "hasSection": {"prefix": "hassection", "body": ["@hasSection('${1:title}')", "\t$0", "@endif"], "description": "Blade @hasSection"},
+ "sectionMissing": {"prefix": "sectionmissing", "body": ["@sectionMissing('${1:title}')", "\t$0", "@endif"], "description": "Blade @sectionMissing"},
+ "verbatim": {"prefix": "verbatim", "body": ["@verbatim", "\t$0", "@endverbatim"], "description": "Blade @verbatim"},
+ "csp": {"prefix": "nonce", "body": ["nonce=\"{{ Vite::cspNonce() }}\""], "description": "Vite CSP nonce attribute"},
+ "pagination": {"prefix": "links", "body": ["{{ ${1:\\$items}->links() }}"], "description": "Pagination links"}
 }

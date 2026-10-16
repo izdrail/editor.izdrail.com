@@ -187,4 +187,24 @@ mod tests {
         assert!(text_of("lv-policy").contains("User $user"));
         assert!(text_of("lv-resource").contains("$this->id"));
     }
+
+    #[test]
+    fn blade_pack_prefixes_are_unique_and_new_directives_keep_variables() {
+        let mut seen = std::collections::HashSet::new();
+        for s in &packs().blade {
+            for p in &s.prefix {
+                assert!(seen.insert(p.clone()), "duplicate prefix {p}");
+            }
+        }
+        for want in ["pushonce", "prepend", "session", "checked", "selected", "disabled", "style", "aware", "fragment", "hassection", "links"] {
+            assert!(seen.contains(want), "{want}");
+        }
+        let text_of = |prefix: &str| {
+            let s = packs().blade.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text_of("checked").starts_with("@checked($condition)"));
+        assert!(text_of("session").contains("{{ $value }}"));
+        assert!(text_of("links").contains("$items->links()"));
+    }
 }
