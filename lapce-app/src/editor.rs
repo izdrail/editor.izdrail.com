@@ -1410,11 +1410,17 @@ impl EditorData {
             }) {
                 if let Some(target) =
                     crate::js_imports::resolve(root, &path, &line_text, col)
+            // `->middleware('auth')` opens the alias line in
+            // `bootstrap/app.php` or `app/Http/Kernel.php`.
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::middleware_alias::resolve(root, &line_text, col)
                 {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation {
                             path: target,
                             position: None,
+                            position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
                             ignore_unconfirmed: false,
                             same_editor_tab: false,
