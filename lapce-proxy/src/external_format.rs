@@ -325,7 +325,7 @@ mod tests {
         std::fs::write(&fake, "#!/bin/sh\ntr a-z A-Z\n").unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
         let f = Formatter { program: fake, root: dir.path().to_path_buf(), kind: Kind::Prettier };
-        assert_eq!(format(&f, &dir.path().join("a.js"), "ab\n").as_deref(), Some("AB\n"));
+        assert_eq!(format_retry(&f, &dir.path().join("a.js"), "ab\n").as_deref(), Some("AB\n"));
         let bad = Formatter { program: dir.path().join("missing"), root: dir.path().to_path_buf(), kind: Kind::Prettier };
         assert!(format(&bad, &dir.path().join("a.js"), "x").is_none());
         let fail = dir.path().join("fail");
@@ -339,6 +339,21 @@ mod tests {
     fn unchanged_text_gives_no_edit() {
         assert!(whole_document_edit("a", "a".into(), Position::new(0, 1)).is_empty());
         assert_eq!(whole_document_edit("a", "b".into(), Position::new(0, 1)).len(), 1);
+    }
+
+    /// `format` for stand-in scripts written a moment ago. Another test thread
+    /// forking while our write handle is still open makes `exec` fail with
+    /// ETXTBSY ("text file busy"), which `format` reports as `None`; a few
+    /// short retries ride that out. Only use it for calls expected to succeed.
+    #[cfg(unix)]
+    fn format_retry(f: &Formatter, file: &Path, text: &str) -> Option<String> {
+        for _ in 0..10 {
+            if let Some(out) = format(f, file, text) {
+                return Some(out);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        None
     }
 
     fn touch_exec(path: &Path, body: &str) {
@@ -381,7 +396,7 @@ mod tests {
         let pint = dir.path().join("vendor/bin/pint");
         touch_exec(&pint, "#!/bin/sh\n[ \"$2\" = \"--config\" ] || exit 3\ntr a-z A-Z < \"$1\" > \"$1.x\" && mv \"$1.x\" \"$1\"\n");
         let f = Formatter { program: pint, root: dir.path().to_path_buf(), kind: Kind::Pint };
-        assert_eq!(format(&f, &real, "<?php echo 1;\n").as_deref(), Some("<?PHP ECHO 1;\n"));
+        assert_eq!(format_retry(&f, &real, "<?php echo 1;\n").as_deref(), Some("<?PHP ECHO 1;\n"));
         assert_eq!(std::fs::read_to_string(&real).unwrap(), "<?php //real");
     }
 
@@ -395,7 +410,7 @@ mod tests {
         let fixer = dir.path().join("fixer");
         touch_exec(&fixer, &format!("#!/bin/sh\n[ \"$1\" = fix ] && [ \"$3\" = \"{}\" ] || exit 3\nfor last; do :; done\nprintf 'fixed' > \"$last\"\n", cfg.display()));
         let f = Formatter { program: fixer.clone(), root: dir.path().to_path_buf(), kind: Kind::PhpCsFixer { config: cfg.clone() } };
-        assert_eq!(format(&f, &dir.path().join("a.php"), "x").as_deref(), Some("fixed"));
+        assert_eq!(format_retry(&f, &dir.path().join("a.php"), "x").as_deref(), Some("fixed"));
         let bad = Formatter { program: dir.path().join("missing"), root: dir.path().to_path_buf(), kind: Kind::PhpCsFixer { config: cfg } };
         assert!(format(&bad, &dir.path().join("a.php"), "x").is_none());
     }
