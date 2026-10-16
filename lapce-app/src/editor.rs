@@ -1415,6 +1415,11 @@ impl EditorData {
             if path.extension().is_some_and(|e| e == "php") {
                 if let Some((target, line)) =
                     crate::middleware_alias::resolve(root, &line_text, col)
+            // `Storage::disk('s3')`, `Log::channel(..)`, `DB::connection(..)`
+            // open the matching entry in `config/*.php`.
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::config_channels::resolve(root, &line_text, col)
                 {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation {

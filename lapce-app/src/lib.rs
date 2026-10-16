@@ -35,6 +35,7 @@ pub mod config_provider_index;
 pub mod livewire_members;
 pub mod tw_usage_index;
 pub mod view_usages;
+pub mod config_channels;
 pub mod inertia_pages;
 pub mod vue_components;
 pub mod js_imports;
