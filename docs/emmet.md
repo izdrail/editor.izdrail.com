@@ -16,8 +16,10 @@ jumps to the first tabstop. Change the key in `keymaps.toml` (`emmet_expand`).
 | `a`, `img`, `input`, `link:css`, `script:src`, `form:post` | common defaults |
 | `!` | HTML5 document skeleton |
 
-Numbering modifiers work after `$`: `li.item$@-*3` counts down (3, 2, 1), `li.n$@5*3` starts at 5, `li.n$@-5*3` counts down ending at 5. Not yet: filters (`|c`) and
-auto-trigger on Tab. Output uses the buffer's indent unit and keeps the current
+Numbering modifiers work after `$`: `li.item$@-*3` counts down (3, 2, 1), `li.n$@5*3` starts at 5, `li.n$@-5*3` counts down ending at 5. Filter `|c` adds a closing comment after every element that has an id or class
+(`div#page>ul.nav|c` gives `<!-- /.nav -->` and `<!-- /#page -->`); it is after-only, an
+approximation of Emmet's comment filter. Other filters (`|e`, `|bem`) are not supported
+and make the abbreviation invalid. Not yet: auto-trigger on Tab. Output uses the buffer's indent unit and keeps the current
 line's indentation. Invalid abbreviations do nothing.
 
 ## CSS, SCSS and Less files

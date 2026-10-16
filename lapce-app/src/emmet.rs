@@ -458,6 +458,8 @@ struct Ctx {
     indent: String,
     /// Whether the first tabstop was already placed.
     stop: bool,
+    /// `|c` filter: a `<!-- /#id.class -->` line after elements with an id or class.
+    comment: bool,
 }
 
 const DOCTYPE: &str = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n{I}<meta charset=\"UTF-8\">\n{I}<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n{I}<title>${1:Document}</title>\n</head>\n<body>\n{I}$0\n</body>\n</html>";
@@ -567,6 +569,7 @@ fn render(
                     None => String::new(),
                 };
                 out.push(format!("{pad}{open}{inner}</{tag}>"));
+                push_comment(ctx, &pad, &attrs, out);
             } else {
                 out.push(format!("{pad}{open}"));
                 if let Some(t) = text {
@@ -574,14 +577,63 @@ fn render(
                 }
                 render(&node.children, Some(&tag), depth + 1, ctx, out);
                 out.push(format!("{pad}</{tag}>"));
+                push_comment(ctx, &pad, &attrs, out);
             }
         }
     }
 }
 
+/// `<!-- /#id.class -->` after an element that has an id or class (`|c`).
+/// This approximates Emmet's comment filter: after-only, classes joined
+/// with `.`.
+fn push_comment(ctx: &Ctx, pad: &str, attrs: &[(String, String)], out: &mut Vec<String>) {
+    if !ctx.comment {
+        return;
+    }
+    let get = |k: &str| attrs.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty());
+    let mut label = String::new();
+    if let Some(id) = get("id") {
+        label.push('#');
+        label.push_str(id);
+    }
+    if let Some(cls) = get("class") {
+        for c in cls.split_whitespace() {
+            label.push('.');
+            label.push_str(c);
+        }
+    }
+    if !label.is_empty() {
+        out.push(format!("{pad}<!-- /{} -->", esc(&label.replace("--", "- -"))));
+    }
+}
+
+/// Splits `abbr|c` into the abbreviation and whether the comment filter is on.
+/// Only `c` is supported; any other filter makes the abbreviation invalid. A
+/// `|` inside `[]`, `{}` or `()` belongs to the abbreviation.
+fn split_filters(abbr: &str) -> Option<(&str, bool)> {
+    let mut depth = 0i32;
+    let mut first = None;
+    for (i, c) in abbr.char_indices() {
+        match c {
+            '[' | '{' | '(' => depth += 1,
+            ']' | '}' | ')' => depth -= 1,
+            '|' if depth == 0 => {
+                first = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let Some(i) = first else { return Some((abbr, false)) };
+    let filters = &abbr[i + 1..];
+    let ok = !filters.is_empty() && filters.split('|').all(|f| f.trim() == "c");
+    ok.then_some((&abbr[..i], true))
+}
+
 /// Expands an HTML abbreviation into snippet text, or `None` when the input
 /// is not a valid abbreviation. `indent` is one indent unit (e.g. 4 spaces).
 pub fn expand_html(abbr: &str, indent: &str) -> Option<String> {
+    let (abbr, comment) = split_filters(abbr.trim())?;
     let abbr = abbr.trim();
     if abbr.is_empty() {
         return None;
@@ -602,6 +654,7 @@ pub fn expand_html(abbr: &str, indent: &str) -> Option<String> {
     let mut ctx = Ctx {
         indent: indent.to_string(),
         stop: false,
+        comment,
     };
     let mut out = Vec::new();
     render(&nodes, None, 0, &mut ctx, &mut out);
@@ -974,6 +1027,21 @@ mod alias_tests {
         assert_eq!(x("lorem0"), None);
         assert_eq!(x("lorem9999"), None);
         assert!(x("lorem5.x").is_some());
+    }
+
+    #[test]
+    fn comment_filter_adds_closing_comments() {
+        assert_eq!(
+            x("div#page>div.logo+ul#nav>li*2|c").unwrap(),
+            "<div id=\"page\">\n  <div class=\"logo\">$1</div>\n  <!-- /.logo -->\n  <ul id=\"nav\">\n    <li></li>\n    <li></li>\n  </ul>\n  <!-- /#nav -->\n</div>\n<!-- /#page -->"
+        );
+        assert_eq!(x("p.a.b|c|c").unwrap(), "<p class=\"a b\">$1</p>\n<!-- /.a.b -->");
+        assert_eq!(x("p#x|c").unwrap(), "<p id=\"x\">$1</p>\n<!-- /#x -->");
+        // No id or class: no comment. Other filters and braces with `|` are handled.
+        assert_eq!(x("p|c").unwrap(), "<p>$1</p>");
+        assert!(x("p|haml").is_none());
+        assert!(x("p|").is_none());
+        assert_eq!(x("p{a|b}").unwrap(), "<p>a|b</p>");
     }
 }
 
