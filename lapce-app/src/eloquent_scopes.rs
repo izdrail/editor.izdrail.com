@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 const MAX_FILE_BYTES: u64 = 1_000_000;
 const DIRS: &[&str] = &["app/Models", "app"];
 
-fn call_at(line: &str, col: usize) -> Option<(&str, &str)> {
+pub(crate) fn call_at(line: &str, col: usize) -> Option<(&str, &str)> {
     let mut col = col.min(line.len());
     while !line.is_char_boundary(col) {
         col -= 1;

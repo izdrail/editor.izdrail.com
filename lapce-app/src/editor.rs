@@ -1489,6 +1489,23 @@ impl EditorData {
                     return;
                 }
             }
+            // `Post::factory()` opens `PostFactory` in database/factories.
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::eloquent_factories::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `@stack('x')` <-> `@push('x')`, `@yield('x')` <-> `@section('x')`.
             if path.to_string_lossy().ends_with(".blade.php") {
                 if let Some((target, line)) =

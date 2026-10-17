@@ -37,6 +37,7 @@ pub mod tw_usage_index;
 pub mod view_usages;
 pub mod config_channels;
 pub mod eloquent_scopes;
+pub mod eloquent_factories;
 pub mod blade_slots;
 pub mod controller_actions;
 pub mod inertia_pages;
