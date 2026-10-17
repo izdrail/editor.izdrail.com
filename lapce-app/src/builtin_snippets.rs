@@ -193,6 +193,29 @@ mod tests {
     }
 
     #[test]
+    fn livewire_and_blade_new_entries_parse_and_keep_php() {
+        let mut seen = std::collections::HashSet::new();
+        for s in packs().livewire.iter().chain(&packs().blade) {
+            for p in &s.prefix {
+                assert!(seen.insert(p.clone()), "duplicate prefix {p}");
+            }
+        }
+        for want in ["lw-render", "lw-form", "lw-url", "lw-locked", "lw-modelable", "lw-session", "lw-test", "wire-navigate", "wire-confirm", "wire-dirty", "wire-offline", "wire-cloak"] {
+            assert!(seen.contains(want), "{want}");
+        }
+        let text_of = |pack: &[Snippet], prefix: &str| {
+            let s = pack.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        let form = text_of(&packs().livewire, "lw-form");
+        assert!(form.contains("namespace App\\Livewire\\Forms;"), "{form}");
+        assert!(form.contains("#[Validate('required|min:5')]"), "{form}");
+        assert!(text_of(&packs().livewire, "lw-test").contains("->assertSee('text');"));
+        assert!(text_of(&packs().livewire, "lw-url").contains("#[Url]"));
+        assert!(text_of(&packs().blade, "wire-navigate").contains("wire:navigate href="));
+    }
+
+    #[test]
     fn symfony_pack_prefixes_are_unique_and_new_snippets_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().symfony {

@@ -100,4 +100,76 @@
   ],
   "description": "Livewire pagination trait"
  }
+,
+ "lw-render": {
+  "prefix": "lw-render",
+  "body": [
+   "public function render()",
+   "{",
+   "\treturn view('livewire.${1:name}');",
+   "}"
+  ],
+  "description": "Livewire render method"
+ },
+ "lw-form": {
+  "prefix": "lw-form",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Livewire\\\\Forms;",
+   "",
+   "use Livewire\\\\Form;",
+   "",
+   "class ${1:Post}Form extends Form",
+   "{",
+   "\t#[Validate('${2:required|min:5}')]",
+   "\tpublic \\$${3:title} = '';",
+   "",
+   "\t$0",
+   "}"
+  ],
+  "description": "Livewire form object class"
+ },
+ "lw-url": {
+  "prefix": "lw-url",
+  "body": [
+   "#[Url]",
+   "public \\$${1:search} = '';"
+  ],
+  "description": "Property persisted in the URL query string"
+ },
+ "lw-locked": {
+  "prefix": "lw-locked",
+  "body": [
+   "#[Locked]",
+   "public \\$${1:id};"
+  ],
+  "description": "Property the front end cannot change"
+ },
+ "lw-modelable": {
+  "prefix": "lw-modelable",
+  "body": [
+   "#[Modelable]",
+   "public \\$${1:value} = '';"
+  ],
+  "description": "Child property bindable from a parent with wire:model"
+ },
+ "lw-session": {
+  "prefix": "lw-session",
+  "body": [
+   "#[Session]",
+   "public \\$${1:token} = '';"
+  ],
+  "description": "Property persisted in the session"
+ },
+ "lw-test": {
+  "prefix": "lw-test",
+  "body": [
+   "Livewire::test(${1:Post}::class)",
+   "\t->set('${2:title}', '${3:value}')",
+   "\t->call('${4:save}')",
+   "\t->assertSee('${5:text}');"
+  ],
+  "description": "Livewire component test"
+ }
 }

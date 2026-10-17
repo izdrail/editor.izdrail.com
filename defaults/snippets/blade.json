@@ -455,4 +455,40 @@
  "verbatim": {"prefix": "verbatim", "body": ["@verbatim", "\t$0", "@endverbatim"], "description": "Blade @verbatim"},
  "csp": {"prefix": "nonce", "body": ["nonce=\"{{ Vite::cspNonce() }}\""], "description": "Vite CSP nonce attribute"},
  "pagination": {"prefix": "links", "body": ["{{ ${1:\\$items}->links() }}"], "description": "Pagination links"}
+,
+ "wire-navigate": {
+  "prefix": "wire-navigate",
+  "body": [
+   "wire:navigate href=\"${1:/path}\""
+  ],
+  "description": "Livewire SPA-style navigation link"
+ },
+ "wire-confirm": {
+  "prefix": "wire-confirm",
+  "body": [
+   "wire:confirm=\"${1:Are you sure?}\""
+  ],
+  "description": "Confirm before running a Livewire action"
+ },
+ "wire-dirty": {
+  "prefix": "wire-dirty",
+  "body": [
+   "wire:dirty"
+  ],
+  "description": "Show only when input state diverges from the server"
+ },
+ "wire-offline": {
+  "prefix": "wire-offline",
+  "body": [
+   "wire:offline"
+  ],
+  "description": "Show only when the user is offline"
+ },
+ "wire-cloak": {
+  "prefix": "wire-cloak",
+  "body": [
+   "wire:cloak"
+  ],
+  "description": "Hide until Livewire initializes"
+ }
 }
