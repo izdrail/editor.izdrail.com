@@ -38,3 +38,19 @@ Whitespace splitting only; keep the binary path space-free.
   `run_acp_turn` + `drive_acp_turn` + `render_acp_event`, Stop kills pid.
 - `agent_acp_process.rs`: `id()` pid accessor.
 - `agent_acp_session.rs`: `split_command` helper (+ tests).
+
+## Editor context (item 137)
+
+Each Send attaches the active file or selection to `session/prompt`,
+capped at 12 KB by the same `chat::Context` plumbing the chat backend
+uses and wrapped in the same `<editor_context>` fence (untrusted data,
+one convention across AI surfaces). The turn's context line shows the
+indicator (`Selection: path | N bytes (truncated)`) next to the agent
+command, and the panel's "On Send" line previews it.
+
+This context leaves the editor: the agent subprocess forwards it to
+whatever model IT is configured to talk to. Only use ACP mode with
+agents and models you trust with the file you have open.
+
+Diagnostics are not attached yet; resource_link content blocks (instead
+of fenced text) come once adapter support is verified.

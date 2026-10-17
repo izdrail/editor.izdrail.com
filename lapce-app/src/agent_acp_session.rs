@@ -377,6 +377,23 @@ fn read_within(
     Ok(lines[start..end].join("\n"))
 }
 
+/// Build the `session/prompt` text with the editor context attached,
+/// mirroring chat::assemble's wrapping so the untrusted-data fence is
+/// identical across every AI surface. The context (12 KB capped by
+/// chat::Context) leaves the editor: the agent subprocess forwards it to
+/// whatever model IT talks to, which the panel's per-Send indicator and
+/// turn context line must make visible.
+pub fn compose_prompt(context: Option<&crate::chat::Context>, prompt: &str) -> String {
+    match context {
+        Some(c) => format!(
+            "{prompt}\n\nEditor context ({})\n<editor_context>\n{}\n</editor_context>",
+            c.indicator(),
+            c.text
+        ),
+        None => prompt.to_string(),
+    }
+}
+
 /// Split a configured agent command (`opencode acp`, `codex-acp --flag`)
 /// into program + args. Whitespace only, no quoting or escaping: keep
 /// the binary path space-free, which package managers already do.
@@ -622,5 +639,17 @@ mod tests {
         let wide = split_command("ägent --fläg").unwrap();
         assert_eq!(wide.0, "ägent");
         assert_eq!(wide.1, vec!["--fläg".to_string()]);
+    }
+
+    #[test]
+    fn compose_prompt_wraps_context_like_chat() {
+        let plain = compose_prompt(None, "héllo");
+        assert_eq!(plain, "héllo");
+        let context = crate::chat::Context::new("src/röutes.php".into(), "líne 🦀", true);
+        let wrapped = compose_prompt(Some(&context), "fix it");
+        assert!(wrapped.starts_with("fix it\n\nEditor context (Selection: src/röutes.php"));
+        assert!(wrapped.contains("<editor_context>\nlíne 🦀\n</editor_context>"));
+        // Same fence as chat::assemble so agents see one convention.
+        assert!(wrapped.contains("bytes"));
     }
 }

@@ -546,6 +546,8 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
             return;
         }
     };
+    let ctx = context(tab);
+    let composed = crate::agent_acp_session::compose_prompt(ctx.as_ref(), prompt);
     let run = data.gate.begin();
     let cancelled = Arc::new(AtomicBool::new(false));
     data.cancellation.set(cancelled.clone());
@@ -558,7 +560,12 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
         turns.push(Turn {
             role: "You",
             text: tab.scope.create_rw_signal(prompt.into()),
-            context: format!("ACP agent: {spec}"),
+            context: format!(
+                "ACP agent: {spec} | {}",
+                ctx.as_ref()
+                    .map(Context::indicator)
+                    .unwrap_or_else(|| "No editor context".into())
+            ),
         });
         turns.push(Turn {
             role: "Assistant",
@@ -595,11 +602,10 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
         }
     });
     let acp_pid = data.acp_pid.clone();
-    let prompt = prompt.to_string();
     std::thread::spawn(move || {
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let result =
-            run_acp_turn(&program, &arg_refs, &root, &prompt, &cancelled, &acp_pid, &tx);
+            run_acp_turn(&program, &arg_refs, &root, &composed, &cancelled, &acp_pid, &tx);
         let _ = tx.send(match result {
             Ok(text) => Update::Done(text),
             Err(error) => Update::Error(error),
