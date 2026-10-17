@@ -13,6 +13,7 @@ pub mod agent_loop;
 pub mod agent_acp;
 pub mod agent_acp_process;
 pub mod agent_acp_session;
+pub mod agent_acp_store;
 pub mod agent_act_contract;
 pub mod mcp;
 pub mod mcp_session;

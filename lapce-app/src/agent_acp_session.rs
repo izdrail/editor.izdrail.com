@@ -62,6 +62,10 @@ pub struct AcpSession {
     auth_id: Option<i64>,
     new_id: Option<i64>,
     prompt_id: Option<i64>,
+    /// Resume this stored session instead of starting a new one.
+    resume_id: Option<String>,
+    /// The agent's loadSession capability, from its hello.
+    can_load: bool,
 }
 
 fn err(code: i64, message: impl Into<String>) -> AcpError {
@@ -80,6 +84,19 @@ impl AcpSession {
     /// Begin the handshake. `workspace` MUST already be canonicalized -
     /// fs answers are confined to it by prefix comparison.
     pub fn start(workspace: PathBuf, client_name: &str, client_version: &str) -> (Self, Value) {
+        Self::start_resumable(workspace, client_name, client_version, None)
+    }
+
+    /// Begin the handshake, resuming `resume` (a stored session id)
+    /// instead of creating a fresh session when the agent advertises
+    /// loadSession. Agents without the capability get a Notice and a
+    /// fresh session instead (spec forbids calling session/load).
+    pub fn start_resumable(
+        workspace: PathBuf,
+        client_name: &str,
+        client_version: &str,
+        resume: Option<String>,
+    ) -> (Self, Value) {
         let init_id = next_id();
         // Advertise fs read but NOT write: writes stay behind the review
         // UI, and the agent must not plan around a capability we refuse.
@@ -95,8 +112,15 @@ impl AcpSession {
             auth_id: None,
             new_id: None,
             prompt_id: None,
+            resume_id: resume,
+            can_load: false,
         };
         (session, hello)
+    }
+
+    /// The agent's loadSession capability as negotiated.
+    pub fn can_resume(&self) -> bool {
+        self.can_load
     }
 
     pub fn phase(&self) -> Phase {
@@ -167,7 +191,11 @@ impl AcpSession {
                 if numeric == Some(self.init_id) || numeric == self.auth_id {
                     self.on_hello(numeric == Some(self.init_id), &result, &mut events, &mut out);
                 } else if numeric == self.new_id {
-                    match agent_acp::parse_session_id(&result) {
+                    // A session/load result may carry no sessionId; the id
+                    // we resumed is the session. session/new MUST have one.
+                    let sid = agent_acp::parse_session_id(&result)
+                        .or_else(|| self.resume_id.clone());
+                    match sid {
                         Some(sid) => {
                             self.session_id = Some(sid.clone());
                             self.phase = Phase::Ready;
@@ -252,11 +280,18 @@ impl AcpSession {
                         events.push(TurnEvent::Closed);
                         return;
                     }
+                    self.can_load = hello.load_session;
                     events.push(TurnEvent::Connected {
                         agent: hello.name.clone(),
                         version: hello.version.clone(),
                         load_session: hello.load_session,
                     });
+                    if self.resume_id.is_some() && !hello.load_session {
+                        events.push(TurnEvent::Notice {
+                            text: "agent cannot load sessions; starting a fresh one".into(),
+                        });
+                        self.resume_id = None;
+                    }
                     if !hello.auth_methods.is_empty() {
                         events.push(TurnEvent::NeedsAuth { methods: hello.auth_methods });
                         return; // stay Initializing until begin_auth answers
@@ -280,7 +315,11 @@ impl AcpSession {
         let id = next_id();
         self.new_id = Some(id);
         self.phase = Phase::Starting;
-        out.push(agent_acp::session_new(id, &self.workspace.to_string_lossy()));
+        let cwd = self.workspace.to_string_lossy().into_owned();
+        match &self.resume_id {
+            Some(sid) => out.push(agent_acp::session_load(id, sid, &cwd)),
+            None => out.push(agent_acp::session_new(id, &cwd)),
+        }
     }
 
     fn on_update(&self, params: &Value, events: &mut Vec<TurnEvent>) {
@@ -424,7 +463,7 @@ mod tests {
             "protocolVersion": 1,
             "agentInfo": { "name": "opencode", "version": "0.6.3" },
             "authMethods": if auth { json!([{ "id": "oauth" }]) } else { json!([]) },
-            "agentCapabilities": { "loadSession": true },
+            "agentCapabilities": { "loadSession": false },
         })
     }
 
@@ -625,6 +664,49 @@ mod tests {
         let tail = read_within(&root, "ünïcode.php", Some(3), None).unwrap();
         assert_eq!(tail, "ümläut");
         drop(session);
+    }
+
+    #[test]
+    fn resume_uses_session_load_when_the_agent_can() {
+        let root = temp_workspace("resume");
+        let (mut session, init) =
+            AcpSession::start_resumable(root, "lapce", "0.1", Some("sess-old".into()));
+        let init_id = init["id"].as_i64().unwrap();
+        let hello = json!({
+            "protocolVersion": 1,
+            "agentInfo": { "name": "opencode", "version": "0.6.3" },
+            "authMethods": [],
+            "agentCapabilities": { "loadSession": true },
+        });
+        let (events, out) = session.handle(&response(init_id, hello));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["method"], json!("session/load"));
+        assert_eq!(out[0]["params"]["sessionId"], json!("sess-old"));
+        assert!(session.can_resume());
+        // A load result may carry no sessionId; the resumed id stands.
+        let load_id = out[0]["id"].as_i64().unwrap();
+        let (events, _) = session.handle(&response(load_id, json!({})));
+        assert_eq!(session.phase(), Phase::Ready);
+        assert_eq!(session.session_id(), Some("sess-old"));
+        let expected_started =
+            TurnEvent::SessionStarted { session_id: "sess-old".into() };
+        assert_eq!(events[0], expected_started);
+    }
+
+    #[test]
+    fn resume_falls_back_when_the_agent_cannot_load() {
+        let root = temp_workspace("resumefallback");
+        let (mut session, init) =
+            AcpSession::start_resumable(root, "lapce", "0.1", Some("sess-old".into()));
+        let init_id = init["id"].as_i64().unwrap();
+        let (events, out) = session.handle(&response(init_id, hello_result(false)));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["method"], json!("session/new"));
+        assert!(!session.can_resume());
+        let expected_notice = TurnEvent::Notice {
+            text: "agent cannot load sessions; starting a fresh one".into(),
+        };
+        assert!(events.contains(&expected_notice));
     }
 
     #[test]

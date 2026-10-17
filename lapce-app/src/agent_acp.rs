@@ -127,6 +127,19 @@ pub fn session_new(id: i64, cwd: &str) -> Value {
     })
 }
 
+/// `session/load` to resume a previous session. Callers MUST have
+/// checked the agent's `loadSession` capability first (spec: agents
+/// without it MUST NOT get this call). The agent replays the
+/// conversation as session/update notifications.
+pub fn session_load(id: i64, session_id: &str, cwd: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "session/load",
+        "params": { "sessionId": session_id, "cwd": cwd, "mcpServers": [] },
+    })
+}
+
 /// `session/prompt` with plain-text content blocks.
 pub fn session_prompt(id: i64, session_id: &str, text: &str) -> Value {
     json!({
