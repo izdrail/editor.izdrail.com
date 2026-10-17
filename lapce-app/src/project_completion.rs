@@ -25,6 +25,10 @@ pub enum Kind {
     Config,
     Env,
     View,
+    /// Blade `@section('...')` / `@yield('...')`.
+    Section,
+    /// Blade `@push('...')` / `@stack('...')`.
+    Stack,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -58,6 +62,7 @@ pub fn context(line: &str) -> Option<Kind> {
         .map(|x| x + 1)
         .unwrap_or(0);
     let word = &head[word_start..];
+    let blade = head[..word_start].ends_with('@');
     Some(match word {
         "route" | "to_route" | "routeIs" | "path" | "generateUrl"
         | "redirectToRoute" | "generate" => Kind::Route,
@@ -66,10 +71,16 @@ pub fn context(line: &str) -> Option<Kind> {
         "config" => Kind::Config,
         "env" | "getenv" => Kind::Env,
         "view" => Kind::View,
+        // Blade directives take view names too.
+        "extends" | "include" | "includeIf" | "includeWhen" | "includeFirst"
+        | "each" if blade => Kind::View,
+        "section" | "yield" if blade => Kind::Section,
+        "push" | "pushOnce" | "stack" if blade => Kind::Stack,
         _ => return None,
     })
 }
 
+#[derive(Clone)]
 struct Lists {
     root: PathBuf,
     at: Instant,
@@ -77,6 +88,8 @@ struct Lists {
     configs: Vec<String>,
     envs: Vec<String>,
     views: Vec<String>,
+    sections: Vec<String>,
+    stacks: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -168,6 +181,79 @@ fn view_names(root: &Path) -> Vec<String> {
     out
 }
 
+/// `@yield('x')` / `@section('x')` / `@stack('x')` names declared in
+/// `resources/views/layouts/**` (the conventional home of layouts; capped).
+fn layout_names(root: &Path) -> (Vec<String>, Vec<String>) {
+    const MARKERS: &[&str] = &["@yield(", "@section(", "@stack("];
+    let base = root.join("resources/views/layouts");
+    let mut files = Vec::new();
+    walk_php_blade(&base, 0, &mut files);
+    let mut sections = Vec::new();
+    let mut stacks = Vec::new();
+    for f in files.into_iter().take(100) {
+        let Ok(md) = std::fs::symlink_metadata(&f) else { continue };
+        if !md.is_file() || md.len() > 128 * 1024 {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        for marker in MARKERS {
+            for (i, _) in text.match_indices(marker) {
+                let rest = text[i + marker.len()..].trim_start();
+                let Some(q) = rest.chars().next().filter(|c| *c == '\'' || *c == '"')
+                else {
+                    continue;
+                };
+                let Some(end) = rest[1..].find(q) else { continue };
+                let name = &rest[1..1 + end];
+                if name.is_empty() || name.len() > 60 {
+                    continue;
+                }
+                let target = if *marker == "@stack(" {
+                    &mut stacks
+                } else {
+                    &mut sections
+                };
+                if !target.iter().any(|n: &String| n == name) {
+                    target.push(name.to_string());
+                }
+            }
+        }
+    }
+    (sections, stacks)
+}
+
+/// Blade files under `dir` (depth bounded, symlinks skipped).
+fn walk_php_blade(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
+        return;
+    }
+    if depth == 0
+        && std::fs::symlink_metadata(dir).map_or(true, |m| m.file_type().is_symlink())
+    {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.filter_map(Result::ok) {
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
+        let p = e.path();
+        if ft.is_dir() {
+            walk_php_blade(&p, depth + 1, out);
+        } else if ft.is_file()
+            && p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(".blade.php"))
+        {
+            out.push(p);
+        }
+        if out.len() >= MAX_VIEW_FILES {
+            return;
+        }
+    }
+}
+
 /// Config keys and env keys from the env/config palette index labels
 /// (`"env  KEY  (.env)"`, `"config  app.name  (config/app.php)"`).
 fn env_config_keys(root: &Path) -> (Vec<String>, Vec<String>) {
@@ -187,34 +273,32 @@ fn env_config_keys(root: &Path) -> (Vec<String>, Vec<String>) {
     (envs, configs)
 }
 
-fn lists(root: &Path) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+fn lists(root: &Path) -> Lists {
     let cache = CACHE.get_or_init(|| Mutex::new(None));
     {
         let guard = cache.lock().unwrap();
         if let Some(l) = guard.as_ref() {
             if l.root == root && l.at.elapsed() < TTL {
-                return (
-                    l.routes.clone(),
-                    l.configs.clone(),
-                    l.envs.clone(),
-                    l.views.clone(),
-                );
+                return l.clone();
             }
         }
     }
     let routes = route_names(root);
     let views = view_names(root);
     let (envs, configs) = env_config_keys(root);
+    let (sections, stacks) = layout_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
-        routes: routes.clone(),
-        configs: configs.clone(),
-        envs: envs.clone(),
-        views: views.clone(),
+        routes,
+        configs,
+        envs,
+        views,
+        sections,
+        stacks,
     };
-    *cache.lock().unwrap() = Some(fresh);
-    (routes, configs, envs, views)
+    *cache.lock().unwrap() = Some(fresh.clone());
+    fresh
 }
 
 /// Completion items for the project context at the end of `line_before`.
@@ -223,12 +307,14 @@ pub fn items(root: &Path, line_before: &str) -> Vec<CompletionItem> {
         return Vec::new();
     }
     let Some(kind) = context(line_before) else { return Vec::new() };
-    let (routes, configs, envs, views) = lists(root);
+    let lists = lists(root);
     let (names, detail) = match kind {
-        Kind::Route => (routes, "route name"),
-        Kind::Config => (configs, "config key"),
-        Kind::Env => (envs, "env key"),
-        Kind::View => (views, "Blade view"),
+        Kind::Route => (lists.routes, "route name"),
+        Kind::Config => (lists.configs, "config key"),
+        Kind::Env => (lists.envs, "env key"),
+        Kind::View => (lists.views, "Blade view"),
+        Kind::Section => (lists.sections, "Blade section"),
+        Kind::Stack => (lists.stacks, "Blade stack"),
     };
     names
         .into_iter()
@@ -266,6 +352,16 @@ mod tests {
         assert_eq!(context("foo('x"), None);
         assert_eq!(context("$c->has('x"), None);
         assert_eq!(context(""), None);
+        // Blade directives.
+        assert_eq!(context("@extends('lay"), Some(Kind::View));
+        assert_eq!(context("@include('partials."), Some(Kind::View));
+        assert_eq!(context("@section('con"), Some(Kind::Section));
+        assert_eq!(context("@yield('con"), Some(Kind::Section));
+        assert_eq!(context("@push('scr"), Some(Kind::Stack));
+        assert_eq!(context("@stack('mod"), Some(Kind::Stack));
+        // Without the @, these are ordinary calls.
+        assert_eq!(context("yield('x"), None);
+        assert_eq!(context("section('x"), None);
     }
 
     #[test]
@@ -277,6 +373,7 @@ mod tests {
         put(r, ".env", "APP_NAME=Acme\nDB_HOST=db\n");
         put(r, "resources/views/pages/home.blade.php", "<h1>hi</h1>\n");
         put(r, "resources/views/emails/welcome.php", "<p>w</p>\n");
+        put(r, "resources/views/layouts/app.blade.php", "<html>\n@yield('content')\n@yield(\"scripts\")\n@stack('modals')\n@section('sidebar')\n@show\n</html>\n");
 
         let labels = |kind_line: &str| {
             items(r, kind_line)
@@ -287,7 +384,14 @@ mod tests {
         assert_eq!(labels("route('"), ["users.index", "home"]);
         assert!(labels("config('").contains(&"app.name".to_string()));
         assert_eq!(labels("env('"), ["APP_NAME", "DB_HOST"]);
-        assert_eq!(labels("view('"), ["emails.welcome", "pages.home"]);
+        assert_eq!(
+            labels("view('"),
+            ["emails.welcome", "layouts.app", "pages.home"]
+        );
         assert!(labels("foo('").is_empty());
+        assert_eq!(labels("@section('"), ["content", "scripts", "sidebar"]);
+        assert_eq!(labels("@yield('"), ["content", "scripts", "sidebar"]);
+        assert_eq!(labels("@stack('"), ["modals"]);
+        assert!(labels("@extends('").contains(&"layouts.app".to_string()));
     }
 }

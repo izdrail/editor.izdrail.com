@@ -14,6 +14,17 @@ Also recognised: `to_route(`, `->routeIs(`, `Route::has(` (but not
 `$collection->has(`), and the Symfony route generators `path(`,
 `generateUrl(`, `redirectToRoute(`, `generate(`.
 
+Blade directives complete too:
+
+    @extends('|  @include('|     -> view names (same list as view())
+    @section('|  @yield('|       -> content, scripts, sidebar, ...
+    @push('|  @pushOnce('|  @stack('|  -> modals, ...
+
+Section and stack names are scanned from `@yield('x')` / `@section('x')` /
+`@stack('x')` markers in `resources/views/layouts/**` (the conventional
+home of layouts, 100 files, 128 KB each); directives without the `@`
+prefix are treated as ordinary calls.
+
 How it works: the same static scans as the Go to Route / Env / Config Key
 palettes - nothing is executed. Results are cached for 30 seconds per
 workspace so completion stays cheap on every keystroke; new routes, keys or
