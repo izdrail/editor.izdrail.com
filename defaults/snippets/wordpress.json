@@ -122,5 +122,107 @@
    "__('${1:text}', '${2:textdomain}')"
   ],
   "description": "Translatable string"
+ },
+ "Register taxonomy": {
+  "prefix": "wp-taxonomy",
+  "body": [
+   "add_action('init', function () {",
+   "\tregister_taxonomy('${1:genre}', '${2:post}', [",
+   "\t\t'label'        => __('${3:Genres}', '${4:text-domain}'),",
+   "\t\t'public'       => true,",
+   "\t\t'hierarchical' => true,",
+   "\t\t'show_in_rest' => true,",
+   "\t]);",
+   "});"
+  ],
+  "description": "register_taxonomy on init"
+ },
+ "Metabox": {
+  "prefix": "wp-metabox",
+  "body": [
+   "add_action('add_meta_boxes', function () {",
+   "\tadd_meta_box('${1:my_box}', __('${2:Box title}', '${3:text-domain}'), function (WP_Post \\$post) {",
+   "\t\twp_nonce_field('${1:my_box}', '${1:my_box}_nonce');",
+   "\t\t\\$value = get_post_meta(\\$post->ID, '_${1:my_box}', true);",
+   "\t\techo '<input type=\"text\" name=\"${1:my_box}\" value=\"' . esc_attr(\\$value) . '\" />';",
+   "\t}, '${4:post}');",
+   "});"
+  ],
+  "description": "add_meta_box with nonce and saved field"
+ },
+ "AJAX action": {
+  "prefix": "wp-ajax",
+  "body": [
+   "add_action('wp_ajax_${1:my_action}', '${2:my_action_handler}');",
+   "add_action('wp_ajax_nopriv_${1:my_action}', '${2:my_action_handler}');"
+  ],
+  "description": "wp_ajax_ hooks for logged-in and anonymous users"
+ },
+ "Nav menus": {
+  "prefix": "wp-nav-menu",
+  "body": [
+   "add_action('after_setup_theme', function () {",
+   "\tregister_nav_menus([",
+   "\t\t'${1:primary}' => __('${2:Primary menu}', '${3:text-domain}'),",
+   "\t]);",
+   "});"
+  ],
+  "description": "register_nav_menus"
+ },
+ "Image size": {
+  "prefix": "wp-image-size",
+  "body": [
+   "add_action('after_setup_theme', function () {",
+   "\tadd_image_size('${1:card}', ${2:600}, ${3:400}, ${4:true});",
+   "});"
+  ],
+  "description": "add_image_size"
+ },
+ "Remote GET": {
+  "prefix": "wp-remote-get",
+  "body": [
+   "\\$response = wp_remote_get('${1:https://example.com/api}', ['timeout' => ${2:15}]);",
+   "if (is_wp_error(\\$response)) {",
+   "\t${3:return;}",
+   "}",
+   "\\$data = json_decode(wp_remote_retrieve_body(\\$response), true);",
+   "$0"
+  ],
+  "description": "wp_remote_get with error check"
+ },
+ "Widget": {
+  "prefix": "wp-widget",
+  "body": [
+   "class ${1:My}_Widget extends WP_Widget {",
+   "\tpublic function __construct() {",
+   "\t\tparent::__construct('${2:my_widget}', __('${3:My Widget}', '${4:text-domain}'));",
+   "\t}",
+   "",
+   "\tpublic function widget(\\$args, \\$instance) {",
+   "\t\techo \\$args['before_widget'];",
+   "\t\t$0",
+   "\t\techo \\$args['after_widget'];",
+   "\t}",
+   "",
+   "\tpublic function form(\\$instance) {",
+   "\t}",
+   "",
+   "\tpublic function update(\\$new_instance, \\$old_instance) {",
+   "\t\treturn \\$new_instance;",
+   "\t}",
+   "}",
+   "add_action('widgets_init', fn () => register_widget(${1:My}_Widget::class));"
+  ],
+  "description": "WP_Widget skeleton"
+ },
+ "Cron event": {
+  "prefix": "wp-cron",
+  "body": [
+   "add_action('${1:my_cron}', '${2:my_cron_callback}');",
+   "if (!wp_next_scheduled('${1:my_cron}')) {",
+   "\twp_schedule_event(time(), '${3:hourly}', '${1:my_cron}');",
+   "}"
+  ],
+  "description": "schedule a cron event"
  }
 }

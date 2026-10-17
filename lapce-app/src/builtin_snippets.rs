@@ -189,6 +189,27 @@ mod tests {
     }
 
     #[test]
+    fn wordpress_pack_prefixes_are_unique_and_bodies_keep_php() {
+        let mut seen = std::collections::HashSet::new();
+        for s in &packs().wordpress {
+            for p in &s.prefix {
+                assert!(seen.insert(p.clone()), "duplicate prefix {p}");
+            }
+        }
+        for want in ["wp-taxonomy", "wp-metabox", "wp-ajax", "wp-nav-menu", "wp-image-size", "wp-remote-get", "wp-widget", "wp-cron"] {
+            assert!(seen.contains(want), "{want}");
+        }
+        let text_of = |prefix: &str| {
+            let s = packs().wordpress.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text_of("wp-metabox").contains("get_post_meta($post->ID, '_my_box', true)"));
+        assert!(text_of("wp-remote-get").contains("$response = wp_remote_get("));
+        assert!(text_of("wp-widget").contains("class My_Widget extends WP_Widget {"));
+        assert!(text_of("wp-cron").contains("wp_schedule_event(time(), 'hourly', 'my_cron');"));
+    }
+
+    #[test]
     fn blade_pack_prefixes_are_unique_and_new_directives_keep_variables() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().blade {
