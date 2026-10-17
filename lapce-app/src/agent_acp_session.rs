@@ -377,6 +377,15 @@ fn read_within(
     Ok(lines[start..end].join("\n"))
 }
 
+/// Split a configured agent command (`opencode acp`, `codex-acp --flag`)
+/// into program + args. Whitespace only, no quoting or escaping: keep
+/// the binary path space-free, which package managers already do.
+pub fn split_command(spec: &str) -> Option<(String, Vec<String>)> {
+    let mut parts = spec.split_whitespace();
+    let program = parts.next()?.to_string();
+    Some((program, parts.map(str::to_string).collect()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -599,5 +608,19 @@ mod tests {
         let tail = read_within(&root, "ünïcode.php", Some(3), None).unwrap();
         assert_eq!(tail, "ümläut");
         drop(session);
+    }
+
+    #[test]
+    fn split_command_parses_plain_specs() {
+        let parsed = split_command("opencode acp").unwrap();
+        assert_eq!(parsed.0, "opencode");
+        assert_eq!(parsed.1, vec!["acp".to_string()]);
+        let single = split_command("codex-acp").unwrap();
+        assert_eq!(single.0, "codex-acp");
+        assert!(single.1.is_empty());
+        assert!(split_command("   ").is_none());
+        let wide = split_command("ägent --fläg").unwrap();
+        assert_eq!(wide.0, "ägent");
+        assert_eq!(wide.1, vec!["--fläg".to_string()]);
     }
 }

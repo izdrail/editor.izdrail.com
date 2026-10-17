@@ -25,6 +25,10 @@ pub struct ChatConfig {
     pub endpoint: String,
     #[field_names(desc = "Ollama chat model name.")]
     pub model: String,
+    #[field_names(
+        desc = "ACP agent command for the chat panel, e.g. `opencode acp` or a Claude Code/Codex adapter binary. Empty disables ACP mode."
+    )]
+    pub acp_command: String,
 }
 impl Default for ChatConfig {
     fn default() -> Self {
@@ -46,6 +50,7 @@ impl Default for ChatConfig {
             local_model: "qwen-chat-1.5b".into(),
             endpoint: "https://ai.izdrail.com".into(),
             model: "qwen2.5-coder:1.5b-instruct-q4_K_M".into(),
+            acp_command: String::new(),
         }
     }
 }

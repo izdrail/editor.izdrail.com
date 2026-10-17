@@ -117,6 +117,12 @@ impl AcpProcess {
         }
     }
 
+    /// OS process id, so the UI can signal a stuck agent (Linux `kill`)
+    /// when a blocked read must be interrupted from another thread.
+    pub fn id(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Kill the child (best effort) and reap it.
     pub fn kill(&mut self) {
         let _ = self.child.kill();

@@ -24,7 +24,7 @@ use std::{
     path::PathBuf,
     rc::Rc,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -44,6 +44,9 @@ pub struct ChatData {
     pub session: RwSignal<Session>,
     pub state: RwSignal<RunState>,
     pub mode: RwSignal<Option<crate::agent_loop::Mode>>,
+    /// ACP mode: route Send to the configured external ACP agent
+    /// (opencode, a Claude Code/Codex adapter) instead of chat/Ask/Plan.
+    pub acp: RwSignal<bool>,
     pub trust_reads: RwSignal<bool>,
     pub trusted_endpoint: RwSignal<String>,
     pub review: crate::agent_review_ui::ReviewData,
@@ -51,6 +54,9 @@ pub struct ChatData {
     cancellation: RwSignal<Arc<AtomicBool>>,
     storage: Option<PathBuf>,
     worker: Rc<ChatWorker>,
+    /// Pid of the live ACP agent subprocess, so Stop can signal it while
+    /// the worker thread is parked in a blocking read.
+    acp_pid: Arc<Mutex<Option<u32>>>,
 }
 struct ChatWorker {
     local: lapce_ai::process::Worker,
@@ -98,6 +104,7 @@ impl ChatData {
             session: cx.create_rw_signal(session.clone()),
             state: cx.create_rw_signal(session.state.clone()),
             mode: cx.create_rw_signal(None),
+            acp: cx.create_rw_signal(false),
             trust_reads: cx.create_rw_signal(false),
             trusted_endpoint: cx.create_rw_signal(String::new()),
             gate: RunGate::default(),
@@ -128,12 +135,23 @@ impl ChatData {
                 local: worker,
                 network: RefCell::new(Arc::new(AtomicBool::new(false))),
             }),
+            acp_pid: Arc::new(Mutex::new(None)),
         }
     }
 }
 impl ChatData {
     fn stop(&self) {
         self.gate.cancel();
+        if let Some(pid) = self.acp_pid.lock().unwrap().take() {
+            #[cfg(target_os = "linux")]
+            {
+                let _ = std::process::Command::new("kill")
+                    .arg(pid.to_string())
+                    .status();
+            }
+            #[cfg(not(target_os = "linux"))]
+            let _ = pid;
+        }
         self.cancellation
             .get_untracked()
             .store(true, Ordering::Release);
@@ -210,6 +228,10 @@ fn send(tab: &WindowTabData) {
     let prompt = data.input.get_untracked().trim().to_string();
     if prompt.is_empty() {
         data.error.set("Type a message first.".into());
+        return;
+    }
+    if data.acp.get_untracked() {
+        send_acp(tab, &prompt);
         return;
     }
     if let Some(mode) = data.mode.get_untracked() {
@@ -497,6 +519,235 @@ fn send_agent(tab: &WindowTabData, _: crate::agent_loop::Mode, _: &str) {
         .set("Secure Ask/Plan project tools are Linux-only in this version.".into());
 }
 
+/// ACP mode: one Send spawns the configured agent (fresh session per
+/// turn for now; session/load continuity is a later milestone), runs the
+/// handshake on a worker thread, forwards the prompt and streams
+/// rendered TurnEvents into the reply. Stop kills the subprocess by pid.
+#[cfg(target_os = "linux")]
+fn send_acp(tab: &WindowTabData, prompt: &str) {
+    let data = tab.chat.clone();
+    let settings = tab.common.config.get_untracked().ai_chat.clone();
+    let spec = settings.acp_command.trim().to_string();
+    let Some((program, args)) = crate::agent_acp_session::split_command(&spec) else {
+        data.error.set(
+            "Set an ACP agent command in Settings > AI Chat first (for example `opencode acp`)."
+                .into(),
+        );
+        return;
+    };
+    let Some(root) = tab.workspace.path.clone() else {
+        data.error.set("Open a local project folder first.".into());
+        return;
+    };
+    let root = match root.canonicalize() {
+        Ok(r) => r,
+        Err(e) => {
+            data.error.set(format!("Cannot resolve the project folder: {e}"));
+            return;
+        }
+    };
+    let run = data.gate.begin();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    data.cancellation.set(cancelled.clone());
+    *data.worker.network.borrow_mut() = cancelled.clone();
+    data.state.set(RunState::Running);
+    data.busy.set(true);
+    data.error.set(String::new());
+    let reply = tab.scope.create_rw_signal(String::new());
+    data.turns.update(|turns| {
+        turns.push(Turn {
+            role: "You",
+            text: tab.scope.create_rw_signal(prompt.into()),
+            context: format!("ACP agent: {spec}"),
+        });
+        turns.push(Turn {
+            role: "Assistant",
+            text: reply,
+            context: String::new(),
+        });
+    });
+    data.input.set(String::new());
+    data.persist(settings.save_history);
+    let save = settings.save_history;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let progress = floem::ext_event::create_signal_from_channel(rx);
+    let done = data.clone();
+    create_effect(move |_| {
+        if let Some(update) = progress.get() {
+            if !done.gate.accepts(run) {
+                return;
+            }
+            match update {
+                Update::Delta(text) => reply.set(text),
+                Update::Done(text) => {
+                    reply.set(text);
+                    done.busy.set(false);
+                    done.state.set(RunState::Done);
+                    done.persist(save);
+                }
+                Update::Error(error) => {
+                    done.error.set(error);
+                    done.busy.set(false);
+                    done.state.set(RunState::Error);
+                    done.persist(save);
+                }
+            }
+        }
+    });
+    let acp_pid = data.acp_pid.clone();
+    let prompt = prompt.to_string();
+    std::thread::spawn(move || {
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let result =
+            run_acp_turn(&program, &arg_refs, &root, &prompt, &cancelled, &acp_pid, &tx);
+        let _ = tx.send(match result {
+            Ok(text) => Update::Done(text),
+            Err(error) => Update::Error(error),
+        });
+    });
+}
+#[cfg(not(target_os = "linux"))]
+fn send_acp(tab: &WindowTabData, _: &str) {
+    tab.chat
+        .error
+        .set("ACP agents are Linux-only in this version.".into());
+}
+
+/// Render one session event as a short status line for the reply body.
+#[cfg(target_os = "linux")]
+fn render_acp_event(event: &crate::agent_acp_session::TurnEvent) -> String {
+    use crate::agent_acp_session::TurnEvent as E;
+    match event {
+        E::Connected { agent, version, .. } => format!("Connected to {agent} {version}."),
+        E::NeedsAuth { methods } => format!(
+            "The agent wants authentication ({}). Authenticate it in a terminal once, then retry.",
+            methods.join(", ")
+        ),
+        E::SessionStarted { .. } => "Session started.".into(),
+        E::Text { text } => text.clone(),
+        E::Plan { entries } => format!(
+            "Plan:\n{}",
+            entries.iter().map(|e| format!("- {e}")).collect::<Vec<_>>().join("\n")
+        ),
+        E::ToolCall { title, status, .. } => format!("Tool: {title} ({status})"),
+        E::Usage { used, size } => format!("Context: {used}/{size} tokens."),
+        E::FsRead { path, ok } => {
+            format!("Agent read {path}{}.", if *ok { "" } else { " (refused)" })
+        }
+        E::Notice { text } => text.clone(),
+        E::Error { message } => format!("Agent error: {message}"),
+        E::TurnDone { .. } | E::Closed => String::new(),
+    }
+}
+
+/// Own the subprocess for one turn; always reaps it on the way out.
+#[cfg(target_os = "linux")]
+fn run_acp_turn(
+    program: &str,
+    args: &[&str],
+    root: &std::path::Path,
+    prompt: &str,
+    cancelled: &Arc<AtomicBool>,
+    pid_slot: &Arc<Mutex<Option<u32>>>,
+    tx: &std::sync::mpsc::Sender<Update>,
+) -> Result<String, String> {
+    let mut process = crate::agent_acp_process::AcpProcess::spawn(program, args, root)
+        .map_err(|e| format!("Could not launch `{program}`: {e}"))?;
+    *pid_slot.lock().unwrap() = Some(process.id());
+    let result = drive_acp_turn(&mut process, root, prompt, cancelled, tx);
+    *pid_slot.lock().unwrap() = None;
+    process.kill();
+    result
+}
+
+/// Handshake, one prompt, stream until the turn ends. Returns the full
+/// reply body accumulated from chunks and status lines.
+#[cfg(target_os = "linux")]
+fn drive_acp_turn(
+    process: &mut crate::agent_acp_process::AcpProcess,
+    root: &std::path::Path,
+    prompt: &str,
+    cancelled: &Arc<AtomicBool>,
+    tx: &std::sync::mpsc::Sender<Update>,
+) -> Result<String, String> {
+    use crate::agent_acp_session::{AcpSession, Phase, TurnEvent};
+    let (mut session, hello) =
+        AcpSession::start(root.to_path_buf(), "lapce", env!("CARGO_PKG_VERSION"));
+    process.send(&hello).map_err(|e| e.message)?;
+    let mut guard = 0;
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("Cancelled".into());
+        }
+        guard += 1;
+        if guard > 64 {
+            return Err("ACP setup did not finish after 64 messages".into());
+        }
+        let Some(message) = process.recv().map_err(|e| e.message)? else {
+            let logs = process.stderr_log();
+            return Err(format!("Agent exited during setup. {}", logs.join(" | ")));
+        };
+        let (events, out) = session.handle(&message);
+        for event in &events {
+            let line = render_acp_event(event);
+            if !line.is_empty() {
+                let _ = tx.send(Update::Delta(line));
+            }
+        }
+        for value in out {
+            process.send(&value).map_err(|e| e.message)?;
+        }
+        if events.iter().any(|e| matches!(e, TurnEvent::Closed)) {
+            return Err("Agent closed the session during setup".into());
+        }
+        if events.iter().any(|e| matches!(e, TurnEvent::NeedsAuth { .. })) {
+            return Err("Agent needs terminal authentication first".into());
+        }
+        if session.phase() == Phase::Ready {
+            break;
+        }
+    }
+    let prompt_message = session.begin_prompt(prompt).map_err(|e| e.message)?;
+    process.send(&prompt_message).map_err(|e| e.message)?;
+    let mut text = String::new();
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            if let Some(cancel) = session.cancel() {
+                let _ = process.send(&cancel);
+            }
+            return Err("Cancelled".into());
+        }
+        let Some(message) = process.recv().map_err(|e| e.message)? else {
+            return Err("Agent exited mid-turn".into());
+        };
+        let (events, out) = session.handle(&message);
+        for value in out {
+            process.send(&value).map_err(|e| e.message)?;
+        }
+        let mut finished = false;
+        for event in events {
+            match event {
+                TurnEvent::TurnDone { .. } => finished = true,
+                TurnEvent::Error { message } => return Err(message),
+                TurnEvent::Closed => return Err("Agent closed the session".into()),
+                other => {
+                    let line = render_acp_event(&other);
+                    if !line.is_empty() {
+                        if !text.is_empty() {
+                            text.push_str("\n\n");
+                        }
+                        text.push_str(&line);
+                        let _ = tx.send(Update::Delta(text.clone()));
+                    }
+                }
+            }
+        }
+        if finished {
+            return Ok(text);
+        }
+    }
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let config = tab.common.config;
@@ -508,6 +759,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let chat_mode = data.clone();
     let ask_mode = data.clone();
     let plan_mode = data.clone();
+    let acp_mode = data.clone();
     let trust = data.clone();
     let revoke = data.clone();
     let input_signal = data.input;
@@ -562,11 +814,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .style(move |s| s.padding(6.0).cursor(CursorStyle::Pointer).selectable(false)),
         )),
         h_stack((
-            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); } }),
-            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); } }),
-            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); } }),
+            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); } }),
+            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); } }),
+            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); } }),
+            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); } }),
         )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
-        label(move || format!("Mode: {}. Act is unavailable; Ask/Plan never write files.", match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" }))
+        label(move || format!("Mode: {}. Act is unavailable; Ask/Plan never write files.", if data.acp.get() { "ACP agent" } else { match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" } }))
             .style(|s| s.font_size(11.0).max_width_full()),
         label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them.", config.get().ai_chat.endpoint))
             .style(|s| s.font_size(11.0).max_width_full()),
