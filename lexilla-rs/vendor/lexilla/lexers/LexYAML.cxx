@@ -367,4 +367,17 @@ void FoldYAMLDoc(Sci_PositionU startPos, Sci_Position length, int /*initStyle - 
 
 }
 
-extern const LexerModule lmYAML(SCLEX_YAML, ColouriseYAMLDoc, "yaml", FoldYAMLDoc, yamlWordListDesc);
+const LexicalClass yamlLexicalClasses[] = {
+	{0, "SCE_YAML_DEFAULT", "default", "Whitespace and punctuation"},
+	{1, "SCE_YAML_COMMENT", "comment", "Comments"},
+	{2, "SCE_YAML_IDENTIFIER", "property", "Mapping keys"},
+	{3, "SCE_YAML_KEYWORD", "keyword", "true, false, null and friends"},
+	{4, "SCE_YAML_NUMBER", "literal numeric", "Numbers"},
+	{5, "SCE_YAML_REFERENCE", "variable", "Anchors and aliases"},
+	{6, "SCE_YAML_DOCUMENT", "keyword", "Document markers --- and ..."},
+	{7, "SCE_YAML_TEXT", "literal string", "Scalar text"},
+	{8, "SCE_YAML_ERROR", "error", "Invalid input"},
+	{9, "SCE_YAML_OPERATOR", "operator", "Operators"},
+};
+
+extern const LexerModule lmYAML(SCLEX_YAML, ColouriseYAMLDoc, "yaml", FoldYAMLDoc, yamlWordListDesc, yamlLexicalClasses, std::size(yamlLexicalClasses));

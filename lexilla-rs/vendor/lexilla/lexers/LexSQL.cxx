@@ -306,9 +306,37 @@ struct OptionSetSQL : public OptionSet<OptionsSQL> {
 	}
 };
 
+const LexicalClass sqlLexicalClasses[] = {
+	{0, "SCE_SQL_DEFAULT", "default", "Whitespace and punctuation"},
+	{1, "SCE_SQL_COMMENT", "comment", "Block comments"},
+	{2, "SCE_SQL_COMMENTLINE", "comment", "Line comments"},
+	{3, "SCE_SQL_COMMENTDOC", "comment", "Doc comments"},
+	{4, "SCE_SQL_NUMBER", "literal numeric", "Numbers"},
+	{5, "SCE_SQL_WORD", "keyword", "Keywords"},
+	{6, "SCE_SQL_STRING", "literal string", "Double-quoted strings"},
+	{7, "SCE_SQL_CHARACTER", "literal string", "Single-quoted strings"},
+	{8, "SCE_SQL_SQLPLUS", "preprocessor", "SQL*Plus commands"},
+	{9, "SCE_SQL_SQLPLUS_PROMPT", "preprocessor", "SQL*Plus prompt"},
+	{10, "SCE_SQL_OPERATOR", "operator", "Operators"},
+	{11, "SCE_SQL_IDENTIFIER", "identifier", "Identifiers"},
+	{12, "", "unused", ""},
+	{13, "SCE_SQL_SQLPLUS_COMMENT", "comment", "SQL*Plus comments"},
+	{14, "", "unused", ""},
+	{15, "SCE_SQL_COMMENTLINEDOC", "comment", "Line doc comments"},
+	{16, "SCE_SQL_WORD2", "keyword", "Secondary keywords"},
+	{17, "SCE_SQL_COMMENTDOCKEYWORD", "comment", "Doc comment keywords"},
+	{18, "SCE_SQL_COMMENTDOCKEYWORDERROR", "comment", "Mistyped doc keywords"},
+	{19, "SCE_SQL_USER1", "keyword", "User keywords 1"},
+	{20, "SCE_SQL_USER2", "keyword", "User keywords 2"},
+	{21, "SCE_SQL_USER3", "keyword", "User keywords 3"},
+	{22, "SCE_SQL_USER4", "keyword", "User keywords 4"},
+	{23, "SCE_SQL_QUOTEDIDENTIFIER", "identifier", "Quoted identifiers"},
+	{24, "SCE_SQL_QOPERATOR", "operator", "Quoted operators"},
+};
+
 class LexerSQL : public DefaultLexer {
 public :
-	LexerSQL() : DefaultLexer("sql", SCLEX_SQL) {}
+	LexerSQL() : DefaultLexer("sql", SCLEX_SQL, sqlLexicalClasses, std::size(sqlLexicalClasses)) {}
 
 	virtual ~LexerSQL() {}
 

@@ -133,6 +133,23 @@ struct OptionSetJSON : public OptionSet<OptionsJSON> {
 	}
 };
 
+const LexicalClass jsonLexicalClasses[] = {
+	{0, "SCE_JSON_DEFAULT", "default", "Whitespace and punctuation"},
+	{1, "SCE_JSON_NUMBER", "literal numeric", "Numbers"},
+	{2, "SCE_JSON_STRING", "literal string", "Strings"},
+	{3, "SCE_JSON_STRINGEOL", "error literal string", "Unterminated strings"},
+	{4, "SCE_JSON_PROPERTYNAME", "property", "Property names"},
+	{5, "SCE_JSON_ESCAPESEQUENCE", "literal string", "Escape sequences"},
+	{6, "SCE_JSON_LINECOMMENT", "comment", "Line comments"},
+	{7, "SCE_JSON_BLOCKCOMMENT", "comment", "Block comments"},
+	{8, "SCE_JSON_OPERATOR", "operator", "Operators"},
+	{9, "SCE_JSON_URI", "literal string", "URIs"},
+	{10, "SCE_JSON_COMPACTIRI", "literal string", "JSON-LD compact IRIs"},
+	{11, "SCE_JSON_KEYWORD", "keyword", "true, false, null"},
+	{12, "SCE_JSON_LDKEYWORD", "keyword", "JSON-LD keywords"},
+	{13, "SCE_JSON_ERROR", "error", "Invalid input"},
+};
+
 class LexerJSON : public DefaultLexer {
 	OptionsJSON options;
 	OptionSetJSON optSetJSON;
@@ -206,8 +223,9 @@ class LexerJSON : public DefaultLexer {
 	}
 
 	public:
+
 	LexerJSON() :
-		DefaultLexer("json", SCLEX_JSON),
+		DefaultLexer("json", SCLEX_JSON, jsonLexicalClasses, std::size(jsonLexicalClasses)),
 		setOperators(CharacterSet::setNone, "[{}]:,"),
 		setURL(CharacterSet::setAlphaNum, "-._~:/?#[]@!$&'()*+,),="),
 		setKeywordJSONLD(CharacterSet::setAlpha, ":@"),

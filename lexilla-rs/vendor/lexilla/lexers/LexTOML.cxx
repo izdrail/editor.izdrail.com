@@ -491,4 +491,23 @@ static const char *const tomlWordListDesc[] = {
 	0
 };
 
-extern const LexerModule lmTOML(SCLEX_TOML, ColouriseTOMLDoc, "toml", FoldTOMLDoc, tomlWordListDesc);
+const LexicalClass tomlLexicalClasses[] = {
+	{0, "SCE_TOML_DEFAULT", "default", "Whitespace and punctuation"},
+	{1, "SCE_TOML_COMMENT", "comment", "Comments"},
+	{2, "SCE_TOML_IDENTIFIER", "identifier", "Bare keys and values"},
+	{3, "SCE_TOML_KEYWORD", "keyword", "true and false"},
+	{4, "SCE_TOML_NUMBER", "literal numeric", "Numbers"},
+	{5, "SCE_TOML_TABLE", "keyword", "[table] and [[array]] headers"},
+	{6, "SCE_TOML_KEY", "property", "Keys"},
+	{7, "SCE_TOML_ERROR", "error", "Invalid input"},
+	{8, "SCE_TOML_OPERATOR", "operator", "Operators"},
+	{9, "SCE_TOML_STRING_SQ", "literal string", "Literal strings"},
+	{10, "SCE_TOML_STRING_DQ", "literal string", "Basic strings"},
+	{11, "SCE_TOML_TRIPLE_STRING_SQ", "literal string", "Multiline literal strings"},
+	{12, "SCE_TOML_TRIPLE_STRING_DQ", "literal string", "Multiline basic strings"},
+	{13, "SCE_TOML_ESCAPECHAR", "literal string", "Escape sequences"},
+	{14, "SCE_TOML_DATETIME", "literal numeric", "Dates and times"},
+	{15, "SCE_TOML_STRINGEOL", "error literal string", "Unterminated strings"},
+};
+
+extern const LexerModule lmTOML(SCLEX_TOML, ColouriseTOMLDoc, "toml", FoldTOMLDoc, tomlWordListDesc, tomlLexicalClasses, std::size(tomlLexicalClasses));

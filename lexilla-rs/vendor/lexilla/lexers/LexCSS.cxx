@@ -570,4 +570,33 @@ const char * const cssWordListDesc[] = {
 
 }
 
-extern const LexerModule lmCss(SCLEX_CSS, ColouriseCssDoc, "css", FoldCSSDoc, cssWordListDesc);
+// Theme mapping for the lapce adapter: every style carries Lexilla tags so
+// scope_from_tags can route it to a theme scope.
+const LexicalClass cssLexicalClasses[] = {
+	{0, "SCE_CSS_DEFAULT", "default", "Whitespace and punctuation"},
+	{1, "SCE_CSS_TAG", "tag", "Element selectors"},
+	{2, "SCE_CSS_CLASS", "type", "Class selectors"},
+	{3, "SCE_CSS_PSEUDOCLASS", "attribute", "Pseudo-classes"},
+	{4, "SCE_CSS_UNKNOWN_PSEUDOCLASS", "attribute", "Pseudo-classes not in the word list (CSS evolves; colour them like known ones)"},
+	{5, "SCE_CSS_OPERATOR", "operator", "Operators"},
+	{6, "SCE_CSS_IDENTIFIER", "property", "Properties"},
+	{7, "SCE_CSS_UNKNOWN_IDENTIFIER", "property", "Properties not in the word list (CSS evolves; colour them like known ones)"},
+	{8, "SCE_CSS_VALUE", "constant", "Values"},
+	{9, "SCE_CSS_COMMENT", "comment", "Comments"},
+	{10, "SCE_CSS_ID", "type", "ID selectors"},
+	{11, "SCE_CSS_IMPORTANT", "keyword", "!important"},
+	{12, "SCE_CSS_DIRECTIVE", "preprocessor", "@directives"},
+	{13, "SCE_CSS_DOUBLESTRING", "literal string", "Double-quoted strings"},
+	{14, "SCE_CSS_SINGLESTRING", "literal string", "Single-quoted strings"},
+	{15, "SCE_CSS_IDENTIFIER2", "property", "Identifiers in @rules"},
+	{16, "SCE_CSS_ATTRIBUTE", "attribute", "Attribute selectors"},
+	{17, "SCE_CSS_IDENTIFIER3", "property", "CSS3 properties"},
+	{18, "SCE_CSS_PSEUDOELEMENT", "attribute", "Pseudo-elements"},
+	{19, "SCE_CSS_EXTENDED_IDENTIFIER", "property", "Vendor-specific properties"},
+	{20, "SCE_CSS_EXTENDED_PSEUDOCLASS", "attribute", "Vendor-specific pseudo-classes"},
+	{21, "SCE_CSS_EXTENDED_PSEUDOELEMENT", "attribute", "Vendor-specific pseudo-elements"},
+	{22, "SCE_CSS_GROUP_RULE", "keyword", "@media/@supports group rules"},
+	{23, "SCE_CSS_VARIABLE", "variable", "Custom properties"},
+};
+
+extern const LexerModule lmCss(SCLEX_CSS, ColouriseCssDoc, "css", FoldCSSDoc, cssWordListDesc, cssLexicalClasses, std::size(cssLexicalClasses));

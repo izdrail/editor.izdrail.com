@@ -225,6 +225,36 @@ mod tests {
         }
     }
     #[test]
+    fn data_and_sheet_languages_have_theme_scopes() {
+        // css/json/yaml/toml/sql once registered without lexical classes, so
+        // every style mapped to no theme scope and the files rendered
+        // uncoloured despite being routed.
+        use LapceLanguage::*;
+        for (language, text, needle, scope) in [
+            (Css, "a { color: red }", "color", "property"),
+            (Css, "a { color: red }", "red", "constant"),
+            (Css, ".b:hover { margin: 0 }", "hover", "attribute"),
+            (Css, ".b:hover { margin: 0 }", "b", "type"),
+            (Json, "{\"ok\": true}", "\"ok\"", "property"),
+            (Json, "{\"ok\": true}", "true", "keyword"),
+            (Yaml, "name: lapce\n", "name", "property"),
+            (Toml, "[package]\nname = \"lapce\"\n", "[package]", "keyword"),
+            (Toml, "[package]\nname = \"lapce\"\n", "name", "property"),
+            (Toml, "[package]\nname = \"lapce\"\n", "\"lapce\"", "string"),
+            (Sql, "SELECT id FROM users", "SELECT", "keyword"),
+            (Sql, "SELECT id FROM users", "id", ""),
+        ] {
+            let snapshot = highlight(language, &Rope::from(text)).unwrap();
+            let at = text.find(needle).unwrap();
+            let got = snapshot.scope(snapshot.styles()[at]);
+            if scope.is_empty() {
+                assert_ne!(got, Some("keyword"), "{language:?} {needle}");
+            } else {
+                assert_eq!(got, Some(scope), "{language:?} {needle}");
+            }
+        }
+    }
+    #[test]
     fn syntax_worker_publishes_only_lexilla_and_rejects_cancelled_result() {
         let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Cpp);
         syntax.parse(7, Rope::from("int value = 42;"), None);
