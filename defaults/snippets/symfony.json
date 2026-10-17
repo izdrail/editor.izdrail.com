@@ -115,5 +115,145 @@
    "}"
   ],
   "description": "EventSubscriber events"
+ },
+ "Voter": {
+  "prefix": "sf-voter",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Security;",
+   "",
+   "use Symfony\\\\Component\\\\Security\\\\Core\\\\Authentication\\\\Token\\\\TokenInterface;",
+   "use Symfony\\\\Component\\\\Security\\\\Core\\\\Authorization\\\\Voter\\\\Voter;",
+   "",
+   "class ${1:Post}Voter extends Voter",
+   "{",
+   "\tprotected function supports(string \\$attribute, mixed \\$subject): bool",
+   "\t{",
+   "\t\treturn \\$attribute === '${2:edit}' && \\$subject instanceof ${3:Post};",
+   "\t}",
+   "",
+   "\tprotected function voteOnAttribute(string \\$attribute, mixed \\$subject, TokenInterface \\$token): bool",
+   "\t{",
+   "\t\t$0",
+   "\t\treturn false;",
+   "\t}",
+   "}"
+  ],
+  "description": "Security voter skeleton"
+ },
+ "Web test": {
+  "prefix": "sf-test",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Tests;",
+   "",
+   "use Symfony\\\\Bundle\\\\FrameworkBundle\\\\Test\\\\WebTestCase;",
+   "",
+   "class ${1:Home}ControllerTest extends WebTestCase",
+   "{",
+   "\tpublic function test${2:Index}(): void",
+   "\t{",
+   "\t\t\\$client = static::createClient();",
+   "\t\t\\$client->request('${3:GET}', '${4:/}');",
+   "",
+   "\t\t\\$this->assertResponseIsSuccessful();",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "WebTestCase smoke test"
+ },
+ "Messenger handler": {
+  "prefix": "sf-messenger",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\MessageHandler;",
+   "",
+   "use App\\\\Message\\\\${1:DoThing};",
+   "use Symfony\\\\Component\\\\Messenger\\\\Attribute\\\\AsMessageHandler;",
+   "",
+   "#[AsMessageHandler]",
+   "class ${1:DoThing}Handler",
+   "{",
+   "\tpublic function __invoke(${1:DoThing} \\$message): void",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "AsMessageHandler class"
+ },
+ "Doctrine repository": {
+  "prefix": "sf-repository",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Repository;",
+   "",
+   "use App\\\\Entity\\\\${1:Product};",
+   "use Doctrine\\\\Bundle\\\\DoctrineBundle\\\\Repository\\\\ServiceEntityRepository;",
+   "use Doctrine\\\\Persistence\\\\ManagerRegistry;",
+   "",
+   "class ${1:Product}Repository extends ServiceEntityRepository",
+   "{",
+   "\tpublic function __construct(ManagerRegistry \\$registry)",
+   "\t{",
+   "\t\tparent::__construct(\\$registry, ${1:Product}::class);",
+   "\t}",
+   "",
+   "\t$0",
+   "}"
+  ],
+  "description": "ServiceEntityRepository skeleton"
+ },
+ "Twig extension": {
+  "prefix": "sf-twigextension",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Twig;",
+   "",
+   "use Twig\\\\Extension\\\\AbstractExtension;",
+   "use Twig\\\\TwigFilter;",
+   "",
+   "class ${1:App}Extension extends AbstractExtension",
+   "{",
+   "\tpublic function getFilters(): array",
+   "\t{",
+   "\t\treturn [",
+   "\t\t\tnew TwigFilter('${2:my_filter}', \\$this->${2:myFilter}(...)),",
+   "\t\t];",
+   "\t}",
+   "",
+   "\tpublic function ${2:myFilter}(string \\$value): string",
+   "\t{",
+   "\t\treturn \\$value;$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Twig filter extension"
+ },
+ "Event listener": {
+  "prefix": "sf-listener",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\EventListener;",
+   "",
+   "use Symfony\\\\Component\\\\EventDispatcher\\\\Attribute\\\\AsEventListener;",
+   "",
+   "#[AsEventListener(event: '${1:kernel.request}', method: '${2:onKernelRequest}')]",
+   "class ${3:My}Listener",
+   "{",
+   "\tpublic function ${2:onKernelRequest}(${4:RequestEvent} \\$event): void",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "AsEventListener class"
  }
 }

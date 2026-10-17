@@ -189,6 +189,31 @@ mod tests {
     }
 
     #[test]
+    fn symfony_pack_prefixes_are_unique_and_new_snippets_keep_php() {
+        let mut seen = std::collections::HashSet::new();
+        for s in &packs().symfony {
+            for p in &s.prefix {
+                assert!(seen.insert(p.clone()), "duplicate prefix {p}");
+            }
+        }
+        for want in ["sf-voter", "sf-test", "sf-messenger", "sf-repository", "sf-twigextension", "sf-listener"] {
+            assert!(seen.contains(want), "{want}");
+        }
+        let text_of = |prefix: &str| {
+            let s = packs().symfony.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        let voter = text_of("sf-voter");
+        assert!(voter.contains("namespace App\\Security;"), "{voter}");
+        assert!(voter.contains("class PostVoter extends Voter"), "{voter}");
+        assert!(text_of("sf-test").contains("$client->request('GET', '/');"));
+        assert!(text_of("sf-messenger").contains("class DoThingHandler"));
+        assert!(text_of("sf-repository").contains("parent::__construct($registry, Product::class);"));
+        assert!(text_of("sf-twigextension").contains("new TwigFilter('my_filter', $this->myFilter(...))"));
+        assert!(text_of("sf-listener").contains("public function onKernelRequest(RequestEvent $event): void"));
+    }
+
+    #[test]
     fn wordpress_pack_prefixes_are_unique_and_bodies_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().wordpress {
