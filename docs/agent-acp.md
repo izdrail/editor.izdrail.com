@@ -1,0 +1,32 @@
+# ACP client foundation (agent-acp)
+
+`agent_acp` is the pure protocol contract for hosting Agent Client Protocol
+(ACP v1) agents in the editor: opencode natively (`opencode acp`), Claude
+Code and Codex CLI through their ACP adapters. It provides:
+
+- NDJSON stdio framing (one JSON-RPC message per line; encode asserts the
+  single-line invariant, decode tolerates one trailing CRLF and rejects
+  embedded newlines)
+- Client request builders: `initialize` (capabilities explicit; `fs` and
+  `terminal` must stay false until the review/permission UI owns them),
+  `authenticate`, `session/new`, `session/prompt`, `session/cancel`
+- Agent response/notification parsers: initialize hello (protocol version,
+  agent info, auth method ids, loadSession), session id, stop reason,
+  `session/update` (message chunks, plans, tool calls, usage), and the
+  agent-to-client `fs/read_text_file` / `fs/write_text_file` requests
+
+Shapes verified against agentclientprotocol.com/protocol/v1 on
+2026-10-17 (transports, initialization, session-setup, prompt-turn,
+file-system pages).
+
+This module does NOT spawn processes, touch stdio, read or write files,
+apply edits, grant permissions or render UI. Those integrations arrive
+separately; an agent process must never gain filesystem or execution
+ability from this module alone. The launch/stdio plumbing, the chat-panel
+session surface, context passing and permission-gated fs handlers are the
+next milestones, in that order.
+
+Verification: unit tests cover framing roundtrips and newline rules, the
+spec-example request shapes, hello/session/stop parsing, plan/tool-call/
+usage updates and fs request parsing. No live agent was contacted; that
+integration test belongs to the stdio milestone.
