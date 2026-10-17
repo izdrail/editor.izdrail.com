@@ -23,6 +23,14 @@ pub struct StoredSession {
     pub updated_unix: u64,
 }
 
+/// Current unix time in seconds (0 on clock failure), for stamps.
+pub fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 pub fn sessions_path(root: &Path) -> PathBuf {
     root.join(".lapce").join("acp").join("sessions.json")
 }

@@ -54,3 +54,14 @@ agents and models you trust with the file you have open.
 
 Diagnostics are not attached yet; resource_link content blocks (instead
 of fenced text) come once adapter support is verified.
+
+## Resuming sessions (item 145)
+
+A `Resume (N)` button sits next to ACP in the mode row; N counts stored
+sessions for the current agent command + project. Clicking it makes the
+next Send resume the most recent one via `session/load` (agents without
+`loadSession` fall back to a fresh session with a notice). Sessions are
+recorded after each successful turn, only when the agent can resume
+them. Replayed history renders as one text stream (user and agent
+chunks are not yet distinguished). The count refreshes when the panel
+re-renders (config/mode change), not live from disk.

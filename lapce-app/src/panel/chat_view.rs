@@ -47,6 +47,9 @@ pub struct ChatData {
     /// ACP mode: route Send to the configured external ACP agent
     /// (opencode, a Claude Code/Codex adapter) instead of chat/Ask/Plan.
     pub acp: RwSignal<bool>,
+    /// ACP resume: the next ACP send resumes the most recent stored
+    /// session for this agent+project instead of starting fresh.
+    pub acp_resume: RwSignal<bool>,
     pub trust_reads: RwSignal<bool>,
     pub trusted_endpoint: RwSignal<String>,
     pub review: crate::agent_review_ui::ReviewData,
@@ -105,6 +108,7 @@ impl ChatData {
             state: cx.create_rw_signal(session.state.clone()),
             mode: cx.create_rw_signal(None),
             acp: cx.create_rw_signal(false),
+            acp_resume: cx.create_rw_signal(false),
             trust_reads: cx.create_rw_signal(false),
             trusted_endpoint: cx.create_rw_signal(String::new()),
             gate: RunGate::default(),
@@ -625,6 +629,21 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     };
     let ctx = context(tab);
     let composed = crate::agent_acp_session::compose_prompt(ctx.as_ref(), prompt);
+    let resume = if data.acp_resume.get_untracked() {
+        let cwd = root.to_string_lossy().into_owned();
+        crate::agent_acp_store::load_sessions(&root)
+            .into_iter()
+            .find(|s| s.agent == spec && s.cwd == cwd)
+            .map(|s| s.session_id)
+    } else {
+        None
+    };
+    if data.acp_resume.get_untracked() && resume.is_none() {
+        data.error.set(
+            "No stored ACP session for this agent and project yet.".into(),
+        );
+        return;
+    }
     let run = data.gate.begin();
     let cancelled = Arc::new(AtomicBool::new(false));
     data.cancellation.set(cancelled.clone());
@@ -679,12 +698,26 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
         }
     });
     let acp_pid = data.acp_pid.clone();
+    let title: String = prompt.lines().next().unwrap_or("").chars().take(80).collect();
     std::thread::spawn(move || {
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let result =
-            run_acp_turn(&program, &arg_refs, &root, &composed, &cancelled, &acp_pid, &tx);
+        let result = run_acp_turn(
+            &program, &arg_refs, &root, &composed, resume, &cancelled, &acp_pid, &tx,
+        );
         let _ = tx.send(match result {
-            Ok(text) => Update::Done(text),
+            Ok((text, resumable_id)) => {
+                if let Some(session_id) = resumable_id {
+                    let entry = crate::agent_acp_store::StoredSession {
+                        session_id,
+                        agent: spec,
+                        cwd: root.to_string_lossy().into_owned(),
+                        title,
+                        updated_unix: crate::agent_acp_store::now_unix(),
+                    };
+                    let _ = crate::agent_acp_store::record_session(&root, entry);
+                }
+                Update::Done(text)
+            }
             Err(error) => Update::Error(error),
         });
     });
@@ -730,14 +763,15 @@ fn run_acp_turn(
     args: &[&str],
     root: &std::path::Path,
     prompt: &str,
+    resume: Option<String>,
     cancelled: &Arc<AtomicBool>,
     pid_slot: &Arc<Mutex<Option<u32>>>,
     tx: &std::sync::mpsc::Sender<Update>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let mut process = crate::agent_acp_process::AcpProcess::spawn(program, args, root)
         .map_err(|e| format!("Could not launch `{program}`: {e}"))?;
     *pid_slot.lock().unwrap() = Some(process.id());
-    let result = drive_acp_turn(&mut process, root, prompt, cancelled, tx);
+    let result = drive_acp_turn(&mut process, root, prompt, resume, cancelled, tx);
     *pid_slot.lock().unwrap() = None;
     process.kill();
     result
@@ -750,12 +784,17 @@ fn drive_acp_turn(
     process: &mut crate::agent_acp_process::AcpProcess,
     root: &std::path::Path,
     prompt: &str,
+    resume: Option<String>,
     cancelled: &Arc<AtomicBool>,
     tx: &std::sync::mpsc::Sender<Update>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     use crate::agent_acp_session::{AcpSession, Phase, TurnEvent};
-    let (mut session, hello) =
-        AcpSession::start(root.to_path_buf(), "lapce", env!("CARGO_PKG_VERSION"));
+    let (mut session, hello) = AcpSession::start_resumable(
+        root.to_path_buf(),
+        "lapce",
+        env!("CARGO_PKG_VERSION"),
+        resume,
+    );
     process.send(&hello).map_err(|e| e.message)?;
     let mut guard = 0;
     loop {
@@ -826,7 +865,12 @@ fn drive_acp_turn(
             }
         }
         if finished {
-            return Ok(text);
+            let resumable = if session.can_resume() {
+                session.session_id().map(str::to_string)
+            } else {
+                None
+            };
+            return Ok((text, resumable));
         }
     }
 }
@@ -843,6 +887,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let ask_mode = data.clone();
     let plan_mode = data.clone();
     let acp_mode = data.clone();
+    let acp_resume = data.clone();
+    let resume_tab = tab.clone();
     let trust = data.clone();
     let revoke = data.clone();
     let input_signal = data.input;
@@ -897,10 +943,34 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .style(move |s| s.padding(6.0).cursor(CursorStyle::Pointer).selectable(false)),
         )),
         h_stack((
-            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); } }),
-            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); } }),
-            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); } }),
-            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); } }),
+            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); } }),
+            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); } }),
+            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); } }),
+            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); } }),
+            label(move || {
+                let settings = resume_tab.common.config.get().ai_chat.clone();
+                let count = resume_tab
+                    .workspace
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.canonicalize().ok())
+                    .map(|root| {
+                        let cwd = root.to_string_lossy().into_owned();
+                        crate::agent_acp_store::load_sessions(&root)
+                            .into_iter()
+                            .filter(|s| s.agent == settings.acp_command.trim() && s.cwd == cwd)
+                            .count()
+                    })
+                    .unwrap_or(0);
+                format!("Resume ({count})")
+            })
+            .on_click_stop(move |_| {
+                if !acp_resume.busy.get_untracked() {
+                    acp_resume.mode.set(None);
+                    acp_resume.acp.set(true);
+                    acp_resume.acp_resume.set(true);
+                }
+            }),
         )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
         label(move || format!("Mode: {}. Act is unavailable; Ask/Plan never write files.", if data.acp.get() { "ACP agent" } else { match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" } }))
             .style(|s| s.font_size(11.0).max_width_full()),

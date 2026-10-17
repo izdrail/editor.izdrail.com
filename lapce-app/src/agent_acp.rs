@@ -226,14 +226,17 @@ pub fn parse_session_update(params: &Value) -> Option<(String, SessionUpdate)> {
     let u = params.get("update")?;
     let kind = u.get("sessionUpdate")?.as_str()?;
     let update = match kind {
-        "agent_message_chunk" | "agent_thought_chunk" => SessionUpdate::AgentChunk {
-            text: u
-                .get("content")
-                .and_then(|c| c.get("text"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-        },
+        // user_message_chunk appears in session/load replays.
+        "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk" => {
+            SessionUpdate::AgentChunk {
+                text: u
+                    .get("content")
+                    .and_then(|c| c.get("text"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
         "plan" => SessionUpdate::Plan {
             entries: u
                 .get("entries")
