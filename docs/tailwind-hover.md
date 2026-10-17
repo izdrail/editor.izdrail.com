@@ -16,7 +16,16 @@ Colours: the default v3 palette (22 colours, shades 50 to 950, values from tailw
 `caret-`, `decoration-` and `outline-`, with `/50` style opacity. The hover shows `rgb(r g b)` and the hex
 in a comment; Tailwind itself emits the same colour through an opacity variable.
 
-Not covered: gradient and ring colours, arbitrary values (`w-[13px]`), custom values from `tailwind.config.js`,
-plugins, and Tailwind v4 differences. A class that is not in the table gets no hover. Only the hovered
-line is read (4096 bytes at most); classes built with `{{ }}`, `$` or `@` are skipped. Nothing is
-executed. Blade directive and component prop hover still win in Blade files.
+Arbitrary values: `w-[13px]`, `bg-[#1da1f2]`, `-mt-[0.5rem]`, `px-[calc(100%_-_1rem)]`. The value
+between the brackets is shown verbatim (underscores become spaces, except inside `url(...)`).
+Covered prefixes: the spacing/sizing families above, the colour prefixes above (a hex colour with a
+`/50` opacity modifier is decomposed to `rgb(...)`), `bg-[url(...)]` as `background-image`, `rounded`
+with every side and corner, `z`, `opacity`, `shadow`, `grid-cols`/`grid-rows`, `leading` and
+`tracking`. For `text-[...]` and `border-[...]`, which can set either a length or a colour, the
+`length:`/`color:` type hint wins (`text-[length:14px]`); without a hint the value shape decides
+(`text-[14px]` -> `font-size`, `text-[#333]` -> `color`), and an ambiguous `var(...)` gets no hover.
+
+Not covered: gradient and ring colours, custom values from `tailwind.config.js`, plugins, and
+Tailwind v4 differences. A class that matches nothing gets no hover. Only the hovered line is read
+(4096 bytes at most, arbitrary values at most 60 bytes); classes built with `{{ }}`, `$` or `@` are
+skipped. Nothing is executed. Blade directive and component prop hover still win in Blade files.

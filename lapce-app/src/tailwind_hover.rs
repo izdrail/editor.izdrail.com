@@ -7,10 +7,10 @@
 //! margin, gap, width, height, size, inset), rounded, shadow, text sizes, font
 //! weights, display, position, flex, alignment, grid columns, z-index, opacity
 //! and a few more, plus the default colour palette (`bg-red-500`, `text-gray-700/50`,
-//! `border-t-blue-600`). Arbitrary values (`w-[13px]`), custom theme values
-//! from `tailwind.config.js` and Tailwind v4 differences are not covered; a
-//! class that is not in the table gets no hover. Nothing is executed and no file
-//! is read: only the hovered line is looked at.
+//! `border-t-blue-600`) and arbitrary values (`w-[13px]`, `bg-[#1da1f2]`,
+//! `text-[length:14px]`). Custom theme values from `tailwind.config.js` and
+//! Tailwind v4 differences are not covered; a class that matches nothing gets no
+//! hover. Nothing is executed and no file is read: only the hovered line is looked at.
 
 const MAX_LINE: usize = 4096;
 
@@ -226,6 +226,195 @@ fn color_declaration(class: &str) -> Option<String> {
     Some(format!("{prop}: {value}; /* {label} */"))
 }
 
+/// `0 | 5 | 10 ... 100` opacity modifier (`bg-red-500/50`).
+fn parse_alpha(a: &str) -> Option<u32> {
+    let a: u32 = a.parse().ok()?;
+    matches!(a, 0 | 5 | 10 | 20 | 25 | 30 | 40 | 50 | 60 | 70 | 75 | 80 | 90 | 95 | 100).then_some(a)
+}
+
+/// `#abc` -> `aabbcc`; 6-digit hex passes through. Anything else is rejected.
+fn expand_hex(hex: &str) -> Option<String> {
+    match hex.len() {
+        3 => Some(hex.bytes().flat_map(|b| [b as char; 2]).collect()),
+        6 => Some(hex.to_string()),
+        _ => None,
+    }
+}
+
+/// Arbitrary value between the brackets: non-empty, short, with no characters
+/// that would break the hover code block. Underscores become spaces, except
+/// inside `url(...)` where Tailwind keeps them.
+fn sanitize_arbitrary(raw: &str) -> Option<String> {
+    if raw.is_empty() || raw.len() > 60 {
+        return None;
+    }
+    if raw.contains(['[', ']', '{', '}', ';', '<', '>', '`']) {
+        return None;
+    }
+    let v = if raw.contains("url(") { raw.to_string() } else { raw.replace('_', " ") };
+    (!v.trim().is_empty()).then_some(v)
+}
+
+/// A CSS length (`13px`, `0.5rem`, `100%`, `calc(100% - 1rem)`).
+fn is_length(v: &str) -> bool {
+    let v = v.strip_prefix('-').unwrap_or(v);
+    if v == "0" {
+        return true;
+    }
+    for f in ["calc(", "min(", "max(", "clamp("] {
+        if v.starts_with(f) && v.ends_with(')') {
+            return true;
+        }
+    }
+    let Some(i) = v.find(|c: char| c.is_ascii_alphabetic() || c == '%') else { return false };
+    let (num, unit) = v.split_at(i);
+    if num.parse::<f64>().is_err() {
+        return false;
+    }
+    matches!(
+        unit,
+        "px" | "rem" | "em" | "%" | "vw" | "vh" | "svw" | "svh" | "lvw" | "lvh" | "dvw" | "dvh"
+            | "vmin" | "vmax" | "ch" | "ex" | "cm" | "mm" | "in" | "pt" | "pc"
+    )
+}
+
+/// A CSS colour (`#abc`, `rgb(...)`, a named colour like `red`). `var(...)` is
+/// deliberately excluded: on `text-`/`border-` it is ambiguous and needs the
+/// `length:`/`color:` type hint.
+fn is_color(v: &str) -> bool {
+    if let Some(hex) = v.strip_prefix('#') {
+        return matches!(hex.len(), 3 | 4 | 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit());
+    }
+    for f in [
+        "rgb(", "rgba(", "hsl(", "hsla(", "hwb(", "lab(", "lch(", "oklab(", "oklch(", "color(",
+    ] {
+        if v.starts_with(f) && v.ends_with(')') {
+            return true;
+        }
+    }
+    !v.is_empty() && v.bytes().all(|b| b.is_ascii_alphabetic())
+}
+
+/// Declarations for an arbitrary-value class (`w-[13px]`, `bg-[#1da1f2]/50`,
+/// `text-[length:14px]`). The value is shown verbatim; only the property is
+/// inferred from the utility prefix.
+fn arbitrary(class: &str) -> Option<String> {
+    let (neg, body) = match class.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, class),
+    };
+    let open = body.find('[')?;
+    let prefix = body[..open].strip_suffix('-')?;
+    let close = body.rfind(']')?;
+    if close < open {
+        return None;
+    }
+    let (inner, alpha) = match body[close + 1..].strip_prefix('/') {
+        Some(a) => (&body[open + 1..close], Some(parse_alpha(a)?)),
+        None if close + 1 == body.len() => (&body[open + 1..close], None),
+        None => return None,
+    };
+    // Type hints (`text-[length:14px]`, `border-[color:red]`).
+    let (hint, inner) = match inner.split_once(':') {
+        Some((h, rest)) if matches!(h, "length" | "color") => (Some(h), rest),
+        _ => (None, inner),
+    };
+    let value = sanitize_arbitrary(inner)?;
+
+    let with_alpha = |prop: &str, value: &str| -> Option<String> {
+        match alpha {
+            None => Some(format!("{prop}: {value};")),
+            // Tailwind decomposes a hex colour for the opacity modifier.
+            Some(a) => {
+                let hex = value.strip_prefix('#')?;
+                let [r, g, b] = hex_rgb(&expand_hex(hex)?)?;
+                Some(format!("{prop}: rgb({r} {g} {b} / {});", a as f64 / 100.0))
+            }
+        }
+    };
+
+    // Utilities where one class name can set different properties: the
+    // `length:`/`color:` hint wins, otherwise the value shape decides.
+    let ambiguous = match prefix {
+        "text" => Some(("font-size", "color")),
+        "border" => Some(("border-width", "border-color")),
+        _ => None,
+    };
+    if let Some((len_prop, color_prop)) = ambiguous {
+        return match hint {
+            Some("length") => (alpha.is_none()).then(|| format!("{len_prop}: {value};")),
+            Some("color") => with_alpha(color_prop, &value),
+            _ if is_length(&value) => (alpha.is_none()).then(|| format!("{len_prop}: {value};")),
+            _ if is_color(&value) => with_alpha(color_prop, &value),
+            _ => None,
+        };
+    }
+    // Hints only resolve the text/border ambiguity.
+    if hint.is_some() {
+        return None;
+    }
+    // Colour prefixes; `bg-[url(...)]` is a background image.
+    if let Some((_, prop)) = COLOR_PROPS.iter().find(|(p, _)| *p == prefix) {
+        if *prop == "background-color" && value.starts_with("url(") {
+            return (alpha.is_none()).then(|| format!("background-image: {value};"));
+        }
+        if !(is_color(&value) || value.starts_with("var(")) {
+            return None;
+        }
+        return with_alpha(prop, &value);
+    }
+    // From here on an opacity modifier makes no sense.
+    if alpha.is_some() {
+        return None;
+    }
+    let radius: &[&str] = match prefix {
+        "rounded" => &["border-radius"],
+        "rounded-t" => &["border-top-left-radius", "border-top-right-radius"],
+        "rounded-r" => &["border-top-right-radius", "border-bottom-right-radius"],
+        "rounded-b" => &["border-bottom-right-radius", "border-bottom-left-radius"],
+        "rounded-l" => &["border-top-left-radius", "border-bottom-left-radius"],
+        "rounded-tl" => &["border-top-left-radius"],
+        "rounded-tr" => &["border-top-right-radius"],
+        "rounded-br" => &["border-bottom-right-radius"],
+        "rounded-bl" => &["border-bottom-left-radius"],
+        _ => &[],
+    };
+    if !radius.is_empty() {
+        return Some(radius.iter().map(|p| format!("{p}: {value};")).collect::<Vec<_>>().join("\n"));
+    }
+    let single: Option<&str> = match prefix {
+        "z" => Some("z-index"),
+        "opacity" => Some("opacity"),
+        "shadow" => Some("box-shadow"),
+        "leading" => Some("line-height"),
+        "tracking" => Some("letter-spacing"),
+        "grid-cols" => Some("grid-template-columns"),
+        "grid-rows" => Some("grid-template-rows"),
+        _ => None,
+    };
+    if let Some(prop) = single {
+        return Some(format!("{prop}: {value};"));
+    }
+    // Spacing/sizing families take any value verbatim.
+    for (fam, props, _, _, _) in FAMILIES {
+        if *fam != prefix {
+            continue;
+        }
+        if neg
+            && !matches!(
+                *fam,
+                "m" | "mx" | "my" | "mt" | "mr" | "mb" | "ml" | "top" | "right" | "bottom" | "left"
+                    | "inset" | "inset-x" | "inset-y"
+            )
+        {
+            return None;
+        }
+        let value = if neg && value != "0" { format!("-{value}") } else { value };
+        return Some(props.iter().map(|p| format!("{p}: {value};")).collect::<Vec<_>>().join("\n"));
+    }
+    None
+}
+
 fn spacing(key: &str) -> Option<&'static str> {
     SPACING.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }
@@ -260,6 +449,9 @@ fn family_value(key: &str, auto: bool, sizes: bool, keywords: bool, neg: bool) -
 }
 
 fn declarations(class: &str) -> Option<String> {
+    if class.contains('[') {
+        return arbitrary(class);
+    }
     if let Some((_, d)) = FIXED.iter().find(|(c, _)| *c == class) {
         return Some(d.to_string());
     }
@@ -374,9 +566,6 @@ pub fn help(line: &str, col: usize) -> Option<String> {
     }
     let token = token_at(line, col)?;
     let (variants, utility) = split_variants(token);
-    if utility.contains('[') {
-        return None;
-    }
     let css = declarations(utility)?;
     let mut md = format!("**Tailwind** `{token}`\n\n```css\n{css}\n```\n");
     if !variants.is_empty() {
@@ -440,7 +629,6 @@ mod tests {
     fn unknown_dynamic_and_outside_attribute_are_ignored() {
         for (l, n) in [
             ("<a class=\"btn-primary\">", "btn-primary"),
-            ("<a class=\"w-[13px]\">", "w-[13px]"),
             ("<a class=\"{{ $c }} p-4\">", "{{"),
             ("<a class=\"p-4\">", "<a"),
             ("p-4 text", "p-4"),
@@ -456,10 +644,66 @@ mod tests {
 
     #[test]
     fn odd_input_does_not_panic() {
-        for l in ["class=\"", "class=\"é ü\"", "className='日本 p-4'", "class=\"p-4\u{0301}\"", "class=\"::\"", "class=\"[:]\"", "class=\"-\"", "class=\"!\"", ""] {
+        for l in ["class=\"", "class=\"é ü\"", "className='日本 p-4'", "class=\"p-4\u{0301}\"", "class=\"::\"", "class=\"[:]\"", "class=\"-\"", "class=\"!\"", "class=\"w-[日本]\"", "class=\"p-[é] m-[\"", "class=\"bg-[#äää] text-[x\u{0301}]\"", "class=\"w-[]] z-[[\"", ""] {
             for c in 0..=l.len() + 2 {
                 let _ = help(l, c);
             }
         }
+    }
+
+    #[test]
+    fn arbitrary_values() {
+        assert!(h("<i class=\"w-[13px]\">", "w-[13px]").unwrap().contains("width: 13px;"));
+        assert!(h("<i class=\"-mt-[0.5rem]\">", "-mt-[0.5rem]").unwrap().contains("margin-top: -0.5rem;"));
+        assert!(h("<i class=\"px-[calc(100%_-_1rem)]\">", "px-[calc").unwrap().contains("padding-left: calc(100% - 1rem);\npadding-right: calc(100% - 1rem);"));
+        assert!(h("<i class=\"size-[3px]\">", "size-").unwrap().contains("width: 3px;\nheight: 3px;"));
+        assert!(h("<i class=\"bg-[#1da1f2]\">", "bg-[#1da1f2]").unwrap().contains("background-color: #1da1f2;"));
+        assert!(h("<i class=\"bg-[#1da1f2]/50\">", "bg-[#1da1f2]").unwrap().contains("background-color: rgb(29 161 242 / 0.5);"));
+        assert!(h("<i class=\"border-t-[#abc]\">", "border-t-").unwrap().contains("border-top-color: #abc;"));
+        assert!(h("<i class=\"fill-[rgb(1_2_3)]\">", "fill-").unwrap().contains("fill: rgb(1 2 3);"));
+        assert!(h("<i class=\"bg-[var(--brand)]\">", "bg-[var").unwrap().contains("background-color: var(--brand);"));
+        assert!(h("<i class=\"text-[14px]\">", "text-[14px]").unwrap().contains("font-size: 14px;"));
+        assert!(h("<i class=\"text-[#333]\">", "text-[#333]").unwrap().contains("color: #333;"));
+        assert!(h("<i class=\"text-[length:1.2em]\">", "text-[length").unwrap().contains("font-size: 1.2em;"));
+        assert!(h("<i class=\"text-[color:var(--c)]\">", "text-[color").unwrap().contains("color: var(--c);"));
+        assert!(h("<i class=\"border-[3px]\">", "border-[3px]").unwrap().contains("border-width: 3px;"));
+        assert!(h("<i class=\"border-[#abcabc]\">", "border-[#abcabc]").unwrap().contains("border-color: #abcabc;"));
+        assert!(h("<i class=\"rounded-tl-[2px]\">", "rounded-tl").unwrap().contains("border-top-left-radius: 2px;"));
+        assert!(h("<i class=\"rounded-[0.25em]\">", "rounded-").unwrap().contains("border-radius: 0.25em;"));
+        assert!(h("<i class=\"z-[999] opacity-[0.87]\">", "z-[999]").unwrap().contains("z-index: 999;"));
+        assert!(h("<i class=\"z-[999] opacity-[0.87]\">", "opacity-").unwrap().contains("opacity: 0.87;"));
+        assert!(h("<i class=\"shadow-[0_1px_2px_red]\">", "shadow-").unwrap().contains("box-shadow: 0 1px 2px red;"));
+        assert!(h("<i class=\"grid-cols-[1fr_2fr]\">", "grid-cols-").unwrap().contains("grid-template-columns: 1fr 2fr;"));
+        assert!(h("<i class=\"grid-rows-[auto_1fr]\">", "grid-rows-").unwrap().contains("grid-template-rows: auto 1fr;"));
+        assert!(h("<i class=\"leading-[1.9] tracking-[0.1em]\">", "leading-").unwrap().contains("line-height: 1.9;"));
+        assert!(h("<i class=\"leading-[1.9] tracking-[0.1em]\">", "tracking-").unwrap().contains("letter-spacing: 0.1em;"));
+        assert!(h("<i class=\"bg-[url('/img/a_b.png')]\">", "bg-[url").unwrap().contains("background-image: url('/img/a_b.png');"));
+        let md = h("<i class=\"md:hover:w-[13px]\">", "md:hover").unwrap();
+        assert!(md.contains("width: 13px;") && md.contains("`@media (min-width: 768px)`"), "{md}");
+    }
+
+    #[test]
+    fn arbitrary_rejects_ambiguous_or_dirty() {
+        for c in [
+            // Empty, unterminated or trailing junk after `]`.
+            "w-[]", "w-[13px", "w-[13px]x", "w-[a[b]",
+            // `var(...)` on text/border is ambiguous without a type hint.
+            "text-[var(--x)]", "border-[var(--x)]",
+            // Characters that would break the hover code block.
+            "p-[a;b]", "p-[a{b]", "w-[a`b]",
+            // Opacity modifiers that do not apply or cannot be decomposed.
+            "bg-[#1da1f2]/33", "bg-[#abcd]/50", "z-[1]/50", "p-[3px]/50",
+            // Hints only exist for text/border; negative padding is invalid.
+            "w-[length:13px]", "-p-[3px]",
+            // Unknown arbitrary prefixes stay silent.
+            "blur-[4px]", "unknown-[1px]",
+        ] {
+            let l = format!("<i class=\"{c}\">");
+            assert_eq!(h(&l, c), None, "{c}");
+        }
+        // Over-long arbitrary values are ignored.
+        let c = format!("w-[{}]", "1".repeat(61));
+        let l = format!("<i class=\"{c}\">");
+        assert_eq!(h(&l, &c), None);
     }
 }
