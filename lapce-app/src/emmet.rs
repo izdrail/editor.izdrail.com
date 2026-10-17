@@ -754,6 +754,24 @@ const CSS_SHORTCUTS: &[(&str, &str, &str)] = &[
     ("ova", "overflow", "auto"),
     ("curp", "cursor", "pointer"),
     ("bxzb", "box-sizing", "border-box"),
+    ("ttu", "text-transform", "uppercase"),
+    ("ttl", "text-transform", "lowercase"),
+    ("ttc", "text-transform", "capitalize"),
+    ("usn", "user-select", "none"),
+    ("whsnw", "white-space", "nowrap"),
+    ("vam", "vertical-align", "middle"),
+    ("vat", "vertical-align", "top"),
+    ("vab", "vertical-align", "bottom"),
+    ("clb", "clear", "both"),
+    ("fll", "float", "left"),
+    ("flr", "float", "right"),
+    ("fln", "float", "none"),
+    ("lisn", "list-style", "none"),
+    ("pen", "pointer-events", "none"),
+    ("tblf", "table-layout", "fixed"),
+    ("bgn", "background", "none"),
+    ("ovxh", "overflow-x", "hidden"),
+    ("ovyh", "overflow-y", "hidden"),
 ];
 
 /// Property abbreviations that take a value.
@@ -799,6 +817,27 @@ const CSS_PROPS: &[(&str, &str)] = &[
     ("trs", "transition"),
     ("ls", "letter-spacing"),
     ("ord", "order"),
+    ("fxw", "flex-wrap"),
+    ("fxd", "flex-direction"),
+    ("fxg", "flex-grow"),
+    ("fxs", "flex-shrink"),
+    ("jc", "justify-content"),
+    ("ai", "align-items"),
+    ("as", "align-self"),
+    ("tt", "text-transform"),
+    ("va", "vertical-align"),
+    ("whs", "white-space"),
+    ("us", "user-select"),
+    ("pe", "pointer-events"),
+    ("ovx", "overflow-x"),
+    ("ovy", "overflow-y"),
+    ("cl", "clear"),
+    ("fl", "float"),
+    ("lis", "list-style"),
+    ("ol", "outline"),
+    ("trf", "transform"),
+    ("anim", "animation"),
+    ("cnt", "content"),
 ];
 
 /// Properties whose plain numbers are not lengths.
@@ -809,6 +848,8 @@ const CSS_UNITLESS: &[&str] = &[
     "opacity",
     "flex",
     "order",
+    "flex-grow",
+    "flex-shrink",
 ];
 
 const CSS_UNITS: &[&str] = &[
@@ -1002,6 +1043,26 @@ mod tests {
         assert_eq!(c("pa"), "position: absolute;");
         assert_eq!(c("h50vh"), "height: 50vh;");
         assert_eq!(c("z10"), "z-index: 10;");
+        // Keyword-valued properties: bare form places the caret in the value,
+        // common values have whole-abbreviation shortcuts (emmetio css.json).
+        assert_eq!(c("fxw"), "flex-wrap: $1;");
+        assert_eq!(c("jc"), "justify-content: $1;");
+        assert_eq!(c("fxg2"), "flex-grow: 2;");
+        assert_eq!(c("fxs0"), "flex-shrink: 0;");
+        assert_eq!(c("anim0.3s"), "animation: 0.3s;");
+        assert_eq!(c("ttu"), "text-transform: uppercase;");
+        assert_eq!(c("whsnw"), "white-space: nowrap;");
+        assert_eq!(c("fll"), "float: left;");
+        assert_eq!(c("lisn"), "list-style: none;");
+        assert_eq!(c("pen"), "pointer-events: none;");
+        assert_eq!(c("tblf"), "table-layout: fixed;");
+        assert_eq!(c("bgn!"), "background: none !important;");
+        assert_eq!(c("vam"), "vertical-align: middle;");
+        assert_eq!(c("clb"), "clear: both;");
+        // Shortcuts keep winning over the new property prefixes.
+        assert_eq!(c("fxdc"), "flex-direction: column;");
+        assert_eq!(c("aic"), "align-items: center;");
+        assert_eq!(c("ovxh"), "overflow-x: hidden;");
     }
 
     #[test]
@@ -1011,6 +1072,9 @@ mod tests {
         assert!(expand_css("10px").is_none());
         assert!(expand_css("m10-").is_none());
         assert!(expand_css("hello").is_none());
+        // Keyword values after a property are not accepted (`fxw` + caret is).
+        assert!(expand_css("fxwwrap").is_none());
+        assert!(expand_css("jccenter").is_none());
     }
 }
 

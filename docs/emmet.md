@@ -35,11 +35,15 @@ into one declaration:
 | `fw700`, `lh1.4`, `z10`, `op.5` | unitless properties keep plain numbers |
 | `bgc#333!` | `background-color: #333 !important;` |
 | `df`, `dg`, `pa`, `tac`, `jcsb`, `aic`, `fxdc` | whole-declaration shortcuts |
+| `ttu`, `ttl`, `ttc`, `whsnw`, `fll`, `flr`, `lisn`, `pen`, `tblf`, `bgn`, `vam`, `clb`, `ovxh` | more shortcuts (text-transform, white-space, float, ...) |
 | `mt` (no value) | `margin-top: ;` with the caret in the value |
+| `fxw`, `jc`, `ai`, `va`, `us`, `ol`, `trf`, `anim`, `cnt` | keyword properties: bare form places the caret in the value |
 
 The property list is a deliberate common subset (margin, padding, size, border,
-background, colour, font, position offsets, flex/grid basics), not the full Emmet
-table. Unknown abbreviations do nothing.
+background, colour, font, position offsets, flex/grid basics, and the keyword
+properties above - a value must start with a digit, `-`, `#` or `.`, so keyword
+values come from the shortcuts), not the full Emmet table. `flex-grow` and
+`flex-shrink` keep plain numbers (`fxg2`). Unknown abbreviations do nothing.
 
 ## Colon snippets, lorem and CSS units
 
