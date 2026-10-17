@@ -453,6 +453,12 @@ pub enum FocusCommand {
     #[strum(message = "Confirm Rename")]
     #[strum(serialize = "confirm_rename")]
     ConfirmRename,
+    #[strum(message = "Inline AI Edit")]
+    #[strum(serialize = "inline_ai_edit")]
+    InlineAiEdit,
+    #[strum(message = "Confirm Inline AI Edit")]
+    #[strum(serialize = "confirm_inline_ai_edit")]
+    ConfirmInlineAiEdit,
     #[strum(message = "Select Next Syntax Item")]
     #[strum(serialize = "select_next_syntax_item")]
     SelectNextSyntaxItem,

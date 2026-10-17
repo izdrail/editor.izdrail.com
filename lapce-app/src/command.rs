@@ -846,6 +846,11 @@ pub enum InternalCommand {
         start: usize,
         position: Position,
     },
+    StartInlineAiEdit {
+        start: usize,
+        end: usize,
+        rev: u64,
+    },
     Search {
         pattern: Option<String>,
     },

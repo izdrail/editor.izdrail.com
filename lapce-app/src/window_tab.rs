@@ -86,6 +86,7 @@ use crate::{
         kind::PanelKind,
         position::PanelContainerPosition,
     },
+    inline_ai_edit::InlineAiEditData,
     plugin::PluginData,
     proxy::{ProxyData, new_proxy},
     rename::RenameData,
@@ -105,6 +106,7 @@ pub enum Focus {
     Palette,
     CodeAction,
     Rename,
+    InlineAiEdit,
     AboutPopup,
     Panel(PanelKind),
 }
@@ -184,6 +186,7 @@ pub struct WindowTabData {
     pub code_lens: RwSignal<Option<ViewId>>,
     pub source_control: SourceControlData,
     pub rename: RenameData,
+    pub inline_ai_edit: InlineAiEditData,
     pub global_search: GlobalSearchData,
     pub call_hierarchy_data: CallHierarchyData,
     pub about_data: AboutData,
@@ -517,6 +520,8 @@ impl WindowTabData {
         }
 
         let rename = RenameData::new(cx, main_split.editors, common.clone());
+        let inline_ai_edit =
+            InlineAiEditData::new(cx, main_split.editors, common.clone());
         let global_search = GlobalSearchData::new(cx, main_split.clone());
 
         let plugin = PluginData::new(
@@ -569,6 +574,7 @@ impl WindowTabData {
             plugin,
             chat,
             rename,
+            inline_ai_edit,
             global_search,
             call_hierarchy_data: CallHierarchyData {
                 root: cx.create_rw_signal(None),
@@ -591,6 +597,7 @@ impl WindowTabData {
             let focus = window_tab_data.common.focus;
             let active_editor = window_tab_data.main_split.active_editor;
             let rename_active = window_tab_data.rename.active;
+            let inline_ai_edit_active = window_tab_data.inline_ai_edit.active;
             let internal_command = window_tab_data.common.internal_command;
             cx.create_effect(move |_| {
                 let focus = focus.get();
@@ -599,6 +606,11 @@ impl WindowTabData {
 
                 if focus != Focus::Rename && rename_active.get_untracked() {
                     rename_active.set(false);
+                }
+                if focus != Focus::InlineAiEdit
+                    && inline_ai_edit_active.get_untracked()
+                {
+                    inline_ai_edit_active.set(false);
                 }
             });
         }
@@ -2060,6 +2072,12 @@ impl WindowTabData {
             } => {
                 self.rename.start(path, placeholder, start, position);
             }
+            InternalCommand::StartInlineAiEdit { start, end, rev } => {
+                if let Some(editor) = self.main_split.active_editor.get_untracked()
+                {
+                    self.inline_ai_edit.start(editor, start, end, rev);
+                }
+            }
             InternalCommand::Search { pattern } => {
                 self.main_split.set_find_pattern(pattern);
             }
@@ -2527,6 +2545,9 @@ impl WindowTabData {
                 Some(keypress.key_down(event, &code_action))
             }
             Focus::Rename => Some(keypress.key_down(event, &self.rename)),
+            Focus::InlineAiEdit => {
+                Some(keypress.key_down(event, &self.inline_ai_edit))
+            }
             Focus::AboutPopup => Some(keypress.key_down(event, &self.about_data)),
             Focus::Panel(PanelKind::Terminal) => {
                 self.terminal.key_down(event, &keypress)
@@ -2777,6 +2798,57 @@ impl WindowTabData {
         }
         if origin.x + rename_size.width + 1.0 > tab_size.width {
             origin.x = tab_size.width - rename_size.width - 1.0;
+        }
+        if origin.x <= 0.0 {
+            origin.x = 0.0;
+        }
+
+        origin
+    }
+
+    /// Overlay position for the inline AI edit input, anchored below the
+    /// captured selection offset (mirrors rename_origin).
+    pub fn inline_ai_edit_origin(&self) -> Point {
+        let config = self.common.config.get();
+        if !self.inline_ai_edit.active.get() {
+            return Point::ZERO;
+        }
+
+        let tab_size = self.layout_rect.get().size();
+        let overlay_size = self.inline_ai_edit.layout_rect.get().size();
+
+        let editor_data =
+            if let Some(editor) = self.main_split.active_editor.get_untracked() {
+                editor
+            } else {
+                return Point::ZERO;
+            };
+
+        let (window_origin, viewport, editor) = (
+            editor_data.window_origin(),
+            editor_data.viewport(),
+            &editor_data.editor,
+        );
+
+        // TODO(minor): What affinity should we use for this?
+        let (_point_above, point_below) = editor.points_of_offset(
+            self.inline_ai_edit.start.get_untracked(),
+            CursorAffinity::Forward,
+        );
+
+        let window_origin =
+            window_origin.get() - self.common.window_origin.get().to_vec2();
+        let viewport = viewport.get();
+
+        let mut origin = window_origin
+            + Vec2::new(point_below.x - viewport.x0, point_below.y - viewport.y0);
+
+        if origin.y + overlay_size.height > tab_size.height {
+            origin.y =
+                origin.y - config.editor.line_height() as f64 - overlay_size.height;
+        }
+        if origin.x + overlay_size.width + 1.0 > tab_size.width {
+            origin.x = tab_size.width - overlay_size.width - 1.0;
         }
         if origin.x <= 0.0 {
             origin.x = 0.0;

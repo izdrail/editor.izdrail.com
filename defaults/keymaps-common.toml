@@ -319,6 +319,17 @@ when = "rename_focus"
 mode = "i"
 
 [[keymaps]]
+key = "ctrl+shift+i"
+command = "inline_ai_edit"
+when = "!file_explorer_focus && !inline_ai_edit_focus"
+
+[[keymaps]]
+key = "enter"
+command = "confirm_inline_ai_edit"
+when = "inline_ai_edit_focus"
+mode = "i"
+
+[[keymaps]]
 key = "tab"
 command = "insert_tab"
 when = "!in_snippet && !completion_focus && !inline_completion_visible && !search_focus && !replace_focus"

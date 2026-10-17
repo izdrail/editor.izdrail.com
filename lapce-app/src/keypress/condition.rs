@@ -65,6 +65,8 @@ pub enum Condition {
     PanelFocus,
     #[strum(serialize = "rename_focus")]
     RenameFocus,
+    #[strum(serialize = "inline_ai_edit_focus")]
+    InlineAiEditFocus,
     #[strum(serialize = "search_active")]
     SearchActive,
     #[strum(serialize = "on_screen_find_active")]

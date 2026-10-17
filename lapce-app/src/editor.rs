@@ -1154,6 +1154,9 @@ impl EditorData {
             FocusCommand::Rename => {
                 self.rename();
             }
+            FocusCommand::InlineAiEdit => {
+                self.inline_ai_edit();
+            }
             FocusCommand::ClearSearch => {
                 self.clear_search();
             }
@@ -3638,6 +3641,55 @@ impl EditorData {
             cursor_offset,
             scroll_offset,
         );
+    }
+
+    /// Open the inline AI edit overlay over the current selection, or
+    /// over the whole current line when the cursor is a caret.
+    fn inline_ai_edit(&self) {
+        let doc = self.doc();
+        if !doc.loaded() {
+            return;
+        }
+        let (offset, selection_range) = self.cursor().with_untracked(|c| {
+            let range = match &c.mode {
+                CursorMode::Insert(selection) => selection.first().and_then(|r| {
+                    if r.is_caret() {
+                        None
+                    } else {
+                        Some((r.min(), r.max()))
+                    }
+                }),
+                CursorMode::Visual { start, end, .. } => {
+                    Some((*start.min(end), *start.max(end)))
+                }
+                CursorMode::Normal(_) => None,
+            };
+            (c.offset(), range)
+        });
+        let (start, end, rev) = doc.buffer.with_untracked(|buffer| {
+            let (start, end) = match selection_range {
+                Some(range) => range,
+                None => {
+                    // No selection: target the whole current line, newline
+                    // included when there is one.
+                    let line = buffer.line_of_offset(offset);
+                    let start = buffer.offset_of_line(line);
+                    let end = if line < buffer.last_line() {
+                        buffer.offset_of_line(line + 1)
+                    } else {
+                        buffer.text().len()
+                    };
+                    (start, end)
+                }
+            };
+            (start, end, buffer.rev())
+        });
+        if start == end {
+            return;
+        }
+        self.common
+            .internal_command
+            .send(InternalCommand::StartInlineAiEdit { start, end, rev });
     }
 
     fn rename(&self) {
