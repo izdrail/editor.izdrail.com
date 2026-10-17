@@ -25,6 +25,21 @@ Composer projects also list `composer: install`, `update`, `dump-autoload`, `out
 Symfony projects list `symfony: <command>` for cache:clear, debug:router/container/config,
 lint:twig/yaml, Doctrine migrations and schema validate, messenger:consume and make:controller/entity/migration.
 
+## Agent CLIs
+
+Agent CLI tools installed on this machine - Claude Code (`claude`), Codex
+CLI (`codex`) and opencode (`opencode`) - are listed as `agent: claude`,
+`agent: codex` and `agent: opencode`. Each opens its interactive TUI in the
+terminal with the workspace as the working directory.
+
+Discovery is filesystem metadata only (nothing is executed): `$PATH` (first
+64 entries), the usual user install spots under `$HOME` (`.local/bin`,
+`.npm-global/bin`, `.claude/local`, `.bun/bin`, `.cargo/bin`, `bin`) and the
+system prefixes `/usr/local/bin`, `/opt/homebrew/bin`, `/usr/bin`. Entries
+launch the binary by its full path, so a terminal started with a minimal
+PATH still finds it. A `.lapce/run.toml` entry with the same name wins, as
+usual.
+
 ## Sail, Docker Compose and Make
 
 - `vendor/bin/sail` present: `sail: up`, `up -d`, `down`, `test`, `shell` (runs the wrapper by its full path).

@@ -430,7 +430,57 @@ pub fn discover(root: &Path) -> Vec<RunDebugConfig> {
             out.push(config(format!("make: {t}"), "make", &[&t]));
         }
     }
+    // Agent CLI tools (Claude Code, Codex CLI, opencode) found on this
+    // machine, each by its full path so a terminal with a minimal PATH
+    // still launches them.
+    for (tool, path) in agent_cli_tools() {
+        let program = path.to_string_lossy().into_owned();
+        out.push(config(format!("agent: {tool}"), &program, &[]));
+    }
     out
+}
+
+/// Known agent CLI binaries, in the order they are listed.
+pub const AGENT_CLI_NAMES: &[&str] = &["claude", "codex", "opencode"];
+
+/// Directories searched for agent CLIs: $PATH (first 64 entries), the usual
+/// user install spots under $HOME, and the common system prefixes.
+fn agent_cli_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).take(64).collect())
+        .unwrap_or_default();
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        for extra in [
+            ".local/bin",
+            ".npm-global/bin",
+            ".claude/local",
+            ".bun/bin",
+            ".cargo/bin",
+            "bin",
+        ] {
+            dirs.push(home.join(extra));
+        }
+    }
+    for dir in ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"] {
+        dirs.push(PathBuf::from(dir));
+    }
+    dirs
+}
+
+fn find_tool_in(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
+    dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
+}
+
+/// The installed agent CLIs as `(name, full path)`, filesystem metadata
+/// only - nothing is executed to discover them.
+pub fn agent_cli_tools() -> Vec<(&'static str, PathBuf)> {
+    let dirs = agent_cli_dirs();
+    AGENT_CLI_NAMES
+        .iter()
+        .copied()
+        .filter_map(|t| find_tool_in(&dirs, t).map(|p| (t, p)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -444,7 +494,27 @@ mod tests {
     #[test]
     fn empty_project_has_no_configs() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(discover(dir.path()).is_empty());
+        assert!(discover(dir.path()).iter().all(|c| c.name.starts_with("agent: ")));
+    }
+
+    #[test]
+    fn finds_agent_clis_by_metadata_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a");
+        let b = dir.path().join("b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        write(&a, "claude", "#!/bin/sh\n");
+        write(&b, "opencode", "#!/bin/sh\n");
+        write(&b, "not-a-tool", "x");
+        let dirs = vec![a.clone(), b.clone()];
+        assert_eq!(find_tool_in(&dirs, "claude"), Some(a.join("claude")));
+        assert_eq!(find_tool_in(&dirs, "codex"), None);
+        assert_eq!(find_tool_in(&dirs, "opencode"), Some(b.join("opencode")));
+        assert_eq!(find_tool_in(&dirs, "not-a-tool"), Some(b.join("not-a-tool")));
+        // Missing directories are skipped, not an error.
+        let dirs = vec![dir.path().join("nope"), a.clone()];
+        assert_eq!(find_tool_in(&dirs, "claude"), Some(a.join("claude")));
     }
 
     #[test]
@@ -488,7 +558,7 @@ mod tests {
     fn bad_json_is_ignored() {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "package.json", "{not json");
-        assert!(discover(dir.path()).is_empty());
+        assert!(discover(dir.path()).iter().all(|c| c.name.starts_with("agent: ")));
     }
 
     #[test]
