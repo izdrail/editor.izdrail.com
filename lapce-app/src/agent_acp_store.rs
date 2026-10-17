@@ -65,6 +65,20 @@ pub fn record_session(root: &Path, entry: StoredSession) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn age_buckets_and_future_clamp() {
+        let now = 10_000_000;
+        assert_eq!(age_label(now, now), "0m");
+        assert_eq!(age_label(now + 500, now), "0m");
+        assert_eq!(age_label(now - 59 * 60, now), "59m");
+        assert_eq!(age_label(now - 60 * 60, now), "1h");
+        assert_eq!(age_label(now - 23 * 3600, now), "23h");
+        assert_eq!(age_label(now - 24 * 3600, now), "1d");
+        assert_eq!(age_label(now - 6 * 24 * 3600, now), "6d");
+        assert_eq!(age_label(now - 7 * 24 * 3600, now), "1w");
+        assert_eq!(age_label(now - 30 * 24 * 3600, now), "4w");
+    }
+
     fn root(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("acp-store-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -110,4 +124,23 @@ mod tests {
         assert_eq!(sessions.len(), MAX_SESSIONS);
         assert!(sessions.iter().all(|s| s.session_id != "s-2"));
     }
+}
+
+/// Short relative age for display: minutes under an hour, hours under a
+/// day, days up to a week, then weeks. Future or equal stamps show "0m".
+pub fn age_label(updated_unix: u64, now_unix: u64) -> String {
+    let secs = now_unix.saturating_sub(updated_unix);
+    let mins = secs / 60;
+    if mins < 60 {
+        return format!("{mins}m");
+    }
+    let hours = mins / 60;
+    if hours < 24 {
+        return format!("{hours}h");
+    }
+    let days = hours / 24;
+    if days < 7 {
+        return format!("{days}d");
+    }
+    format!("{}w", days / 7)
 }

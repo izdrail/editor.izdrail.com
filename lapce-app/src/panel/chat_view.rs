@@ -51,6 +51,9 @@ pub struct ChatData {
     /// ACP resume: the next ACP send resumes the most recent stored
     /// session for this agent+project instead of starting fresh.
     pub acp_resume: RwSignal<bool>,
+    /// ACP resume: when set, resume this specific stored session id
+    /// instead of the most recent one for the agent and project.
+    pub resume_id: RwSignal<Option<String>>,
     pub trust_reads: RwSignal<bool>,
     pub trusted_endpoint: RwSignal<String>,
     pub review: crate::agent_review_ui::ReviewData,
@@ -110,6 +113,7 @@ impl ChatData {
             mode: cx.create_rw_signal(None),
             acp: cx.create_rw_signal(false),
             acp_resume: cx.create_rw_signal(false),
+            resume_id: cx.create_rw_signal(None),
             trust_reads: cx.create_rw_signal(false),
             trusted_endpoint: cx.create_rw_signal(String::new()),
             gate: RunGate::default(),
@@ -722,11 +726,15 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     let ctx = context(tab);
     let composed = crate::agent_acp_session::compose_prompt(ctx.as_ref(), prompt);
     let resume = if data.acp_resume.get_untracked() {
-        let cwd = root.to_string_lossy().into_owned();
-        crate::agent_acp_store::load_sessions(&root)
-            .into_iter()
-            .find(|s| s.agent == spec && s.cwd == cwd)
-            .map(|s| s.session_id)
+        if let Some(id) = data.resume_id.get_untracked() {
+            Some(id)
+        } else {
+            let cwd = root.to_string_lossy().into_owned();
+            crate::agent_acp_store::load_sessions(&root)
+                .into_iter()
+                .find(|s| s.agent == spec && s.cwd == cwd)
+                .map(|s| s.session_id)
+        }
     } else {
         None
     };
@@ -985,7 +993,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let walkthrough = data.clone();
     let schedules_tab = tab.clone();
     let schedules_data = data.clone();
+    let agents_tab = tab.clone();
+    let agents_data = data.clone();
     start_prompt_scheduler(tab.clone());
+    let show_sessions = floem::reactive::create_rw_signal(false);
+    let session_list = floem::reactive::create_rw_signal(
+        Vec::<crate::agent_acp_store::StoredSession>::new(),
+    );
+    // Load once so the count starts truthful; the toggle reloads.
+    if let Some(root) =
+        tab.workspace.path.as_ref().and_then(|p| p.canonicalize().ok())
+    {
+        session_list.set(crate::agent_acp_store::load_sessions(&root));
+    }
     let trust = data.clone();
     let revoke = data.clone();
     let input_signal = data.input;
@@ -1023,6 +1043,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         clear.error.set(String::new());
                         clear.session.set(Session::new());
                         clear.state.set(RunState::Idle);
+                        clear.resume_id.set(None);
                         clear.persist(config.get_untracked().ai_chat.save_history);
                     }
                 })
@@ -1103,10 +1124,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 }),
         )),
         h_stack((
-            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); } }),
-            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); } }),
-            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); } }),
-            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); } }),
+            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); chat_mode.resume_id.set(None); } }),
+            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); ask_mode.resume_id.set(None); } }),
+            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); plan_mode.resume_id.set(None); } }),
+            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); acp_mode.resume_id.set(None); } }),
             label(move || {
                 let settings = resume_tab.common.config.get().ai_chat.clone();
                 let count = resume_tab
@@ -1129,9 +1150,66 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     acp_resume.mode.set(None);
                     acp_resume.acp.set(true);
                     acp_resume.acp_resume.set(true);
+                    acp_resume.resume_id.set(None);
                 }
             }),
+            label(move || format!("Agents ({})", session_list.get().len()))
+                .on_click_stop(move |_| {
+                    let show = !show_sessions.get_untracked();
+                    if show {
+                        if let Some(root) = agents_tab
+                            .workspace
+                            .path
+                            .as_ref()
+                            .and_then(|p| p.canonicalize().ok())
+                        {
+                            session_list.set(
+                                crate::agent_acp_store::load_sessions(&root),
+                            );
+                        }
+                    }
+                    show_sessions.set(show);
+                }),
         )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
+        scroll(
+            dyn_stack(
+                move || session_list.get(),
+                |session| session.session_id.clone(),
+                move |session| {
+                    let text = format!(
+                        "{}  ·  {}  ·  {}",
+                        session_title(&session.title),
+                        session.agent,
+                        crate::agent_acp_store::age_label(
+                            session.updated_unix,
+                            crate::agent_acp_store::now_unix(),
+                        )
+                    );
+                    let id = session.session_id.clone();
+                    let agents_data = agents_data.clone();
+                    label(move || text.clone())
+                        .on_click_stop(move |_| {
+                            agents_data.error.set(String::new());
+                            agents_data.mode.set(None);
+                            agents_data.acp.set(true);
+                            agents_data.acp_resume.set(true);
+                            agents_data.resume_id.set(Some(id.clone()));
+                            show_sessions.set(false);
+                        })
+                        .style(|s| {
+                            s.padding(6.0)
+                                .width_full()
+                                .cursor(CursorStyle::Pointer)
+                                .selectable(false)
+                        })
+                },
+            ),
+        )
+        .style(move |s| {
+            s.apply_if(!show_sessions.get(), |s| s.hide())
+                .max_height(180.0)
+                .width_full()
+        }),
         label(move || format!("Mode: {}. Act is unavailable; Ask/Plan never write files.", if data.acp.get() { "ACP agent" } else { match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" } }))
             .style(|s| s.font_size(11.0).max_width_full()),
         label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them.", config.get().ai_chat.endpoint))
@@ -1305,9 +1383,26 @@ pub fn walkthrough_markdown(turns: &[(String, String)]) -> String {
     out
 }
 
+/// Display title for a stored session: first line, clipped at 80 bytes
+/// on a char boundary.
+fn session_title(title: &str) -> String {
+    let first = title.lines().next().unwrap_or("").trim();
+    if first.is_empty() {
+        return "(untitled session)".into();
+    }
+    if first.len() <= 80 {
+        return first.to_string();
+    }
+    let mut end = 80;
+    while !first.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\u{2026}", &first[..end])
+}
+
 #[cfg(test)]
 mod walkthrough_tests {
-    use super::walkthrough_markdown;
+    use super::{session_title, walkthrough_markdown};
 
     fn turns(v: &[(&str, &str)]) -> Vec<(String, String)> {
         v.iter().map(|(r, t)| (r.to_string(), t.to_string())).collect()
