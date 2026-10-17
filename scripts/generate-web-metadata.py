@@ -12,7 +12,16 @@ SOURCES = [
     ('symfony', '7.3.0', '5babe8da13d379288ec141f9b5e325a1a6c39611', 'https://github.com/symfony/symfony', 'MIT'),
     ('php', 'phpstorm-stubs@2049ca3', '2049ca3cfa1feabf52db074108fe776a5713cf02', 'https://github.com/JetBrains/phpstorm-stubs', 'Apache-2.0'),
 ]
-PHP_EXTENSIONS = ['Core', 'standard', 'date', 'json', 'mbstring', 'ctype', 'pcre', 'SPL', 'filter', 'hash', 'random', 'session', 'iconv', 'fileinfo', 'PDO', 'curl', 'openssl']
+PHP_EXTENSIONS = ['Core', 'standard', 'date', 'json', 'mbstring', 'ctype', 'pcre', 'SPL', 'filter', 'hash', 'random', 'session', 'iconv', 'fileinfo', 'PDO', 'curl', 'openssl',
+    # The rest of the everyday web-dev runtime: frameworks' own requirements
+    # (Laravel wants tokenizer, WordPress Site Health wants dom/zip/gd/intl/
+    # imagick/exif, Symfony's container is built on Reflection), the other
+    # databases, the XML stack, i18n, images, archives, crypto, caches and
+    # the queue/daemon extensions.
+    'Reflection', 'tokenizer', 'dom', 'libxml', 'SimpleXML', 'xml', 'xmlreader', 'xmlwriter',
+    'mysqli', 'pgsql', 'sqlite3', 'bcmath', 'gmp', 'intl', 'gettext', 'calendar',
+    'gd', 'imagick', 'exif', 'zip', 'zlib', 'bz2', 'sodium', 'ldap', 'soap',
+    'sockets', 'pcntl', 'posix', 'Phar', 'apcu', 'redis', 'memcached', 'Zend OPcache']
 
 def stub_declarations(text):
     # phpstorm-stubs also declare inside braced namespace blocks: `namespace { }`
