@@ -456,6 +456,9 @@ impl PaletteData {
             PaletteKind::KeymapPresets => {
                 self.get_keymap_presets();
             }
+            PaletteKind::Worktrees => {
+                self.get_worktrees();
+            }
             PaletteKind::CssClasses => {
                 self.set_route_items(crate::tw_usage_index::discover);
             }
@@ -1301,6 +1304,80 @@ impl PaletteData {
         self.items.set(items.into_iter().collect());
     }
 
+    /// `git worktree list --porcelain` for the current workspace,
+    /// inline: it is a fast local read and this getter runs once when
+    /// the palette kind opens, not per keystroke.
+    fn get_worktrees(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.items.set(Vec::new().into_iter().collect());
+            return;
+        };
+        let output = std::process::Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(&root)
+            .output();
+        let entries = match output {
+            Ok(o) if o.status.success() => crate::worktree::parse_worktree_list(
+                &String::from_utf8_lossy(&o.stdout),
+            ),
+            _ => Vec::new(),
+        };
+        if entries.is_empty() {
+            // A selectable-looking no-op row beats a blank list.
+            self.items.set(
+                std::iter::once(PaletteItem {
+                    content: PaletteItemContent::Worktree {
+                        path: root,
+                        branch: None,
+                        current: true,
+                    },
+                    filter_text: "No git worktrees found (is this a git repository?)"
+                        .to_string(),
+                    score: 0,
+                    indices: Vec::new(),
+                })
+                .collect(),
+            );
+            return;
+        }
+        let current = root.canonicalize().unwrap_or_else(|_| root.clone());
+        let mut preselect = None;
+        let items: Vec<PaletteItem> = entries
+            .into_iter()
+            .enumerate()
+            .map(|(i, e)| {
+                let is_current = e
+                    .path
+                    .canonicalize()
+                    .unwrap_or_else(|_| e.path.clone())
+                    == current;
+                if is_current {
+                    preselect = Some(i);
+                }
+                let label =
+                    e.branch.clone().unwrap_or_else(|| "(detached)".to_string());
+                PaletteItem {
+                    content: PaletteItemContent::Worktree {
+                        path: e.path.clone(),
+                        branch: e.branch,
+                        current: is_current,
+                    },
+                    filter_text: format!(
+                        "{label}  {}{}",
+                        e.path.display(),
+                        if is_current { "  (current)" } else { "" }
+                    ),
+                    score: 0,
+                    indices: Vec::new(),
+                }
+            })
+            .collect();
+        if let Some(idx) = preselect {
+            self.preselect_index.set(Some(idx));
+        }
+        self.items.set(items.into_iter().collect());
+    }
+
     fn get_languages(&self) {
         let langs = LapceLanguage::languages();
         let items = langs
@@ -1649,6 +1726,20 @@ impl PaletteData {
                     .common
                     .internal_command
                     .send(InternalCommand::SetKeymapPreset { name: name.clone() }),
+                PaletteItemContent::Worktree { path, current, .. } => {
+                    if !current {
+                        self.common.window_common.window_command.send(
+                            WindowCommand::NewWorkspaceTab {
+                                workspace: LapceWorkspace {
+                                    kind: LapceWorkspaceType::Local,
+                                    path: Some(path.clone()),
+                                    last_open: 0,
+                                },
+                                end: true,
+                            },
+                        );
+                    }
+                }
                 PaletteItemContent::Language { name } => {
                     let editor = self.main_split.active_editor.get_untracked();
                     let doc = match editor {
@@ -1834,6 +1925,7 @@ impl PaletteData {
                 PaletteItemContent::SCMReference { .. } => {}
                 PaletteItemContent::TerminalProfile { .. } => {}
                 PaletteItemContent::KeymapPreset { .. } => {}
+                PaletteItemContent::Worktree { .. } => {}
             }
         }
     }

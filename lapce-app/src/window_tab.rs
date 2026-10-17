@@ -1280,6 +1280,9 @@ impl WindowTabData {
             PaletteKeymapPresets => {
                 self.palette.run(PaletteKind::KeymapPresets);
             }
+            PaletteWorktrees => {
+                self.palette.run(PaletteKind::Worktrees);
+            }
             PaletteCssClasses => {
                 self.palette.run(PaletteKind::CssClasses);
             }

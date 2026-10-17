@@ -94,6 +94,11 @@ pub enum PaletteItemContent {
     KeymapPreset {
         name: String,
     },
+    Worktree {
+        path: PathBuf,
+        branch: Option<String>,
+        current: bool,
+    },
     Language {
         name: String,
     },
