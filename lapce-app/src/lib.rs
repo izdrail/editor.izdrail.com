@@ -55,6 +55,7 @@ pub mod validation_hover;
 pub mod vue_components;
 pub mod js_imports;
 pub mod middleware_alias;
+pub mod middleware_hover;
 pub mod wp_templates;
 pub mod asset_refs;
 pub mod color_swatch;

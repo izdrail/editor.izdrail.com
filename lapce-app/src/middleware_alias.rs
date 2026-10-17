@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 const FILES: &[&str] = &["bootstrap/app.php", "app/Http/Kernel.php"];
 const MAX_FILE_BYTES: u64 = 1_000_000;
 
-fn alias_at(line: &str, col: usize) -> Option<&str> {
+pub fn alias_at(line: &str, col: usize) -> Option<&str> {
     let mut col = col.min(line.len());
     while !line.is_char_boundary(col) {
         col -= 1;
