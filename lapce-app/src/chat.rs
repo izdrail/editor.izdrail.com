@@ -110,7 +110,9 @@ pub fn completion_url(endpoint: &str) -> Result<String, String> {
             "Use an http(s) endpoint without credentials, query or fragment".into(),
         );
     }
-    Ok(if base.ends_with("/v1") {
+    Ok(if base.ends_with("/v1/chat/completions") {
+        base.to_string()
+    } else if base.ends_with("/v1") {
         format!("{base}/chat/completions")
     } else {
         format!("{base}/v1/chat/completions")
@@ -134,7 +136,7 @@ pub fn ollama(
     use std::sync::atomic::Ordering;
     let url = completion_url(endpoint)?;
     if model.trim().is_empty() {
-        return Err("Set an Ollama model in AI Chat settings".into());
+        return Err("Set a chat model in AI Chat settings".into());
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -146,7 +148,7 @@ pub fn ollama(
             let make = |stream| client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})).send();
             let mut response = make(true).await.map_err(|e| e.to_string())?;
             if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
-            if !response.status().is_success() { return Err(format!("Ollama returned HTTP {}. Check endpoint and model.", response.status())); }
+            if !response.status().is_success() { return Err(format!("The chat server returned HTTP {}. Check endpoint and model.", response.status())); }
             let streaming = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).is_some_and(|h| h.contains("text/event-stream"));
             if streaming {
                 let mut buffer = Vec::new();
@@ -154,7 +156,7 @@ pub fn ollama(
                 let mut total = 0usize;
                 while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
                     total += chunk.len();
-                    if total > 2 * 1024 * 1024 { return Err("Ollama response exceeded 2 MB".into()); }
+                    if total > 2 * 1024 * 1024 { return Err("Chat response exceeded 2 MB".into()); }
                     buffer.extend_from_slice(&chunk);
                     while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
                         let bytes: Vec<u8> = buffer.drain(..=end).collect();
@@ -165,22 +167,22 @@ pub fn ollama(
                         } else if let Some(data) = line.strip_prefix("data:") { lines.push(data.trim_start().to_string()); }
                     }
                 }
-                Err("Ollama stream ended before completion. Partial response kept.".into())
+                Err("The chat stream ended before completion. Partial response kept.".into())
             } else {
                 let mut bytes = Vec::new();
                 while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-                    if bytes.len() + chunk.len() > 2 * 1024 * 1024 { return Err("Ollama response exceeded 2 MB".into()); }
+                    if bytes.len() + chunk.len() > 2 * 1024 * 1024 { return Err("Chat response exceeded 2 MB".into()); }
                     bytes.extend_from_slice(&chunk);
                 }
                 let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-                let text = value.pointer("/choices/0/message/content").and_then(Value::as_str).ok_or("Ollama response contains no message")?;
+                let text = value.pointer("/choices/0/message/content").and_then(Value::as_str).ok_or("The chat response contains no message")?;
                 send(Update::Delta(text.into())); send(Update::Done(String::new())); Ok(())
             }
         };
         tokio::select! {
             result = request => result,
             _ = async { loop { if cancelled.load(Ordering::Acquire) { break; } tokio::time::sleep(std::time::Duration::from_millis(25)).await; } } => Err("Cancelled".into()),
-            _ = tokio::time::sleep(std::time::Duration::from_secs(180)) => Err("Ollama request timed out".into()),
+            _ = tokio::time::sleep(std::time::Duration::from_secs(180)) => Err("Chat request timed out".into()),
         }
     })
 }
@@ -206,7 +208,7 @@ pub fn read_sse(
     if !data.is_empty() && parse_event(&data.join("\n"), &mut emit)? {
         return Ok(());
     }
-    Err("Ollama stream ended before completion. Partial response kept; send again to retry.".into())
+    Err("The chat stream ended before completion. Partial response kept; send again to retry.".into())
 }
 fn parse_event(
     payload: &str,
@@ -216,9 +218,9 @@ fn parse_event(
         return Ok(true);
     }
     let value: Value = serde_json::from_str(payload)
-        .map_err(|e| format!("Invalid Ollama stream: {e}"))?;
+        .map_err(|e| format!("Invalid chat stream: {e}"))?;
     if let Some(e) = value.get("error") {
-        return Err(format!("Ollama error: {e}"));
+        return Err(format!("Chat server error: {e}"));
     }
     if let Some(text) = value
         .pointer("/choices/0/delta/content")
@@ -240,6 +242,10 @@ mod tests {
         assert_eq!(
             completion_url("http://localhost:11434").unwrap(),
             "http://localhost:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            completion_url("http://localhost:8000/v1/chat/completions").unwrap(),
+            "http://localhost:8000/v1/chat/completions"
         );
         assert!(completion_url("file:///tmp/key").is_err());
     }

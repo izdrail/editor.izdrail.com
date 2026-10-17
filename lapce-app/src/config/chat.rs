@@ -18,7 +18,9 @@ pub struct ChatConfig {
         desc = "Optional hosted provider configurations. Disabled by default; agent transport not yet enabled."
     )]
     pub hosted_providers: Vec<crate::agent_protocol::ProviderConfig>,
-    #[field_names(desc = "Backend: local (CPU Candle) or ollama (your server).")]
+    #[field_names(
+        desc = "Backend: local (CPU Candle) or ollama (any OpenAI-compatible /v1 server - ai.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
+    )]
     pub backend: String,
     #[field_names(desc = "Curated local instruct model. Pick and download below.")]
     pub local_model: String,

@@ -92,3 +92,14 @@ Unknown commands and bare commands are rejected with a hint instead of
 silently chatting. `/goal` is deliberately absent: it implies autonomous
 execution, which is the parked Act mode. In ACP mode `/btw` behaves like
 a normal send (ACP turns never join chat history anyway).
+
+## Any OpenAI-compatible server (item 140)
+
+The ollama backend speaks the plain OpenAI `/v1/chat/completions` wire
+format (SSE streaming with a full-response retry on 400/405/422/501, no
+auth), so it also works against vLLM, LM Studio, llama.cpp's server and
+similar self-hosted endpoints: set `backend = "ollama"`, point Endpoint
+at the server (root, `/v1`, or a full `/v1/chat/completions` URL are all
+accepted) and set Model to a name the server lists. Error text refers to
+"the chat server", not Ollama, for this reason. Servers requiring an API
+key are not supported yet; Ask/Plan tool calls stay Ollama-specific.
