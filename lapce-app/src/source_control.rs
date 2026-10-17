@@ -1,11 +1,19 @@
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    path::PathBuf,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use floem::{
+    ext_event::create_ext_action,
     keyboard::Modifiers,
-    reactive::{RwSignal, Scope, SignalWith},
+    reactive::{RwSignal, Scope, SignalGet, SignalUpdate, SignalWith},
 };
 use indexmap::IndexMap;
-use lapce_core::mode::Mode;
+use lapce_core::{buffer::rope_text::RopeText, mode::Mode};
 use lapce_rpc::source_control::FileDiff;
 
 use crate::{
@@ -25,6 +33,9 @@ pub struct SourceControlData {
     pub tags: RwSignal<im::Vector<String>>,
     pub editor: EditorData,
     pub common: Rc<CommonData>,
+    /// AI commit-message suggestion in flight; clicking again cancels it.
+    pub suggesting: RwSignal<bool>,
+    pub suggest_cancel: Arc<AtomicBool>,
 }
 
 impl KeyPressFocus for SourceControlData {
@@ -69,6 +80,8 @@ impl SourceControlData {
             tags: cx.create_rw_signal(im::Vector::new()),
             editor: editors.make_local(cx, common.clone()),
             common,
+            suggesting: cx.create_rw_signal(false),
+            suggest_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -100,5 +113,161 @@ impl SourceControlData {
 
         self.editor.reset();
         self.common.proxy.git_commit(message.to_string(), diffs);
+    }
+
+    /// Ask the configured chat backend for a commit message over the
+    /// checked files' unified diff. One-shot (not a chat turn); clicking
+    /// again while in flight cancels the request.
+    pub fn suggest_commit_message(&self) {
+        if self.suggesting.get_untracked() {
+            self.suggest_cancel.store(true, Ordering::Release);
+            return;
+        }
+        let chat = self.common.config.get_untracked().ai_chat.clone();
+        if !chat.enabled || chat.backend != "ollama" {
+            return;
+        }
+        let diffs: Vec<FileDiff> = self.file_diffs.with_untracked(|file_diffs| {
+            file_diffs
+                .iter()
+                .filter_map(
+                    |(_, (diff, checked))| {
+                        if *checked { Some(diff) } else { None }
+                    },
+                )
+                .cloned()
+                .collect()
+        });
+        if diffs.is_empty() {
+            return;
+        }
+        self.suggest_cancel.store(false, Ordering::Release);
+        self.suggesting.set(true);
+        let source_control = self.clone();
+        // Proxy callbacks must be Send: the proxy callback below captures
+        // only the ext action; all Rc state lives in the UI-side closure.
+        let send = create_ext_action(
+            source_control.common.scope,
+            move |diff: Option<String>| {
+                let Some(diff) = diff else {
+                    source_control.suggesting.set(false);
+                    return;
+                };
+                let messages = commit_message_messages(&diff);
+                let cancelled = source_control.suggest_cancel.clone();
+                let send = create_ext_action(
+                    source_control.common.scope,
+                    move |text: String| {
+                        source_control.suggesting.set(false);
+                        let text = text.trim().to_string();
+                        if text.is_empty() {
+                            return;
+                        }
+                        // Replace the whole commit-message buffer with
+                        // the suggestion; the user edits or commits as
+                        // usual.
+                        let editor = &source_control.editor;
+                        let doc = editor.doc();
+                        let len =
+                            doc.buffer.with_untracked(|b| b.text().len());
+                        let selection =
+                            lapce_core::selection::Selection::region(0, len);
+                        editor.do_edit(
+                            &selection,
+                            &[(selection.clone(), text.as_str())],
+                        );
+                    },
+                );
+                std::thread::spawn(move || {
+                    // Fn(Update) callback: accumulate through a RefCell
+                    // (mirrors chat_view.rs).
+                    let text = std::cell::RefCell::new(String::new());
+                    let _ = crate::chat::ollama(
+                        &chat.endpoint,
+                        &chat.model,
+                        &messages,
+                        cancelled,
+                        |update| {
+                            if let crate::chat::Update::Delta(delta) = update
+                            {
+                                text.borrow_mut().push_str(&delta);
+                            }
+                        },
+                    );
+                    send(text.into_inner());
+                });
+            },
+        );
+        self.common.proxy.git_diff_for_commit(diffs, move |result| {
+            let diff = match result {
+                Ok(lapce_rpc::proxy::ProxyResponse::GitDiffForCommit {
+                    diff,
+                }) if !diff.trim().is_empty() => Some(diff),
+                _ => None,
+            };
+            send(diff);
+        });
+    }
+}
+
+/// Prompt for one-shot commit-message generation. Pure and bounded: the
+/// proxy already caps the diff at 256 KB; this trims to the model budget
+/// on a char boundary and says so when it cuts.
+pub fn commit_message_messages(diff: &str) -> Vec<lapce_ai::chat::Message> {
+    const PROMPT_DIFF_CAP: usize = 12_000;
+    let mut end = PROMPT_DIFF_CAP.min(diff.len());
+    while !diff.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut body = diff[..end].to_string();
+    if end < diff.len() {
+        body.push_str("\n[diff truncated to fit the prompt]\n");
+    }
+    vec![
+        lapce_ai::chat::Message {
+            role: "system".into(),
+            content: "You write git commit messages. Reply with one \
+                conventional-commit style message: a subject line of at \
+                most 72 characters, then a blank line and a short wrapped \
+                body only when the change needs explanation. No commentary, \
+                no markdown fences."
+                .into(),
+        },
+        lapce_ai::chat::Message {
+            role: "user".into(),
+            content: format!("Write the commit message for this diff:\n\n{body}"),
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commit_prompt_shape_and_small_diff() {
+        let messages = commit_message_messages("+let a = 1;\n");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, "system");
+        assert_eq!(messages[1].role, "user");
+        assert!(messages[1].content.contains("+let a = 1;"));
+        assert!(!messages[1].content.contains("truncated"));
+        assert!(messages[0].content.contains("72"));
+    }
+
+    #[test]
+    fn commit_prompt_truncates_on_a_char_boundary() {
+        // A multi-byte char straddling the 12000-byte cut must not split.
+        let mut diff = "a".repeat(11_999);
+        diff.push('🦀'); // bytes 11999..12003 straddle the cap
+        diff.push_str("tail");
+        let messages = commit_message_messages(&diff);
+        let body = &messages[1].content;
+        assert!(body.contains("truncated"));
+        assert!(!body.contains('🦀'));
+        assert!(std::str::from_utf8(body.as_bytes()).is_ok());
+        // Under the cap, nothing is cut.
+        let messages = commit_message_messages(&diff[..11_000]);
+        assert!(!messages[1].content.contains("truncated"));
     }
 }

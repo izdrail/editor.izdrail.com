@@ -178,6 +178,49 @@ pub fn source_control_panel(
                             .selectable(false)
                     })
             },
+            {
+                let source_control = source_control.clone();
+                let suggesting = source_control.suggesting;
+                // The suggestion lane rides the AI Chat backend; the button
+                // only exists when that backend can serve it.
+                let ai_ready = move || {
+                    let config = config.get();
+                    config.ai_chat.enabled && config.ai_chat.backend == "ollama"
+                };
+                label(move || {
+                    if suggesting.get() {
+                        "Cancel AI suggestion".to_string()
+                    } else {
+                        "Suggest message (AI)".to_string()
+                    }
+                })
+                .on_click_stop(move |_| {
+                    source_control.suggest_commit_message();
+                })
+                .style(move |s| {
+                    let config = config.get();
+                    s.margin_top(6.0)
+                        .line_height(1.6)
+                        .width_pct(100.0)
+                        .justify_center()
+                        .border(1.0)
+                        .border_radius(6.0)
+                        .border_color(config.color(LapceColor::LAPCE_BORDER))
+                        .apply_if(!ai_ready(), |s| s.hide())
+                        .hover(|s| {
+                            s.cursor(CursorStyle::Pointer).background(
+                                config
+                                    .color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                            )
+                        })
+                        .active(|s| {
+                            s.background(config.color(
+                                LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
+                            ))
+                        })
+                        .selectable(false)
+                })
+            },
         ))
         .style(|s| s.flex_col().width_pct(100.0).padding(10.0)),
         foldable_panel_section(

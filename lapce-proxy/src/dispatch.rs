@@ -425,6 +425,25 @@ impl ProxyHandler for Dispatcher {
     fn handle_request(&mut self, id: RequestId, rpc: ProxyRequest) {
         use ProxyRequest::*;
         match rpc {
+            GitDiffForCommit { diffs } => {
+                let proxy = self.proxy_rpc.clone();
+                let workspace = self.workspace.clone();
+                std::thread::spawn(move || {
+                    let result = match workspace {
+                        Some(workspace) => git_diff_for_commit(&workspace, &diffs)
+                            .map(|diff| ProxyResponse::GitDiffForCommit { diff })
+                            .map_err(|e| RpcError {
+                                code: -32603,
+                                message: e.to_string(),
+                            }),
+                        None => Err(RpcError {
+                            code: -32603,
+                            message: "No workspace open".into(),
+                        }),
+                    };
+                    proxy.handle_response(id, result);
+                });
+            }
             NewBuffer { buffer_id, path } => {
                 let buffer = Buffer::new(buffer_id, path.clone());
                 let content = buffer.rope.to_string();
@@ -1944,6 +1963,57 @@ fn git_commit(
             )),
         },
     }
+}
+
+/// Unified HEAD-to-worktree+index patch limited to the given paths, for
+/// the AI commit-message suggestion. Hard-capped so a huge changeset can
+/// never flood the wire or the model prompt; the cap marker is explicit.
+fn git_diff_for_commit(
+    workspace_path: &Path,
+    diffs: &[FileDiff],
+) -> Result<String> {
+    const MAX_DIFF_BYTES: usize = 256 * 1024;
+    let repo = Repository::discover(workspace_path)?;
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let mut opts = git2::DiffOptions::new();
+    for diff in diffs {
+        match diff {
+            FileDiff::Renamed(old, new) => {
+                if let Ok(path) = old.strip_prefix(workspace_path) {
+                    opts.pathspec(path);
+                }
+                if let Ok(path) = new.strip_prefix(workspace_path) {
+                    opts.pathspec(path);
+                }
+            }
+            other => {
+                if let Ok(path) = other.path().strip_prefix(workspace_path) {
+                    opts.pathspec(path);
+                }
+            }
+        }
+    }
+    // Untracked files are commit candidates too; include their content.
+    opts.include_untracked(true).recurse_untracked_dirs(true);
+    let mut diff =
+        repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))?;
+    let mut text = String::new();
+    let mut truncated = false;
+    diff.print(git2::DiffFormat::Patch, |_, _, line| {
+        if text.len() >= MAX_DIFF_BYTES {
+            truncated = true;
+            return false;
+        }
+        if matches!(line.origin(), '+' | '-' | ' ') {
+            text.push(line.origin());
+        }
+        text.push_str(&String::from_utf8_lossy(line.content()));
+        true
+    })?;
+    if truncated {
+        text.push_str("\n[diff truncated at 256 KB by the editor]\n");
+    }
+    Ok(text)
 }
 
 fn git_checkout(workspace_path: &Path, reference: &str) -> Result<()> {

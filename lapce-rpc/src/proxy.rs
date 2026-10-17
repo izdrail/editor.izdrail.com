@@ -140,6 +140,9 @@ pub enum ProxyRequest {
         #[serde(default)]
         ai_request: String,
     },
+    /// Unified HEAD-to-worktree diff limited to the given paths, for the
+    /// AI commit-message suggestion. Capped server-side.
+    GitDiffForCommit { diffs: Vec<FileDiff> },
     GetSemanticTokens {
         path: PathBuf,
     },
@@ -457,6 +460,7 @@ pub enum ProxyResponse {
     GetInlineCompletions {
         completions: InlineCompletionResponse,
     },
+    GitDiffForCommit { diff: String },
     GetSemanticTokens {
         styles: SemanticStyles,
     },
@@ -1083,6 +1087,14 @@ impl ProxyRpcHandler {
         f: impl ProxyCallback + 'static,
     ) {
         self.request_async(ProxyRequest::GitGetRemoteFileUrl { file }, f);
+    }
+
+    pub fn git_diff_for_commit(
+        &self,
+        diffs: Vec<FileDiff>,
+        f: impl ProxyCallback + 'static,
+    ) {
+        self.request_async(ProxyRequest::GitDiffForCommit { diffs }, f);
     }
 
     pub fn rename(
