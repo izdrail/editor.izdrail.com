@@ -422,6 +422,9 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let progress = floem::ext_event::create_signal_from_channel(rx);
     let done = data.clone();
     let save = settings.save_history;
+    let artifact_root = root.clone();
+    let artifact_prompt = prompt.to_string();
+    let main_split = tab.main_split.clone();
     create_effect(move |_| {
         if let Some(update) = progress.get() {
             if !done.gate.accepts(run) {
@@ -430,6 +433,15 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
             match update {
                 Update::Delta(text) => reply.set(text),
                 Update::Done(text) => {
+                    if mode == crate::agent_loop::Mode::Plan {
+                        write_plan_artifact(
+                            &done,
+                            &main_split,
+                            &artifact_root,
+                            &artifact_prompt,
+                            &text,
+                        );
+                    }
                     reply.set(text);
                     done.busy.set(false);
                     done.state.set(RunState::Done);
@@ -512,6 +524,45 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
         });
     });
 }
+/// Plan-mode artifact: persist the plan as Markdown under .lapce/plans
+/// and open it as a normal editor buffer, so review and feedback happen
+/// in a real document (edit the file, then ask the agent to proceed).
+#[cfg(target_os = "linux")]
+fn write_plan_artifact(
+    data: &ChatData,
+    main_split: &crate::main_split::MainSplitData,
+    root: &std::path::Path,
+    prompt: &str,
+    plan: &str,
+) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dir = root.join(".lapce").join("plans");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        data.error.set(format!("Could not create the plans directory: {e}"));
+        return;
+    }
+    let path = dir.join(format!("plan-{stamp}.md"));
+    if let Err(e) =
+        std::fs::write(&path, crate::agent_loop::plan_artifact(prompt, plan))
+    {
+        data.error.set(format!("Could not write the plan artifact: {e}"));
+        return;
+    }
+    main_split.jump_to_location(
+        crate::editor::location::EditorLocation {
+            path,
+            position: None,
+            scroll_offset: None,
+            ignore_unconfirmed: false,
+            same_editor_tab: false,
+        },
+        None,
+    );
+}
+
 #[cfg(not(target_os = "linux"))]
 fn send_agent(tab: &WindowTabData, _: crate::agent_loop::Mode, _: &str) {
     tab.chat

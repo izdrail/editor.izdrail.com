@@ -46,3 +46,15 @@ Act remains unavailable, and no files are written. The UI does not claim model
 quality parity. A real tool-capable model on the configured endpoint and interactive
 pixel/Stop/trust tests are still required. Compilation and loopback mocks are not
 that evidence. Existing prompts/replies history remains opt-in.
+
+## Plan artifacts (item 138)
+
+When a Plan-mode turn finishes, the reply is also written to
+`.lapce/plans/plan-<unix-timestamp>.md` in the project and opened as a
+normal editor buffer: title, the original request, the plan, and a Next
+section. Feedback means editing that file; proceeding means asking the
+agent (Act mode still waits on its review UI QA). The chat turn is
+unaffected and history persistence is unchanged. Ask mode writes no
+artifact. Filenames use unix seconds so no clock formatting or chrono
+dependency is involved; a same-second second plan overwrites the first
+(acceptable for a manual flow).

@@ -180,6 +180,15 @@ pub fn run(
     }
     Err("Agent step limit reached; no completion claimed".into())
 }
+/// Markdown plan artifact (Antigravity parity row 12): the Plan reply as
+/// a reviewable document. The chat panel writes it under .lapce/plans;
+/// feedback means editing the file, then asking the agent to proceed.
+pub fn plan_artifact(prompt: &str, plan: &str) -> String {
+    format!(
+        "# Implementation plan\n\n## Request\n\n{prompt}\n\n## Plan\n\n{plan}\n\n## Next\n\nReview and edit this plan freely. When it looks right, ask the agent to proceed (Act mode lands after its review UI passes QA).\n"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,5 +363,15 @@ mod tests {
             |_| {},
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn plan_artifact_is_markdown_with_request_and_plan() {
+        let doc = plan_artifact("add a /health route 🦀", "1. open routes.php\n2. add the route");
+        assert!(doc.starts_with("# Implementation plan\n"));
+        assert!(doc.contains("## Request\n\nadd a /health route 🦀\n"));
+        assert!(doc.contains("## Plan\n\n1. open routes.php\n2. add the route\n"));
+        assert!(doc.contains("## Next"));
+        assert!(doc.ends_with("\n"));
     }
 }
