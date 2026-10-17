@@ -71,6 +71,9 @@ pub fn highlight_profile(
     if language == Twig {
         return crate::web_templates::twig(&source).map(Arc::new);
     }
+    if language == Jsx || language == Tsx {
+        return crate::web_templates::jsx(&source, language == Tsx).map(Arc::new);
+    }
     let php_lists = crate::web_metadata::php_lists(project);
     let php_refs: Vec<&str> = php_lists.iter().map(String::as_str).collect();
     let (lexer, keywords): (&str, &[&str]) = match language {
@@ -213,7 +216,7 @@ mod tests {
         use LapceLanguage::*;
         for language in [
             C, Cpp, Javascript, Typescript, Csharp, Java, Python, Html, Php, Css,
-            Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade,
+            Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade, Jsx, Tsx,
         ] {
             assert!(
                 highlight(language, &Rope::from("text\n")).is_some(),

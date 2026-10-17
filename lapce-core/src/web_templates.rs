@@ -47,6 +47,31 @@ pub fn twig(source: &str) -> Option<Snapshot> {
     Some(host)
 }
 
+/// JSX/TSX: the jsx lexer paints markup regions (tags, attributes,
+/// delimiters, expression braces); mask those bytes and lex the remainder
+/// with the cpp lexer's JavaScript mode, then overlay the markup. Children
+/// text and `{expression}` interiors keep style 0 in the markup snapshot, so
+/// the code pass styles them; nested markup inside expressions is painted by
+/// the jsx lexer and masked back out of the code pass.
+pub fn jsx(source: &str, typescript: bool) -> Option<Snapshot> {
+    let markup = Snapshot::lex("jsx", source, &[]).ok()?;
+    let mut masked = source.as_bytes().to_vec();
+    for (i, &style) in markup.styles().iter().enumerate() {
+        if style != 0 && masked[i] != b'\n' && masked[i] != b'\r' {
+            masked[i] = b' ';
+        }
+    }
+    let masked = String::from_utf8(masked).ok()?;
+    let js_words = "async await break case catch class const continue debugger default delete do else enum export extends false finally for from function if implements import in instanceof interface let new null of package private protected public return static super switch this throw true try typeof var void while with yield";
+    let ts_words = "abstract accessor any as asserts async await bigint boolean break case catch class const constructor continue debugger declare default delete do else enum export extends false finally for from function get if implements import in infer instanceof interface intrinsic is keyof let module namespace never new null number object of override package private protected public readonly require return satisfies set static string super switch symbol this throw true try type typeof undefined unique unknown var void while with yield";
+    let words: &[&str] = if typescript { &[ts_words] } else { &[js_words] };
+    let mut host =
+        Snapshot::lex_with_properties("cpp", &masked, words, &[Property::Javascript(true)])
+            .ok()?;
+    host.overlay(0, &markup, true);
+    Some(host)
+}
+
 /// Lexilla's HTML lexer handles script regions but not modern CSS. Delegate
 /// recognised inline JS/CSS bodies. Do not overwrite PHP/Blade/Twig constructs
 /// or non-JS scripts (JSON/import maps). Unknown MIME modes stay with the host.
@@ -170,6 +195,8 @@ mod tests {
             ("x.scss", LapceLanguage::Scss),
             ("x.js", LapceLanguage::Javascript),
             ("x.ts", LapceLanguage::Typescript),
+            ("x.jsx", LapceLanguage::Jsx),
+            ("x.tsx", LapceLanguage::Tsx),
         ] {
             assert_eq!(LapceLanguage::from_path(std::path::Path::new(file)), lang);
             assert!(
@@ -179,6 +206,93 @@ mod tests {
                 )
                 .is_some()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod jsx_tests {
+    use super::*;
+    fn scope_pos(s: &Snapshot, t: &str, word: &str) -> Option<&'static str> {
+        s.scope(s.styles()[t.find(word).unwrap()])
+    }
+    fn has_tag(s: &Snapshot) -> bool {
+        (0..s.len()).any(|i| s.scope(s.styles()[i]) == Some("tag"))
+    }
+    #[test]
+    fn markup_regions_compose_with_javascript() {
+        let t = "return <div className=\"a b\" onClick={go}>Hi {name}</div>;";
+        let s = jsx(t, false).unwrap();
+        assert_eq!(s.len(), t.len());
+        assert_eq!(scope_pos(&s, t, "return"), Some("keyword"));
+        assert_eq!(scope_pos(&s, t, "div"), Some("tag"));
+        // Attribute names stay default-coloured, consistent with HTML.
+        assert_eq!(scope_pos(&s, t, "className"), None);
+        assert_eq!(scope_pos(&s, t, "\"a b\""), Some("string"));
+        assert_eq!(scope_pos(&s, t, "div>;"), Some("tag")); // closing tag name
+        // Expression interiors are styled by the code pass: identifiers uncoloured.
+        assert_eq!(scope_pos(&s, t, "name}"), None);
+    }
+    #[test]
+    fn comparisons_generics_and_types_stay_code() {
+        for t in [
+            "let r = a < b;",
+            "foo<T>(x);",
+            "const f = <T,>(x: T) => x;",
+            "const g = <T extends U>(x: T) => x;",
+            "const n = useState<App>();",
+            "let s: Array<string> = [];",
+        ] {
+            let s = jsx(t, false).unwrap();
+            assert_eq!(s.len(), t.len());
+            assert!(!has_tag(&s), "{t}");
+        }
+    }
+    #[test]
+    fn markup_inside_strings_comments_and_regex_stays_code() {
+        let s = jsx("const s = \"<div>\";", false).unwrap();
+        assert_eq!(scope_pos(&s, "const s = \"<div>\";", "div"), Some("string"));
+        let s = jsx("const s = `<div>`;", false).unwrap();
+        assert_eq!(scope_pos(&s, "const s = `<div>`;", "div"), Some("string"));
+        let s = jsx("// <div>", false).unwrap();
+        assert_eq!(scope_pos(&s, "// <div>", "div"), Some("comment"));
+        assert!(!has_tag(&jsx("x.replace(/</g, \"</\");", false).unwrap()));
+    }
+    #[test]
+    fn nested_elements_expressions_and_template_substitutions() {
+        let t = "return <ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;";
+        let s = jsx(t, false).unwrap();
+        assert_eq!(s.len(), t.len());
+        assert_eq!(scope_pos(&s, t, "ul"), Some("tag"));
+        assert_eq!(scope_pos(&s, t, "li"), Some("tag"));
+        assert_eq!(scope_pos(&s, t, "key"), None);
+        let t = "return <div>{`t ${<span>x</span>}`}</div>;";
+        let s = jsx(t, false).unwrap();
+        assert_eq!(scope_pos(&s, t, "span"), Some("tag"));
+        // Fragments paint nothing (no names); children and code stay code.
+        let s = jsx("return <>hi</>;", false).unwrap();
+        assert!(!has_tag(&s));
+        assert_eq!(scope_pos(&s, "return <>hi</>;", "return"), Some("keyword"));
+    }
+    #[test]
+    fn tsx_adds_type_keywords() {
+        let t = "type Row = { id: number };";
+        assert_ne!(scope_pos(&jsx(t, false).unwrap(), t, "type"), Some("keyword"));
+        let s = jsx(t, true).unwrap();
+        assert_eq!(scope_pos(&s, t, "type"), Some("keyword"));
+        assert_eq!(scope_pos(&s, t, "number"), Some("keyword"));
+    }
+    #[test]
+    fn incomplete_utf8_and_crlf_inputs() {
+        for t in [
+            "",
+            "λ🙂\r\nreturn <div",
+            "return <div className=\"x\"",
+            "return <>{x}",
+            "<T extends",
+            "x = a <",
+        ] {
+            assert_eq!(jsx(t, false).unwrap().len(), t.len(), "{t}");
         }
     }
 }
