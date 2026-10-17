@@ -37,6 +37,7 @@ backend = "ollama" # or "local" for fully on-device
 endpoint = "https://ai.izdrail.com" # ollama lane only
 remote-model = "qwen2.5-coder:1.5b-instruct-q4_K_M" # ollama lane only
 timeout-ms = 15000 # 1000..120000, ollama lane only
+next-edit = true # chain next-edit predictions after accepting ghost text
 local-model = "qwen-fim-1.5b" # local lane: curated download
 model-path = "" # local lane: explicit Qwen2 GGUF overrides the download
 tokenizer-path = "" # local lane: matching tokenizer.json
@@ -123,3 +124,21 @@ with non-ASCII fixtures. The real FIM test has small Rust/PHP fixtures. It
 checks non-empty code-shaped output, not broad completion quality. 1.5B
 loading was SIGKILLed in a 1.9 GiB/no-swap workspace; downloaded weight size
 is not its runtime RAM budget.
+
+## Next-edit prediction (supercomplete)
+
+After you accept a ghost-text suggestion, the editor asks the model to
+predict your next edit anywhere in the same bounded context (ollama lane
+only, `next-edit = true` by default). The model sees the same ~16 KB / ~8 KB
+window around the cursor plus a bounded list of the last few edits (at most
+8 records, 2048 chars total) and replies with an exact `<old>` snippet to
+replace and its `<new>` replacement. The editor locates the anchor itself:
+the prediction is discarded if the buffer changed meanwhile, if the anchor
+appears zero times or more than once in the window, or if the reply does not
+follow the contract. A prediction that parses renders as ghost text at the
+located range; accepting (the usual inline-accept binding) applies the
+replacement in place. v1 does not move the cursor to a distant prediction or
+auto-trigger predictions on a typing pause; both are follow-ups. Every
+accepted prediction chains into a fresh one until the model replies NONE or
+the buffer diverges. This lane sends the same bounded context to the same
+configured endpoint as ghost text - nothing more.

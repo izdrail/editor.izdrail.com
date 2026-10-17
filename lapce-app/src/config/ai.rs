@@ -22,6 +22,10 @@ pub struct AiConfig {
     pub remote_model: String,
     #[field_names(desc = "Network ghost text timeout (1000-120000 ms).")]
     pub timeout_ms: u64,
+    #[field_names(
+        desc = "After accepting ghost text, predict the next edit elsewhere in the file. Ollama backend only; sends the same bounded context plus recent edits to the endpoint."
+    )]
+    pub next_edit: bool,
     #[field_names(desc = "Curated local FIM model. Pick and download below.")]
     pub local_model: String,
     #[field_names(
@@ -55,6 +59,7 @@ impl Default for AiConfig {
             endpoint: "https://ai.izdrail.com".into(),
             remote_model: "qwen2.5-coder:1.5b-instruct-q4_K_M".into(),
             timeout_ms: 15_000,
+            next_edit: true,
             local_model: "qwen-fim-1.5b".into(),
             model_path: String::new(),
             tokenizer_path: String::new(),
@@ -82,6 +87,8 @@ mod tests {
         assert!(config.auto_trigger);
         let expected_timeout = 15_000;
         assert_eq!(config.timeout_ms, expected_timeout);
+        // Supercomplete chains off accepted ghost text by default.
+        assert!(config.next_edit);
     }
 
     #[test]

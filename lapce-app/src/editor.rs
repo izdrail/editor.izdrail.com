@@ -71,7 +71,9 @@ use crate::{
     doc::{Doc, DocContent, DocumentHighlight},
     editor_tab::EditorTabChild,
     id::{DiffEditorId, EditorTabId},
-    inline_completion::{InlineCompletionItem, InlineCompletionStatus},
+    inline_completion::{
+        EditHistory, InlineCompletionItem, InlineCompletionStatus,
+    },
     keypress::{KeyPressFocus, condition::Condition},
     lsp::path_from_url,
     main_split::{Editors, MainSplitData, SplitDirection, SplitMoveDirection},
@@ -229,6 +231,8 @@ pub struct EditorData {
     /// Debounce token for automatic (Copilot-style) ghost text. A newer
     /// keystroke replaces it, so only the last typing pause fires.
     ai_auto_timer: RwSignal<TimerToken>,
+    /// Bounded ring of recent edits feeding next-edit prediction.
+    ai_edit_history: RwSignal<EditHistory>,
 }
 
 impl PartialEq for EditorData {
@@ -270,6 +274,7 @@ impl EditorData {
             sticky_header_info: cx.create_rw_signal(StickyHeaderInfo::default()),
             ai_generation: cx.create_rw_signal(0),
             ai_auto_timer: cx.create_rw_signal(TimerToken::INVALID),
+            ai_edit_history: cx.create_rw_signal(EditHistory::default()),
         };
         data.reveal_cursor_in_folds();
         data
@@ -2096,6 +2101,10 @@ impl EditorData {
 
         if let Err(err) = item.apply(self, start_offset) {
             tracing::error!("{:?}", err);
+        } else {
+            // Supercomplete: an accepted suggestion chains into predicting
+            // the next edit (ollama lane only; guarded inside).
+            self.request_next_edit();
         }
     }
 
@@ -2441,6 +2450,169 @@ impl EditorData {
                     tracing::warn!("Local AI completion failed (check model installation and paths)");
                     send(Vec::new());
                 }
+            },
+        );
+    }
+
+    /// Supercomplete: after an accepted ghost text, ask the model to
+    /// predict the next edit anywhere in the bounded context. Ollama lane
+    /// only; the raw reply is parsed and located editor-side, so the worker
+    /// and RPC layers carry no next-edit knowledge. v1 surfaces the
+    /// prediction through the existing ghost-text machinery at the located
+    /// range; accepting applies the replacement in place (no cursor jump).
+    fn request_next_edit(&self) {
+        let ai = self.common.config.get_untracked().ai_autocomplete.clone();
+        if !ai.enabled || !ai.next_edit || ai.backend != "ollama" {
+            return;
+        }
+        if self.get_mode() != Mode::Insert {
+            return;
+        }
+        let doc = self.doc();
+        if !doc.loaded() {
+            return;
+        }
+        let Some(path) = doc.content.with_untracked(|c| c.path().cloned())
+        else {
+            return;
+        };
+        let offset = self.cursor().with_untracked(|c| c.offset());
+        let position = doc
+            .buffer
+            .with_untracked(|buffer| buffer.offset_to_position(offset));
+        // Same char-bounded window the ghost-text lane sends; the model's
+        // <old> anchor must come from inside it, and we locate it there.
+        let window_bounds = move |buffer: &lapce_core::buffer::Buffer| {
+            let rope = buffer.text();
+            let start = rope
+                .next_codepoint_offset(offset.saturating_sub(16384))
+                .unwrap_or(0)
+                .min(offset);
+            let end = rope
+                .prev_codepoint_offset((offset + 8193).min(rope.len()))
+                .unwrap_or(rope.len())
+                .max(offset);
+            (start, end)
+        };
+        let (prefix, suffix) = doc.buffer.with_untracked(|buffer| {
+            let (start, end) = window_bounds(buffer);
+            let rope = buffer.text();
+            (
+                rope.slice_to_cow(start..offset).into_owned(),
+                rope.slice_to_cow(offset..end).into_owned(),
+            )
+        });
+        let history: Vec<crate::inline_completion::EditRecord> = self
+            .ai_edit_history
+            .get_untracked()
+            .records()
+            .cloned()
+            .collect();
+        let language = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_string();
+        let messages = crate::inline_completion::next_edit_messages(
+            &language, &prefix, &suffix, &history,
+        );
+        let request = lapce_ai::Request {
+            model: std::path::PathBuf::new(),
+            tokenizer: std::path::PathBuf::new(),
+            // Chat lane: prefix/suffix ride inside the user message instead.
+            prefix: String::new(),
+            suffix: String::new(),
+            prefix_tokens: 0,
+            suffix_tokens: 0,
+            max_tokens: 256,
+            // The dispatcher owns the worker job identity used for
+            // cooperative cancellation; zero means untagged here.
+            request_id: 0,
+            messages: Some(messages),
+            remote: Some(lapce_ai::ollama::RemoteFim {
+                endpoint: ai.endpoint.clone(),
+                model: ai.remote_model.clone(),
+                timeout_ms: ai.timeout_ms,
+            }),
+        };
+        let ai_request = match serde_json::to_string(&request) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let rev = doc.rev();
+        let buffer_id = doc.buffer_id;
+        let editor = self.clone();
+        let inline_completion = self.common.inline_completion;
+        let path_for_items = path.clone();
+        // Proxy callbacks must be Send: all Rc state lives in the ext
+        // action, which runs back on the UI thread; the outer closure only
+        // carries the raw reply text across.
+        let send = create_ext_action(self.scope, move |raw: String| {
+            let Some(edit) = crate::inline_completion::parse_next_edit(&raw)
+            else {
+                return;
+            };
+            let doc = editor.doc();
+            // Anchor offsets are only valid against the exact buffer the
+            // model saw; any edit since discards the prediction.
+            if doc.buffer_id != buffer_id || doc.rev() != rev {
+                return;
+            }
+            let item = doc.buffer.with_untracked(|buffer| {
+                let (start, end) = window_bounds(buffer);
+                let window =
+                    buffer.text().slice_to_cow(start..end).into_owned();
+                let span = if edit.old.is_empty() {
+                    offset..offset
+                } else {
+                    let mut matches = window.match_indices(&edit.old);
+                    let Some((first, _)) = matches.next() else {
+                        return None;
+                    };
+                    if matches.next().is_some() {
+                        // Anchor is not unique: refuse to guess.
+                        return None;
+                    }
+                    start + first..start + first + edit.old.len()
+                };
+                Some(InlineCompletionItem {
+                    insert_text: edit.new.clone(),
+                    filter_text: None,
+                    range: Some(span),
+                    command: None,
+                    insert_text_format: Some(
+                        lsp_types::InsertTextFormat::PLAIN_TEXT,
+                    ),
+                })
+            });
+            let Some(item) = item else {
+                return;
+            };
+            inline_completion.update(|c| {
+                c.set_items(im::vector![item], offset, path_for_items);
+                c.update_doc(&doc, offset);
+            });
+        });
+        self.common.proxy.get_inline_completions(
+            path,
+            position,
+            InlineCompletionTriggerKind::Invoked,
+            ai_request,
+            move |res| {
+                // The dispatcher wraps the raw reply as one item at the
+                // cursor; only its text (the model contract) matters here.
+                let Ok(ProxyResponse::GetInlineCompletions {
+                    completions:
+                        lsp_types::InlineCompletionResponse::Array(items),
+                }) = res
+                else {
+                    return;
+                };
+                let Some(raw) = items.into_iter().next().map(|i| i.insert_text)
+                else {
+                    return;
+                };
+                send(raw);
             },
         );
     }
@@ -2978,6 +3150,18 @@ impl EditorData {
                 Some(e) => e,
                 None => return,
             };
+        // Feed the bounded next-edit history. Every edit source counts -
+        // typing, accepted ghost text, completions - because the model only
+        // needs "what changed lately", not who changed it.
+        let mut history = self.ai_edit_history.get_untracked();
+        for (sel, inserted) in edits {
+            let sel = sel.as_ref();
+            if sel.regions().is_empty() {
+                continue;
+            }
+            history.record(sel.min_offset(), inserted);
+        }
+        self.ai_edit_history.set(history);
         let selection = selection.apply_delta(&delta, true, InsertDrift::Default);
         let old_cursor = cursor.mode.clone();
         doc.buffer.update(|buffer| {
