@@ -25,7 +25,11 @@ with every side and corner, `z`, `opacity`, `shadow`, `grid-cols`/`grid-rows`, `
 `length:`/`color:` type hint wins (`text-[length:14px]`); without a hint the value shape decides
 (`text-[14px]` -> `font-size`, `text-[#333]` -> `color`), and an ambiguous `var(...)` gets no hover.
 
+Tailwind v4: hovering a class that v4 renamed shows the new name (`shadow-sm` -> `shadow-xs`,
+`shadow` -> `shadow-sm`, `rounded-sm` -> `rounded-xs`, `rounded` -> `rounded-sm`; the full rename
+list from the v4 upgrade guide is in the table and shows once those classes are covered).
+
 Not covered: gradient and ring colours, custom values from `tailwind.config.js`, plugins, and
-Tailwind v4 differences. A class that matches nothing gets no hover. Only the hovered line is read
+other Tailwind v4 differences. A class that matches nothing gets no hover. Only the hovered line is read
 (4096 bytes at most, arbitrary values at most 60 bytes); classes built with `{{ }}`, `$` or `@` are
 skipped. Nothing is executed. Blade directive and component prop hover still win in Blade files.

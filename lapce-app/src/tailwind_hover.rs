@@ -8,9 +8,10 @@
 //! weights, display, position, flex, alignment, grid columns, z-index, opacity
 //! and a few more, plus the default colour palette (`bg-red-500`, `text-gray-700/50`,
 //! `border-t-blue-600`) and arbitrary values (`w-[13px]`, `bg-[#1da1f2]`,
-//! `text-[length:14px]`). Custom theme values from `tailwind.config.js` and
-//! Tailwind v4 differences are not covered; a class that matches nothing gets no
-//! hover. Nothing is executed and no file is read: only the hovered line is looked at.
+//! `text-[length:14px]`). Classes that were renamed in Tailwind v4 say so
+//! (`shadow-sm` -> `shadow-xs`). Custom theme values from `tailwind.config.js`
+//! and other Tailwind v4 differences are not covered; a class that matches
+//! nothing gets no hover. Nothing is executed and no file is read: only the hovered line is looked at.
 
 const MAX_LINE: usize = 4096;
 
@@ -140,6 +141,18 @@ const STATES: &[(&str, &str)] = &[
     ("focus-visible", ":focus-visible"), ("disabled", ":disabled"), ("first", ":first-child"),
     ("last", ":last-child"), ("odd", ":nth-child(odd)"), ("even", ":nth-child(even)"),
     ("group-hover", ".group:hover &"), ("dark", "dark mode"),
+];
+
+/// Utilities renamed in Tailwind v4, v3 name -> v4 name (from the v4 upgrade
+/// guide, tailwindcss.com/docs/upgrade-guide). Only classes that still get a
+/// hover show the note; the rest sit here for when they are covered.
+const V4_RENAMES: &[(&str, &str)] = &[
+    ("shadow-sm", "shadow-xs"), ("shadow", "shadow-sm"),
+    ("drop-shadow-sm", "drop-shadow-xs"), ("drop-shadow", "drop-shadow-sm"),
+    ("blur-sm", "blur-xs"), ("blur", "blur-sm"),
+    ("backdrop-blur-sm", "backdrop-blur-xs"), ("backdrop-blur", "backdrop-blur-sm"),
+    ("rounded-sm", "rounded-xs"), ("rounded", "rounded-sm"),
+    ("outline-none", "outline-hidden"), ("ring", "ring-3"),
 ];
 
 /// Tailwind v3 default palette, hex without `#`, shades 50, 100..900, 950
@@ -572,7 +585,10 @@ pub fn help(line: &str, col: usize) -> Option<String> {
         let notes: Vec<String> = variants.iter().map(|v| variant_note(v)).collect();
         md.push_str(&format!("\nApplies with: {}\n", notes.join(", ")));
     }
-    md.push_str("\n_Tailwind v3 default theme. `tailwind.config.js` and v4 differences are not read._");
+    if let Some((_, v4)) = V4_RENAMES.iter().find(|(v3, _)| *v3 == utility) {
+        md.push_str(&format!("\nTailwind v4: renamed to `{v4}`.\n"));
+    }
+    md.push_str("\n_Tailwind v3 default theme. `tailwind.config.js` and other v4 differences are not read._");
     Some(md)
 }
 
@@ -640,6 +656,22 @@ mod tests {
             assert_eq!(h(l, n), None, "{l}");
         }
         assert_eq!(help(&"x".repeat(5000), 10), None);
+    }
+
+    #[test]
+    fn v4_renames_are_noted() {
+        let md = h("<i class=\"shadow-sm\">", "shadow-sm").unwrap();
+        assert!(md.contains("box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);"), "{md}");
+        assert!(md.contains("Tailwind v4: renamed to `shadow-xs`."), "{md}");
+        assert!(h("<i class=\"shadow\">", "shadow").unwrap().contains("renamed to `shadow-sm`"));
+        assert!(h("<i class=\"rounded-sm\">", "rounded-sm").unwrap().contains("renamed to `rounded-xs`"));
+        assert!(h("<i class=\"rounded\">", "rounded").unwrap().contains("renamed to `rounded-sm`"));
+        // Variants do not hide the note, unchanged classes do not get one.
+        assert!(h("<i class=\"md:rounded\">", "md:rounded").unwrap().contains("renamed to `rounded-sm`"));
+        for c in ["shadow-md", "shadow-lg", "rounded-lg", "rounded-none", "p-4", "text-sm"] {
+            let l = format!("<i class=\"{c}\">");
+            assert!(!h(&l, c).unwrap().contains("Tailwind v4"), "{c}");
+        }
     }
 
     #[test]
