@@ -1,6 +1,7 @@
 use crate::chat_session::{self, RunGate, RunState, SavedTurn, Session};
 use crate::{
     chat::{self, Context, Update},
+    command::InternalCommand,
     config::color::LapceColor,
     doc::DocContent,
     markdown::{MarkdownContent, parse_markdown},
@@ -144,6 +145,38 @@ impl ChatData {
     }
 }
 impl ChatData {
+    /// Write the current session as a walkthrough markdown document under
+    /// <workspace>/.lapce/walkthroughs/ and return the file path. The
+    /// caller opens it; no screenshots or recordings yet.
+    pub fn export_walkthrough(
+        &self,
+        root: &std::path::Path,
+    ) -> Result<PathBuf, String> {
+        let turns: Vec<(String, String)> = self
+            .turns
+            .get_untracked()
+            .iter()
+            .map(|t| (t.role.to_string(), t.text.get_untracked()))
+            .collect();
+        if turns.is_empty() {
+            return Err("Nothing to walk through yet".into());
+        }
+        let markdown = walkthrough_markdown(&turns);
+        let dir = root.join(".lapce").join("walkthroughs");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        let name = format!("walkthrough-{stamp}.md");
+        let path = dir.join(&name);
+        // Never overwrite a same-second export.
+        let path = if path.exists() {
+            dir.join(format!("walkthrough-{stamp}-{}.md", std::process::id()))
+        } else {
+            path
+        };
+        std::fs::write(&path, markdown).map_err(|e| e.to_string())?;
+        Ok(path)
+    }
+
     fn stop(&self) {
         self.gate.cancel();
         if let Some(pid) = self.acp_pid.lock().unwrap().take() {
@@ -891,6 +924,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let acp_mode = data.clone();
     let acp_resume = data.clone();
     let resume_tab = tab.clone();
+    let walkthrough_tab = tab.clone();
+    let walkthrough = data.clone();
     let trust = data.clone();
     let revoke = data.clone();
     let input_signal = data.input;
@@ -943,6 +978,37 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             label(|| "Stop".to_string())
                 .on_click_stop(move |_| { if stop.busy.get_untracked() { stop.stop(); stop.persist(config.get_untracked().ai_chat.save_history); } })
                 .style(move |s| s.padding(6.0).cursor(CursorStyle::Pointer).selectable(false)),
+            label(|| "Walkthrough".to_string())
+                .on_click_stop(move |_| {
+                    if walkthrough.busy.get_untracked() {
+                        return;
+                    }
+                    let Some(root) = walkthrough_tab.workspace.path.clone()
+                    else {
+                        walkthrough
+                            .error
+                            .set("Open a folder to export a walkthrough".into());
+                        return;
+                    };
+                    match walkthrough.export_walkthrough(&root) {
+                        Ok(path) => {
+                            walkthrough_tab
+                                .common
+                                .internal_command
+                                .send(InternalCommand::OpenFile { path });
+                        }
+                        Err(e) => walkthrough.error.set(e),
+                    }
+                })
+                .style(move |s| {
+                    s.padding(6.0)
+                        .margin_left(8.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
+                }),
         )),
         h_stack((
             label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); } }),
@@ -1109,4 +1175,85 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .gap(8.0)
             .background(config.get().color(LapceColor::PANEL_BACKGROUND))
     })
+}
+
+/// Cap on the rendered walkthrough, so a pathological session can never
+/// produce an unbounded file.
+pub const WALKTHROUGH_CAP: usize = 512 * 1024;
+
+/// Render a chat session as a walkthrough: the goal (first user turn's
+/// first line), then each turn in order. Fences and non-ASCII content in
+/// turn text pass through unchanged; the output is clipped on a char
+/// boundary with an explicit marker.
+pub fn walkthrough_markdown(turns: &[(String, String)]) -> String {
+    let mut out = String::from("# Walkthrough\n\n");
+    if let Some((_, first)) = turns.iter().find(|(role, _)| role == "You") {
+        let goal = first.lines().next().unwrap_or("").trim();
+        if !goal.is_empty() {
+            out.push_str("**Goal:** ");
+            out.push_str(goal);
+            out.push_str("\n\n");
+        }
+    }
+    for (role, text) in turns {
+        out.push_str("## ");
+        out.push_str(role);
+        out.push_str("\n\n");
+        out.push_str(text.trim());
+        out.push_str("\n\n");
+    }
+    if out.len() > WALKTHROUGH_CAP {
+        let mut end = WALKTHROUGH_CAP;
+        while !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+        out.push_str("\n[walkthrough truncated to fit the file cap]\n");
+    }
+    out
+}
+
+#[cfg(test)]
+mod walkthrough_tests {
+    use super::walkthrough_markdown;
+
+    fn turns(v: &[(&str, &str)]) -> Vec<(String, String)> {
+        v.iter().map(|(r, t)| (r.to_string(), t.to_string())).collect()
+    }
+
+    #[test]
+    fn renders_goal_then_turns_in_order() {
+        let md = walkthrough_markdown(&turns(&[
+            ("You", "add a health endpoint\nmore detail here"),
+            ("Assistant", "Done:\n```rust\nfn health() {}\n```"),
+            ("You", "thanks"),
+        ]));
+        assert!(md.starts_with("# Walkthrough\n\n**Goal:** add a health endpoint\n"));
+        let you = md.find("## You").unwrap();
+        let assistant = md.find("## Assistant").unwrap();
+        let you2 = md.rfind("## You").unwrap();
+        assert!(you < assistant && assistant < you2);
+        // Fences pass through untouched.
+        assert!(md.contains("```rust\nfn health() {}\n```"));
+    }
+
+    #[test]
+    fn skips_empty_goal_and_keeps_non_ascii() {
+        let md = walkthrough_markdown(&turns(&[
+            ("Assistant", "héllo 日本語 🦀"),
+            ("You", "\n"),
+        ]));
+        assert!(!md.contains("**Goal:**"));
+        assert!(md.contains("héllo 日本語 🦀"));
+    }
+
+    #[test]
+    fn cap_clips_on_a_char_boundary_with_a_marker() {
+        // '日' is 3 bytes; a cap mid-codepoint must pull back, not split.
+        let big = "日".repeat(super::WALKTHROUGH_CAP);
+        let md = walkthrough_markdown(&turns(&[("You", &big)]));
+        assert!(md.ends_with("[walkthrough truncated to fit the file cap]\n"));
+        assert!(std::str::from_utf8(md.as_bytes()).is_ok());
+        assert!(md.len() <= super::WALKTHROUGH_CAP + 64);
+    }
 }
