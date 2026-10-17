@@ -102,6 +102,7 @@ pub mod class_refs;
 pub mod template_refs;
 pub mod env_refs;
 pub mod wp_hooks;
+pub mod laravel_helpers;
 pub mod laravel_keys;
 pub mod route_names;
 #[cfg(test)]
