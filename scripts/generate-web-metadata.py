@@ -15,17 +15,27 @@ SOURCES = [
 PHP_EXTENSIONS = ['Core', 'standard', 'date', 'json', 'mbstring', 'ctype', 'pcre', 'SPL', 'filter', 'hash', 'random', 'session', 'iconv', 'fileinfo', 'PDO', 'curl', 'openssl']
 
 def stub_declarations(text):
-    # phpstorm-stubs are un-namespaced: top-level (depth 0) functions and classes.
+    # phpstorm-stubs also declare inside braced namespace blocks: `namespace { }`
+    # holds global symbols (PDO.php, random.php) and `namespace Name { }`, brace
+    # on the same or next line, holds namespaced ones (Pdo, Random, Random\Engine).
+    # Descend one level into those blocks; namespaced classes yield their namespace.
     clean = re.sub(r'/\*.*?\*/|//[^\n]*|\#[^\[\n][^\n]*|\'(?:\\.|[^\'\\])*\'|"(?:\\.|[^"\\])*"', lambda m: ' ' * len(m[0]), text, flags=re.S)
     depth = 0
-    for m in re.finditer(r'[{}]|^\s*(?:(?:final|abstract|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_]\w*)|\bfunction\s+([A-Za-z_]\w*)\s*\(', clean, re.M):
-        if m[0] == '{': depth += 1
-        elif m[0] == '}': depth -= 1
-        elif depth == 0:
+    ns = {}  # depths opened by a braced namespace -> its name ('' for the global block)
+    for m in re.finditer(r'\bnamespace\s+([A-Za-z_]\w*(?:\\[A-Za-z_]\w*)*)?\s*\{|[{}]|^\s*(?:(?:final|abstract|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_]\w*)|\bfunction\s+([A-Za-z_]\w*)\s*\(', clean, re.M):
+        if m[0].startswith('namespace'):
+            depth += 1
+            ns[depth] = m[1] or ''
+        elif m[0] == '{': depth += 1
+        elif m[0] == '}':
+            ns.pop(depth, None)
+            depth -= 1
+        elif depth == 0 or (depth == 1 and 1 in ns):
             start = m.start(); end = text.find('\n', start)
             sig = text[start:end if end >= 0 else len(text)].strip().rstrip('{;').strip()
-            if m[3]: yield 'function', m[3], sig
-            else: yield 'class', m[2], sig
+            namespace = ns.get(1) if depth == 1 else None
+            if m[4]: yield 'function', m[4], sig, namespace
+            else: yield 'class', m[3], sig, namespace
 
 
 def declarations(text):
@@ -61,13 +71,15 @@ for source, directory in zip(SOURCES, sys.argv[1:]):
         for ext in PHP_EXTENSIONS:
             for file in sorted((path/ext).glob('*.php')):
                 if file.name.startswith('_'): continue
-                for kind,name,signature in stub_declarations(read(file)):
-                    if (kind,name) in seen: continue
-                    seen.add((kind,name))
+                for kind,name,signature,namespace in stub_declarations(read(file)):
+                    qualified = namespace + '\\' + name if namespace else name
+                    if (kind,qualified) in seen: continue
+                    seen.add((kind,qualified))
                     if kind=='function':
                         add(name,'function','php/'+ext,signature=signature,doc_url='https://www.php.net/manual/en/function.'+name.replace('_','-')+'.php')
                     else:
-                        add(name,'class','php/'+ext,qualified_name=name,doc_url='https://www.php.net/manual/en/class.'+name.lower()+'.php')
+                        # php.net names class pages after the qualified name: class.random-randomizer.php
+                        add(name,'class','php/'+ext,qualified_name=qualified,doc_url='https://www.php.net/manual/en/class.'+qualified.lower().replace('\\','-')+'.php')
     elif framework=='twig':
         text=read(path/'src/Extension/CoreExtension.php')
         for kind in ['Filter','Function','Test']:

@@ -144,6 +144,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.random-brokenrandomengineerror.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "BrokenRandomEngineError",
+    "package": "php/random",
+    "qualified_name": "Random\\BrokenRandomEngineError",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.curlfile.php",
     "framework": "php",
     "kind": "class",
@@ -223,6 +235,18 @@
     "name": "Countable",
     "package": "php/Core",
     "qualified_name": "Countable",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-cryptosafeengine.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "CryptoSafeEngine",
+    "package": "php/random",
+    "qualified_name": "Random\\CryptoSafeEngine",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -456,6 +480,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.pdo-dblib.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Dblib",
+    "package": "php/PDO",
+    "qualified_name": "Pdo\\Dblib",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.delayedtargetvalidation.php",
     "framework": "php",
     "kind": "class",
@@ -535,6 +571,18 @@
     "name": "EmptyIterator",
     "package": "php/SPL",
     "qualified_name": "EmptyIterator",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-engine.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Engine",
+    "package": "php/random",
+    "qualified_name": "Random\\Engine",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -648,6 +696,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.pdo-firebird.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Firebird",
+    "package": "php/PDO",
+    "qualified_name": "Pdo\\Firebird",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.globiterator.php",
     "framework": "php",
     "kind": "class",
@@ -703,6 +763,18 @@
     "name": "InternalIterator",
     "package": "php/Core",
     "qualified_name": "InternalIterator",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-intervalboundary.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "IntervalBoundary",
+    "package": "php/random",
+    "qualified_name": "Random\\IntervalBoundary",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -828,6 +900,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.random-engine-mt19937.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Mt19937",
+    "package": "php/random",
+    "qualified_name": "Random\\Engine\\Mt19937",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.multipleiterator.php",
     "framework": "php",
     "kind": "class",
@@ -835,6 +919,18 @@
     "name": "MultipleIterator",
     "package": "php/SPL",
     "qualified_name": "MultipleIterator",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pdo-mysql.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Mysql",
+    "package": "php/PDO",
+    "qualified_name": "Pdo\\Mysql",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -859,6 +955,18 @@
     "name": "NoRewindIterator",
     "package": "php/SPL",
     "qualified_name": "NoRewindIterator",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pdo-odbc.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Odbc",
+    "package": "php/PDO",
+    "qualified_name": "Pdo\\Odbc",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -972,6 +1080,54 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.pdo.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "PDO",
+    "package": "php/PDO",
+    "qualified_name": "PDO",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pdoexception.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "PDOException",
+    "package": "php/PDO",
+    "qualified_name": "PDOException",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pdorow.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "PDORow",
+    "package": "php/PDO",
+    "qualified_name": "PDORow",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pdostatement.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "PDOStatement",
+    "package": "php/PDO",
+    "qualified_name": "PDOStatement",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.parentiterator.php",
     "framework": "php",
     "kind": "class",
@@ -996,6 +1152,30 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.random-engine-pcgoneseq128xslrr64.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "PcgOneseq128XslRr64",
+    "package": "php/random",
+    "qualified_name": "Random\\Engine\\PcgOneseq128XslRr64",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pdo-pgsql.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Pgsql",
+    "package": "php/PDO",
+    "qualified_name": "Pdo\\Pgsql",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.psk.php",
     "framework": "php",
     "kind": "class",
@@ -1003,6 +1183,42 @@
     "name": "Psk",
     "package": "php/openssl",
     "qualified_name": "Psk",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-randomerror.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "RandomError",
+    "package": "php/random",
+    "qualified_name": "Random\\RandomError",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-randomexception.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "RandomException",
+    "package": "php/random",
+    "qualified_name": "Random\\RandomException",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-randomizer.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Randomizer",
+    "package": "php/random",
+    "qualified_name": "Random\\Randomizer",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1183,6 +1399,18 @@
     "name": "RuntimeException",
     "package": "php/SPL",
     "qualified_name": "RuntimeException",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-engine-secure.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Secure",
+    "package": "php/random",
+    "qualified_name": "Random\\Engine\\Secure",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1476,6 +1704,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/class.pdo-sqlite.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Sqlite",
+    "package": "php/PDO",
+    "qualified_name": "Pdo\\Sqlite",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/class.streambucket.php",
     "framework": "php",
     "kind": "class",
@@ -1699,6 +1939,18 @@
     "name": "WeakReference",
     "package": "php/Core",
     "qualified_name": "WeakReference",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.random-engine-xoshiro256starstar.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Xoshiro256StarStar",
+    "package": "php/random",
+    "qualified_name": "Random\\Engine\\Xoshiro256StarStar",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3067,6 +3319,18 @@
     "name": "compact",
     "package": "php/standard",
     "signature": "function compact(#[PhpStormStubsElementAvailable(from: '8.0')] $var_name, #[PhpStormStubsElementAvailable(from: '5.3', to: '7.4')] $var_names = null, ...$var_names): array {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.confirm-pdo-ibm-compiled.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "confirm_pdo_ibm_compiled",
+    "package": "php/PDO",
+    "signature": "function confirm_pdo_ibm_compiled() {}",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -6036,6 +6300,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/function.getrandmax.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "getrandmax",
+    "package": "php/random",
+    "signature": "function getrandmax(): int {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/function.getrusage.php",
     "framework": "php",
     "kind": "function",
@@ -7452,6 +7728,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/function.lcg-value.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "lcg_value",
+    "package": "php/random",
+    "signature": "function lcg_value(): float {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/function.lchgrp.php",
     "framework": "php",
     "kind": "function",
@@ -8820,6 +9108,42 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/function.mt-getrandmax.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "mt_getrandmax",
+    "package": "php/random",
+    "signature": "function mt_getrandmax(): int {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.mt-rand.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "mt_rand",
+    "package": "php/random",
+    "signature": "function mt_rand(int $min, int $max): int {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.mt-srand.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "mt_srand",
+    "package": "php/random",
+    "signature": "function mt_srand(",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/function.natcasesort.php",
     "framework": "php",
     "kind": "function",
@@ -10068,6 +10392,18 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
+    "doc_url": "https://www.php.net/manual/en/function.pdo-drivers.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "pdo_drivers",
+    "package": "php/PDO",
+    "signature": "function pdo_drivers(): array {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
     "doc_url": "https://www.php.net/manual/en/function.pfsockopen.php",
     "framework": "php",
     "kind": "function",
@@ -10555,6 +10891,42 @@
     "name": "rad2deg",
     "package": "php/standard",
     "signature": "function rad2deg(float $num): float {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.rand.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "rand",
+    "package": "php/random",
+    "signature": "function rand(int $min, int $max): int {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.random-bytes.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "random_bytes",
+    "package": "php/random",
+    "signature": "function random_bytes(int $length): string {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.random-int.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "random_int",
+    "package": "php/random",
+    "signature": "function random_int(int $min, int $max): int {}",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -11695,6 +12067,18 @@
     "name": "sqrt",
     "package": "php/standard",
     "signature": "function sqrt(float $num): float {}",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/function.srand.php",
+    "framework": "php",
+    "kind": "function",
+    "licence": "Apache-2.0",
+    "name": "srand",
+    "package": "php/random",
+    "signature": "function srand(",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"

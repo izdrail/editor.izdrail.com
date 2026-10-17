@@ -103,9 +103,17 @@ mod tests {
             .insert("symfony/console".into(), "v6.4.0".into());
         assert_eq!(php_symbols(&sf).filter(|s| s.framework != "php").count(), 0);
         let plain = ProjectProfile::default();
-        for name in ["strlen", "array_map", "json_encode", "mb_strlen", "DateTime", "Countable"] {
+        for name in [
+            "strlen", "array_map", "json_encode", "mb_strlen", "DateTime", "Countable",
+            // Declared inside `namespace { }` blocks in the stubs (PDO.php, random.php).
+            "PDO", "PDOStatement", "rand", "random_bytes", "random_int", "pdo_drivers",
+            // Declared inside named braced blocks; qualified_name carries the namespace.
+            "Randomizer", "Sqlite", "Mt19937",
+        ] {
             assert!(php_symbols(&plain).any(|s| s.name == name && s.framework == "php"), "{name}");
         }
+        assert!(php_symbols(&plain).any(|s| s.qualified_name.as_deref() == Some("Random\\Randomizer")));
+        assert!(php_symbols(&plain).any(|s| s.qualified_name.as_deref() == Some("Pdo\\Sqlite")));
         assert!(php_lists(&plain)[1].contains(" mb_strlen"));
         assert!(symbols().iter().any(|s| s.framework == "twig"
             && s.kind == "filter"
