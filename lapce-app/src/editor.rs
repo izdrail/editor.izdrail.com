@@ -4187,6 +4187,29 @@ impl EditorData {
                 return;
             }
         }
+        // A database table name under the cursor (`DB::table('users')`,
+        // `Schema::table(...)`, a model's `$table`): the column list rebuilt
+        // from migrations, no language server round trip.
+        if path.extension().is_some_and(|e| e == "php") {
+            let (line_text, col) = doc.buffer.with_untracked(|buffer| {
+                let line = buffer.line_of_offset(offset);
+                (
+                    buffer.line_content(line).to_string(),
+                    offset - buffer.offset_of_line(line),
+                )
+            });
+            let root = self.common.workspace.path.as_deref();
+            if let Some(md) = crate::schema_hover::help(root, &line_text, col) {
+                let content =
+                    parse_markdown(&md, 1.8, &self.common.config.get_untracked());
+                let hover_data = self.common.hover.clone();
+                hover_data.content.set(content);
+                hover_data.offset.set(offset);
+                hover_data.editor_id.set(self.id());
+                hover_data.active.set(true);
+                return;
+            }
+        }
         let config = self.common.config;
         let hover_data = self.common.hover.clone();
         let editor_id = self.id();
