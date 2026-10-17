@@ -76,7 +76,7 @@ and a host benchmark; compile success is not a quality benchmark.
 
 ## Slash commands (item 139)
 
-The composer accepts three slash commands, an honest subset of
+The composer accepts four slash commands, an honest subset of
 Antigravity's catalog (verified against antigravity.google/docs/slash-commands
 2026-10-17):
 
@@ -86,11 +86,19 @@ Antigravity's catalog (verified against antigravity.google/docs/slash-commands
 - `/btw <message>` - one-off side question: answered like chat, but not
   added to the conversation history and not persisted. The turn is
   labeled "Side question" in the panel.
+- `/learn <note>` - append a project knowledge note to
+  `.lapce/knowledge.md` (item 159). Later chat sends in this project
+  fold the newest notes (tail, capped at 4 KiB) into the prompt as
+  read-only `<project_knowledge>` context. Notes are user-curated: the
+  model never writes the file, and Ask/Plan keep their own prompt
+  builders and do not read it. Edit the file directly to revise or
+  prune notes.
 
 Commands override the Chat/Ask/Plan/ACP mode buttons for that one send.
-Unknown commands and bare commands are rejected with a hint instead of
-silently chatting. `/goal` is deliberately absent: it implies autonomous
-execution, which is the parked Act mode. In ACP mode `/btw` behaves like
+`/learn` stores its note and never reaches the model. Unknown commands
+and bare commands are rejected with a hint instead of silently chatting.
+`/goal` is deliberately absent: it implies autonomous execution, which
+is the parked Act mode. In ACP mode `/btw` behaves like
 a normal send (ACP turns never join chat history anyway).
 
 ## Any OpenAI-compatible server (item 140)

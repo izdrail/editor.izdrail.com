@@ -339,6 +339,10 @@ fn send(tab: &WindowTabData) {
             return;
         }
         Some(Ok(chat::SlashCommand::Btw(text))) => (text, false),
+        Some(Ok(chat::SlashCommand::Learn(note))) => {
+            learn_note(tab, &note);
+            return;
+        }
         Some(Err(message)) => {
             data.error.set(message);
             return;
@@ -354,8 +358,20 @@ fn send(tab: &WindowTabData) {
         return;
     }
     let ctx = context(tab);
-    let messages =
-        chat::assemble(&data.history.get_untracked(), &prompt, ctx.as_ref());
+    let knowledge = tab
+        .workspace
+        .path
+        .as_ref()
+        .and_then(|r| {
+            std::fs::read_to_string(r.join(".lapce").join("knowledge.md")).ok()
+        })
+        .and_then(|t| chat::knowledge_excerpt(&t));
+    let messages = chat::assemble(
+        &data.history.get_untracked(),
+        &prompt,
+        ctx.as_ref(),
+        knowledge.as_deref(),
+    );
     let run = data.gate.begin();
     let cancelled = Arc::new(AtomicBool::new(false));
     data.cancellation.set(cancelled.clone());
@@ -650,6 +666,65 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
         });
     });
 }
+/// `/learn <note>`: append a user-curated project knowledge note to
+/// .lapce/knowledge.md (Antigravity parity rows 15/24, honest subset:
+/// explicit notes, no agent autonomy). Later chat sends in this project
+/// fold the newest notes in as read-only context; Ask/Plan keep their
+/// own prompt builders and do not read the file.
+fn learn_note(tab: &WindowTabData, note: &str) {
+    let data = tab.chat.clone();
+    if !tab.workspace.kind.is_local() {
+        data.error.set(
+            "/learn writes .lapce/knowledge.md in a local project folder."
+                .into(),
+        );
+        return;
+    }
+    let Some(root) = tab.workspace.path.clone() else {
+        data.error.set("Open a local project folder first.".into());
+        return;
+    };
+    let dir = root.join(".lapce");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        data.error.set(format!("Could not create the .lapce directory: {e}"));
+        return;
+    }
+    // One list item per note so the file stays a flat Markdown list.
+    let line = note.lines().collect::<Vec<_>>().join(" ");
+    let path = dir.join("knowledge.md");
+    let written = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            writeln!(f, "- {line}")
+        });
+    if let Err(e) = written {
+        data.error.set(format!("Could not write {}: {e}", path.display()));
+        return;
+    }
+    let save = tab.common.config.get_untracked().ai_chat.save_history;
+    data.turns.update(|turns| {
+        turns.push(Turn {
+            role: "You",
+            text: tab.scope.create_rw_signal(format!("/learn {note}")),
+            context: "saved to .lapce/knowledge.md".into(),
+        });
+        turns.push(Turn {
+            role: "Assistant",
+            text: tab.scope.create_rw_signal(
+                "Noted. Later chat messages in this project include your recent knowledge notes."
+                    .to_string(),
+            ),
+            context: String::new(),
+        });
+    });
+    data.input.set(String::new());
+    data.error.set(String::new());
+    data.persist(save);
+}
+
 /// Plan-mode artifact: persist the plan as Markdown under .lapce/plans
 /// and open it as a normal editor buffer, so review and feedback happen
 /// in a real document (edit the file, then ask the agent to proceed).
