@@ -1716,6 +1716,24 @@ impl EditorData {
                 });
                 return;
             }
+            // `Post::class` opens the one conventional `Post.php`
+            // (Laravel/Symfony folders; several candidates do nothing).
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::class_const_refs::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // Symfony: a class named in YAML/XML/Twig config opens its file.
             if let Some((target, line)) =
                 crate::class_refs::resolve(root, &path, &line_text, col)

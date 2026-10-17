@@ -54,6 +54,7 @@ fn all_resolvers(root: &Path, line: &str, col: usize) {
     let _ = crate::gate_refs::resolve(root, line, col);
     let _ = crate::eloquent_factories::resolve(root, line, col);
     let _ = crate::seeder_refs::resolve(root, line, col);
+    let _ = crate::class_const_refs::resolve(root, line, col);
     let _ = crate::vue_components::resolve(root, line, col);
     let _ = crate::js_imports::resolve(root, &root.join("a.vue"), line, col);
     let _ = crate::middleware_alias::resolve(root, line, col);

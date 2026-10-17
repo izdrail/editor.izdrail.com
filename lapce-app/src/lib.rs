@@ -40,6 +40,7 @@ pub mod eloquent_scopes;
 pub mod gate_refs;
 pub mod eloquent_factories;
 pub mod seeder_refs;
+pub mod class_const_refs;
 pub mod blade_slots;
 pub mod controller_actions;
 pub mod inertia_pages;
