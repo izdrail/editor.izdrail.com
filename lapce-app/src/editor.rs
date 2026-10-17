@@ -4164,6 +4164,29 @@ impl EditorData {
                 return;
             }
         }
+        // An env reference under the cursor (`env('X')`, `%env(X)%`,
+        // `process.env.X`, ...): where the variable is defined and the code
+        // default. Values are never shown, matching the env palette index.
+        {
+            let (line_text, col) = doc.buffer.with_untracked(|buffer| {
+                let line = buffer.line_of_offset(offset);
+                (
+                    buffer.line_content(line).to_string(),
+                    offset - buffer.offset_of_line(line),
+                )
+            });
+            let root = self.common.workspace.path.as_deref();
+            if let Some(md) = crate::env_hover::help(root, &line_text, col) {
+                let content =
+                    parse_markdown(&md, 1.8, &self.common.config.get_untracked());
+                let hover_data = self.common.hover.clone();
+                hover_data.content.set(content);
+                hover_data.offset.set(offset);
+                hover_data.editor_id.set(self.id());
+                hover_data.active.set(true);
+                return;
+            }
+        }
         let config = self.common.config;
         let hover_data = self.common.hover.clone();
         let editor_id = self.id();

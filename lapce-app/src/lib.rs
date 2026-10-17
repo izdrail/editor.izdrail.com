@@ -45,6 +45,7 @@ pub mod class_const_refs;
 pub mod request_fields;
 pub mod blade_slots;
 pub mod channel_hover;
+pub mod env_hover;
 pub mod controller_actions;
 pub mod inertia_pages;
 pub mod symfony_params;
