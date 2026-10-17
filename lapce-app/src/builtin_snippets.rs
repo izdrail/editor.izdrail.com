@@ -223,7 +223,7 @@ mod tests {
                 assert!(seen.insert(p.clone()), "duplicate prefix {p}");
             }
         }
-        for want in ["sf-voter", "sf-test", "sf-messenger", "sf-repository", "sf-twigextension", "sf-listener"] {
+        for want in ["sf-voter", "sf-test", "sf-messenger", "sf-repository", "sf-twigextension", "sf-listener", "sf-constraint", "sf-constraint-validator", "sf-authenticator", "sf-normalizer", "sf-twig-component", "sf-live-component", "sf-schedule-task", "sf-mail", "sf-event-listener"] {
             assert!(seen.contains(want), "{want}");
         }
         let text_of = |prefix: &str| {
@@ -236,6 +236,14 @@ mod tests {
         assert!(text_of("sf-test").contains("$client->request('GET', '/');"));
         assert!(text_of("sf-messenger").contains("class DoThingHandler"));
         assert!(text_of("sf-repository").contains("parent::__construct($registry, Product::class);"));
+        assert!(text_of("sf-constraint").contains("extends Constraint"));
+        assert!(text_of("sf-constraint-validator").contains("->buildViolation($constraint->message)"));
+        assert!(text_of("sf-authenticator").contains("extends AbstractAuthenticator"));
+        assert!(text_of("sf-normalizer").contains("getSupportedTypes(?string $format): array"));
+        assert!(text_of("sf-live-component").contains("use DefaultActionTrait;"));
+        assert!(text_of("sf-schedule-task").contains("#[AsCronTask('0 0 * * *')]"));
+        assert!(text_of("sf-mail").contains("new TemplatedEmail()"));
+        assert!(text_of("sf-event-listener").contains("AsEventListener(event: KernelEvents::REQUEST"));
         assert!(text_of("sf-twigextension").contains("new TwigFilter('my_filter', $this->myFilter(...))"));
         assert!(text_of("sf-listener").contains("public function onKernelRequest(RequestEvent $event): void"));
     }

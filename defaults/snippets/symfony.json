@@ -256,4 +256,203 @@
   ],
   "description": "AsEventListener class"
  }
+,
+ "Custom constraint": {
+  "prefix": "sf-constraint",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Validator;",
+   "",
+   "use Symfony\\\\Component\\\\Validator\\\\Constraint;",
+   "",
+   "#[\\\\Attribute]",
+   "class ${1:ContainsAlphanumeric} extends Constraint",
+   "{",
+   "\tpublic string \\$message = '${2:The value is invalid.}';",
+   "}"
+  ],
+  "description": "Custom validation constraint"
+ },
+ "Constraint validator": {
+  "prefix": "sf-constraint-validator",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Validator;",
+   "",
+   "use Symfony\\\\Component\\\\Validator\\\\Constraint;",
+   "use Symfony\\\\Component\\\\Validator\\\\ConstraintValidator;",
+   "",
+   "class ${1:ContainsAlphanumeric}Validator extends ConstraintValidator",
+   "{",
+   "\tpublic function validate(mixed \\$value, Constraint \\$constraint): void",
+   "\t{",
+   "\t\tif (null === \\$value || '' === \\$value) {",
+   "\t\t\treturn;",
+   "\t\t}",
+   "",
+   "\t\t\\$this->context->buildViolation(\\$constraint->message)",
+   "\t\t\t->setParameter('{{ value }}', \\$value)",
+   "\t\t\t->addViolation();",
+   "\t}",
+   "}"
+  ],
+  "description": "Validator for a custom constraint"
+ },
+ "Authenticator": {
+  "prefix": "sf-authenticator",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Security;",
+   "",
+   "use Symfony\\\\Component\\\\HttpFoundation\\\\Request;",
+   "use Symfony\\\\Component\\\\HttpFoundation\\\\Response;",
+   "use Symfony\\\\Component\\\\Security\\\\Core\\\\Authentication\\\\Token\\\\TokenInterface;",
+   "use Symfony\\\\Component\\\\Security\\\\Core\\\\Exception\\\\AuthenticationException;",
+   "use Symfony\\\\Component\\\\Security\\\\Http\\\\Authenticator\\\\AbstractAuthenticator;",
+   "use Symfony\\\\Component\\\\Security\\\\Http\\\\Authenticator\\\\Passport\\\\Passport;",
+   "",
+   "class ${1:ApiKey}Authenticator extends AbstractAuthenticator",
+   "{",
+   "\tpublic function supports(Request \\$request): ?bool",
+   "\t{",
+   "\t\treturn \\$request->headers->has('${2:X-API-KEY}');",
+   "\t}",
+   "",
+   "\tpublic function authenticate(Request \\$request): Passport",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "",
+   "\tpublic function onAuthenticationSuccess(Request \\$request, TokenInterface \\$token, string \\$firewallName): ?Response",
+   "\t{",
+   "\t\treturn null;",
+   "\t}",
+   "",
+   "\tpublic function onAuthenticationFailure(Request \\$request, AuthenticationException \\$exception): ?Response",
+   "\t{",
+   "\t\treturn new Response(null, Response::HTTP_UNAUTHORIZED);",
+   "\t}",
+   "}"
+  ],
+  "description": "Custom authenticator (AbstractAuthenticator)"
+ },
+ "Serializer normalizer": {
+  "prefix": "sf-normalizer",
+  "body": [
+   "public function normalize(mixed \\$data, ?string \\$format = null, array \\$context = []): array",
+   "{",
+   "\treturn \\$this->normalizer->normalize(\\$data, \\$format, \\$context);",
+   "}",
+   "",
+   "public function supportsNormalization(mixed \\$data, ?string \\$format = null, array \\$context = []): bool",
+   "{",
+   "\treturn \\$data instanceof ${1:Topic};",
+   "}",
+   "",
+   "public function getSupportedTypes(?string \\$format): array",
+   "{",
+   "\treturn [${1:Topic}::class => true];",
+   "}"
+  ],
+  "description": "Serializer normalizer methods"
+ },
+ "Twig component": {
+  "prefix": "sf-twig-component",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Twig\\\\Components;",
+   "",
+   "use Symfony\\\\UX\\\\TwigComponent\\\\Attribute\\\\AsTwigComponent;",
+   "",
+   "#[AsTwigComponent]",
+   "class ${1:Alert}",
+   "{",
+   "\tpublic string \\$${2:type} = '${3:success}';",
+   "\tpublic string \\$${4:message};",
+   "}"
+  ],
+  "description": "UX Twig component class"
+ },
+ "Live component": {
+  "prefix": "sf-live-component",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Twig\\\\Components;",
+   "",
+   "use Symfony\\\\UX\\\\LiveComponent\\\\Attribute\\\\AsLiveComponent;",
+   "use Symfony\\\\UX\\\\LiveComponent\\\\Attribute\\\\LiveProp;",
+   "use Symfony\\\\UX\\\\LiveComponent\\\\DefaultActionTrait;",
+   "",
+   "#[AsLiveComponent]",
+   "class ${1:ProductSearch}",
+   "{",
+   "\tuse DefaultActionTrait;",
+   "",
+   "\t#[LiveProp(writable: true)]",
+   "\tpublic string \\$${2:query} = '';",
+   "}"
+  ],
+  "description": "UX Live component class"
+ },
+ "Scheduler cron task": {
+  "prefix": "sf-schedule-task",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\Scheduler\\\\Task;",
+   "",
+   "use Symfony\\\\Component\\\\Scheduler\\\\Attribute\\\\AsCronTask;",
+   "",
+   "#[AsCronTask('${1:0 0 * * *}')]",
+   "class ${2:SendDailySalesReports}",
+   "{",
+   "\tpublic function __invoke()",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Scheduler task with a cron trigger"
+ },
+ "Templated email": {
+  "prefix": "sf-mail",
+  "body": [
+   "\\$email = (new TemplatedEmail())",
+   "\t->from('${1:no-reply@example.com}')",
+   "\t->to(${2:\\$user->getEmail()})",
+   "\t->subject('${3:Subject}')",
+   "\t->htmlTemplate('${4:emails/welcome.html.twig}')",
+   "\t->context([",
+   "\t\t'${5:name}' => ${6:\\$user->getName()},",
+   "\t]);",
+   "",
+   "\\$mailer->send(\\$email);"
+  ],
+  "description": "Send a templated email"
+ },
+ "Attribute event listener": {
+  "prefix": "sf-event-listener",
+  "body": [
+   "<?php",
+   "",
+   "namespace App\\\\EventListener;",
+   "",
+   "use Symfony\\\\Component\\\\EventDispatcher\\\\Attribute\\\\AsEventListener;",
+   "",
+   "#[AsEventListener(event: ${1:KernelEvents::REQUEST}, method: '${2:onRequest}')]",
+   "class ${3:RequestListener}",
+   "{",
+   "\tpublic function ${2:onRequest}(${4:RequestEvent} \\$event): void",
+   "\t{",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Event listener via AsEventListener"
+ }
 }
