@@ -29,10 +29,22 @@ pub struct RemoteFim {
 /// Normalize an endpoint root into the native generate URL. The OpenAI
 /// compatibility suffix `/v1` does not expose raw FIM prompting, so the
 /// native API is always used.
-pub fn generate_url(endpoint: &str) -> String {
+fn api_url(endpoint: &str, path: &str) -> String {
     let trimmed = endpoint.trim().trim_end_matches('/');
     let root = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
-    format!("{root}/api/generate")
+    format!("{root}{path}")
+}
+
+/// Normalize an endpoint root into the native generate URL. The OpenAI
+/// compatibility suffix `/v1` does not expose raw FIM prompting, so the
+/// native API is always used.
+pub fn generate_url(endpoint: &str) -> String {
+    api_url(endpoint, "/api/generate")
+}
+
+/// Native chat URL for instruct-turn requests (next-edit prediction).
+pub fn chat_url(endpoint: &str) -> String {
+    api_url(endpoint, "/api/chat")
 }
 
 /// Qwen FIM prompt order: prefix, suffix, then the middle marker the model
@@ -59,7 +71,43 @@ struct StreamChunk {
     #[serde(default)]
     response: String,
     #[serde(default)]
+    message: Option<ChatPart>,
+    #[serde(default)]
     done: bool,
+}
+
+#[derive(Deserialize)]
+struct ChatPart {
+    content: String,
+}
+
+/// One streamed line source: raw generate chunks carry `response`, chat
+/// chunks carry `message.content`.
+impl StreamChunk {
+    fn text(&self) -> &str {
+        match &self.message {
+            Some(part) => &part.content,
+            None => &self.response,
+        }
+    }
+}
+
+/// Body for a chat request. Built in one place so the wire shape is testable
+/// without a network.
+pub fn chat_body(
+    model: &str,
+    messages: &[crate::chat::Message],
+    max_tokens: usize,
+) -> serde_json::Value {
+    serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": true,
+        "options": {
+            "num_predict": max_tokens.clamp(1, 2048),
+            "temperature": 0.2,
+        }
+    })
 }
 
 pub struct OllamaProvider {
@@ -76,7 +124,9 @@ impl Provider for OllamaProvider {
         request: &Request,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Completion> {
-        ensure!(request.messages.is_none(), "Remote lane is FIM-only");
+        if let Some(messages) = &request.messages {
+            return self.complete_chat(request, messages, cancelled);
+        }
         ensure!(
             !self.remote.model.trim().is_empty(),
             "Ollama model name is empty"
@@ -132,6 +182,71 @@ impl Provider for OllamaProvider {
         Ok(Completion {
             text: clean(&text, &request.suffix),
             // Stream chunks carry no token counts; zero means unreported.
+            tokens: 0,
+            prompt_tokens: 0,
+            load_ms: 0,
+            generation_ms: start.elapsed().as_millis(),
+            prefill_ms: 0,
+            decode_ms: 0,
+            cancelled: false,
+        })
+    }
+}
+
+impl OllamaProvider {
+    /// Instruct-turn completion over /api/chat. Used by next-edit
+    /// prediction; the FIM lane stays on raw /api/generate. Same streaming
+    /// cancellation discipline as the FIM path.
+    fn complete_chat(
+        &mut self,
+        request: &Request,
+        messages: &[crate::chat::Message],
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Completion> {
+        ensure!(!messages.is_empty(), "Empty chat request");
+        for m in messages {
+            ensure!(
+                ["system", "user", "assistant"].contains(&m.role.as_str()),
+                "Invalid chat role"
+            );
+        }
+        let url = chat_url(&self.remote.endpoint);
+        ensure!(
+            url.starts_with("http://") || url.starts_with("https://"),
+            "Ollama endpoint must start with http:// or https://"
+        );
+        let timeout =
+            Duration::from_millis(self.remote.timeout_ms.clamp(1_000, 120_000));
+        if cancelled() {
+            bail!("Cancelled");
+        }
+        let start = Instant::now();
+        let response = ureq::post(&url)
+            .timeout(timeout)
+            .send_json(chat_body(&self.remote.model, messages, request.max_tokens))
+            .map_err(|e| anyhow!("Ollama chat request failed: {e}"))?;
+        let mut text = String::new();
+        let mut done = false;
+        for line in BufReader::new(response.into_reader()).lines() {
+            if cancelled() {
+                bail!("Cancelled");
+            }
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let chunk: StreamChunk = serde_json::from_str(&line)
+                .map_err(|e| anyhow!("Ollama chat stream parse: {e}"))?;
+            text.push_str(chunk.text());
+            if chunk.done {
+                done = true;
+                break;
+            }
+        }
+        ensure!(done, "Ollama chat stream ended before the done chunk");
+        // Raw model text: the caller (editor) parses the edit contract.
+        Ok(Completion {
+            text,
             tokens: 0,
             prompt_tokens: 0,
             load_ms: 0,
@@ -230,6 +345,53 @@ mod tests {
         let expected = "日本語のテキスト\n}";
         let got = clean("日本語のテキスト\n}\n// ö̈mma🦀", "\n// ö̈mma🦀");
         assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn chat_url_normalization_and_body_shape() {
+        assert_eq!(
+            chat_url("https://ai.izdrail.com/v1/"),
+            "https://ai.izdrail.com/api/chat"
+        );
+        assert_eq!(
+            chat_url("http://localhost:11434"),
+            "http://localhost:11434/api/chat"
+        );
+        let messages = vec![
+            crate::chat::Message {
+                role: "system".into(),
+                content: "s".into(),
+            },
+            crate::chat::Message {
+                role: "user".into(),
+                content: "u".into(),
+            },
+        ];
+        let body = chat_body("qwen2.5-coder:1.5b-instruct-q4_K_M", &messages, 512);
+        assert_eq!(body["model"], "qwen2.5-coder:1.5b-instruct-q4_K_M");
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["options"]["num_predict"], 512);
+        // No raw flag on chat: the server applies the instruct template.
+        assert!(body.get("raw").is_none());
+        assert_eq!(body["messages"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn stream_chunk_reads_both_shapes() {
+        let fim: StreamChunk =
+            serde_json::from_str("{\"response\":\"a\",\"done\":false}").unwrap();
+        assert_eq!(fim.text(), "a");
+        assert!(!fim.done);
+        let chat: StreamChunk = serde_json::from_str(
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"b\"},\"done\":true}",
+        )
+        .unwrap();
+        assert_eq!(chat.text(), "b");
+        assert!(chat.done);
+        // Non-ASCII chunk content survives byte-for-byte.
+        let uni: StreamChunk =
+            serde_json::from_str("{\"message\":{\"content\":\"héllo 🦀 日本語\"}}").unwrap();
+        assert_eq!(uni.text(), "héllo 🦀 日本語");
     }
 
     #[test]
