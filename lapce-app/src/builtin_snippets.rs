@@ -248,7 +248,7 @@ mod tests {
                 assert!(seen.insert(p.clone()), "duplicate prefix {p}");
             }
         }
-        for want in ["wp-taxonomy", "wp-metabox", "wp-ajax", "wp-nav-menu", "wp-image-size", "wp-remote-get", "wp-widget", "wp-cron"] {
+        for want in ["wp-taxonomy", "wp-metabox", "wp-ajax", "wp-nav-menu", "wp-image-size", "wp-remote-get", "wp-widget", "wp-cron", "wp-transient", "wp-option", "wp-settings", "wp-block", "wp-customizer", "wp-prepare", "wp-admin-page", "wp-pagination", "wp-localize"] {
             assert!(seen.contains(want), "{want}");
         }
         let text_of = |prefix: &str| {
@@ -259,6 +259,14 @@ mod tests {
         assert!(text_of("wp-remote-get").contains("$response = wp_remote_get("));
         assert!(text_of("wp-widget").contains("class My_Widget extends WP_Widget {"));
         assert!(text_of("wp-cron").contains("wp_schedule_event(time(), 'hourly', 'my_cron');"));
+        assert!(text_of("wp-transient").contains("$value = get_transient('key');"));
+        assert!(text_of("wp-settings").contains("register_setting('my_group', 'my_option');"));
+        assert!(text_of("wp-prepare").contains("$wpdb->prepare("));
+        assert!(text_of("wp-customizer").contains("WP_Customize_Manager $wp_customize"));
+        assert!(text_of("wp-block").contains("register_block_type("));
+        assert!(text_of("wp-admin-page").contains("add_menu_page("));
+        assert!(text_of("wp-pagination").contains("paginate_links("));
+        assert!(text_of("wp-localize").contains("wp_localize_script("));
     }
 
     #[test]

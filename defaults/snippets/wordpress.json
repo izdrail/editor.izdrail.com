@@ -225,4 +225,109 @@
   ],
   "description": "schedule a cron event"
  }
+,
+ "Transient cache": {
+  "prefix": "wp-transient",
+  "body": [
+   "\\$${1:value} = get_transient('${2:key}');",
+   "if (false === \\$${1:value}) {",
+   "\t\\$${1:value} = ${3:expensive_query()};",
+   "\tset_transient('${2:key}', \\$${1:value}, ${4:HOUR_IN_SECONDS});",
+   "}"
+  ],
+  "description": "Transient get-or-set cache pattern"
+ },
+ "Option value": {
+  "prefix": "wp-option",
+  "body": [
+   "\\$${1:value} = get_option('${2:option_name}', ${3:default});"
+  ],
+  "description": "Read an option with a default"
+ },
+ "Settings API": {
+  "prefix": "wp-settings",
+  "body": [
+   "add_action('admin_init', function () {",
+   "\tregister_setting('${1:my_group}', '${2:my_option}');",
+   "\tadd_settings_section('${3:my_section}', '${4:Section title}', '__return_null', '${5:my_page}');",
+   "\tadd_settings_field('${2:my_option}', '${6:Field label}', function () {",
+   "\t\t\\$${7:value} = get_option('${2:my_option}');",
+   "\t\techo '<input name=\"${2:my_option}\" value=\"' . esc_attr(\\$${7:value}) . '\">';",
+   "\t}, '${5:my_page}', '${3:my_section}');",
+   "});"
+  ],
+  "description": "Settings API: setting, section and field"
+ },
+ "Register block": {
+  "prefix": "wp-block",
+  "body": [
+   "add_action('init', function () {",
+   "\tregister_block_type(__DIR__ . '/${1:build}');",
+   "});"
+  ],
+  "description": "Register a block from its block.json directory"
+ },
+ "Customizer section": {
+  "prefix": "wp-customizer",
+  "body": [
+   "add_action('customize_register', function (\\\\WP_Customize_Manager \\$wp_customize) {",
+   "\t\\$wp_customize->add_section('${1:my_section}', [",
+   "\t\t'title' => __('${2:Section}', '${3:text-domain}'),",
+   "\t]);",
+   "\t\\$wp_customize->add_setting('${4:my_setting}', [",
+   "\t\t'default' => '${5:value}',",
+   "\t\t'sanitize_callback' => '${6:sanitize_text_field}',",
+   "\t]);",
+   "\t\\$wp_customize->add_control('${4:my_setting}', [",
+   "\t\t'label' => __('${7:Label}', '${3:text-domain}'),",
+   "\t\t'section' => '${1:my_section}',",
+   "\t\t'type' => '${8:text}',",
+   "\t]);",
+   "});"
+  ],
+  "description": "Customizer section, setting and control"
+ },
+ "wpdb prepare": {
+  "prefix": "wp-prepare",
+  "body": [
+   "\\$${1:rows} = \\$wpdb->get_results(",
+   "\t\\$wpdb->prepare(",
+   "\t\t\"SELECT * FROM {\\$wpdb->prefix}${2:table} WHERE ${3:status} = %s\",",
+   "\t\t${4:'publish'}",
+   "\t)",
+   ");"
+  ],
+  "description": "wpdb prepared SELECT"
+ },
+ "Admin menu page": {
+  "prefix": "wp-admin-page",
+  "body": [
+   "add_action('admin_menu', function () {",
+   "\tadd_menu_page('${1:Page title}', '${2:Menu title}', '${3:manage_options}', '${4:my-slug}', function () {",
+   "\t\techo '<div class=\"wrap\"><h1>' . esc_html__('${1:Page title}', '${5:text-domain}') . '</h1></div>';",
+   "\t}, '${6:dashicons-admin-generic}', ${7:80});",
+   "});"
+  ],
+  "description": "add_menu_page with a render callback"
+ },
+ "Pagination links": {
+  "prefix": "wp-pagination",
+  "body": [
+   "echo paginate_links([",
+   "\t'total' => \\$${1:query}->max_num_pages,",
+   "\t'current' => max(1, get_query_var('${2:paged}')),",
+   "]);"
+  ],
+  "description": "paginate_links for a WP_Query"
+ },
+ "Localize script": {
+  "prefix": "wp-localize",
+  "body": [
+   "wp_localize_script('${1:handle}', '${2:myData}', [",
+   "\t'ajaxUrl' => admin_url('admin-ajax.php'),",
+   "\t'nonce' => wp_create_nonce('${3:my_action}'),",
+   "]);"
+  ],
+  "description": "Pass PHP data to an enqueued script"
+ }
 }
