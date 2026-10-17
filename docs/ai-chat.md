@@ -73,3 +73,22 @@ Run `cargo check -p lapce-app` and `cargo test -p lapce-app --lib chat::tests`.
 For template tests, set `AI_TOKENIZER` to the official tokenizer and run
 `cargo test -p lapce-ai --lib`. Real chat quality and CPU latency need a model
 and a host benchmark; compile success is not a quality benchmark.
+
+## Slash commands (item 139)
+
+The composer accepts three slash commands, an honest subset of
+Antigravity's catalog (verified against antigravity.google/docs/slash-commands
+2026-10-17):
+
+- `/plan <message>` - run the message in Plan mode; the reply also lands
+  as a reviewable `.lapce/plans/` artifact.
+- `/ask <message>` - run the message in Ask mode.
+- `/btw <message>` - one-off side question: answered like chat, but not
+  added to the conversation history and not persisted. The turn is
+  labeled "Side question" in the panel.
+
+Commands override the Chat/Ask/Plan/ACP mode buttons for that one send.
+Unknown commands and bare commands are rejected with a hint instead of
+silently chatting. `/goal` is deliberately absent: it implies autonomous
+execution, which is the parked Act mode. In ACP mode `/btw` behaves like
+a normal send (ACP turns never join chat history anyway).

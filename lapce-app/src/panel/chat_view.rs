@@ -230,6 +230,23 @@ fn send(tab: &WindowTabData) {
         data.error.set("Type a message first.".into());
         return;
     }
+    // Slash commands override the mode buttons: they are explicit.
+    let (prompt, record) = match chat::parse_slash(&prompt) {
+        Some(Ok(chat::SlashCommand::Plan(text))) => {
+            send_agent(tab, crate::agent_loop::Mode::Plan, &text);
+            return;
+        }
+        Some(Ok(chat::SlashCommand::Ask(text))) => {
+            send_agent(tab, crate::agent_loop::Mode::Ask, &text);
+            return;
+        }
+        Some(Ok(chat::SlashCommand::Btw(text))) => (text, false),
+        Some(Err(message)) => {
+            data.error.set(message);
+            return;
+        }
+        None => (prompt, true),
+    };
     if data.acp.get_untracked() {
         send_acp(tab, &prompt);
         return;
@@ -251,10 +268,17 @@ fn send(tab: &WindowTabData) {
         v.push(Turn {
             role: "You",
             text: tab.scope.create_rw_signal(prompt),
-            context: ctx
-                .as_ref()
-                .map(Context::indicator)
-                .unwrap_or_else(|| "No editor context".into()),
+            context: {
+                let base = ctx
+                    .as_ref()
+                    .map(Context::indicator)
+                    .unwrap_or_else(|| "No editor context".into());
+                if record {
+                    base
+                } else {
+                    format!("Side question - not added to history | {base}")
+                }
+            },
         });
         v.push(Turn {
             role: "Assistant",
@@ -265,8 +289,8 @@ fn send(tab: &WindowTabData) {
     data.input.set(String::new());
     data.busy.set(true);
     data.error.set(String::new());
-    data.persist(settings.save_history);
-    let save_history = settings.save_history;
+    data.persist(settings.save_history && record);
+    let save_history = settings.save_history && record;
     let (tx, rx) = std::sync::mpsc::channel();
     let progress = floem::ext_event::create_signal_from_channel(rx);
     let done_data = data.clone();
@@ -280,12 +304,14 @@ fn send(tab: &WindowTabData) {
                 Update::Delta(text) => reply.set(text),
                 Update::Done(text) => {
                     reply.set(text);
-                    let mut history = request_messages[1..].to_vec();
-                    history.push(Message {
-                        role: "assistant".into(),
-                        content: reply.get_untracked(),
-                    });
-                    done_data.history.set(history);
+                    if record {
+                        let mut history = request_messages[1..].to_vec();
+                        history.push(Message {
+                            role: "assistant".into(),
+                            content: reply.get_untracked(),
+                        });
+                        done_data.history.set(history);
+                    }
                     done_data.busy.set(false);
                     done_data.state.set(RunState::Done);
                     done_data.persist(save_history);

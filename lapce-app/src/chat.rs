@@ -59,6 +59,43 @@ pub fn assemble(
     });
     messages
 }
+/// Slash commands (Antigravity parity row 15, honest subset):
+/// `/plan` and `/ask` route the message to the agent loop in that mode;
+/// `/btw` asks a one-off side question that is not added to the
+/// conversation history. `/goal` is deliberately absent: it implies
+/// autonomous execution, which is the parked Act mode. Returns None
+/// when the input is not a command, Some(Err) for unknown or empty
+/// commands so the panel can say so instead of silently chatting.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SlashCommand {
+    Plan(String),
+    Ask(String),
+    Btw(String),
+}
+
+pub fn parse_slash(input: &str) -> Option<Result<SlashCommand, String>> {
+    let input = input.trim_start();
+    if !input.starts_with('/') {
+        return None;
+    }
+    let mut parts = input.splitn(2, char::is_whitespace);
+    let command = parts.next().unwrap_or("");
+    let rest = parts.next().unwrap_or("").trim();
+    if !matches!(command, "/plan" | "/ask" | "/btw") {
+        return Some(Err(format!(
+            "Unknown command {command}. Supported: /plan, /ask, /btw."
+        )));
+    }
+    if rest.is_empty() {
+        return Some(Err(format!("{command} needs a message after it.")));
+    }
+    Some(Ok(match command {
+        "/plan" => SlashCommand::Plan(rest.to_string()),
+        "/ask" => SlashCommand::Ask(rest.to_string()),
+        _ => SlashCommand::Btw(rest.to_string()),
+    }))
+}
+
 pub fn completion_url(endpoint: &str) -> Result<String, String> {
     let base = endpoint.trim().trim_end_matches('/');
     let url = url::Url::parse(base).map_err(|e| e.to_string())?;
@@ -298,5 +335,23 @@ mod cancellation_tests {
         assert!(matches!(&result.borrow()[0],Update::Delta(s) if s=="hello"));
         assert!(matches!(&result.borrow()[1], Update::Done(_)));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn slash_commands_parse() {
+        assert!(parse_slash("plain message").is_none());
+        let plan = parse_slash("/plan add a health route").unwrap().unwrap();
+        let expected_plan = SlashCommand::Plan("add a health route".into());
+        assert_eq!(plan, expected_plan);
+        let ask = parse_slash("/ask what does web.php do").unwrap().unwrap();
+        let expected_ask = SlashCommand::Ask("what does web.php do".into());
+        assert_eq!(ask, expected_ask);
+        let btw = parse_slash("/btw héllo 🦀 side question").unwrap().unwrap();
+        let expected_btw = SlashCommand::Btw("héllo 🦀 side question".into());
+        assert_eq!(btw, expected_btw);
+        assert!(parse_slash("/goal fix everything").unwrap().is_err());
+        assert!(parse_slash("/planx not-a-command").unwrap().is_err());
+        assert!(parse_slash("/plan").unwrap().is_err());
+        assert!(parse_slash("  /btw   spaced out ").unwrap().is_ok());
     }
 }
