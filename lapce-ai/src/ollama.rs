@@ -110,6 +110,27 @@ pub fn chat_body(
     })
 }
 
+/// Body for a raw FIM request. Pure so the stop tokens, raw flag and
+/// token budget are pinned by tests without a network.
+pub fn fim_body(
+    model: &str,
+    prefix: &str,
+    suffix: &str,
+    max_tokens: usize,
+) -> serde_json::Value {
+    serde_json::json!({
+        "model": model,
+        "prompt": fim_prompt(prefix, suffix),
+        "raw": true,
+        "stream": true,
+        "options": {
+            "num_predict": max_tokens.clamp(1, 128),
+            "temperature": 0.2,
+            "stop": STOPS,
+        }
+    })
+}
+
 pub struct OllamaProvider {
     remote: RemoteFim,
 }
@@ -138,17 +159,12 @@ impl Provider for OllamaProvider {
         );
         let timeout =
             Duration::from_millis(self.remote.timeout_ms.clamp(1_000, 120_000));
-        let body = serde_json::json!({
-            "model": self.remote.model,
-            "prompt": fim_prompt(&request.prefix, &request.suffix),
-            "raw": true,
-            "stream": true,
-            "options": {
-                "num_predict": request.max_tokens.clamp(1, 128),
-                "temperature": 0.2,
-                "stop": STOPS,
-            }
-        });
+        let body = fim_body(
+            &self.remote.model,
+            &request.prefix,
+            &request.suffix,
+            request.max_tokens,
+        );
         if cancelled() {
             bail!("Cancelled");
         }
@@ -392,6 +408,36 @@ mod tests {
         let uni: StreamChunk =
             serde_json::from_str("{\"message\":{\"content\":\"héllo 🦀 日本語\"}}").unwrap();
         assert_eq!(uni.text(), "héllo 🦀 日本語");
+    }
+
+    #[test]
+    fn fim_body_sends_stops_raw_and_clamped_budget() {
+        let body = fim_body(
+            "qwen2.5-coder:1.5b-instruct-q4_K_M",
+            "let s = grüße🎉(",
+            "\n}// 日本語",
+            999,
+        );
+        assert_eq!(body["raw"], true);
+        assert_eq!(body["stream"], true);
+        // Budget clamps to the lane maximum.
+        assert_eq!(body["options"]["num_predict"], 128);
+        // Every stop marker goes to the server; non-ASCII content is
+        // untouched by the prompt wrapper.
+        let stops = body["options"]["stop"].as_array().unwrap();
+        assert_eq!(stops.len(), STOPS.len());
+        for marker in ["<|fim_pad|>", "<|endoftext|>", "<|fim_middle|>"] {
+            assert!(
+                stops.iter().any(|v| v.as_str() == Some(marker)),
+                "missing stop {marker}"
+            );
+        }
+        let prompt = body["prompt"].as_str().unwrap();
+        assert!(prompt.contains("grüße🎉("));
+        assert!(prompt.contains("日本語"));
+        // Small budgets are not inflated.
+        assert_eq!(fim_body("m", "", "", 4)["options"]["num_predict"], 4);
+        assert_eq!(fim_body("m", "", "", 0)["options"]["num_predict"], 1);
     }
 
     #[test]
