@@ -1,6 +1,9 @@
-//! Local CPU-only Qwen FIM provider. No implicit downloads or remote inference.
+//! Qwen FIM providers: local CPU-only Candle (no network) and an
+//! explicit, config-carried Ollama network lane. No implicit downloads;
+//! remote inference happens only when a request carries remote parameters.
 pub mod catalog;
 pub mod chat;
+pub mod ollama;
 pub mod process;
 use anyhow::{Result, anyhow, bail, ensure};
 use candle_core::{Device, Tensor, quantized::gguf_file};
@@ -32,6 +35,11 @@ pub struct Request {
     pub request_id: u64,
     #[serde(default)]
     pub messages: Option<Vec<chat::Message>>,
+    /// Network FIM lane: when set, the worker POSTs to this Ollama endpoint
+    /// instead of loading local model files; model/tokenizer are ignored.
+    /// Absent in older clients, so the default keeps the local lane.
+    #[serde(default)]
+    pub remote: Option<ollama::RemoteFim>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Completion {
@@ -444,6 +452,39 @@ pub fn run() -> i32 {
         });
         let mut provider: Option<(PathBuf, PathBuf, CandleProvider)> = None;
         for request in rx {
+            if let Some(remote) = request.remote.clone() {
+                // Network lane: no local model files are touched. A remote
+                // failure exits the worker like a local one; the dispatcher
+                // respawns it cheaply because nothing is cached here.
+                let id = request.request_id;
+                let cancelled = {
+                    let cancel_for = cancel_for.clone();
+                    move || {
+                        let named = cancel_for.load(Ordering::Acquire);
+                        named == id || (id == 0 && named != u64::MAX)
+                    }
+                };
+                let start = Instant::now();
+                let output = match ollama::OllamaProvider::new(remote)
+                    .complete(&request, &cancelled)
+                {
+                    Ok(output) => output,
+                    Err(e) if is_cancelled(&e) => Completion {
+                        text: String::new(),
+                        tokens: 0,
+                        prompt_tokens: 0,
+                        load_ms: 0,
+                        generation_ms: start.elapsed().as_millis(),
+                        prefill_ms: 0,
+                        decode_ms: 0,
+                        cancelled: true,
+                    },
+                    Err(e) => return Err(e),
+                };
+                println!("{}", serde_json::to_string(&output)?);
+                std::io::stdout().flush()?;
+                continue;
+            }
             if provider.as_ref().is_none_or(|(m, t, _)| {
                 *m != request.model || *t != request.tokenizer
             }) {
@@ -549,6 +590,7 @@ mod tests {
             max_tokens: 8,
             request_id: 7,
             messages: None,
+            remote: None,
         };
         let line = serde_json::to_string(&request).unwrap();
         match parse_wire(&line).unwrap() {
@@ -583,6 +625,7 @@ mod tests {
             max_tokens: 8,
             request_id: 0,
             messages: None,
+            remote: None,
         };
         let p = prompt_ids(&t, &r).unwrap();
         assert_eq!(p[0], token(&t, "fim_prefix").unwrap());
@@ -609,6 +652,7 @@ mod tests {
                 max_tokens: 24,
                 request_id: 0,
                 messages: None,
+                remote: None,
             };
             let c = provider.complete(&r, &|| false).unwrap();
             println!("{c:?}");
@@ -616,5 +660,28 @@ mod tests {
             assert!(c.text.contains('a') && c.text.contains('b'));
             assert!(!c.text.contains("```"));
         }
+    }
+
+    #[test]
+    fn request_json_without_remote_stays_local() {
+        // Older editors send no remote field: the worker must keep treating
+        // those requests as local Candle work.
+        let line = "{\"model\":\"m.gguf\",\"tokenizer\":\"t.json\",\"prefix\":\"a\",\"suffix\":\"b\",\"prefix_tokens\":4,\"suffix_tokens\":2,\"max_tokens\":8,\"request_id\":3,\"messages\":null}";
+        let request: Request = serde_json::from_str(line).unwrap();
+        assert!(request.remote.is_none());
+        assert_eq!(request.request_id, 3);
+        let with_remote = Request {
+            remote: Some(ollama::RemoteFim {
+                endpoint: "https://ai.izdrail.com".into(),
+                model: "qwen2.5-coder:1.5b-instruct-q4_K_M".into(),
+                timeout_ms: 15_000,
+            }),
+            ..request
+        };
+        let round: Request =
+            serde_json::from_str(&serde_json::to_string(&with_remote).unwrap())
+                .unwrap();
+        let expected = Some("https://ai.izdrail.com");
+        assert_eq!(round.remote.as_ref().map(|r| r.endpoint.as_str()), expected.as_deref());
     }
 }

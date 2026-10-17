@@ -348,6 +348,8 @@ fn send(tab: &WindowTabData) {
                 max_tokens: 512,
                 messages: Some(messages.clone()),
                 request_id: 0,
+                // Local chat lane: no remote parameters.
+                remote: None,
             })
         })();
         match run {

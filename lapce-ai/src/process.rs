@@ -236,6 +236,7 @@ mod tests {
             max_tokens: 1,
             request_id: 0,
             messages: None,
+            remote: None,
         }
     }
     const OK: &str = "{\"text\":\"ok$$\",\"tokens\":1,\"prompt_tokens\":1,\"load_ms\":0,\"generation_ms\":0,\"prefill_ms\":0,\"decode_ms\":0,\"cancelled\":false}";

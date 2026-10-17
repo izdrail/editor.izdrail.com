@@ -2350,6 +2350,9 @@ impl EditorData {
             // cooperative cancellation; zero means untagged here.
             request_id: 0,
             messages: None,
+            // Wired to the configured Ollama lane in the follow-up item;
+            // None keeps this literal compiling in the meantime.
+            remote: None,
         };
         let ai_request = match serde_json::to_string(&request) {
             Ok(s) => s,
