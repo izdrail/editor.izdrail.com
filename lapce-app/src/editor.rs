@@ -2102,9 +2102,36 @@ impl EditorData {
             return;
         };
 
+        // Tab-to-jump: a next-edit prediction anchored away from the
+        // cursor applies in place and lands the caret just past the
+        // inserted text, so repeated Tab walks the chain of predicted
+        // edit locations.
+        let jump_to = item.range.as_ref().and_then(|range| {
+            (range.start != start_offset)
+                .then_some(range.start + item.insert_text.len())
+        });
+
         if let Err(err) = item.apply(self, start_offset) {
             tracing::error!("{:?}", err);
         } else {
+            if let Some(offset) = jump_to {
+                let offset = self
+                    .doc()
+                    .buffer
+                    .with_untracked(|b| {
+                        b.prev_code_boundary(offset.min(b.text().len()))
+                    });
+                let config = self.common.config.get_untracked();
+                self.cursor().set(if config.core.modal {
+                    Cursor::new(CursorMode::Normal(offset), None, None)
+                } else {
+                    Cursor::new(
+                        CursorMode::Insert(Selection::caret(offset)),
+                        None,
+                        None,
+                    )
+                });
+            }
             // Supercomplete: an accepted suggestion chains into predicting
             // the next edit (ollama lane only; guarded inside).
             self.request_next_edit();

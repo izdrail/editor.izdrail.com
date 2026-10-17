@@ -136,9 +136,14 @@ replace and its `<new>` replacement. The editor locates the anchor itself:
 the prediction is discarded if the buffer changed meanwhile, if the anchor
 appears zero times or more than once in the window, or if the reply does not
 follow the contract. A prediction that parses renders as ghost text at the
-located range; accepting (the usual inline-accept binding) applies the
-replacement in place. v1 does not move the cursor to a distant prediction or
-auto-trigger predictions on a typing pause; both are follow-ups. Every
+located range, and stays rendered there even while the trigger-line refresh
+runs (it is no longer hidden just because the cursor is elsewhere).
+Accepting (the usual inline-accept binding) applies the replacement in
+place; when the prediction sits away from the cursor the caret jumps to the
+end of the inserted text and the view scrolls to it, so repeated accepts
+walk the chain of predicted edit locations. Predictions still do not
+auto-trigger on a typing pause; the chain starts from an accepted ghost or
+prediction. Every
 accepted prediction chains into a fresh one until the model replies NONE or
 the buffer diverges. This lane sends the same bounded context to the same
 configured endpoint as ghost text - nothing more.

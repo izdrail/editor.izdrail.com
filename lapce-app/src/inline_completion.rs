@@ -208,6 +208,16 @@ impl InlineCompletionData {
             return;
         };
 
+        // Next-edit predictions anchor at their span, away from the
+        // trigger offset. The typed-overlap refresh below is only valid
+        // for ghost text at the cursor: for an away item it hides the
+        // prediction or strips the wrong prefix. Render those exactly
+        // like a fresh set instead (full text at the span).
+        if anchors_away_from_trigger(item.range.as_ref(), self.start_offset) {
+            self.update_doc(doc, cursor_offset);
+            return;
+        }
+
         let completion = doc.inline_completion.with_untracked(|cur| {
             let cur = cur.as_deref();
             inline_completion_text(text, self.start_offset, cursor_offset, item, cur)
@@ -234,6 +244,16 @@ enum ICompletionRes {
 }
 
 /// Get the text of the inline completion item  
+/// A next-edit prediction anchors at its span rather than at the offset
+/// the request was triggered from. Pure so the routing in
+/// `update_inline_completion` stays testable.
+pub fn anchors_away_from_trigger(
+    range: Option<&std::ops::Range<usize>>,
+    start_offset: usize,
+) -> bool {
+    range.map(|r| r.start != start_offset).unwrap_or(false)
+}
+
 fn inline_completion_text(
     rope_text: impl RopeText,
     start_offset: usize,
@@ -534,6 +554,18 @@ mod tests {
         let mut history = EditHistory::default();
         history.record(0, "");
         assert!(history.records.is_empty());
+    }
+
+    #[test]
+    fn anchors_away_only_when_the_span_leaves_the_trigger() {
+        // Ghost text at the cursor: no range, or a span at the trigger.
+        assert!(!anchors_away_from_trigger(None, 42));
+        assert!(!anchors_away_from_trigger(Some(&(42..50)), 42));
+        assert!(!anchors_away_from_trigger(Some(&(42..42)), 42));
+        // Next-edit prediction anchored elsewhere: routes to the span
+        // renderer, never the typed-overlap refresh.
+        assert!(anchors_away_from_trigger(Some(&(100..110)), 42));
+        assert!(anchors_away_from_trigger(Some(&(0..5)), 42));
     }
 
     #[test]
