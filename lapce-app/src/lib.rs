@@ -36,6 +36,7 @@ pub mod livewire_members;
 pub mod tw_usage_index;
 pub mod view_usages;
 pub mod config_channels;
+pub mod config_value_hover;
 pub mod eloquent_scopes;
 pub mod gate_refs;
 pub mod eloquent_factories;
