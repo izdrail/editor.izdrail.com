@@ -251,6 +251,63 @@ fn context(tab: &WindowTabData) -> Option<Context> {
         }
     })
 }
+fn schedule_file_path(tab: &WindowTabData) -> Option<PathBuf> {
+    tab.workspace
+        .path
+        .as_ref()
+        .map(|p| p.join(".lapce").join("scheduled-prompts.json"))
+}
+
+/// Re-arm every minute. One due prompt fires per tick, so a backlog of
+/// missed prompts drains one at a time instead of bursting.
+fn start_prompt_scheduler(tab: Rc<WindowTabData>) {
+    floem::action::exec_after(std::time::Duration::from_secs(60), move |_| {
+        run_due_prompts(&tab);
+        start_prompt_scheduler(tab.clone());
+    });
+}
+
+fn run_due_prompts(tab: &Rc<WindowTabData>) {
+    let Some(path) = schedule_file_path(tab) else {
+        return;
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return;
+    };
+    let Ok(text) = String::from_utf8(bytes) else {
+        return;
+    };
+    let Ok(mut file) =
+        serde_json::from_str::<crate::chat_schedule::ScheduleFile>(&text)
+    else {
+        return;
+    };
+    crate::chat_schedule::normalize(&mut file);
+    let data = tab.chat.clone();
+    if data.busy.get_untracked() {
+        return;
+    }
+    if !tab.common.config.get_untracked().ai_chat.enabled {
+        return;
+    }
+    let now = chrono::Local::now();
+    let Some(idx) = file
+        .prompts
+        .iter()
+        .position(|p| crate::chat_schedule::is_due(p, &now))
+    else {
+        return;
+    };
+    let prompt = file.prompts[idx].prompt.clone();
+    file.prompts[idx].last_fired_unix = now.timestamp().max(0) as u64;
+    // Persist the fire before sending, so a crash cannot double-fire.
+    if let Ok(bytes) = serde_json::to_vec_pretty(&file) {
+        let _ = std::fs::write(&path, bytes);
+    }
+    data.input.set(prompt);
+    send(tab);
+}
+
 fn send(tab: &WindowTabData) {
     let data = tab.chat.clone();
     if data.busy.get_untracked() {
@@ -926,6 +983,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let resume_tab = tab.clone();
     let walkthrough_tab = tab.clone();
     let walkthrough = data.clone();
+    let schedules_tab = tab.clone();
+    let schedules_data = data.clone();
+    start_prompt_scheduler(tab.clone());
     let trust = data.clone();
     let revoke = data.clone();
     let input_signal = data.input;
@@ -999,6 +1059,38 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         }
                         Err(e) => walkthrough.error.set(e),
                     }
+                })
+                .style(move |s| {
+                    s.padding(6.0)
+                        .margin_left(8.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
+                }),
+            label(|| "Schedules".to_string())
+                .on_click_stop(move |_| {
+                    let Some(root) = schedules_tab.workspace.path.clone()
+                    else {
+                        schedules_data
+                            .error
+                            .set("Open a folder to schedule prompts".into());
+                        return;
+                    };
+                    let dir = root.join(".lapce");
+                    let path = dir.join("scheduled-prompts.json");
+                    if !path.exists() {
+                        let _ = std::fs::create_dir_all(&dir);
+                        let _ = std::fs::write(
+                            &path,
+                            crate::chat_schedule::EXAMPLE_FILE,
+                        );
+                    }
+                    schedules_tab
+                        .common
+                        .internal_command
+                        .send(InternalCommand::OpenFile { path });
                 })
                 .style(move |s| {
                     s.padding(6.0)
