@@ -174,7 +174,7 @@ mod tests {
                 assert!(seen.insert(p.clone()), "duplicate prefix {p}");
             }
         }
-        for want in ["lv-job", "lv-event", "lv-listener", "lv-middleware", "lv-resource", "lv-policy", "lv-command", "lv-scope", "lv-pest", "route-api"] {
+        for want in ["lv-job", "lv-event", "lv-listener", "lv-middleware", "lv-resource", "lv-policy", "lv-command", "lv-scope", "lv-pest", "route-api", "route-post", "route-put", "route-patch", "route-delete", "route-view", "lv-seeder", "lv-observer", "lv-notification", "lv-mail", "lv-cast", "lv-morphmany", "lv-schedule", "lv-cache"] {
             assert!(seen.contains(want), "{want}");
         }
         let text_of = |prefix: &str| {
@@ -186,6 +186,10 @@ mod tests {
         assert!(job.contains("use Illuminate\\Bus\\Queueable;"), "{job}");
         assert!(text_of("lv-policy").contains("User $user"));
         assert!(text_of("lv-resource").contains("$this->id"));
+        assert!(text_of("route-post").contains("Route::post("));
+        assert!(text_of("lv-cast").contains("array $attributes"));
+        assert!(text_of("lv-mail").contains("new Envelope("));
+        assert!(text_of("lv-notification").contains("new MailMessage"));
     }
 
     #[test]

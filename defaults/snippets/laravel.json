@@ -394,4 +394,135 @@
   ],
   "description": "dd()"
  }
+,
+ "Route post": {
+  "prefix": "route-post",
+  "body": [
+   "Route::post('${1:/path}', [${2:Controller}::class, '${3:store}'])->name('${4:name}');"
+  ],
+  "description": "Laravel POST route to a controller method"
+ },
+ "Route put": {
+  "prefix": "route-put",
+  "body": [
+   "Route::put('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
+  ],
+  "description": "Laravel PUT route to a controller method"
+ },
+ "Route patch": {
+  "prefix": "route-patch",
+  "body": [
+   "Route::patch('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
+  ],
+  "description": "Laravel PATCH route to a controller method"
+ },
+ "Route delete": {
+  "prefix": "route-delete",
+  "body": [
+   "Route::delete('${1:/path}', [${2:Controller}::class, '${3:destroy}'])->name('${4:name}');"
+  ],
+  "description": "Laravel DELETE route to a controller method"
+ },
+ "Route view": {
+  "prefix": "route-view",
+  "body": [
+   "Route::view('${1:/path}', '${2:view}')->name('${3:name}');"
+  ],
+  "description": "Laravel route straight to a view"
+ },
+ "Seeder run": {
+  "prefix": "lv-seeder",
+  "body": [
+   "public function run(): void",
+   "{",
+   "\t${1:Post}::factory(${2:10})->create();",
+   "\t$0",
+   "}"
+  ],
+  "description": "Database seeder run method"
+ },
+ "Observer method": {
+  "prefix": "lv-observer",
+  "body": [
+   "public function ${1:created}(${2:Post} \\$${3:post}): void",
+   "{",
+   "\t$0",
+   "}"
+  ],
+  "description": "Eloquent observer method"
+ },
+ "Notification mail": {
+  "prefix": "lv-notification",
+  "body": [
+   "public function toMail(object \\$notifiable): MailMessage",
+   "{",
+   "\treturn (new MailMessage)",
+   "\t\t->subject('${1:Subject}')",
+   "\t\t->line('${2:Line}')",
+   "\t\t->action('${3:View}', \\$this->${4:url})",
+   "\t\t->line('${5:Thanks}');",
+   "}"
+  ],
+  "description": "Notification mail channel message"
+ },
+ "Mailable envelope/content": {
+  "prefix": "lv-mail",
+  "body": [
+   "public function envelope(): Envelope",
+   "{",
+   "\treturn new Envelope(",
+   "\t\tsubject: '${1:Subject}',",
+   "\t);",
+   "}",
+   "",
+   "public function content(): Content",
+   "{",
+   "\treturn new Content(",
+   "\t\tview: '${2:emails.${3:name}}',",
+   "\t);",
+   "}"
+  ],
+  "description": "Mailable envelope and content methods"
+ },
+ "Custom cast": {
+  "prefix": "lv-cast",
+  "body": [
+   "public function get(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
+   "{",
+   "\treturn \\$value;",
+   "}",
+   "",
+   "public function set(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
+   "{",
+   "\treturn \\$value;",
+   "}"
+  ],
+  "description": "Custom Eloquent cast get/set methods"
+ },
+ "Morph many relation": {
+  "prefix": "lv-morphmany",
+  "body": [
+   "public function ${1:comments}(): MorphMany",
+   "{",
+   "\treturn \\$this->morphMany(${2:Comment}::class, '${3:commentable}');",
+   "}"
+  ],
+  "description": "Polymorphic one-to-many relation"
+ },
+ "Scheduled command": {
+  "prefix": "lv-schedule",
+  "body": [
+   "Schedule::command('${1:inspire}')->${2:daily}();"
+  ],
+  "description": "Scheduled artisan command (routes/console.php)"
+ },
+ "Cache remember": {
+  "prefix": "lv-cache",
+  "body": [
+   "\\$${1:value} = Cache::remember('${2:key}', ${3:3600}, function () {",
+   "\treturn ${4:value};",
+   "});"
+  ],
+  "description": "Cache::remember with a callback"
+ }
 }
