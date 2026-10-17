@@ -4,12 +4,19 @@ Open the right-hand **AI Chat** panel from its lightbulb sidebar button or the
 **Toggle AI Chat** command. Type a question and press Enter or Send. New chat
 clears the conversation. History is per window tab and kept in memory only.
 
-## Local first
+## Izdrail Ollama first
 
-Settings > AI Chat defaults to `backend = "local"`. This uses Candle on CPU in
-an isolated, reusable worker process, not Ollama or a hosted API. Choose a Chat
-model in the curated model list, Download selected model, then Use this model.
-Downloads are explicit; they never upload editor content. The default is
+Settings > AI Chat defaults to `backend = "ollama"` against
+`https://ai.izdrail.com`, Stefan's key-less server: chat, Ask and Plan work out
+of the box with no keys and no hosted fallback (verified on `/api/tags` and
+`/v1/models` 2026-10-17). Endpoint and model stay editable.
+
+## Local lane (opt-in)
+
+Set `backend = "local"` to use Candle on CPU in an isolated, reusable worker
+process, not Ollama or a hosted API. Choose a Chat model in the curated model
+list, Download selected model, then Use this model. Downloads are explicit;
+they never upload editor content. The curated default is
 Qwen2.5-Coder-1.5B-Instruct Q4_K_M (986 MB). Local replies arrive as complete
 turns. Chat uses Qwen ChatML, not the FIM autocomplete template. The instruct
 model has a separate manifest and cannot replace the autocomplete base model.
@@ -29,11 +36,12 @@ and override the picker. Clear those overrides to use a curated FIM choice.
 
 ## Your Ollama server
 
-Set `backend = "ollama"` in Settings > AI Chat to use your server. Endpoint
-defaults to `https://ai.izdrail.com`; a root URL or `/v1` URL is accepted. Model
-defaults to `qwen2.5-coder:1.5b-instruct-q4_K_M`, verified on `/api/tags` and
-`/v1/models` on 2026-10-13. Endpoint and model are editable. No OpenAI key,
-OpenAI service or hidden hosted fallback is used. Errors stay in the panel.
+`backend = "ollama"` is the default. Endpoint defaults to
+`https://ai.izdrail.com`; a root URL or `/v1` URL is accepted. Model defaults
+to `qwen2.5-coder:1.5b-instruct-q4_K_M`, verified on `/api/tags` and
+`/v1/models` on 2026-10-17. Endpoint and model are editable - point them at any
+Ollama-compatible server. No OpenAI key, OpenAI service or hidden hosted
+fallback is used. Errors stay in the panel.
 
 Responses stream when the server returns SSE. Servers that reject streaming
 with 400/405/422/501 are retried once in full-response mode. A broken partial

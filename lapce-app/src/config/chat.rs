@@ -1,3 +1,6 @@
+//! AI chat defaults. Stefan's directive (2026-10-17): the default backend is
+//! his key-less Ollama at https://ai.izdrail.com; the local Candle lane stays
+//! available as an opt-in. Pinned by the test at the bottom.
 use serde::{Deserialize, Serialize};
 use structdesc::FieldNames;
 #[derive(FieldNames, Debug, Clone, Deserialize, Serialize)]
@@ -46,11 +49,28 @@ impl Default for ChatConfig {
                     crate::agent_protocol::ProviderKind::OpenRouter,
                 ),
             ],
-            backend: "local".into(),
+            backend: "ollama".into(),
             local_model: "qwen-chat-1.5b".into(),
             endpoint: "https://ai.izdrail.com".into(),
             model: "qwen2.5-coder:1.5b-instruct-q4_K_M".into(),
             acp_command: String::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_point_at_the_izdrail_ollama() {
+        let config = ChatConfig::default();
+        assert_eq!(config.backend, "ollama");
+        assert_eq!(config.endpoint, "https://ai.izdrail.com");
+        // Verified on /api/tags and /v1/models 2026-10-17.
+        assert_eq!(config.model, "qwen2.5-coder:1.5b-instruct-q4_K_M");
+        // The key-less server must not be mistaken for a hosted provider:
+        // hosted lanes stay present-but-disabled by default.
+        assert!(config.hosted_providers.iter().all(|p| !p.enabled));
     }
 }
