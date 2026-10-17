@@ -36,13 +36,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.adjacentposition.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-adjacentposition.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "AdjacentPosition",
     "package": "php/dom",
-    "qualified_name": "AdjacentPosition",
+    "qualified_name": "Dom\\AdjacentPosition",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -144,13 +144,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.attr.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-attr.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Attr",
     "package": "php/dom",
-    "qualified_name": "Attr",
+    "qualified_name": "Dom\\Attr",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -216,13 +216,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.cdatasection.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-cdatasection.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "CDATASection",
     "package": "php/dom",
-    "qualified_name": "CDATASection",
+    "qualified_name": "Dom\\CDATASection",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -276,25 +276,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.characterdata.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-characterdata.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "CharacterData",
     "package": "php/dom",
-    "qualified_name": "CharacterData",
+    "qualified_name": "Dom\\CharacterData",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.childnode.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-childnode.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "ChildNode",
     "package": "php/dom",
-    "qualified_name": "ChildNode",
+    "qualified_name": "Dom\\ChildNode",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -324,13 +324,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.comment.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-comment.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Comment",
     "package": "php/dom",
-    "qualified_name": "Comment",
+    "qualified_name": "Dom\\Comment",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -348,13 +348,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.connection.php",
+    "doc_url": "https://www.php.net/manual/en/class.ldap-connection.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Connection",
+    "package": "php/ldap",
+    "qualified_name": "LDAP\\Connection",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.pgsql-connection.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Connection",
     "package": "php/pgsql",
-    "qualified_name": "Connection",
+    "qualified_name": "PgSql\\Connection",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1092,37 +1104,37 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.document.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-document.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Document",
     "package": "php/dom",
-    "qualified_name": "Document",
+    "qualified_name": "Dom\\Document",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.documentfragment.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-documentfragment.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "DocumentFragment",
     "package": "php/dom",
-    "qualified_name": "DocumentFragment",
+    "qualified_name": "Dom\\DocumentFragment",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.documenttype.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-documenttype.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "DocumentType",
     "package": "php/dom",
-    "qualified_name": "DocumentType",
+    "qualified_name": "Dom\\DocumentType",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1140,25 +1152,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.dtdnamednodemap.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-dtdnamednodemap.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "DtdNamedNodeMap",
     "package": "php/dom",
-    "qualified_name": "DtdNamedNodeMap",
+    "qualified_name": "Dom\\DtdNamedNodeMap",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.element.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-element.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Element",
     "package": "php/dom",
-    "qualified_name": "Element",
+    "qualified_name": "Dom\\Element",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1188,25 +1200,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.entity.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-entity.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Entity",
     "package": "php/dom",
-    "qualified_name": "Entity",
+    "qualified_name": "Dom\\Entity",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.entityreference.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-entityreference.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "EntityReference",
     "package": "php/dom",
-    "qualified_name": "EntityReference",
+    "qualified_name": "Dom\\EntityReference",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1284,25 +1296,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.filterexception.php",
+    "doc_url": "https://www.php.net/manual/en/class.filter-filterexception.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "FilterException",
     "package": "php/filter",
-    "qualified_name": "FilterException",
+    "qualified_name": "Filter\\FilterException",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.filterfailedexception.php",
+    "doc_url": "https://www.php.net/manual/en/class.filter-filterfailedexception.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "FilterFailedException",
     "package": "php/filter",
-    "qualified_name": "FilterFailedException",
+    "qualified_name": "Filter\\FilterFailedException",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1380,37 +1392,37 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.htmlcollection.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-htmlcollection.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "HTMLCollection",
     "package": "php/dom",
-    "qualified_name": "HTMLCollection",
+    "qualified_name": "Dom\\HTMLCollection",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.htmldocument.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-htmldocument.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "HTMLDocument",
     "package": "php/dom",
-    "qualified_name": "HTMLDocument",
+    "qualified_name": "Dom\\HTMLDocument",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.htmlelement.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-htmlelement.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "HTMLElement",
     "package": "php/dom",
-    "qualified_name": "HTMLElement",
+    "qualified_name": "Dom\\HTMLElement",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1548,13 +1560,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.implementation.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-implementation.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Implementation",
     "package": "php/dom",
-    "qualified_name": "Implementation",
+    "qualified_name": "Dom\\Implementation",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -1908,13 +1920,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.lob.php",
+    "doc_url": "https://www.php.net/manual/en/class.pgsql-lob.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Lob",
     "package": "php/pgsql",
-    "qualified_name": "Lob",
+    "qualified_name": "PgSql\\Lob",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2016,25 +2028,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.namednodemap.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-namednodemap.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "NamedNodeMap",
     "package": "php/dom",
-    "qualified_name": "NamedNodeMap",
+    "qualified_name": "Dom\\NamedNodeMap",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.namespaceinfo.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-namespaceinfo.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "NamespaceInfo",
     "package": "php/dom",
-    "qualified_name": "NamespaceInfo",
+    "qualified_name": "Dom\\NamespaceInfo",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2064,25 +2076,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.node.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-node.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Node",
     "package": "php/dom",
-    "qualified_name": "Node",
+    "qualified_name": "Dom\\Node",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.nodelist.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-nodelist.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "NodeList",
     "package": "php/dom",
-    "qualified_name": "NodeList",
+    "qualified_name": "Dom\\NodeList",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2100,13 +2112,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.notation.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-notation.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Notation",
     "package": "php/dom",
-    "qualified_name": "Notation",
+    "qualified_name": "Dom\\Notation",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2184,13 +2196,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.opensslexception.php",
+    "doc_url": "https://www.php.net/manual/en/class.openssl-opensslexception.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "OpensslException",
     "package": "php/openssl",
-    "qualified_name": "OpensslException",
+    "qualified_name": "Openssl\\OpensslException",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2316,13 +2328,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.parentnode.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-parentnode.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "ParentNode",
     "package": "php/dom",
-    "qualified_name": "ParentNode",
+    "qualified_name": "Dom\\ParentNode",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2424,13 +2436,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.processinginstruction.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-processinginstruction.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "ProcessingInstruction",
     "package": "php/dom",
-    "qualified_name": "ProcessingInstruction",
+    "qualified_name": "Dom\\ProcessingInstruction",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -2448,25 +2460,25 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.psk.php",
+    "doc_url": "https://www.php.net/manual/en/class.openssl-psk.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Psk",
     "package": "php/openssl",
-    "qualified_name": "Psk",
+    "qualified_name": "Openssl\\Psk",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.qosclass.php",
+    "doc_url": "https://www.php.net/manual/en/class.pcntl-qosclass.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "QosClass",
     "package": "php/pcntl",
-    "qualified_name": "QosClass",
+    "qualified_name": "Pcntl\\QosClass",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3036,25 +3048,37 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.result.php",
+    "doc_url": "https://www.php.net/manual/en/class.ldap-result.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Result",
-    "package": "php/pgsql",
-    "qualified_name": "Result",
+    "package": "php/ldap",
+    "qualified_name": "LDAP\\Result",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.resultentry.php",
+    "doc_url": "https://www.php.net/manual/en/class.pgsql-result.php",
+    "framework": "php",
+    "kind": "class",
+    "licence": "Apache-2.0",
+    "name": "Result",
+    "package": "php/pgsql",
+    "qualified_name": "PgSql\\Result",
+    "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
+    "source_url": "https://github.com/JetBrains/phpstorm-stubs",
+    "source_version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "doc_url": "https://www.php.net/manual/en/class.ldap-resultentry.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "ResultEntry",
     "package": "php/ldap",
-    "qualified_name": "ResultEntry",
+    "qualified_name": "LDAP\\ResultEntry",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3144,13 +3168,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.sdl.php",
+    "doc_url": "https://www.php.net/manual/en/class.soap-sdl.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Sdl",
     "package": "php/soap",
-    "qualified_name": "Sdl",
+    "qualified_name": "Soap\\Sdl",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3216,13 +3240,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.session.php",
+    "doc_url": "https://www.php.net/manual/en/class.openssl-session.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Session",
     "package": "php/openssl",
-    "qualified_name": "Session",
+    "qualified_name": "Openssl\\Session",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3708,13 +3732,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.text.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-text.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Text",
     "package": "php/dom",
-    "qualified_name": "Text",
+    "qualified_name": "Dom\\Text",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3732,13 +3756,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.tokenlist.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-tokenlist.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "TokenList",
     "package": "php/dom",
-    "qualified_name": "TokenList",
+    "qualified_name": "Dom\\TokenList",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3840,13 +3864,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.url.php",
+    "doc_url": "https://www.php.net/manual/en/class.soap-url.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "Url",
     "package": "php/soap",
-    "qualified_name": "Url",
+    "qualified_name": "Soap\\Url",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3888,13 +3912,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.xmldocument.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-xmldocument.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "XMLDocument",
     "package": "php/dom",
-    "qualified_name": "XMLDocument",
+    "qualified_name": "Dom\\XMLDocument",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"
@@ -3936,13 +3960,13 @@
     "source_version": "phpstorm-stubs@2049ca3"
   },
   {
-    "doc_url": "https://www.php.net/manual/en/class.xpath.php",
+    "doc_url": "https://www.php.net/manual/en/class.dom-xpath.php",
     "framework": "php",
     "kind": "class",
     "licence": "Apache-2.0",
     "name": "XPath",
     "package": "php/dom",
-    "qualified_name": "XPath",
+    "qualified_name": "Dom\\XPath",
     "source_commit": "2049ca3cfa1feabf52db074108fe776a5713cf02",
     "source_url": "https://github.com/JetBrains/phpstorm-stubs",
     "source_version": "phpstorm-stubs@2049ca3"

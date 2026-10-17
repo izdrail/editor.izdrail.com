@@ -28,13 +28,21 @@ def stub_declarations(text):
     # holds global symbols (PDO.php, random.php) and `namespace Name { }`, brace
     # on the same or next line, holds namespaced ones (Pdo, Random, Random\Engine).
     # Descend one level into those blocks; namespaced classes yield their namespace.
+    # Semicolon namespaces (`namespace Dom;`) qualify every following top-level
+    # declaration; PHP forbids mixing the two forms in one file, so a single
+    # current name is enough (soap_n.php, dom_n.php, pgsql_c.php, ldap/*,
+    # filter_c.php, openssl_ns.php, pcntl_c.php).
     clean = re.sub(r'/\*.*?\*/|//[^\n]*|\#[^\[\n][^\n]*|\'(?:\\.|[^\'\\])*\'|"(?:\\.|[^"\\])*"', lambda m: ' ' * len(m[0]), text, flags=re.S)
     depth = 0
     ns = {}  # depths opened by a braced namespace -> its name ('' for the global block)
-    for m in re.finditer(r'\bnamespace\s+([A-Za-z_]\w*(?:\\[A-Za-z_]\w*)*)?\s*\{|[{}]|^\s*(?:(?:final|abstract|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_]\w*)|\bfunction\s+([A-Za-z_]\w*)\s*\(', clean, re.M):
+    semi = None  # name from a semicolon `namespace Name;`, applies at depth 0
+    for m in re.finditer(r'\bnamespace\s+([A-Za-z_]\w*(?:\\[A-Za-z_]\w*)*)?\s*(\{|;)|[{}]|^\s*(?:(?:final|abstract|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_]\w*)|\bfunction\s+([A-Za-z_]\w*)\s*\(', clean, re.M):
         if m[0].startswith('namespace'):
-            depth += 1
-            ns[depth] = m[1] or ''
+            if m[2] == '{':
+                depth += 1
+                ns[depth] = m[1] or ''
+            else:
+                semi = m[1] or ''
         elif m[0] == '{': depth += 1
         elif m[0] == '}':
             ns.pop(depth, None)
@@ -42,9 +50,9 @@ def stub_declarations(text):
         elif depth == 0 or (depth == 1 and 1 in ns):
             start = m.start(); end = text.find('\n', start)
             sig = text[start:end if end >= 0 else len(text)].strip().rstrip('{;').strip()
-            namespace = ns.get(1) if depth == 1 else None
-            if m[4]: yield 'function', m[4], sig, namespace
-            else: yield 'class', m[3], sig, namespace
+            namespace = ns.get(1) if depth == 1 else (semi or None)
+            if m[5]: yield 'function', m[5], sig, namespace
+            else: yield 'class', m[4], sig, namespace
 
 
 def declarations(text):
