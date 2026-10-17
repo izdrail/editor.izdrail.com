@@ -235,8 +235,8 @@ mod jsx_tests {
         assert_eq!(s.len(), t.len());
         assert_eq!(scope_pos(&s, t, "return"), Some("keyword"));
         assert_eq!(scope_pos(&s, t, "div"), Some("tag"));
-        // Attribute names stay default-coloured, consistent with HTML.
-        assert_eq!(scope_pos(&s, t, "className"), None);
+        // Attribute names take the theme's attribute scope, consistent with HTML.
+        assert_eq!(scope_pos(&s, t, "className"), Some("attribute"));
         assert_eq!(scope_pos(&s, t, "\"a b\""), Some("string"));
         assert_eq!(scope_pos(&s, t, "div>;"), Some("tag")); // closing tag name
         // Expression interiors are styled by the code pass: identifiers uncoloured.
@@ -274,7 +274,7 @@ mod jsx_tests {
         assert_eq!(s.len(), t.len());
         assert_eq!(scope_pos(&s, t, "ul"), Some("tag"));
         assert_eq!(scope_pos(&s, t, "li"), Some("tag"));
-        assert_eq!(scope_pos(&s, t, "key"), None);
+        assert_eq!(scope_pos(&s, t, "key"), Some("attribute"));
         let t = "return <div>{`t ${<span>x</span>}`}</div>;";
         let s = jsx(t, false).unwrap();
         assert_eq!(scope_pos(&s, t, "span"), Some("tag"));
