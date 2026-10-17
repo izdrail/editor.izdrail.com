@@ -2284,45 +2284,8 @@ impl EditorData {
         let generation_signal = self.ai_generation;
         let rev = doc.rev();
         let editor = self.clone();
-        let root = match lapce_core::directory::Directory::data_local_directory() {
-            Some(p) => p.join("ai-models"),
-            None => return,
-        };
-        if lapce_ai::catalog::find(&ai.local_model).is_none_or(|entry| entry.chat)
-            && ai.model_path.is_empty()
-        {
-            return;
-        }
-        let installed =
-            std::fs::read(root.join(format!("installed-{}.json", ai.local_model)))
-                .or_else(|e| {
-                    if ai.local_model == "qwen-fim-1.5b" {
-                        std::fs::read(root.join("installed.json"))
-                    } else {
-                        Err(e)
-                    }
-                })
-                .ok()
-                .and_then(|b| {
-                    serde_json::from_slice::<lapce_ai::Installed>(&b).ok()
-                });
-        let model = if ai.model_path.is_empty() {
-            match installed.as_ref() {
-                Some(i) => i.model.clone(),
-                None => return,
-            }
-        } else {
-            std::path::PathBuf::from(&ai.model_path)
-        };
-        let tokenizer = if ai.tokenizer_path.is_empty() {
-            match installed.as_ref() {
-                Some(i) => i.tokenizer.clone(),
-                None => return,
-            }
-        } else {
-            std::path::PathBuf::from(&ai.tokenizer_path)
-        };
-        // Bound UTF-8 context before tokenization; no entire-repository context.
+        // Bound UTF-8 context before tokenization or transport; no
+        // entire-repository context. Slice bounds land on char boundaries.
         let (prefix, suffix) = doc.buffer.with_untracked(|b| {
             let rope = b.text();
             let start = rope
@@ -2338,21 +2301,84 @@ impl EditorData {
                 rope.slice_to_cow(offset..end).into_owned(),
             )
         });
-        let request = lapce_ai::Request {
-            model,
-            tokenizer,
-            prefix,
-            suffix,
-            prefix_tokens: ai.prefix_tokens,
-            suffix_tokens: ai.suffix_tokens,
-            max_tokens: ai.max_tokens,
-            // The dispatcher owns the worker job identity used for
-            // cooperative cancellation; zero means untagged here.
-            request_id: 0,
-            messages: None,
-            // Wired to the configured Ollama lane in the follow-up item;
-            // None keeps this literal compiling in the meantime.
-            remote: None,
+        let request = if ai.backend == "ollama" {
+            // Network lane: the worker POSTs this bounded context to the
+            // configured key-less endpoint. No local model is resolved, and
+            // any backend string other than "ollama" keeps the on-device
+            // lane below, so a typo can never silently enable sending.
+            lapce_ai::Request {
+                model: std::path::PathBuf::new(),
+                tokenizer: std::path::PathBuf::new(),
+                prefix,
+                suffix,
+                prefix_tokens: ai.prefix_tokens,
+                suffix_tokens: ai.suffix_tokens,
+                max_tokens: ai.max_tokens,
+                // The dispatcher owns the worker job identity used for
+                // cooperative cancellation; zero means untagged here.
+                request_id: 0,
+                messages: None,
+                remote: Some(lapce_ai::ollama::RemoteFim {
+                    endpoint: ai.endpoint.clone(),
+                    model: ai.remote_model.clone(),
+                    timeout_ms: ai.timeout_ms,
+                }),
+            }
+        } else {
+            let root = match lapce_core::directory::Directory::data_local_directory() {
+                Some(p) => p.join("ai-models"),
+                None => return,
+            };
+            if lapce_ai::catalog::find(&ai.local_model)
+                .is_none_or(|entry| entry.chat)
+                && ai.model_path.is_empty()
+            {
+                return;
+            }
+            let installed = std::fs::read(
+                root.join(format!("installed-{}.json", ai.local_model)),
+            )
+            .or_else(|e| {
+                if ai.local_model == "qwen-fim-1.5b" {
+                    std::fs::read(root.join("installed.json"))
+                } else {
+                    Err(e)
+                }
+            })
+            .ok()
+            .and_then(|b| {
+                serde_json::from_slice::<lapce_ai::Installed>(&b).ok()
+            });
+            let model = if ai.model_path.is_empty() {
+                match installed.as_ref() {
+                    Some(i) => i.model.clone(),
+                    None => return,
+                }
+            } else {
+                std::path::PathBuf::from(&ai.model_path)
+            };
+            let tokenizer = if ai.tokenizer_path.is_empty() {
+                match installed.as_ref() {
+                    Some(i) => i.tokenizer.clone(),
+                    None => return,
+                }
+            } else {
+                std::path::PathBuf::from(&ai.tokenizer_path)
+            };
+            lapce_ai::Request {
+                model,
+                tokenizer,
+                prefix,
+                suffix,
+                prefix_tokens: ai.prefix_tokens,
+                suffix_tokens: ai.suffix_tokens,
+                max_tokens: ai.max_tokens,
+                // The dispatcher owns the worker job identity used for
+                // cooperative cancellation; zero means untagged here.
+                request_id: 0,
+                messages: None,
+                remote: None,
+            }
         };
         let ai_request = match serde_json::to_string(&request) {
             Ok(s) => s,
