@@ -8,8 +8,12 @@ Twig file to see the CSS it produces, plus the variants that apply:
 Covered (Tailwind v3 default theme, values checked against tailwindcss v3.4.17
 `stubs/config.full.js`): padding, margin (including negative and `auto`), gap, width, height, size,
 inset/top/right/bottom/left with spacing, `full`, fractions and `screen`/`min`/`max`/`fit`,
-rounded, shadow, text sizes, font weights, display, position, flex, alignment, grid columns and
-spans, z-index, opacity, border width, and a few text and overflow helpers.
+rounded, shadow, text sizes, font weights, display, position, flex, alignment, grid columns/rows
+and spans, z-index, opacity, border width, tracking, leading (`leading-7` and `leading-snug`),
+order, max/min width and height (`max-w-md`, `max-w-screen-md`, `max-w-4`, `min-h-8`,
+`max-h-dvh`), the sibling utilities `space-x-4`/`-space-y-2` and `divide-x-2`/`divide-y` (with a
+note that they apply to `> :not([hidden]) ~ :not([hidden])`), and a few text and overflow
+helpers.
 
 Colours: the default v3 palette (22 colours, shades 50 to 950, values from tailwindcss v3.4.17
 `src/public/colors.js`) for `bg-`, `text-`, `border-` (and `-t -r -b -l -x -y`), `fill-`, `stroke-`, `accent-`,

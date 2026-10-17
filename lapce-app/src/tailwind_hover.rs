@@ -5,8 +5,9 @@
 //! Covers the Tailwind v3 default theme only (values checked against
 //! tailwindcss v3.4.17 `stubs/config.full.js`): spacing utilities (padding,
 //! margin, gap, width, height, size, inset), rounded, shadow, text sizes, font
-//! weights, display, position, flex, alignment, grid columns, z-index, opacity
-//! and a few more, plus the default colour palette (`bg-red-500`, `text-gray-700/50`,
+//! weights, display, position, flex, alignment, grid columns/rows and spans,
+//! z-index, opacity, tracking, leading, order, max/min width/height and the
+//! `space-x`/`divide-x` sibling utilities, plus the default colour palette (`bg-red-500`, `text-gray-700/50`,
 //! `border-t-blue-600`) and arbitrary values (`w-[13px]`, `bg-[#1da1f2]`,
 //! `text-[length:14px]`). Classes that were renamed in Tailwind v4 say so
 //! (`shadow-sm` -> `shadow-xs`). Custom theme values from `tailwind.config.js`
@@ -131,6 +132,47 @@ const FIXED: &[(&str, &str)] = &[
     ("text-7xl", "font-size: 4.5rem;\nline-height: 1;"),
     ("text-8xl", "font-size: 6rem;\nline-height: 1;"),
     ("text-9xl", "font-size: 8rem;\nline-height: 1;"),
+    ("tracking-tighter", "letter-spacing: -0.05em;"), ("tracking-tight", "letter-spacing: -0.025em;"),
+    ("tracking-normal", "letter-spacing: 0em;"), ("tracking-wide", "letter-spacing: 0.025em;"),
+    ("tracking-wider", "letter-spacing: 0.05em;"), ("tracking-widest", "letter-spacing: 0.1em;"),
+    ("leading-none", "line-height: 1;"), ("leading-tight", "line-height: 1.25;"),
+    ("leading-snug", "line-height: 1.375;"), ("leading-normal", "line-height: 1.5;"),
+    ("leading-relaxed", "line-height: 1.625;"), ("leading-loose", "line-height: 2;"),
+    ("order-first", "order: -9999;"), ("order-last", "order: 9999;"), ("order-none", "order: 0;"),
+    ("col-span-full", "grid-column: 1 / -1;"), ("row-span-full", "grid-row: 1 / -1;"),
+    ("grid-cols-none", "grid-template-columns: none;"), ("grid-rows-none", "grid-template-rows: none;"),
+    ("grid-cols-subgrid", "grid-template-columns: subgrid;"), ("grid-rows-subgrid", "grid-template-rows: subgrid;"),
+    ("divide-x", "border-right-width: 0px;\nborder-left-width: 1px; /* on > :not([hidden]) ~ :not([hidden]) */"),
+    ("divide-y", "border-top-width: 1px;\nborder-bottom-width: 0px; /* on > :not([hidden]) ~ :not([hidden]) */"),
+    ("max-w-none", "max-width: none;"), ("max-w-full", "max-width: 100%;"),
+    ("max-w-min", "max-width: min-content;"), ("max-w-max", "max-width: max-content;"),
+    ("max-w-fit", "max-width: fit-content;"), ("max-w-prose", "max-width: 65ch;"),
+    ("min-w-0", "min-width: 0px;"), ("min-w-full", "min-width: 100%;"),
+    ("min-w-min", "min-width: min-content;"), ("min-w-max", "min-width: max-content;"),
+    ("min-w-fit", "min-width: fit-content;"),
+    ("max-h-none", "max-height: none;"), ("max-h-full", "max-height: 100%;"),
+    ("max-h-screen", "max-height: 100vh;"), ("max-h-svh", "max-height: 100svh;"),
+    ("max-h-lvh", "max-height: 100lvh;"), ("max-h-dvh", "max-height: 100dvh;"),
+    ("max-h-min", "max-height: min-content;"), ("max-h-max", "max-height: max-content;"),
+    ("max-h-fit", "max-height: fit-content;"),
+    ("min-h-0", "min-height: 0px;"), ("min-h-full", "min-height: 100%;"),
+    ("min-h-screen", "min-height: 100vh;"), ("min-h-svh", "min-height: 100svh;"),
+    ("min-h-lvh", "min-height: 100lvh;"), ("min-h-dvh", "min-height: 100dvh;"),
+    ("min-h-min", "min-height: min-content;"), ("min-h-max", "min-height: max-content;"),
+    ("min-h-fit", "min-height: fit-content;"),
+];
+
+/// `leading-3..10` (config.full.js `lineHeight`).
+const LEADING: &[(&str, &str)] = &[
+    ("3", "0.75rem"), ("4", "1rem"), ("5", "1.25rem"), ("6", "1.5rem"), ("7", "1.75rem"),
+    ("8", "2rem"), ("9", "2.25rem"), ("10", "2.5rem"),
+];
+
+/// `max-w-xs..7xl` and the `screen-*` breakpoints (`max-w-screen-md`).
+const MAXW: &[(&str, &str)] = &[
+    ("xs", "20rem"), ("sm", "24rem"), ("md", "28rem"), ("lg", "32rem"), ("xl", "36rem"),
+    ("2xl", "42rem"), ("3xl", "48rem"), ("4xl", "56rem"), ("5xl", "64rem"), ("6xl", "72rem"),
+    ("7xl", "80rem"),
 ];
 
 const SCREENS: &[(&str, &str)] =
@@ -483,6 +525,81 @@ fn declarations(class: &str) -> Option<String> {
         let ok = matches!(n, 0 | 5 | 10 | 20 | 25 | 30 | 40 | 50 | 60 | 70 | 75 | 80 | 90 | 95 | 100);
         return ok.then(|| format!("opacity: {};", n as f64 / 100.0));
     }
+    if let Some(n) = class.strip_prefix("order-").and_then(|n| n.parse::<u32>().ok()) {
+        return (1..=12).contains(&n).then(|| format!("order: {n};"));
+    }
+    if let Some(n) = class.strip_prefix("grid-rows-").and_then(|n| n.parse::<u32>().ok()) {
+        return (1..=12).contains(&n)
+            .then(|| format!("grid-template-rows: repeat({n}, minmax(0, 1fr));"));
+    }
+    if let Some(n) = class.strip_prefix("row-span-").and_then(|n| n.parse::<u32>().ok()) {
+        return (1..=12).contains(&n).then(|| format!("grid-row: span {n} / span {n};"));
+    }
+    if let Some(key) = class.strip_prefix("leading-") {
+        if let Some((_, v)) = LEADING.iter().find(|(k, _)| *k == key) {
+            return Some(format!("line-height: {v};"));
+        }
+    }
+    if let Some(key) = class.strip_prefix("max-w-") {
+        if let Some((_, v)) = MAXW.iter().find(|(k, _)| *k == key) {
+            return Some(format!("max-width: {v};"));
+        }
+        if let Some(px) = key.strip_prefix("screen-") {
+            if let Some((_, v)) = SCREENS.iter().find(|(k, _)| *k == px) {
+                return Some(format!("max-width: {v};"));
+            }
+        }
+        if let Some(v) = spacing(key) {
+            return Some(format!("max-width: {v};"));
+        }
+    }
+    // `max-h-4`, `min-h-8`, `min-w-2`: the spacing scale.
+    for (prefix, prop) in [("max-h-", "max-height"), ("min-h-", "min-height"), ("min-w-", "min-width")] {
+        if let Some(key) = class.strip_prefix(prefix) {
+            if let Some(v) = spacing(key) {
+                return Some(format!("{prop}: {v};"));
+            }
+        }
+    }
+    // `space-x-4` / `divide-x-2` style sibling utilities (v3 output uses the
+    // `> :not([hidden]) ~ :not([hidden])` selector).
+    let (neg, body) = match class.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, class),
+    };
+    if let Some(key) = body.strip_prefix("space-x-").or_else(|| body.strip_prefix("space-y-")) {
+        let prop = if body.starts_with("space-x-") { "margin-left" } else { "margin-top" };
+        let value = if key == "reverse" {
+            "--tw-space-reverse: 1;".to_string()
+        } else {
+            let mut v = spacing(key)?.to_string();
+            if neg && v != "0px" {
+                v.insert(0, '-');
+            }
+            format!("{prop}: {v};")
+        };
+        return Some(format!("{value} /* on > :not([hidden]) ~ :not([hidden]) */"));
+    }
+    if let Some(key) = body.strip_prefix("divide-x-").or_else(|| body.strip_prefix("divide-y-")) {
+        // Negative divide utilities do not exist; other negatives (-mt-2)
+        // fall through to the families below.
+        if neg {
+            return None;
+        }
+        let width = match key {
+            "0" => "0px",
+            "2" => "2px",
+            "4" => "4px",
+            "8" => "8px",
+            _ => return None,
+        };
+        let (a, b) = if body.starts_with("divide-x-") {
+            ("border-right-width", "border-left-width")
+        } else {
+            ("border-bottom-width", "border-top-width")
+        };
+        return Some(format!("{a}: 0px;\n{b}: {width}; /* on > :not([hidden]) ~ :not([hidden]) */"));
+    }
     if let Some(c) = color_declaration(class) {
         return Some(c);
     }
@@ -671,6 +788,38 @@ mod tests {
         for c in ["shadow-md", "shadow-lg", "rounded-lg", "rounded-none", "p-4", "text-sm"] {
             let l = format!("<i class=\"{c}\">");
             assert!(!h(&l, c).unwrap().contains("Tailwind v4"), "{c}");
+        }
+    }
+
+    #[test]
+    fn scales_and_sibling_utilities() {
+        assert!(h("<i class=\"tracking-tight\">", "tracking").unwrap().contains("letter-spacing: -0.025em;"));
+        assert!(h("<i class=\"leading-7\">", "leading-7").unwrap().contains("line-height: 1.75rem;"));
+        assert!(h("<i class=\"leading-snug\">", "snug").unwrap().contains("line-height: 1.375;"));
+        assert!(h("<i class=\"order-first\">", "order").unwrap().contains("order: -9999;"));
+        assert!(h("<i class=\"order-12\">", "order-12").unwrap().contains("order: 12;"));
+        assert!(h("<i class=\"grid-rows-3 row-span-2\">", "grid-rows-3").unwrap().contains("grid-template-rows: repeat(3, minmax(0, 1fr));"));
+        assert!(h("<i class=\"grid-rows-3 row-span-2\">", "row-span-2").unwrap().contains("grid-row: span 2 / span 2;"));
+        assert!(h("<i class=\"col-span-full\">", "col-span").unwrap().contains("grid-column: 1 / -1;"));
+        assert!(h("<i class=\"max-w-md\">", "max-w-md").unwrap().contains("max-width: 28rem;"));
+        assert!(h("<i class=\"max-w-screen-md\">", "max-w-").unwrap().contains("max-width: 768px;"));
+        assert!(h("<i class=\"max-w-4 max-w-prose\">", "max-w-4").unwrap().contains("max-width: 1rem;"));
+        assert!(h("<i class=\"max-w-4 max-w-prose\">", "max-w-prose").unwrap().contains("max-width: 65ch;"));
+        assert!(h("<i class=\"min-w-min max-h-dvh\">", "min-w-").unwrap().contains("min-width: min-content;"));
+        assert!(h("<i class=\"min-w-min max-h-dvh\">", "max-h-").unwrap().contains("max-height: 100dvh;"));
+        assert!(h("<i class=\"min-h-8 max-h-96\">", "min-h-8").unwrap().contains("min-height: 2rem;"));
+        assert!(h("<i class=\"min-h-8 max-h-96\">", "max-h-96").unwrap().contains("max-height: 24rem;"));
+        let sx = h("<i class=\"space-x-4\">", "space-x").unwrap();
+        assert!(sx.contains("margin-left: 1rem;") && sx.contains(":not([hidden])"), "{sx}");
+        let sy = h("<i class=\"-space-y-2\">", "-space").unwrap();
+        assert!(sy.contains("margin-top: -0.5rem;"), "{sy}");
+        let dx = h("<i class=\"divide-x-2\">", "divide-x").unwrap();
+        assert!(dx.contains("border-left-width: 2px;") && dx.contains("border-right-width: 0px;"), "{dx}");
+        let dy = h("<i class=\"divide-y\">", "divide-y").unwrap();
+        assert!(dy.contains("border-top-width: 1px;"), "{dy}");
+        for c in ["divide-x-3", "space-x-13", "-divide-x-2", "order-13", "grid-rows-13", "leading-11", "max-w-13"] {
+            let l = format!("<i class=\"{c}\">");
+            assert_eq!(h(&l, c), None, "{c}");
         }
     }
 
