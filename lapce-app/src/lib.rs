@@ -16,6 +16,7 @@ pub mod agent_acp_session;
 pub mod agent_acp_store;
 pub mod agent_act_contract;
 pub mod mcp;
+pub mod mcp_connect;
 pub mod mcp_session;
 pub mod about;
 pub mod alert;

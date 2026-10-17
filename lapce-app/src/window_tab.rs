@@ -886,6 +886,36 @@ impl WindowTabData {
                     );
                 }
             }
+            StartMcpServers => {
+                let local = self.workspace.kind.is_local();
+                let root = self.workspace.path.clone();
+                let (tx, rx) =
+                    std::sync::mpsc::channel::<(String, std::path::PathBuf)>();
+                let signal = create_signal_from_channel(rx);
+                let main_split = self.main_split.clone();
+                self.scope.create_effect(move |_| {
+                    if let Some((markdown, path)) = signal.get() {
+                        if let Some(dir) = path.parent() {
+                            let _ = std::fs::create_dir_all(dir);
+                        }
+                        if std::fs::write(&path, markdown).is_ok() {
+                            main_split.jump_to_location(
+                                EditorLocation {
+                                    path,
+                                    position: None,
+                                    scroll_offset: None,
+                                    ignore_unconfirmed: false,
+                                    same_editor_tab: false,
+                                },
+                                None,
+                            );
+                        }
+                    }
+                });
+                std::thread::spawn(move || {
+                    let _ = tx.send(crate::mcp_connect::run_report(local, root));
+                });
+            }
             OpenSettingsDirectory => {
                 if let Some(dir) = Directory::config_directory() {
                     open_uri(&dir);
