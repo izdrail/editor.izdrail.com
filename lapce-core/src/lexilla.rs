@@ -225,7 +225,7 @@ mod tests {
         use LapceLanguage::*;
         for language in [
             C, Cpp, Javascript, Typescript, Csharp, Java, Python, Html, Php, Css,
-            Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade, Jsx, Tsx,
+            Scss, Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade, Jsx, Tsx,
             Vue, Markdown, Diff, Make, Ini,
         ] {
             assert!(
