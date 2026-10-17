@@ -89,6 +89,7 @@ pub mod main_split;
 pub mod markdown;
 pub mod palette;
 pub mod panel;
+pub mod project_completion;
 pub mod project_scripts;
 pub mod editorconfig;
 pub mod test_runner;

@@ -2505,7 +2505,7 @@ impl EditorData {
             },
         };
         let doc = self.doc();
-        let (words, snippets, keywords) =
+        let (words, snippets, keywords, line_before) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
                 let len = buffer.len();
@@ -2532,6 +2532,11 @@ impl EditorData {
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);
                 let indent = leading_indent(&line_text).to_string();
+                // Text of the current line up to the cursor, for
+                // project-aware contexts like `route('...')`.
+                let line_before = buffer
+                    .slice_to_cow(buffer.offset_of_line(line)..offset)
+                    .to_string();
                 // `.blade.php` is PHP for imported snippets but has its own bundled pack.
                 let snippet_lang = lang
                     .map(|l| crate::builtin_snippets::snippet_language(path, l));
@@ -2564,7 +2569,7 @@ impl EditorData {
                     }
                     None => Vec::new(),
                 };
-                (words, snippets, keywords)
+                (words, snippets, keywords, line_before)
             });
         let wrap = |item, source| ScoredCompletionItem {
             item,
@@ -2574,6 +2579,13 @@ impl EditorData {
             label_score: 0,
             indices: Vec::new(),
         };
+        let project = self
+            .common
+            .workspace
+            .path
+            .as_deref()
+            .map(|root| crate::project_completion::items(root, &line_before))
+            .unwrap_or_default();
         snippets
             .into_iter()
             .map(|i| wrap(i, CompletionSource::Snippet))
@@ -2581,6 +2593,11 @@ impl EditorData {
                 keywords
                     .into_iter()
                     .map(|i| wrap(i, CompletionSource::Keyword)),
+            )
+            .chain(
+                project
+                    .into_iter()
+                    .map(|i| wrap(i, CompletionSource::Project)),
             )
             .chain(words.into_iter().map(|i| wrap(i, CompletionSource::Word)))
             .collect()
