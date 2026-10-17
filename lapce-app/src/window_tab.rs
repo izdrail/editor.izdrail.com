@@ -1283,6 +1283,9 @@ impl WindowTabData {
             PaletteWorktrees => {
                 self.palette.run(PaletteKind::Worktrees);
             }
+            PaletteRemoveWorktree => {
+                self.palette.run(PaletteKind::RemoveWorktree);
+            }
             PaletteCssClasses => {
                 self.palette.run(PaletteKind::CssClasses);
             }
@@ -2128,6 +2131,9 @@ impl WindowTabData {
                         .set_color_theme(&self.workspace, &name);
                     self.set_config.set(new_config);
                 }
+            }
+            InternalCommand::RemoveWorktree { path, branch } => {
+                self.confirm_remove_worktree(path, branch);
             }
             InternalCommand::SetKeymapPreset { name } => {
                 // The config file is watched; keymaps reload from it.
@@ -3402,6 +3408,83 @@ impl WindowTabData {
     /// branch from HEAD) and open it as a workspace tab. The git call
     /// runs off the UI thread; failure shows an alert with clipped
     /// stderr.
+    /// Confirm-then-remove flow for "Git: Remove Worktree": the alert
+    /// carries the destructive button so a palette misclick cannot
+    /// delete a directory. Git itself refuses dirty worktrees (no
+    /// --force here); the branch is always kept.
+    fn confirm_remove_worktree(&self, path: PathBuf, branch: Option<String>) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_alert(
+                "Remove Worktree".into(),
+                "Open a folder first.".into(),
+                Vec::new(),
+            );
+            return;
+        };
+        let label = branch.clone().unwrap_or_else(|| "(detached)".to_string());
+        let confirm_alert = self.alert_data.clone();
+        let scope = self.scope;
+        // The closure owns its copies; the dialog text uses the originals.
+        let remove_label = label.clone();
+        let remove_path = path.clone();
+        let remove = move || {
+            // Alert buttons do not close the box on their own.
+            confirm_alert.active.set(false);
+            let root = root.clone();
+            let path = remove_path.clone();
+            let label = remove_label.clone();
+            let result_alert = confirm_alert.clone();
+            let send = create_ext_action(
+                scope,
+                move |result: Result<(), String>| {
+                    let msg = match result {
+                        Ok(()) => format!(
+                            "Removed worktree {label}. The branch was kept; delete it with git branch -d when it is no longer needed."
+                        ),
+                        Err(msg) => msg,
+                    };
+                    result_alert.title.set("Remove Worktree".into());
+                    result_alert.msg.set(msg);
+                    result_alert.buttons.set(Vec::new());
+                    result_alert.active.set(true);
+                },
+            );
+            std::thread::spawn(move || {
+                let result = (|| {
+                    let out = std::process::Command::new("git")
+                        .arg("-C")
+                        .arg(&root)
+                        .args(["worktree", "remove"])
+                        .arg(&path)
+                        .output()
+                        .map_err(|e| format!("Could not run git: {e}"))?;
+                    if out.status.success() {
+                        Ok(())
+                    } else {
+                        Err(format!(
+                            "git refused:\n{}\n\nUncommitted or untracked changes make git refuse. Commit, stash or clean them in that worktree first.",
+                            crate::worktree::clip_stderr(
+                                &String::from_utf8_lossy(&out.stderr),
+                            )
+                        ))
+                    }
+                })();
+                send(result);
+            });
+        };
+        self.show_alert(
+            "Remove Worktree".into(),
+            format!(
+                "Remove worktree {label}?\n\n{}\n\nThe directory is deleted from disk. The branch is kept.",
+                path.display()
+            ),
+            vec![AlertButton {
+                text: "Remove".into(),
+                action: Rc::new(remove),
+            }],
+        );
+    }
+
     fn git_new_worktree(&self) {
         let Some(root) = self.workspace.path.clone() else {
             self.show_alert(

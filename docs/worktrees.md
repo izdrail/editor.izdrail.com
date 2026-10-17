@@ -35,6 +35,22 @@ bytes arrive C-style quoted (core.quotePath) and are unquoted by
 `worktree::parse_worktree_list`, which is fuzzed with quoted non-ASCII
 paths, unknown attributes and malformed records.
 
-Still not here: removing worktrees from the GUI (hard-undo semantics
-deserve their own item), dirty-state badges, multi-folder projects and
+Still not here: dirty-state badges, multi-folder projects and
 per-worktree permission scopes.
+
+## Removing worktrees (item 161)
+
+Command palette: **Git: Remove Worktree** (`palette.remove_worktree`)
+lists every worktree except the one this window has open (git cannot
+remove the worktree you stand in). Enter does not delete anything: it
+opens a confirm dialog naming the branch and path, and only the
+dialog's Remove button runs `git worktree remove` on a spawned thread.
+
+Two independent guards: the confirm dialog (a palette misclick cannot
+delete a directory) and git's own refusal when the worktree has
+uncommitted or untracked changes - there is deliberately no --force.
+The branch is always kept; the success dialog says how to delete it
+with `git branch -d`. A refusal surfaces git's stderr, clipped.
+
+Known limitation: a window tab already open on the removed worktree is
+left pointing at a deleted directory; close it yourself.

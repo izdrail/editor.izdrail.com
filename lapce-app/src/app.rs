@@ -2604,6 +2604,7 @@ fn palette_item(
         | PaletteItemContent::SCMReference { .. }
         | PaletteItemContent::TerminalProfile { .. }
         | PaletteItemContent::Worktree { .. }
+        | PaletteItemContent::WorktreeRemove { .. }
         | PaletteItemContent::KeymapPreset { .. }
         | PaletteItemContent::IconTheme { .. } => {
             let text = item.filter_text;

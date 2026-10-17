@@ -459,6 +459,9 @@ impl PaletteData {
             PaletteKind::Worktrees => {
                 self.get_worktrees();
             }
+            PaletteKind::RemoveWorktree => {
+                self.get_worktrees_for_removal();
+            }
             PaletteKind::CssClasses => {
                 self.set_route_items(crate::tw_usage_index::discover);
             }
@@ -1378,6 +1381,65 @@ impl PaletteData {
         self.items.set(items.into_iter().collect());
     }
 
+    /// Removal candidates: every worktree except the one this window
+    /// has open (git cannot remove the worktree you stand in).
+    fn get_worktrees_for_removal(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.items.set(Vec::new().into_iter().collect());
+            return;
+        };
+        let output = std::process::Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(&root)
+            .output();
+        let entries = match output {
+            Ok(o) if o.status.success() => crate::worktree::parse_worktree_list(
+                &String::from_utf8_lossy(&o.stdout),
+            ),
+            _ => Vec::new(),
+        };
+        let current = root.canonicalize().unwrap_or_else(|_| root.clone());
+        let items: Vec<PaletteItem> = entries
+            .into_iter()
+            .filter(|e| {
+                e.path.canonicalize().unwrap_or_else(|_| e.path.clone())
+                    != current
+            })
+            .map(|e| {
+                let label =
+                    e.branch.clone().unwrap_or_else(|| "(detached)".to_string());
+                PaletteItem {
+                    content: PaletteItemContent::WorktreeRemove {
+                        path: e.path.clone(),
+                        branch: e.branch,
+                    },
+                    filter_text: format!("{label}  {}", e.path.display()),
+                    score: 0,
+                    indices: Vec::new(),
+                }
+            })
+            .collect();
+        if items.is_empty() {
+            // Explanatory no-op row (the plain Worktree content is a
+            // no-op on select when marked current).
+            self.items.set(
+                std::iter::once(PaletteItem {
+                    content: PaletteItemContent::Worktree {
+                        path: root,
+                        branch: None,
+                        current: true,
+                    },
+                    filter_text: "No other worktrees to remove.".to_string(),
+                    score: 0,
+                    indices: Vec::new(),
+                })
+                .collect(),
+            );
+            return;
+        }
+        self.items.set(items.into_iter().collect());
+    }
+
     fn get_languages(&self) {
         let langs = LapceLanguage::languages();
         let items = langs
@@ -1740,6 +1802,13 @@ impl PaletteData {
                         );
                     }
                 }
+                PaletteItemContent::WorktreeRemove { path, branch } => self
+                    .common
+                    .internal_command
+                    .send(InternalCommand::RemoveWorktree {
+                        path: path.clone(),
+                        branch: branch.clone(),
+                    }),
                 PaletteItemContent::Language { name } => {
                     let editor = self.main_split.active_editor.get_untracked();
                     let doc = match editor {
@@ -1926,6 +1995,7 @@ impl PaletteData {
                 PaletteItemContent::TerminalProfile { .. } => {}
                 PaletteItemContent::KeymapPreset { .. } => {}
                 PaletteItemContent::Worktree { .. } => {}
+                PaletteItemContent::WorktreeRemove { .. } => {}
             }
         }
     }

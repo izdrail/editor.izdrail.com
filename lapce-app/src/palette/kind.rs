@@ -33,6 +33,7 @@ pub enum PaletteKind {
     LivewireMembers,
     KeymapPresets,
     Worktrees,
+    RemoveWorktree,
     CssClasses,
     ViewUsages,
     LivewireUsages,
@@ -82,6 +83,7 @@ impl PaletteKind {
             | PaletteKind::LivewireMembers
             | PaletteKind::KeymapPresets
             | PaletteKind::Worktrees
+            | PaletteKind::RemoveWorktree
             | PaletteKind::CssClasses
             | PaletteKind::ViewUsages
             | PaletteKind::LivewireUsages
@@ -177,6 +179,9 @@ impl PaletteKind {
             PaletteKind::Worktrees => {
                 Some(LapceWorkbenchCommand::PaletteWorktrees)
             }
+            PaletteKind::RemoveWorktree => {
+                Some(LapceWorkbenchCommand::PaletteRemoveWorktree)
+            }
             PaletteKind::CssClasses => {
                 Some(LapceWorkbenchCommand::PaletteCssClasses)
             }
@@ -239,6 +244,7 @@ impl PaletteKind {
             | PaletteKind::LivewireMembers
             | PaletteKind::KeymapPresets
             | PaletteKind::Worktrees
+            | PaletteKind::RemoveWorktree
             | PaletteKind::CssClasses
             | PaletteKind::ViewUsages
             | PaletteKind::LivewireUsages

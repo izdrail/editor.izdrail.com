@@ -99,6 +99,10 @@ pub enum PaletteItemContent {
         branch: Option<String>,
         current: bool,
     },
+    WorktreeRemove {
+        path: PathBuf,
+        branch: Option<String>,
+    },
     Language {
         name: String,
     },

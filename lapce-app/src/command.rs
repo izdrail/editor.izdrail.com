@@ -510,6 +510,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Git: Worktrees")]
     PaletteWorktrees,
 
+    #[strum(serialize = "palette.remove_worktree")]
+    #[strum(message = "Git: Remove Worktree")]
+    PaletteRemoveWorktree,
+
     #[strum(serialize = "palette.css_classes")]
     #[strum(message = "CSS / Tailwind Classes in Use")]
     PaletteCssClasses,
@@ -889,6 +893,10 @@ pub enum InternalCommand {
     },
     SetKeymapPreset {
         name: String,
+    },
+    RemoveWorktree {
+        path: PathBuf,
+        branch: Option<String>,
     },
     SetIconTheme {
         name: String,
