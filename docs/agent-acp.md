@@ -22,9 +22,14 @@ file-system pages).
 This module does NOT spawn processes, touch stdio, read or write files,
 apply edits, grant permissions or render UI. Those integrations arrive
 separately; an agent process must never gain filesystem or execution
-ability from this module alone. The launch/stdio plumbing, the chat-panel
-session surface, context passing and permission-gated fs handlers are the
-next milestones, in that order.
+ability from this module alone. `agent_acp_process` is the transport half: launch the agent binary with
+exact program/args/cwd (no shell, no lookup), send/recv NDJSON frames
+(blocking; run off the UI thread with an external watchdog), kill/reap.
+stderr drains on a background thread into a 100-line ring so a chatty
+agent cannot deadlock on a full pipe; lines over 1 MiB are errors. Tests
+roundtrip a frame through a real `cat` subprocess and cover EOF (`true`)
+and spawn failure. The chat-panel session surface, context passing and
+permission-gated fs handlers are the next milestones, in that order.
 
 Verification: unit tests cover framing roundtrips and newline rules, the
 spec-example request shapes, hello/session/stop parsing, plan/tool-call/
