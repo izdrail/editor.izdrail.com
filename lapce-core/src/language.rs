@@ -984,9 +984,19 @@ const LANGUAGES: &[SyntaxProperties] = &[
     SyntaxProperties {
         id: LapceLanguage::Ini,
         indent: Indent::tab(),
-        files: &[],
-        extensions: &[],
-        comment: comment_properties!(),
+        // `.env*` are the Laravel/PHP dotenv files; an exact filename match is
+        // needed because a leading dot leaves no extension for from_path.
+        files: &[
+            ".env",
+            ".env.example",
+            ".env.local",
+            ".env.development",
+            ".env.production",
+            ".env.test",
+            ".env.staging",
+        ],
+        extensions: &["ini", "env", "properties"],
+        comment: comment_properties!("#"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
@@ -1168,16 +1178,16 @@ const LANGUAGES: &[SyntaxProperties] = &[
     SyntaxProperties {
         id: LapceLanguage::Make,
         indent: Indent::tab(),
-        files: &[],
-        extensions: &[],
-        comment: comment_properties!(),
+        files: &["Makefile", "makefile", "GNUmakefile"],
+        extensions: &["mk", "mak"],
+        comment: comment_properties!("#"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
         id: LapceLanguage::Markdown,
         indent: Indent::space(4),
         files: &[],
-        extensions: &["md"],
+        extensions: &["md", "markdown", "mdown"],
         comment: comment_properties!(),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },

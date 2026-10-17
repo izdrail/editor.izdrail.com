@@ -197,6 +197,15 @@ mod tests {
             ("x.ts", LapceLanguage::Typescript),
             ("x.jsx", LapceLanguage::Jsx),
             ("x.tsx", LapceLanguage::Tsx),
+            ("x.vue", LapceLanguage::Vue),
+            ("x.md", LapceLanguage::Markdown),
+            ("x.markdown", LapceLanguage::Markdown),
+            ("x.ini", LapceLanguage::Ini),
+            (".env", LapceLanguage::Ini),
+            (".env.example", LapceLanguage::Ini),
+            ("x.diff", LapceLanguage::Diff),
+            ("Makefile", LapceLanguage::Make),
+            ("x.mk", LapceLanguage::Make),
         ] {
             assert_eq!(LapceLanguage::from_path(std::path::Path::new(file)), lang);
             assert!(

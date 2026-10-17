@@ -108,7 +108,9 @@ pub fn highlight_profile(
         Blade => ("blade", PHP_WORD_LISTS),
         Php if laravel && is_pure_php(&source) => ("laravel", &php_refs),
         Php if is_pure_php(&source) => ("php", &php_refs),
-        Html | Php => (
+        // Vue single-file components are HTML templates with <script>/<style>
+        // blocks, which the hypertext lexer already paints; there is no PHP.
+        Html | Php | Vue => (
             "hypertext",
             &[
                 "a body div head html input link meta p script span style title",
@@ -141,11 +143,18 @@ pub fn highlight_profile(
         Toml => ("toml", &[]),
         Yaml => ("yaml", &[]),
         Xml => ("xml", &[]),
+        // Paint whole ATX heading lines, not just the # marker (upstream
+        // default styles the marker only).
+        Markdown => ("markdown", &[]),
+        Diff => ("diff", &[]),
+        Make => ("makefile", &[]),
+        Ini => ("props", &[]),
         _ => return None,
     };
     let properties = match language {
         Scss => vec![lexilla_rs::Property::Scss(true)],
         Javascript | Typescript => vec![lexilla_rs::Property::Javascript(true)],
+        Markdown => vec![lexilla_rs::Property::MarkdownHeaderFill(true)],
         _ => Vec::new(),
     };
     match Snapshot::lex_with_properties(lexer, &source, keywords, &properties) {
@@ -217,6 +226,7 @@ mod tests {
         for language in [
             C, Cpp, Javascript, Typescript, Csharp, Java, Python, Html, Php, Css,
             Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade, Jsx, Tsx,
+            Vue, Markdown, Diff, Make, Ini,
         ] {
             assert!(
                 highlight(language, &Rope::from("text\n")).is_some(),
@@ -252,6 +262,31 @@ mod tests {
             } else {
                 assert_eq!(got, Some(scope), "{language:?} {needle}");
             }
+        }
+    }
+    #[test]
+    fn prose_and_patch_languages_have_theme_scopes() {
+        // markdown/diff/props shipped with no usable lexical classes; makefile
+        // was already fine. These routings also cover .env and Makefile, the
+        // everyday files of a PHP/Laravel project.
+        use LapceLanguage::*;
+        for (language, text, needle, scope) in [
+            (Markdown, "# T\n", "T", "markup.heading"),
+            (Markdown, "**b**\n", "**b**", "markup.bold"),
+            (Markdown, "*i*\n", "*i*", "markup.italic"),
+            (Markdown, "`c`\n", "`c`", "string"),
+            (Diff, "--- a/f\n", "--- a/f", "keyword"),
+            (Diff, "+added\n", "+added", "source_control.added"),
+            (Diff, "-removed\n", "-removed", "source_control.removed"),
+            (Diff, "! changed\n", "! changed", "source_control.modified"),
+            (Ini, "[s]\nKEY=value\n", "[s]", "keyword"),
+            (Ini, "[s]\nKEY=value\n", "KEY", "property"),
+            (Make, "# c\n", "# c", "comment"),
+        ] {
+            let snapshot = highlight(language, &Rope::from(text)).unwrap();
+            let at = text.find(needle).unwrap();
+            let got = snapshot.scope(snapshot.styles()[at]);
+            assert_eq!(got, Some(scope), "{language:?} {needle}");
         }
     }
     #[test]

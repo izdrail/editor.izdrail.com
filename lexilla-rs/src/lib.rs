@@ -40,6 +40,7 @@ pub enum Error {
 pub enum Property {
     Scss(bool),
     Javascript(bool),
+    MarkdownHeaderFill(bool),
 }
 impl Property {
     fn pairs(self) -> &'static [(&'static str, &'static str)] {
@@ -56,6 +57,8 @@ impl Property {
                 ("lexer.cpp.enable.preprocessor", "1"),
                 ("lexer.cpp.backquoted.strings", "0"),
             ],
+            Self::MarkdownHeaderFill(true) => &[("lexer.markdown.header.eolfill", "1")],
+            Self::MarkdownHeaderFill(false) => &[("lexer.markdown.header.eolfill", "0")],
         }
     }
 }
@@ -89,7 +92,9 @@ impl Snapshot {
         if properties.iter().any(|p| {
             !matches!(
                 (name, p),
-                ("css", Property::Scss(_)) | ("cpp", Property::Javascript(_))
+                ("css", Property::Scss(_))
+                    | ("cpp", Property::Javascript(_))
+                    | ("markdown", Property::MarkdownHeaderFill(_))
             )
         }) {
             return Err(Error::Property);
@@ -305,6 +310,24 @@ fn scope_from_tags(tags: &str) -> Option<&'static str> {
         Some("property")
     } else if tags.contains(&"variable") {
         Some("variable")
+    } else if tags.contains(&"heading") {
+        Some("markup.heading")
+    } else if tags.contains(&"bold") {
+        Some("markup.bold")
+    } else if tags.contains(&"italic") {
+        Some("markup.italic")
+    } else if tags.contains(&"list") {
+        Some("markup.list")
+    } else if tags.contains(&"blockquote") {
+        Some("markdown.blockquote")
+    } else if tags.contains(&"uri") {
+        Some("text.uri")
+    } else if tags.contains(&"added") {
+        Some("source_control.added")
+    } else if tags.contains(&"removed") {
+        Some("source_control.removed")
+    } else if tags.contains(&"modified") {
+        Some("source_control.modified")
     } else if tags.contains(&"tag") {
         Some("tag")
     } else if tags.contains(&"type") {

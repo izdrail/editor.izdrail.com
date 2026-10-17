@@ -205,35 +205,36 @@ struct OptionSetMarkdown : public OptionSet<OptionsMarkdown> {
     }
 };
 
-// Using "default" for tags as have not defined tags for text roles.
+// Tags map to the theme's markup scopes via scope_from_tags (upstream left
+// them all "default": "have not defined tags for text roles").
 
 const LexicalClass lexicalClasses[] = {
     // Lexer markdown SCLEX_MARKDOWN SCE_MARKDOWN_
     0, "SCE_MARKDOWN_DEFAULT", "default", "Regular text",
     1, "SCE_MARKDOWN_LINE_BEGIN", "default", "Special",
-    2, "SCE_MARKDOWN_STRONG1", "default", "Strong emphasis (bold)",
-    3, "SCE_MARKDOWN_STRONG2", "default", "Strong emphasis (bold)",
-    4, "SCE_MARKDOWN_EM1", "default", "Emphasis (italic)",
-    5, "SCE_MARKDOWN_EM2", "default", "Emphasis (italic)",
-    6, "SCE_MARKDOWN_HEADER1", "default", "Level-one header",
-    7, "SCE_MARKDOWN_HEADER2", "default", "Level-two header",
-    8, "SCE_MARKDOWN_HEADER3", "default", "Level-three header",
-    9, "SCE_MARKDOWN_HEADER4", "default", "Level-four header",
-    10, "SCE_MARKDOWN_HEADER5", "default", "Level-five header",
-    11, "SCE_MARKDOWN_HEADER6", "default", "Level-six header",
+    2, "SCE_MARKDOWN_STRONG1", "bold", "Strong emphasis (bold)",
+    3, "SCE_MARKDOWN_STRONG2", "bold", "Strong emphasis (bold)",
+    4, "SCE_MARKDOWN_EM1", "italic", "Emphasis (italic)",
+    5, "SCE_MARKDOWN_EM2", "italic", "Emphasis (italic)",
+    6, "SCE_MARKDOWN_HEADER1", "heading", "Level-one header",
+    7, "SCE_MARKDOWN_HEADER2", "heading", "Level-two header",
+    8, "SCE_MARKDOWN_HEADER3", "heading", "Level-three header",
+    9, "SCE_MARKDOWN_HEADER4", "heading", "Level-four header",
+    10, "SCE_MARKDOWN_HEADER5", "heading", "Level-five header",
+    11, "SCE_MARKDOWN_HEADER6", "heading", "Level-six header",
     12, "SCE_MARKDOWN_PRECHAR", "default", "Prechar (up to three indent spaces)",
-    13, "SCE_MARKDOWN_ULIST_ITEM", "default", "Unordered list item",
-    14, "SCE_MARKDOWN_OLIST_ITEM", "default", "Ordered list item",
-    15, "SCE_MARKDOWN_BLOCKQUOTE", "default", "Block quote",
+    13, "SCE_MARKDOWN_ULIST_ITEM", "list", "Unordered list item",
+    14, "SCE_MARKDOWN_OLIST_ITEM", "list", "Ordered list item",
+    15, "SCE_MARKDOWN_BLOCKQUOTE", "blockquote", "Block quote",
     16, "SCE_MARKDOWN_STRIKEOUT", "default", "Strikeout",
-    17, "SCE_MARKDOWN_HRULE", "default", "Horizontal rule",
-    18, "SCE_MARKDOWN_LINK", "default", "Link or image",
-    19, "SCE_MARKDOWN_CODE", "default", "Inline code",
-    20, "SCE_MARKDOWN_CODE2", "default", "Inline code (quotes code containing a single backtick)",
-    21, "SCE_MARKDOWN_CODEBK", "default", "Code block",
-    22, "SCE_MARKDOWN_FRONT_MARK", "default", "Front matter marker",
+    17, "SCE_MARKDOWN_HRULE", "operator", "Horizontal rule",
+    18, "SCE_MARKDOWN_LINK", "uri", "Link or image",
+    19, "SCE_MARKDOWN_CODE", "string", "Inline code",
+    20, "SCE_MARKDOWN_CODE2", "string", "Inline code (quotes code containing a single backtick)",
+    21, "SCE_MARKDOWN_CODEBK", "string", "Code block",
+    22, "SCE_MARKDOWN_FRONT_MARK", "keyword", "Front matter marker",
     23, "SCE_MARKDOWN_FRONT", "default", "Front matter",
-    24, "SCE_MARKDOWN_FRONT_KEY", "default", "Front matter key",
+    24, "SCE_MARKDOWN_FRONT_KEY", "property", "Front matter key",
 };
 
 class LexerMarkdown : public DefaultLexer {

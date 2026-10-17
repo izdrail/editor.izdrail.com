@@ -152,4 +152,21 @@ const char *const emptyWordListDesc[] = {
 
 }
 
-extern const LexerModule lmDiff(SCLEX_DIFF, ColouriseDiffDoc, "diff", FoldDiffDoc, emptyWordListDesc);
+// Theme mapping for the lapce adapter: added/removed/changed lines use the
+// theme's source_control scopes, matching the git gutter colours.
+const LexicalClass diffLexicalClasses[] = {
+	{0, "SCE_DIFF_DEFAULT", "default", "Context lines"},
+	{1, "SCE_DIFF_COMMENT", "comment", "Comments"},
+	{2, "SCE_DIFF_COMMAND", "keyword", "diff command lines"},
+	{3, "SCE_DIFF_HEADER", "keyword", "---/+++ file headers"},
+	{4, "SCE_DIFF_POSITION", "constant", "@@ position markers"},
+	{5, "SCE_DIFF_DELETED", "removed", "Deleted lines"},
+	{6, "SCE_DIFF_ADDED", "added", "Added lines"},
+	{7, "SCE_DIFF_CHANGED", "modified", "Changed lines"},
+	{8, "SCE_DIFF_PATCH_ADD", "added", "Patch-add markers"},
+	{9, "SCE_DIFF_PATCH_DELETE", "removed", "Patch-delete markers"},
+	{10, "SCE_DIFF_REMOVED_PATCH_ADD", "removed", "Removed patch-add lines"},
+	{11, "SCE_DIFF_REMOVED_PATCH_DELETE", "added", "Removed patch-delete lines"},
+};
+
+extern const LexerModule lmDiff(SCLEX_DIFF, ColouriseDiffDoc, "diff", FoldDiffDoc, emptyWordListDesc, diffLexicalClasses, std::size(diffLexicalClasses));

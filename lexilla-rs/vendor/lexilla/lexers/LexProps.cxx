@@ -170,4 +170,14 @@ const char *const emptyWordListDesc[] = {
 
 }
 
-extern const LexerModule lmProps(SCLEX_PROPERTIES, ColourisePropsDoc, "props", FoldPropsDoc, emptyWordListDesc);
+// Theme mapping for the lapce adapter (.ini, .properties, dotenv files).
+const LexicalClass propsLexicalClasses[] = {
+	{0, "SCE_PROPS_DEFAULT", "default", "Values and whitespace"},
+	{1, "SCE_PROPS_COMMENT", "comment", "Comments"},
+	{2, "SCE_PROPS_SECTION", "keyword", "[section] headers"},
+	{3, "SCE_PROPS_ASSIGNMENT", "operator", "= and : separators"},
+	{4, "SCE_PROPS_DEFVAL", "default", "Default values"},
+	{5, "SCE_PROPS_KEY", "property", "Keys"},
+};
+
+extern const LexerModule lmProps(SCLEX_PROPERTIES, ColourisePropsDoc, "props", FoldPropsDoc, emptyWordListDesc, propsLexicalClasses, std::size(propsLexicalClasses));
