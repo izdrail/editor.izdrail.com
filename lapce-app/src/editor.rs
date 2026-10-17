@@ -1506,6 +1506,21 @@ impl EditorData {
                     return;
                 }
             }
+            // `@can('x')` / `Gate::allows('x')` opens `Gate::define('x'`.
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) = crate::gate_refs::resolve(root, &line_text, col) {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `@stack('x')` <-> `@push('x')`, `@yield('x')` <-> `@section('x')`.
             if path.to_string_lossy().ends_with(".blade.php") {
                 if let Some((target, line)) =

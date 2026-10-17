@@ -160,6 +160,22 @@ pub fn discover(root: &Path) -> Vec<RouteTarget> {
     out
 }
 
+/// File and 0-based line of the `Gate::define('name'` in `app/Providers`.
+pub fn find_gate(root: &Path, name: &str) -> Option<(PathBuf, usize)> {
+    let mut files = Vec::new();
+    walk(&root.join("app/Providers"), 0, &mut files);
+    for f in files {
+        let Some(text) = read(&f) else { continue };
+        if !text.contains(name) {
+            continue;
+        }
+        if let Some((_, line)) = parse_gates(&text).into_iter().find(|(n, _)| n == name) {
+            return Some((f, line));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
