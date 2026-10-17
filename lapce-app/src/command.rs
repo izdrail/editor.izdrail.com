@@ -373,6 +373,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "new_window")]
     NewWindow,
 
+    #[strum(message = "Git: New Worktree")]
+    #[strum(serialize = "git_new_worktree")]
+    GitNewWorktree,
+
     #[strum(message = "Close Window")]
     #[strum(serialize = "close_window")]
     CloseWindow,

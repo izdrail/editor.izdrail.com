@@ -1022,6 +1022,9 @@ impl WindowTabData {
                     .window_command
                     .send(WindowCommand::NewWindow);
             }
+            GitNewWorktree => {
+                self.git_new_worktree();
+            }
             CloseWindow => {
                 self.common
                     .window_common
@@ -3390,6 +3393,79 @@ impl WindowTabData {
                     },
                 });
         }
+    }
+
+    /// Create a git worktree of the current workspace (new timestamped
+    /// branch from HEAD) and open it as a workspace tab. The git call
+    /// runs off the UI thread; failure shows an alert with clipped
+    /// stderr.
+    fn git_new_worktree(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_alert(
+                "New Worktree".into(),
+                "Open a folder first.".into(),
+                Vec::new(),
+            );
+            return;
+        };
+        let unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let branch = crate::worktree::worktree_branch_name(unix);
+        let Some(path) = crate::worktree::worktree_path(&root, unix) else {
+            self.show_alert(
+                "New Worktree".into(),
+                "The workspace folder has no usable name.".into(),
+                Vec::new(),
+            );
+            return;
+        };
+        let alert_data = self.alert_data.clone();
+        let window_command = self.common.window_common.window_command;
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<PathBuf, String>| match result {
+                Ok(path) => {
+                    window_command.send(WindowCommand::NewWorkspaceTab {
+                        workspace: LapceWorkspace {
+                            kind: LapceWorkspaceType::Local,
+                            path: Some(path),
+                            last_open: 0,
+                        },
+                        end: true,
+                    });
+                }
+                Err(msg) => {
+                    alert_data.title.set("New Worktree".into());
+                    alert_data.msg.set(msg);
+                    alert_data.buttons.set(Vec::new());
+                    alert_data.active.set(true);
+                }
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let out = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .args(["worktree", "add", "-b"])
+                    .arg(&branch)
+                    .arg(&path)
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                if out.status.success() {
+                    Ok(path)
+                } else {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    Err(format!(
+                        "git worktree add failed:\n{}",
+                        crate::worktree::clip_stderr(&stderr)
+                    ))
+                }
+            })();
+            send(result);
+        });
     }
 
     pub fn show_alert(&self, title: String, msg: String, buttons: Vec<AlertButton>) {
