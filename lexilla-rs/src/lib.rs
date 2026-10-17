@@ -328,6 +328,10 @@ fn scope_from_tags(tags: &str) -> Option<&'static str> {
         Some("source_control.removed")
     } else if tags.contains(&"modified") {
         Some("source_control.modified")
+    } else if tags.contains(&"attribute") {
+        Some("attribute")
+    } else if tags.contains(&"constant") {
+        Some("constant")
     } else if tags.contains(&"tag") {
         Some("tag")
     } else if tags.contains(&"type") {
