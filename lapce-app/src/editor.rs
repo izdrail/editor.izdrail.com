@@ -1716,6 +1716,24 @@ impl EditorData {
                 });
                 return;
             }
+            // `$request->input('title')` in a FormRequest opens the
+            // `'title' => ...` line of rules().
+            if path.extension().is_some_and(|e| e == "php") {
+                if let Some((target, line)) =
+                    crate::request_fields::resolve(root, &path, &line_text, col)
+                {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: false,
+                            same_editor_tab: false,
+                        },
+                    });
+                    return;
+                }
+            }
             // `Post::class` opens the one conventional `Post.php`
             // (Laravel/Symfony folders; several candidates do nothing).
             if path.extension().is_some_and(|e| e == "php") {
