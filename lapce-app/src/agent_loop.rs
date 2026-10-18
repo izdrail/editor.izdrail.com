@@ -45,7 +45,10 @@ impl Default for Limits {
 /// its first heading, and its relative path so the owner can reopen
 /// it. Rendered by the OpenPlanArtifacts command into
 /// `.lapce/plans/index.md`.
-pub fn plan_index(root: &std::path::Path) -> String {
+/// The newest plan artifacts for one workspace root, newest first,
+/// capped at 50: (unix stamp, file name, title). Shared by the
+/// markdown index and the chat panel's Plans section.
+pub fn plan_entries(root: &std::path::Path) -> Vec<(u64, String, String)> {
     let mut entries: Vec<(u64, String, String)> = Vec::new();
     if let Ok(read) = std::fs::read_dir(root.join(".lapce").join("plans")) {
         for entry in read.flatten() {
@@ -76,6 +79,11 @@ pub fn plan_index(root: &std::path::Path) -> String {
     }
     entries.sort_by(|a, b| b.0.cmp(&a.0));
     entries.truncate(50);
+    entries
+}
+
+pub fn plan_index(root: &std::path::Path) -> String {
+    let entries = plan_entries(root);
     let mut out = String::from(
         "# Plan artifacts
 
@@ -530,6 +538,26 @@ mod tests {
         let empty = tempfile::tempdir().unwrap();
         let index = plan_index(empty.path());
         assert!(index.contains("No plan artifacts yet"));
+    }
+
+    #[test]
+    fn plan_entries_returns_newest_first_structured_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans = dir.path().join(".lapce").join("plans");
+        std::fs::create_dir_all(&plans).unwrap();
+        std::fs::write(plans.join("plan-100.md"), "# First plan\n\nbody").unwrap();
+        std::fs::write(plans.join("plan-300.md"), "no heading\n").unwrap();
+        std::fs::write(plans.join("plan-200.md"), "# Middle plan\n").unwrap();
+        std::fs::write(plans.join("skip.md"), "# wrong prefix").unwrap();
+        let entries = plan_entries(dir.path());
+        let stamps: Vec<u64> = entries.iter().map(|(s, _, _)| *s).collect();
+        assert_eq!(stamps, vec![300, 200, 100]);
+        assert_eq!(entries[2].1, "plan-100.md");
+        assert_eq!(entries[2].2, "First plan");
+        assert_eq!(entries[0].2, "(untitled plan)");
+        // A missing plans directory is an empty list, not an error.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(plan_entries(empty.path()).is_empty());
     }
 
     #[test]

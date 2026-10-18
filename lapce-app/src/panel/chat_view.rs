@@ -80,6 +80,9 @@ pub struct ChatData {
     /// Act run_command waiting on the owner: shown as an approval
     /// card; the worker thread blocks on `respond`.
     pub pending_command: RwSignal<Option<PendingCommand>>,
+    /// Bumped each time a plan artifact is written under .lapce/plans,
+    /// so the panel's Plans section re-reads the directory.
+    pub plans_version: RwSignal<u64>,
     gate: RunGate,
     cancellation: RwSignal<Arc<AtomicBool>>,
     storage: Option<PathBuf>,
@@ -152,6 +155,7 @@ impl ChatData {
             storage,
             review,
             pending_command: cx.create_rw_signal(None),
+            plans_version: cx.create_rw_signal(0),
             turns: cx.create_rw_signal(turns),
             input: cx.create_rw_signal(String::new()),
             busy: cx.create_rw_signal(false),
@@ -1221,6 +1225,7 @@ fn write_plan_artifact(
         data.error.set(format!("Could not write the plan artifact: {e}"));
         return;
     }
+    data.plans_version.update(|v| *v += 1);
     main_split.jump_to_location(
         crate::editor::location::EditorLocation {
             path,
@@ -1749,6 +1754,33 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let agents_window_command = tab.common.window_common.window_command;
     start_prompt_scheduler(tab.clone());
     let show_sessions = floem::reactive::create_rw_signal(false);
+    // Plans section (item 196): newest plan artifacts for the current
+    // workspace; re-read when a plan-mode artifact is written
+    // (plans_version) and on panel build. Rows carry their own root so
+    // a click still opens the right file after a workspace switch.
+    let plans_list = floem::reactive::create_rw_signal(
+        Vec::<(std::path::PathBuf, u64, String, String)>::new(),
+    );
+    {
+        let plans_tab = tab.clone();
+        let plans_data = data.clone();
+        create_effect(move |_| {
+            plans_data.plans_version.get();
+            let Some(root) = plans_tab.workspace.path.clone() else {
+                plans_list.set(Vec::new());
+                return;
+            };
+            let entries = crate::agent_loop::plan_entries(&root)
+                .into_iter()
+                .take(3)
+                .map(|(stamp, name, title)| {
+                    (root.clone(), stamp, name, title)
+                })
+                .collect::<Vec<_>>();
+            plans_list.set(entries);
+        });
+    }
+    let plans_open = tab.main_split.clone();
     let mode_expanded = floem::reactive::create_rw_signal(false);
     let model_expanded = floem::reactive::create_rw_signal(false);
     // Floating overlay dropdowns (settings.rs pattern): opening a
@@ -2349,6 +2381,61 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             s.apply_if(!show_sessions.get(), |s| s.hide())
                 .max_height(180.0)
                 .width_full()
+        }),
+        // Plan artifacts (item 196): the workspace's newest plans as
+        // clickable rows, hidden when there are none. Click opens the
+        // plan as a normal editor buffer; the palette's Plans: Index
+        // and Open Artifacts command shows the full index.
+        v_stack((
+            label(|| "Plans".to_string()).style(move |s| {
+                s.font_size(11.0)
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
+            dyn_stack(
+                move || plans_list.get(),
+                |(_, stamp, name, _)| (*stamp, name.clone()),
+                move |(root, _stamp, name, title)| {
+                    let open_split = plans_open.clone();
+                    let path = root.join(".lapce").join("plans").join(&name);
+                    label(move || title.clone())
+                        .on_click_stop(move |_| {
+                            open_split.jump_to_location(
+                                crate::editor::location::EditorLocation {
+                                    path: path.clone(),
+                                    position: None,
+                                    scroll_offset: None,
+                                    ignore_unconfirmed: false,
+                                    same_editor_tab: false,
+                                },
+                                None,
+                            );
+                        })
+                        .style(move |s| {
+                            s.font_size(11.0)
+                                .width_full()
+                                .selectable(false)
+                                .cursor(CursorStyle::Pointer)
+                                .color(
+                                    config
+                                        .get()
+                                        .color(LapceColor::EDITOR_DIM),
+                                )
+                                .hover(|s| {
+                                    s.background(
+                                        config.get().color(
+                                            LapceColor::PANEL_HOVERED_BACKGROUND,
+                                        ),
+                                    )
+                                })
+                        })
+                },
+            ),
+        ))
+        .style(move |s| {
+            s.apply_if(plans_list.get().is_empty(), |s| s.hide())
+                .width_full()
+                .gap(2.0)
         }),
         container(
             scroll(
