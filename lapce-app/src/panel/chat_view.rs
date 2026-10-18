@@ -795,6 +795,20 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     std::thread::spawn(move || {
         let result = (|| {
             let reader = crate::agent_read::ReadRoot::new(&root, true)?;
+            let (mut mcp_pool, mcp_notes) = if mode == crate::agent_loop::Mode::Act
+            {
+                crate::agent_mcp::McpPool::connect(&root)
+            } else {
+                (crate::agent_mcp::McpPool::empty(), Vec::new())
+            };
+            for note in &mcp_notes {
+                let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                    title: "MCP".to_string(),
+                    detail: note.clone(),
+                    error: false,
+                }));
+            }
+            let mcp_tools = mcp_pool.schemas();
             crate::agent_loop::run(
                 mode,
                 &prompt,
@@ -906,6 +920,27 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             cancelled.clone(),
                         )
                     }
+                    name if crate::agent_loop::is_mcp_tool(name) => {
+                        let (respond_tx, respond_rx) =
+                            std::sync::mpsc::channel();
+                        let _ = tx.send(AgentUpdate::Approval {
+                            id: call.id.clone(),
+                            command: crate::agent_mcp::McpPool::summary(
+                                name,
+                                &call.arguments,
+                            ),
+                            respond: respond_tx,
+                        });
+                        let approved = crate::agent_exec::await_approval(
+                            &respond_rx,
+                            &cancelled,
+                            std::time::Duration::from_secs(300),
+                        )?;
+                        if !approved {
+                            return Err("Denied by owner".into());
+                        }
+                        mcp_pool.call(name, &call.arguments)
+                    }
                     _ => Err("Unregistered tool".into()),
                 },
                 |event| {
@@ -950,6 +985,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         crate::agent_loop::Event::Finished(_) => {}
                     }
                 },
+                &mcp_tools,
             )
         })();
         let _ = tx.send(match result {
