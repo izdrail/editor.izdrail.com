@@ -3620,7 +3620,14 @@ impl WindowTabData {
                             main_split.editors.editor_untracked(editor_id)
                         {
                             let doc = editor.doc();
-                            doc.init_content(Rope::from(text));
+                            // reload, not init_content: the scratch doc
+                            // was already initialized with "" when the
+                            // editor tab was created, and a second
+                            // init_content swaps the rope without a
+                            // delta, leaving screen lines / gutter
+                            // numbering stale (blame tab showed
+                            // 1, 1, 2, 3). reload applies a real delta.
+                            doc.reload(Rope::from(text), true);
                             if let Some(lang) = LapceLanguage::from_name("diff")
                             {
                                 doc.set_language(lang);
@@ -3783,7 +3790,14 @@ impl WindowTabData {
                             main_split.editors.editor_untracked(editor_id)
                         {
                             let doc = editor.doc();
-                            doc.init_content(Rope::from(text));
+                            // reload, not init_content: the scratch doc
+                            // was already initialized with "" when the
+                            // editor tab was created, and a second
+                            // init_content swaps the rope without a
+                            // delta, leaving screen lines / gutter
+                            // numbering stale (blame tab showed
+                            // 1, 1, 2, 3). reload applies a real delta.
+                            doc.reload(Rope::from(text), true);
                         }
                     }
                 }

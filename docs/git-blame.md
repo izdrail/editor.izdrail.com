@@ -25,3 +25,10 @@ exact column alignment, and a real-repo integration test.
 
 Follow-up: gutter annotations reusing this parser, and opening the
 blamed commit in the history view on click.
+
+Render fix: the blame tab (and the git show scratch lane) now sets its
+content with `doc.reload(...)` instead of a second `init_content` - the
+scratch doc is already initialized empty when the tab is created, and a
+second init swaps the rope without a delta, which left the gutter's
+screen-line numbering stale (1, 1, 2, 3). reload applies a real delta
+through the normal update path.
