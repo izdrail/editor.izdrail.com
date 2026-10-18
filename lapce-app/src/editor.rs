@@ -2815,7 +2815,9 @@ impl EditorData {
             .workspace
             .path
             .as_deref()
-            .map(|root| crate::project_completion::items(root, &line_before))
+            .map(|root| {
+                crate::project_completion::items(root, Some(path), &line_before)
+            })
             .unwrap_or_default();
         snippets
             .into_iter()

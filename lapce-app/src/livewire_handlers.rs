@@ -29,7 +29,7 @@ fn studly(part: &str) -> String {
         .collect()
 }
 
-fn class_for_view(root: &Path, view: &Path) -> Option<PathBuf> {
+pub(crate) fn class_for_view(root: &Path, view: &Path) -> Option<PathBuf> {
     let rel = view.strip_prefix(root.join("resources/views/livewire")).ok()?;
     let s = rel.to_str()?.strip_suffix(".blade.php")?;
     if s.is_empty() || s.contains("..") || s.split('/').any(str::is_empty) {
@@ -103,6 +103,34 @@ pub fn member_at(line: &str, col: usize) -> Option<String> {
         }
     }
     None
+}
+
+/// Public property names of a component class (`public $email;`,
+/// `public ?string $name = '';`). Methods, `static` and `const` lines are
+/// excluded; duplicates removed, capped at 500.
+pub fn public_props(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for l in text.lines() {
+        let t = l.trim_start();
+        let Some(rest) = t.strip_prefix("public ") else { continue };
+        if rest.contains('(')
+            || rest.starts_with("static ")
+            || rest.starts_with("const ")
+            || rest.starts_with("fn ")
+        {
+            continue;
+        }
+        let Some(d) = rest.find('$') else { continue };
+        let name: String =
+            rest[d + 1..].chars().take_while(|c| is_name(*c)).collect();
+        if !name.is_empty() && name.len() <= 60 && !out.contains(&name) {
+            out.push(name);
+        }
+        if out.len() >= 500 {
+            break;
+        }
+    }
+    out
 }
 
 /// Zero-based line of the method or public property `name` in `text`.
