@@ -143,7 +143,7 @@ Laravel and Symfony route list in the command palette ("Go to Route") jumping to
 Expand HTML (`ul>li.item*3`) and CSS (`m10-20`) abbreviations with `Ctrl+Alt+M`. See [docs/emmet.md](docs/emmet.md).
 
 ### Completion popup
-LSP results, imported snippets, language keywords, project strings (route, config, env, view and translation names, Livewire properties and methods, Blade view variables and `<x-...>` component tags) and buffer words in one fuzzy-ranked popup. See [docs/completion-popup.md](docs/completion-popup.md).
+LSP results, imported snippets, language keywords, project strings (route, config, env, view and translation names, Livewire properties and methods, Blade view variables, `<x-...>` component tags and `asset()` paths) and buffer words in one fuzzy-ranked popup. See [docs/completion-popup.md](docs/completion-popup.md).
 
 ### Themes and icons marketplace
 Install colour themes and icon themes from the registry in the Themes & Icons panel. Theme/icon packages are validated data packages (HTTPS-only, size-bounded, no executable files); executable WASI plugins install through the same hardened pipeline. See [docs/data-only-marketplace.md](docs/data-only-marketplace.md).

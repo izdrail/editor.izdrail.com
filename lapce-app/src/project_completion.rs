@@ -4,8 +4,10 @@
 //! `__('...')` its translation keys, and inside `wire:model="..."` /
 //! `wire:click="..."` in a Livewire view the paired component's public
 //! properties / methods. In a `.blade.php` view, typing `$` offers the
-//! variables the view defines above the cursor, and typing `<x-`
-//! offers the app's Blade component tags. Same static
+//! variables the view defines above the cursor, typing `<x-`
+//! offers the app's Blade component tags, and `asset('...')` /
+//! `secure_asset('...')` / `mix('...')` complete files under
+//! `public/`. Same static
 //! scans as the palettes (nothing is executed), cached 30 s per workspace
 //! (per component class for Livewire) so completion stays cheap on every
 //! keystroke.
@@ -46,6 +48,9 @@ pub enum Kind {
     LivewireAction,
     /// Blade component tag `<x-<partial>` (dots for nested components).
     ComponentTag,
+    /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
+    /// under `public/`.
+    Asset,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -158,6 +163,7 @@ pub fn context(line: &str) -> Option<Kind> {
         "config" => Kind::Config,
         "env" | "getenv" => Kind::Env,
         "view" => Kind::View,
+        "asset" | "secure_asset" | "mix" => Kind::Asset,
         // Blade directives take view names too.
         "extends" | "include" | "includeIf" | "includeWhen" | "includeFirst"
         | "each" if blade => Kind::View,
@@ -184,6 +190,7 @@ struct Lists {
     stacks: Vec<String>,
     langs: Vec<String>,
     components: Vec<String>,
+    assets: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -395,6 +402,7 @@ fn lists(root: &Path) -> Lists {
     let (sections, stacks) = layout_names(root);
     let langs = lang_keys(root);
     let components = component_names(root);
+    let assets = asset_paths(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -406,6 +414,7 @@ fn lists(root: &Path) -> Lists {
         stacks,
         langs,
         components,
+        assets,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -673,6 +682,51 @@ fn livewire_methods(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
 
 /// Completion items for the project context at the end of `line_before`.
 /// `file` is the edited file; only Livewire completion uses it.
+/// Files under `public/` as `asset()`-ready paths (`css/app.css`).
+/// Symlinks (common for `public/storage`) and hidden directories are
+/// skipped; the walk is bounded like the other static scans.
+fn asset_paths(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, base: &Path, out: &mut Vec<String>) {
+        if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            let hidden = e
+                .file_name()
+                .to_str()
+                .is_some_and(|n| n.starts_with('.'));
+            if hidden {
+                continue;
+            }
+            if ft.is_dir() {
+                walk(&p, depth + 1, base, out);
+            } else if ft.is_file() {
+                let Ok(rel) = p.strip_prefix(base) else { continue };
+                let path = rel.to_string_lossy().replace('\\', "/");
+                if out.len() < MAX_VIEW_FILES && !out.contains(&path) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    let base = root.join("public");
+    let mut out = Vec::new();
+    walk(&base, 0, &base, &mut out);
+    out
+}
+
 /// Blade component tag names from `resources/views/components`:
 /// `forms/input.blade.php` -> `forms.input`, and an `index.blade.php`
 /// names its directory, matching the component resolver in
@@ -787,6 +841,7 @@ pub fn items(
         Kind::LivewireAction => (Vec::new(), "Livewire method"),
         // Returned early above; the match must stay exhaustive.
         Kind::ComponentTag => (Vec::new(), "Blade component"),
+        Kind::Asset => (lists.assets, "asset path"),
     };
     names
         .into_iter()
@@ -1013,6 +1068,38 @@ mod tests {
     {{ $x }}
 @endif
 "#;
+
+    #[test]
+    fn offers_asset_paths() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "public/css/app.css", "body {}");
+        put(r, "public/js/app.js", "");
+        put(r, "public/images/logo dark.png", "");
+        put(r, "public/.hidden/x.css", "");
+        // Missing public/ -> no asset items, other kinds unaffected.
+        let labels = |line: &str| {
+            let mut v = items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            labels("asset('"),
+            [
+                "css/app.css".to_string(),
+                "images/logo dark.png".to_string(),
+                "js/app.js".to_string(),
+            ]
+        );
+        assert_eq!(labels("secure_asset('"), labels("asset('"));
+        assert_eq!(labels("mix('"), labels("asset('"));
+        assert!(!labels("asset('").iter().any(|l| l.starts_with(".hidden")));
+        let e = tempfile::tempdir().unwrap();
+        assert!(items(e.path(), None, "asset('").is_empty());
+    }
 
     #[test]
     fn component_tag_context() {
