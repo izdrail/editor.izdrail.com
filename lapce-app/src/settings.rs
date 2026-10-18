@@ -518,14 +518,25 @@ pub fn settings_view(
             // The model list is long (one block per curated model). It lives in
             // its own fixed-height scroll so it can never push the settings
             // content past the bottom of the editor area, over the panels.
-            scroll(
-                stack((
-                    ai_download_view(ai_common.clone()),
-                    curated_models_view(ai_common),
-                ))
-                .style(|s| s.flex_col().width_pct(100.0)),
+            container(
+                scroll(
+                    stack((
+                        ai_download_view(ai_common.clone()),
+                        curated_models_view(ai_common),
+                    ))
+                    .style(|s| s.flex_col().width_pct(100.0)),
+                )
+                .style(|s| s.width_pct(100.0).height(170.0).flex_shrink(0.0)),
             )
-            .style(|s| s.width_pct(100.0).height(170.0).flex_shrink(0.0)),
+            .style(move |s| {
+                s.width_pct(100.0).apply_if(
+                    !matches!(
+                        current_kind.get().as_str(),
+                        "AI Autocomplete" | "AI Chat"
+                    ),
+                    |s| s.hide(),
+                )
+            }),
             container({
                 scroll({
                     dyn_stack(
@@ -1432,9 +1443,17 @@ fn dropdown_scroll(
 }
 
 /// Explicit model management lives alongside the AI settings, not a startup fetch.
-fn ai_download_view(_common: Rc<CommonData>) -> impl View {
+fn ai_download_view(common: Rc<CommonData>) -> impl View {
+    let config = common.config;
     label(|| {
         "Curated coding models: download, then choose Use this model. FIM and Chat stay separate.".to_string()
+    })
+    .style(move |s| {
+        s.padding_horiz(50.0)
+            .padding_top(10.0)
+            .max_width_pct(100.0)
+            .text_ellipsis()
+            .color(config.get().color(LapceColor::EDITOR_DIM))
     })
 }
 fn ai_model_download_view(
@@ -1467,7 +1486,13 @@ fn ai_model_download_view(
     let config = common.config;
     stack((
         label(move ||state.get()).style(|s|s.max_width_pct(100.0)),
-        label(|| "Download from Hugging Face (explicit network request; no source code upload). Source and licence details: docs/ai-chat.md".to_string()),
+        label(|| "Download from Hugging Face (explicit network request; no source code upload). Source and licence details: docs/ai-chat.md".to_string())
+            .style(move |s| {
+                s.max_width_pct(100.0)
+                    .text_ellipsis()
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
+        stack((
         label(||"Download selected model".to_string()).on_click_stop(move |_| {
             if busy.get_untracked() {return;}
             busy.set(true);state.set("Starting download...".into());
@@ -1491,7 +1516,7 @@ fn ai_model_download_view(
                 })();
                 if let Err(e)=run {let _=tx.send(format!("Error: {e}"));}
             });
-        }).style(|s|s.padding(8.0).border(1.0).cursor(CursorStyle::Pointer)),
+        }).style(move |s| ai_button_style(s, config)),
         label(|| "Use this model".to_string()).on_click_stop(move |_| {
             let root = lapce_core::directory::Directory::data_local_directory().map(|p| p.join("ai-models"));
             if root.is_none_or(|r| !r.join(format!("installed-{}.json", entry.id)).exists()) {
@@ -1499,12 +1524,34 @@ fn ai_model_download_view(
             }
             LapceConfig::update_file(if entry.chat { "ai-chat" } else { "ai-autocomplete" }, "local-model", toml_edit::Value::from(entry.id));
             state.set(format!("Selected: {}", entry.id));
-        }).style(|s| s.padding(8.0).cursor(CursorStyle::Pointer)),
+        }).style(move |s| ai_button_style(s, config)),
         label(||"Cancel download".to_string()).on_click_stop(move |_| {
             if let Some(c)=cancel_child.lock().unwrap().as_mut() {let _=c.kill();}
             let _=cancel_tx.send("Cancelled".to_string());
-        }).style(|s|s.padding(8.0).cursor(CursorStyle::Pointer)),
+        }).style(move |s| ai_button_style(s, config)),
+        ))
+        .style(|s| s.flex_row().gap(8.0)),
     )).style(move |s|s.flex_col().gap(8.0).padding_horiz(50.0).padding_bottom(15.0).font_size(config.get().ui.font_size() as f32))
+}
+
+fn ai_button_style(
+    s: floem::style::Style,
+    config: ReadSignal<Arc<LapceConfig>>,
+) -> floem::style::Style {
+    s.padding_horiz(12.0)
+        .padding_vert(6.0)
+        .border(1.0)
+        .border_radius(6.0)
+        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+        .cursor(CursorStyle::Pointer)
+        .hover(|s| {
+            s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))
+        })
+        .active(|s| {
+            s.background(
+                config.get().color(LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND),
+            )
+        })
 }
 
 fn curated_models_view(common: Rc<CommonData>) -> impl View {
