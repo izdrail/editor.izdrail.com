@@ -1,9 +1,9 @@
 <h1 align="center">
   <img src="extra/images/logo.png" width=200 height=200/><br>
-  editor.izdrail.com
+  Gravity Editor
 </h1>
 
-<h4 align="center">A fast Rust code editor with VS Code content import</h4>
+<h4 align="center">A fast Rust code editor with VS Code content import - [izdrail.com](https://izdrail.com)</h4>
 
 <div align="center">
   <a href="https://github.com/izdrail/editor.izdrail.com/actions/workflows/linux-build.yml" target="_blank">
@@ -12,7 +12,7 @@
 </div>
 <br/>
 
-editor.izdrail.com is a native code editor written in Rust with a [Floem](https://github.com/lapce/floem) UI and [wgpu](https://github.com/gfx-rs/wgpu) rendering. It is a derivative of [Lapce](https://github.com/lapce/lapce) (Apache License 2.0, copyright the Lapce contributors), with its own highlighting engine, language server client, WASI plugin host, VS Code extension import and keymap presets. Debugging (DAP) is not part of this editor.
+Gravity Editor (editor.izdrail.com) is a native code editor written in Rust with a [Floem](https://github.com/lapce/floem) UI and [wgpu](https://github.com/gfx-rs/wgpu) rendering. It is a derivative of [Lapce](https://github.com/lapce/lapce) (Apache License 2.0, copyright the Lapce contributors), with its own highlighting engine, language server client, WASI plugin host, VS Code extension import and keymap presets. Debugging (DAP) is not part of this editor.
 
 ![](extra/images/screenshot.png)
 
