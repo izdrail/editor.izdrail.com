@@ -51,10 +51,26 @@ pub fn record_session(root: &Path, entry: StoredSession) -> Result<(), String> {
     sessions.retain(|s| s.session_id != entry.session_id);
     sessions.insert(0, entry);
     sessions.truncate(MAX_SESSIONS);
+    store_sessions(root, &sessions)
+}
+
+/// Remove one entry by session id; a missing id is a no-op (and
+/// creates nothing on disk).
+pub fn remove_session(root: &Path, session_id: &str) -> Result<(), String> {
+    let mut sessions = load_sessions(root);
+    let before = sessions.len();
+    sessions.retain(|s| s.session_id != session_id);
+    if sessions.len() == before {
+        return Ok(());
+    }
+    store_sessions(root, &sessions)
+}
+
+fn store_sessions(root: &Path, sessions: &[StoredSession]) -> Result<(), String> {
     let dir = sessions_path(root);
     let dir = dir.parent().ok_or("bad sessions path")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    let body = serde_json::to_vec_pretty(&sessions).map_err(|e| e.to_string())?;
+    let body = serde_json::to_vec_pretty(sessions).map_err(|e| e.to_string())?;
     let tmp = dir.join("sessions.json.tmp");
     std::fs::write(&tmp, body).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, sessions_path(root))
@@ -123,6 +139,23 @@ mod tests {
         let sessions = load_sessions(&r);
         assert_eq!(sessions.len(), MAX_SESSIONS);
         assert!(sessions.iter().all(|s| s.session_id != "s-2"));
+    }
+
+    #[test]
+    fn remove_deletes_and_roundtrips() {
+        let r = root("remove");
+        record_session(&r, entry("s-1", 100)).unwrap();
+        record_session(&r, entry("s-2", 200)).unwrap();
+        remove_session(&r, "s-1").unwrap();
+        let sessions = load_sessions(&r);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "s-2");
+        // Missing ids are a no-op and create nothing new.
+        remove_session(&r, "nope").unwrap();
+        assert_eq!(load_sessions(&r).len(), 1);
+        // Removing the last entry leaves an empty, readable file.
+        remove_session(&r, "s-2").unwrap();
+        assert!(load_sessions(&r).is_empty());
     }
 }
 

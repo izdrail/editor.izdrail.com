@@ -1070,6 +1070,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let schedules_data = data.clone();
     let agents_tab = tab.clone();
     let agents_data = data.clone();
+    let agents_del_tab = tab.clone();
     start_prompt_scheduler(tab.clone());
     let show_sessions = floem::reactive::create_rw_signal(false);
     let session_list = floem::reactive::create_rw_signal(
@@ -1261,22 +1262,64 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         )
                     );
                     let id = session.session_id.clone();
+                    let del_id = session.session_id.clone();
                     let agents_data = agents_data.clone();
-                    label(move || text.clone())
-                        .on_click_stop(move |_| {
-                            agents_data.error.set(String::new());
-                            agents_data.mode.set(None);
-                            agents_data.acp.set(true);
-                            agents_data.acp_resume.set(true);
-                            agents_data.resume_id.set(Some(id.clone()));
-                            show_sessions.set(false);
-                        })
-                        .style(|s| {
-                            s.padding(6.0)
-                                .width_full()
-                                .cursor(CursorStyle::Pointer)
-                                .selectable(false)
-                        })
+                    let del_data = agents_data.clone();
+                    let del_tab = agents_del_tab.clone();
+                    h_stack((
+                        label(move || text.clone())
+                            .on_click_stop(move |_| {
+                                agents_data.error.set(String::new());
+                                agents_data.mode.set(None);
+                                agents_data.acp.set(true);
+                                agents_data.acp_resume.set(true);
+                                agents_data.resume_id.set(Some(id.clone()));
+                                show_sessions.set(false);
+                            })
+                            .style(|s| {
+                                s.padding(6.0)
+                                    .flex_grow(1.0)
+                                    .cursor(CursorStyle::Pointer)
+                                    .selectable(false)
+                            }),
+                        label(|| "Delete".to_string())
+                            .on_click_stop(move |_| {
+                                let Some(root) = del_tab
+                                    .workspace
+                                    .path
+                                    .as_ref()
+                                    .and_then(|p| p.canonicalize().ok())
+                                else {
+                                    return;
+                                };
+                                match crate::agent_acp_store::remove_session(
+                                    &root, &del_id,
+                                ) {
+                                    Ok(()) => {
+                                        session_list.update(|v| {
+                                            v.retain(|s| {
+                                                s.session_id != del_id
+                                            })
+                                        });
+                                        if del_data.resume_id.get_untracked()
+                                            .as_deref()
+                                            == Some(del_id.as_str())
+                                        {
+                                            del_data.resume_id.set(None);
+                                            del_data.acp_resume.set(false);
+                                        }
+                                    }
+                                    Err(e) => del_data.error.set(format!(
+                                        "Could not remove the session: {e}"
+                                    )),
+                                }
+                            })
+                            .style(|s| {
+                                s.padding(6.0)
+                                    .cursor(CursorStyle::Pointer)
+                                    .selectable(false)
+                            }),
+                    ))
                 },
             ),
         )
