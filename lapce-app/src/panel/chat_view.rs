@@ -1425,11 +1425,20 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     show_sessions.set(false);
                                 }
                             })
-                            .style(|s| {
+                            .style(move |s| {
                                 s.padding(6.0)
                                     .flex_grow(1.0)
+                                    .min_width(0.0)
+                                    .text_ellipsis()
                                     .cursor(CursorStyle::Pointer)
                                     .selectable(false)
+                                    .hover(|s| {
+                                        s.background(
+                                            config.get().color(
+                                                LapceColor::PANEL_HOVERED_BACKGROUND,
+                                            ),
+                                        )
+                                    })
                             }),
                         label(|| "Delete".to_string())
                             .on_click_stop(move |_| {
@@ -1455,10 +1464,21 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     )),
                                 }
                             })
-                            .style(|s| {
+                            .style(move |s| {
                                 s.padding(6.0)
                                     .cursor(CursorStyle::Pointer)
                                     .selectable(false)
+                                    .color(config.get().color(LapceColor::EDITOR_DIM))
+                                    .hover(|s| {
+                                        s.background(
+                                            config.get().color(
+                                                LapceColor::PANEL_HOVERED_BACKGROUND,
+                                            ),
+                                        )
+                                        .color(
+                                            config.get().color(LapceColor::LAPCE_ERROR),
+                                        )
+                                    })
                             }),
                     ))
                 },
