@@ -1018,6 +1018,9 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             cancelled.clone(),
                         )
                     }
+                    "web_fetch" => crate::agent_web::fetch(
+                        call.arguments["url"].as_str().ok_or("Missing url")?,
+                    ),
                     name if crate::agent_loop::is_mcp_tool(name) => {
                         let (respond_tx, respond_rx) =
                             std::sync::mpsc::channel();
@@ -1060,6 +1063,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                     .or_else(|| call.arguments.get("pattern"))
                                     .or_else(|| call.arguments.get("query"))
                                     .or_else(|| call.arguments.get("command"))
+                                    .or_else(|| call.arguments.get("url"))
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
                                 let _ = tx.send(AgentUpdate::Step(AgentStepRow {
