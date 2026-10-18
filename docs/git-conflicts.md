@@ -36,3 +36,12 @@ are detected and refused with a toast until supported.
 **Git: Merge Abort** (`git_merge_abort`) runs `git merge --abort` off
 the UI thread with the usual toast feedback - the explicit escape
 hatch the Discard refusal references.
+
+Dedup fix: a conflicted file no longer also appears in Staged Changes.
+During a merge the index holds the file's stage entries, so the
+HEAD->index diff reported it as a staged modification next to the
+workdir Conflicted row. git_diff_new now drops conflicted paths from
+the staged list - the file lists once, under Changes with the warning
+icon and commit refusal. Covered by a real-merge test
+(conflicted_file_lists_once_not_in_staged: branch, diverge, merge,
+assert Changes has the Conflicted row and Staged does not).

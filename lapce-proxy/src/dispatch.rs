@@ -2260,6 +2260,16 @@ fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
             }
         }
     }
+    // A conflicted file (merge in progress) shows in both diffs - the
+    // index holds its stage entries, so HEAD->index also reports it.
+    // It belongs to the workdir list only (warning icon, commit
+    // refusal), never to Staged Changes.
+    let conflicted: HashSet<&PathBuf> = deltas
+        .iter()
+        .filter(|d| d.0 == git2::Delta::Conflicted)
+        .map(|d| &d.2)
+        .collect();
+    staged_deltas.retain(|d| !conflicted.contains(&d.2));
     let staged_diffs = deltas_to_file_diffs(&staged_deltas);
 
     let (ahead, behind) = git_ahead_behind(&repo, &name);
@@ -2595,7 +2605,7 @@ mod git_create_branch_tests {
 mod git_staged_diff_tests {
     use git2::Repository;
 
-    use super::git_diff_new;
+    use super::{FileDiff, git_diff_new};
 
     fn init_repo() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -2657,6 +2667,61 @@ mod git_staged_diff_tests {
         assert!(unstaged.contains(&dir.path().join("b.txt")));
         assert!(!unstaged.contains(&dir.path().join("a.txt")));
         assert!(!staged.contains(&dir.path().join("b.txt")));
+    }
+
+    #[test]
+    fn conflicted_file_lists_once_not_in_staged() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("c.txt"), "base\n").unwrap();
+        commit_all(&dir, "init");
+        {
+            let repo = Repository::open(dir.path()).unwrap();
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+        }
+        std::fs::write(dir.path().join("c.txt"), "master\n").unwrap();
+        commit_all(&dir, "master change");
+        {
+            let repo = Repository::open(dir.path()).unwrap();
+            repo.set_head("refs/heads/side").unwrap();
+            repo.checkout_head(Some(
+                git2::build::CheckoutBuilder::new().force(),
+            ))
+            .unwrap();
+        }
+        std::fs::write(dir.path().join("c.txt"), "side\n").unwrap();
+        commit_all(&dir, "side change");
+        {
+            let repo = Repository::open(dir.path()).unwrap();
+            let master = repo
+                .find_branch("master", git2::BranchType::Local)
+                .unwrap()
+                .get()
+                .peel_to_commit()
+                .unwrap();
+            let annotated =
+                repo.find_annotated_commit(master.id()).unwrap();
+            // A diverging merge of edited lines conflicts, leaving
+            // stage entries in the index (UU).
+            repo.merge(&[&annotated], None, None).unwrap();
+        }
+
+        let info =
+            git_diff_new(dir.path()).expect("git_diff_new returned None");
+        let staged: Vec<_> =
+            info.staged_diffs.iter().map(|d| d.path().clone()).collect();
+        let unstaged: Vec<_> =
+            info.diffs.iter().map(|d| d.path().clone()).collect();
+        let path = dir.path().join("c.txt");
+        assert!(unstaged.contains(&path), "conflict in Changes: {info:?}");
+        assert!(
+            !staged.contains(&path),
+            "conflict must not duplicate into Staged: {info:?}"
+        );
+        assert!(matches!(
+            info.diffs.iter().find(|d| *d.path() == path),
+            Some(FileDiff::Conflicted(_))
+        ));
     }
 
     #[test]
