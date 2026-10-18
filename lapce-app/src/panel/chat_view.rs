@@ -1391,30 +1391,32 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .max_height(180.0)
                 .width_full()
         }),
-        label(move || format!("Mode: {}. Act is unavailable; Ask/Plan never write files.", if data.acp.get() { "ACP agent" } else { match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" } }))
-            .style(|s| s.font_size(11.0).max_width_full()),
-        label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them.", config.get().ai_chat.endpoint))
-            .style(|s| s.font_size(11.0).max_width_full()),
+        label(move || {
+            let mode = if data.acp.get() { "ACP agent" } else { match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" } };
+            let c = config.get();
+            let model = if c.ai_chat.backend == "local" {
+                &c.ai_chat.local_model
+            } else {
+                &c.ai_chat.model
+            };
+            format!("Mode: {mode} - {} | {model} - Act unavailable; Ask/Plan never write files", c.ai_chat.backend)
+        })
+        .style(move |s| {
+            s.font_size(11.0)
+                .max_width_full()
+                .color(config.get().color(LapceColor::EDITOR_DIM))
+        }),
+        label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them. Reads: {}.", config.get().ai_chat.endpoint, if data.trust_reads.get() { "approved for this window" } else { "not approved" }))
+            .style(move |s| {
+                s.font_size(11.0)
+                    .max_width_full()
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
         h_stack((
             label(|| "Approve project reads for this window".to_string()).on_click_stop(move |_| { if !trust.busy.get_untracked() { trust.trusted_endpoint.set(config.get_untracked().ai_chat.endpoint.clone());
                     trust.trust_reads.set(true); } }),
             label(|| "Revoke".to_string()).on_click_stop(move |_| { revoke.trust_reads.set(false); if revoke.busy.get_untracked() { revoke.stop(); revoke.persist(config.get_untracked().ai_chat.save_history); } }),
         )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
-        label(move || format!("Project read permission: {}", if data.trust_reads.get() { "approved for this window" } else { "not approved" }))
-            .style(|s| s.font_size(11.0).max_width_full()),
-        label(move || {
-            let c = config.get();
-            format!(
-                "{} | {}",
-                c.ai_chat.backend,
-                if c.ai_chat.backend == "local" {
-                    &c.ai_chat.local_model
-                } else {
-                    &c.ai_chat.model
-                }
-            )
-        })
-        .style(|s| s.font_size(11.0)),
         container(
             scroll(
                 dyn_stack(
@@ -1425,7 +1427,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         let role = turn.role;
                         let render_id = std::sync::atomic::AtomicU64::new(0);
                         v_stack((
-                            label(move || role.to_string()),
+                            label(move || role.to_string()).style(move |s| {
+                                s.font_size(10.0).font_bold().color(
+                                    config.get().color(LapceColor::EDITOR_DIM),
+                                )
+                            }),
                             label(move || turn.context.clone())
                                 .style(|s| s.font_size(10.0).max_width_full()),
                             dyn_stack(
@@ -1455,9 +1461,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             s.width_full()
                                 .padding(10.0)
                                 .gap(5.0)
-                                .border_bottom(1.0)
-                                .border_color(
-                                    config.get().color(LapceColor::LAPCE_BORDER),
+                                .margin_bottom(8.0)
+                                .border_radius(8.0)
+                                .background(
+                                    config
+                                        .get()
+                                        .color(LapceColor::EDITOR_BACKGROUND),
                                 )
                         })
                     },
