@@ -111,3 +111,8 @@ at the server (root, `/v1`, or a full `/v1/chat/completions` URL are all
 accepted) and set Model to a name the server lists. Error text refers to
 "the chat server", not Ollama, for this reason. Servers requiring an API
 key are not supported yet; Ask/Plan tool calls stay Ollama-specific.
+
+The Endpoint field is a dropdown with the two key-less endpoints Stefan
+runs: `https://ai.izdrail.com` (his Ollama, the default) and
+`https://freellm.izdrail.com`. A custom URL typed in settings.toml stays
+selectable. The same dropdown exists under AI Autocomplete.

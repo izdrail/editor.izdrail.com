@@ -1005,6 +1005,32 @@ impl LapceConfig {
                     .unwrap_or(0),
                 items: self.terminal.profiles.clone().into_keys().collect(),
             }),
+            ("ai chat" | "ai-chat", "endpoint")
+            | ("ai autocomplete" | "ai-autocomplete", "endpoint") => {
+                // Key-less endpoints Stefan runs. ai.izdrail.com is his
+                // Ollama; freellm.izdrail.com is the shared lane (both
+                // speak the OpenAI /v1 wire format the ollama backend
+                // uses). A custom endpoint stays selectable.
+                let chat = kind == "ai chat" || kind == "ai-chat";
+                let selected = if chat {
+                    &self.ai_chat.endpoint
+                } else {
+                    &self.ai_autocomplete.endpoint
+                };
+                let mut items: im::Vector<String> = im::vector![
+                    "https://ai.izdrail.com".to_string(),
+                    "https://freellm.izdrail.com".to_string(),
+                ];
+                let active_index = match items.iter().position(|u| u == selected)
+                {
+                    Some(i) => i,
+                    None => {
+                        items.push_back(selected.clone());
+                        items.len() - 1
+                    }
+                };
+                Some(DropdownInfo { active_index, items })
+            }
             _ => None,
         }
     }
@@ -1106,6 +1132,44 @@ mod data_theme_tests {
             !LapceConfig::load_plugin_color_themes(&[meta.id()], &extra)
                 .contains_key("installed test color")
         );
+    }
+}
+
+#[cfg(test)]
+mod endpoint_dropdown_tests {
+    use super::*;
+
+    #[test]
+    fn ai_endpoints_are_dropdown_selectable() {
+        let config = LapceConfig::default();
+        for kind in ["ai chat", "ai autocomplete"] {
+            let info = config.get_dropdown_info(kind, "endpoint").unwrap();
+            assert_eq!(info.active_index, 0, "{kind}");
+            let got: Vec<&str> =
+                info.items.iter().map(|s| s.as_str()).collect();
+            assert_eq!(
+                got,
+                [
+                    "https://ai.izdrail.com",
+                    "https://freellm.izdrail.com",
+                ],
+                "{kind}"
+            );
+        }
+        // A custom endpoint stays selectable instead of being dropped.
+        let mut config = LapceConfig::default();
+        config.ai_chat.endpoint = "https://selfhost.example".into();
+        let info = config.get_dropdown_info("ai chat", "endpoint").unwrap();
+        assert_eq!(info.active_index, 2);
+        assert_eq!(
+            info.items.iter().last().map(|s| s.as_str()),
+            Some("https://selfhost.example")
+        );
+        // freellm selected -> index 1.
+        config.ai_chat.endpoint = "https://freellm.izdrail.com".into();
+        let info = config.get_dropdown_info("ai chat", "endpoint").unwrap();
+        assert_eq!(info.active_index, 1);
+        assert_eq!(info.items.len(), 2);
     }
 }
 
