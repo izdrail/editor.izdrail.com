@@ -17,7 +17,7 @@ use floem::{
     style::CursorStyle,
     views::{
         Decorators, container, dyn_stack, empty, h_stack, label, rich_text,
-        scroll::scroll, text_editor, v_stack,
+        scroll::scroll, svg, text_editor, v_stack,
     },
 };
 use lapce_ai::chat::Message;
@@ -1317,103 +1317,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .justify_between()
                 .padding_vert(2.0)
         }),
-        {
-            let c_chat = data.clone();
-            let c_ask = data.clone();
-            let c_plan = data.clone();
-            let c_acp = data.clone();
-            let c_resume = data.clone();
-            h_stack((
-            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); chat_mode.resume_id.set(None); } })
-                .style(move |s| {
-                    mode_button_style(
-                        s,
-                        config,
-                        c_chat.mode.get().is_none()
-                            && !c_chat.acp.get()
-                            && !c_chat.acp_resume.get(),
-                    )
-                }),
-            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); ask_mode.resume_id.set(None); } })
-                .style(move |s| {
-                    mode_button_style(
-                        s,
-                        config,
-                        c_ask.mode.get() == Some(crate::agent_loop::Mode::Ask),
-                    )
-                }),
-            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); plan_mode.resume_id.set(None); } })
-                .style(move |s| {
-                    mode_button_style(
-                        s,
-                        config,
-                        c_plan.mode.get() == Some(crate::agent_loop::Mode::Plan),
-                    )
-                }),
-            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); acp_mode.resume_id.set(None); } })
-                .style(move |s| {
-                    mode_button_style(
-                        s,
-                        config,
-                        c_acp.acp.get() && !c_acp.acp_resume.get(),
-                    )
-                }),
-            label(move || {
-                let settings = resume_tab.common.config.get().ai_chat.clone();
-                let count = resume_tab
-                    .workspace
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.canonicalize().ok())
-                    .map(|root| {
-                        let cwd = root.to_string_lossy().into_owned();
-                        crate::agent_acp_store::load_sessions(&root)
-                            .into_iter()
-                            .filter(|s| s.agent == settings.acp_command.trim() && s.cwd == cwd)
-                            .count()
-                    })
-                    .unwrap_or(0);
-                format!("Resume ({count})")
-            })
-            .on_click_stop(move |_| {
-                if !acp_resume.busy.get_untracked() {
-                    acp_resume.mode.set(None);
-                    acp_resume.acp.set(true);
-                    acp_resume.acp_resume.set(true);
-                    acp_resume.resume_id.set(None);
-                }
-            })
-            .style(move |s| {
-                mode_button_style(
-                    s,
-                    config,
-                    c_resume.acp.get() && c_resume.acp_resume.get(),
-                )
-            }),
-            label(move || format!("Agents ({})", session_list.get().len()))
-                .on_click_stop(move |_| {
-                    let show = !show_sessions.get_untracked();
-                    if show {
-                        let roots = agent_session_roots(
-                            agents_click_root.clone(),
-                            agents_db.as_ref(),
-                        );
-                        session_list.set(
-                            crate::agent_acp_store::load_sessions_merged(&roots),
-                        );
-                    }
-                    show_sessions.set(show);
-                })
-                .style(move |s| {
-                    mode_button_style(s, config, show_sessions.get())
-                }),
-        ))
-        .style(|s| {
-            s.flex_wrap(floem::style::FlexWrap::Wrap)
-                .gap(6.0)
-                .padding(6.0)
-        })
-        },
         scroll(
             dyn_stack(
                 move || session_list.get(),
@@ -1649,7 +1552,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 let on_send = context(&indicator_tab)
                     .map(|c| format!("On Send: {}", c.indicator()))
                     .unwrap_or_else(|| "On Send: no editor context".into());
-                format!("{on_send} - Enter for newline, click Send")
+                format!("{on_send} - Enter for newline, click the arrow to send")
             }
         })
         .style(move |s| {
@@ -1658,30 +1561,155 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .max_width_full()
                 .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
-        h_stack((
-            composer.style(|s| s.flex_grow(1.0).min_width(0.0).height(100.0)),
-            label(|| "Send".to_string())
-                .on_click_stop(move |_| send(&click_tab))
+        // Antigravity-style composer card: mode chips and the input live
+        // inside one bordered card; send is a circular accent button.
+        container(
+            v_stack((
+        {
+            let c_chat = data.clone();
+            let c_ask = data.clone();
+            let c_plan = data.clone();
+            let c_acp = data.clone();
+            let c_resume = data.clone();
+            h_stack((
+            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); chat_mode.resume_id.set(None); } })
                 .style(move |s| {
-                    s.padding_horiz(16.0)
-                        .padding_vert(8.0)
-                        .margin_left(6.0)
-                        .border(1.0)
-                        .border_radius(6.0)
-                        .font_bold()
-                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                        .cursor(CursorStyle::Pointer)
-                        .selectable(false)
-                        .hover(|s| {
-                            s.background(
-                                config
-                                    .get()
-                                    .color(LapceColor::PANEL_HOVERED_BACKGROUND),
-                            )
-                        })
+                    mode_button_style(
+                        s,
+                        config,
+                        c_chat.mode.get().is_none()
+                            && !c_chat.acp.get()
+                            && !c_chat.acp_resume.get(),
+                    )
+                }),
+            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); ask_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_ask.mode.get() == Some(crate::agent_loop::Mode::Ask),
+                    )
+                }),
+            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); plan_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_plan.mode.get() == Some(crate::agent_loop::Mode::Plan),
+                    )
+                }),
+            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); acp_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_acp.acp.get() && !c_acp.acp_resume.get(),
+                    )
+                }),
+            label(move || {
+                let settings = resume_tab.common.config.get().ai_chat.clone();
+                let count = resume_tab
+                    .workspace
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.canonicalize().ok())
+                    .map(|root| {
+                        let cwd = root.to_string_lossy().into_owned();
+                        crate::agent_acp_store::load_sessions(&root)
+                            .into_iter()
+                            .filter(|s| s.agent == settings.acp_command.trim() && s.cwd == cwd)
+                            .count()
+                    })
+                    .unwrap_or(0);
+                format!("Resume ({count})")
+            })
+            .on_click_stop(move |_| {
+                if !acp_resume.busy.get_untracked() {
+                    acp_resume.mode.set(None);
+                    acp_resume.acp.set(true);
+                    acp_resume.acp_resume.set(true);
+                    acp_resume.resume_id.set(None);
+                }
+            })
+            .style(move |s| {
+                mode_button_style(
+                    s,
+                    config,
+                    c_resume.acp.get() && c_resume.acp_resume.get(),
+                )
+            }),
+            label(move || format!("Agents ({})", session_list.get().len()))
+                .on_click_stop(move |_| {
+                    let show = !show_sessions.get_untracked();
+                    if show {
+                        let roots = agent_session_roots(
+                            agents_click_root.clone(),
+                            agents_db.as_ref(),
+                        );
+                        session_list.set(
+                            crate::agent_acp_store::load_sessions_merged(&roots),
+                        );
+                    }
+                    show_sessions.set(show);
+                })
+                .style(move |s| {
+                    mode_button_style(s, config, show_sessions.get())
                 }),
         ))
-        .style(|s| s.width_full().padding_bottom(8.0)),
+        .style(|s| {
+            s.flex_wrap(floem::style::FlexWrap::Wrap)
+                .gap(6.0)
+                .padding(6.0)
+        })
+        },
+                h_stack((
+                    composer.style(|s| {
+                        s.flex_grow(1.0).min_width(0.0).height(100.0)
+                    }),
+                    container(
+                        svg(move || config.get().ui_svg(LapceIcons::SEND))
+                            .style(move |s| {
+                                let config = config.get();
+                                let size = config.ui.icon_size() as f32;
+                                s.size(size, size).color(config.color(
+                                    LapceColor::LAPCE_BUTTON_PRIMARY_FOREGROUND,
+                                ))
+                            }),
+                    )
+                    .on_click_stop(move |_| send(&click_tab))
+                    .style(move |s| {
+                        s.padding(8.0)
+                            .margin_left(6.0)
+                            .border_radius(100.0)
+                            .background(config.get().color(
+                                LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND,
+                            ))
+                            .cursor(CursorStyle::Pointer)
+                            .selectable(false)
+                            .hover(|s| {
+                                s.background(
+                                    config
+                                        .get()
+                                        .color(
+                                            LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND,
+                                        )
+                                        .multiply_alpha(0.85),
+                                )
+                            })
+                    }),
+                ))
+                .style(|s| s.width_full().items_end()),
+            ))
+            .style(|s| s.width_full().gap(4.0)),
+        )
+        .style(move |s| {
+            s.width_full()
+                .padding(6.0)
+                .border(1.0)
+                .border_radius(8.0)
+                .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
+        }),
     ))
     .style(move |s| {
         // Absolute and sized to the panel, like the other panels, so the
