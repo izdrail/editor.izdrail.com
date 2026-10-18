@@ -171,9 +171,173 @@ impl Snapshot {
         Ok(restored)
     }
 }
+/// One contiguous changed region between a base and a proposed
+/// document, in whole lines with their newline terminators kept.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hunk {
+    /// 0-based line in the base where the region starts.
+    pub base_start: usize,
+    pub removed: Vec<String>,
+    pub added: Vec<String>,
+}
+/// Split base/proposed into non-overlapping changed regions. Common
+/// prefix/suffix trim, then a line LCS over the middle; middles too
+/// large for the DP fall back to a single region (the behavior the
+/// review view already shows). Deterministic, no allocation beyond
+/// the region sizes.
+pub fn hunks(base: &str, proposed: &str) -> Vec<Hunk> {
+    let old: Vec<&str> = base.split_inclusive('\n').collect();
+    let new: Vec<&str> = proposed.split_inclusive('\n').collect();
+    if old == new {
+        return Vec::new();
+    }
+    let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+    let suffix = old[prefix..]
+        .iter()
+        .rev()
+        .zip(new[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let old_mid = &old[prefix..old.len() - suffix];
+    let new_mid = &new[prefix..new.len() - suffix];
+    const MAX_CELLS: usize = 1_000_000;
+    if old_mid.is_empty() && new_mid.is_empty()
+        || old_mid.len() * new_mid.len() > MAX_CELLS
+    {
+        return vec![Hunk {
+            base_start: prefix,
+            removed: old_mid.iter().map(|s| s.to_string()).collect(),
+            added: new_mid.iter().map(|s| s.to_string()).collect(),
+        }];
+    }
+    // lcs[i][j] = length of the LCS of old_mid[i..] and new_mid[j..].
+    let (m, n) = (old_mid.len(), new_mid.len());
+    let mut lcs = vec![vec![0u32; n + 1]; m + 1];
+    for i in (0..m).rev() {
+        for j in (0..n).rev() {
+            lcs[i][j] = if old_mid[i] == new_mid[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
+        }
+    }
+    // Walk the LCS, emitting a region whenever a run of changes ends.
+    let mut result = Vec::new();
+    let (mut i, mut j) = (0usize, 0usize);
+    let mut current: Option<Hunk> = None;
+    let mut flush = |current: &mut Option<Hunk>, result: &mut Vec<Hunk>| {
+        if let Some(h) = current.take() {
+            result.push(h);
+        }
+    };
+    while i < m || j < n {
+        let common = i < m && j < n && old_mid[i] == new_mid[j];
+        if common {
+            flush(&mut current, &mut result);
+            i += 1;
+            j += 1;
+            continue;
+        }
+        let hunk = current.get_or_insert_with(|| Hunk {
+            base_start: prefix + i,
+            removed: Vec::new(),
+            added: Vec::new(),
+        });
+        if i < m && (j == n || lcs[i + 1][j] >= lcs[i][j + 1]) {
+            hunk.removed.push(old_mid[i].to_string());
+            i += 1;
+        } else {
+            hunk.added.push(new_mid[j].to_string());
+            j += 1;
+        }
+    }
+    flush(&mut current, &mut result);
+    result
+}
+/// Rebuild a document from its base lines and a per-hunk accept mask.
+/// The selections must come from `hunks(base, proposed)` on the exact
+/// base text; anything else is a caller bug and panics are avoided by
+/// construction (indices only index into hunks, never the base).
+pub fn merge_hunks(base: &str, hunks: &[Hunk], accepted: &[bool]) -> String {
+    debug_assert_eq!(hunks.len(), accepted.len());
+    let lines: Vec<&str> = base.split_inclusive('\n').collect();
+    let mut out = String::with_capacity(base.len());
+    let mut cursor = 0usize;
+    for (hunk, accepted) in hunks.iter().zip(accepted.iter().copied()) {
+        for line in &lines[cursor..hunk.base_start.min(lines.len())] {
+            out.push_str(line);
+        }
+        cursor = hunk.base_start.min(lines.len());
+        if accepted {
+            for line in &hunk.added {
+                out.push_str(line);
+            }
+        } else {
+            for line in &hunk.removed {
+                out.push_str(line);
+            }
+        }
+        cursor += hunk.removed.len();
+    }
+    for line in &lines[cursor.min(lines.len())..] {
+        out.push_str(line);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hunks_split_separate_regions() {
+        let base = "a\nb\nc\nd\ne\nf\n";
+        let proposed = "a\nB\nc\nd\nE\nf\n";
+        let hs = hunks(base, proposed);
+        assert_eq!(hs.len(), 2);
+        assert_eq!(hs[0].base_start, 1);
+        assert_eq!(hs[0].removed, vec!["b\n"]);
+        assert_eq!(hs[0].added, vec!["B\n"]);
+        assert_eq!(hs[1].base_start, 4);
+        assert_eq!(hs[1].removed, vec!["e\n"]);
+        assert_eq!(hs[1].added, vec!["E\n"]);
+    }
+
+    #[test]
+    fn hunks_insertions_and_deletions() {
+        let hs = hunks("a\nd\n", "a\nb\nc\nd\n");
+        assert_eq!(hs.len(), 1);
+        assert_eq!(hs[0].base_start, 1);
+        assert!(hs[0].removed.is_empty());
+        assert_eq!(hs[0].added, vec!["b\n", "c\n"]);
+        let hs = hunks("a\nb\nc\nd\n", "a\nd\n");
+        assert_eq!(hs.len(), 1);
+        assert_eq!(hs[0].removed, vec!["b\n", "c\n"]);
+        assert!(hs[0].added.is_empty());
+        assert!(hunks("same\n", "same\n").is_empty());
+    }
+
+    #[test]
+    fn merge_hunks_roundtrips_full_and_partial() {
+        let base = "a\nb\nc\nd\ne\nf\n";
+        let proposed = "a\nB\nc\nd\nE\nf\n";
+        let hs = hunks(base, proposed);
+        assert_eq!(merge_hunks(base, &hs, &[true, true]), proposed);
+        assert_eq!(merge_hunks(base, &hs, &[false, false]), base);
+        assert_eq!(merge_hunks(base, &hs, &[true, false]), "a\nB\nc\nd\ne\nf\n");
+        assert_eq!(merge_hunks(base, &hs, &[false, true]), "a\nb\nc\nd\nE\nf\n");
+    }
+
+    #[test]
+    fn merge_hunks_preserves_missing_final_newline() {
+        let base = "one\ntwo";
+        let proposed = "one\nTWO";
+        let hs = hunks(base, proposed);
+        assert_eq!(hs.len(), 1);
+        assert_eq!(merge_hunks(base, &hs, &[true]), proposed);
+        assert_eq!(merge_hunks(base, &hs, &[false]), base);
+    }
+
     fn fixture() -> (Proposal, BTreeMap<String, BufferState>) {
         let mut current = BTreeMap::new();
         current.insert(
