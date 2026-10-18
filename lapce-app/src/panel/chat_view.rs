@@ -1548,25 +1548,31 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             )
                             .style(|s| s.flex_col().max_width_full()),
                         ))
+                        // Antigravity parity: full-width cards, not
+                        // chat bubbles. Your turns keep the accent
+                        // background; agent turns get a border so they
+                        // read as cards against the panel.
                         .style(move |s| {
                             let user = role == "You";
                             let config = config.get();
                             let s = s
+                                .width_full()
                                 .padding(10.0)
                                 .gap(5.0)
                                 .margin_bottom(8.0)
-                                .margin_right(10.0)
-                                .border_radius(8.0)
-                                .background(config.color(if user {
-                                    LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND
-                                } else {
-                                    LapceColor::EDITOR_BACKGROUND
-                                }));
+                                .border_radius(8.0);
                             if user {
-                                s.max_width_pct(85.0)
-                                    .align_self(Some(floem::style::AlignItems::End))
+                                s.background(config.color(
+                                    LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
+                                ))
                             } else {
-                                s
+                                s.border(1.0)
+                                    .border_color(config.color(
+                                        LapceColor::LAPCE_BORDER,
+                                    ))
+                                    .background(config.color(
+                                        LapceColor::EDITOR_BACKGROUND,
+                                    ))
                             }
                         })
                     },
