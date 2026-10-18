@@ -7,7 +7,9 @@
 //! variables the view defines above the cursor, typing `<x-`
 //! offers the app's Blade component tags, and `asset('...')` /
 //! `secure_asset('...')` / `mix('...')` complete files under
-//! `public/`. Same static
+//! `public/`, and `@can` / `->can()` / `Gate::allows('...')`
+//! complete Gate abilities from policies and `Gate::define`. Same
+//! static
 //! scans as the palettes (nothing is executed), cached 30 s per workspace
 //! (per component class for Livewire) so completion stays cheap on every
 //! keystroke.
@@ -51,6 +53,9 @@ pub enum Kind {
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
+    /// Gate ability: `@can('...')`, `$user->can('...')`,
+    /// `Gate::allows('...')` and friends.
+    Gate,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -164,6 +169,15 @@ pub fn context(line: &str) -> Option<Kind> {
         "env" | "getenv" => Kind::Env,
         "view" => Kind::View,
         "asset" | "secure_asset" | "mix" => Kind::Asset,
+        "can" | "cannot" | "canany" if blade => Kind::Gate,
+        "can" | "cannot" | "authorize" if head[..word_start].ends_with("->") => {
+            Kind::Gate
+        }
+        "allows" | "denies" | "any" | "authorize" | "check" | "none"
+            if head[..word_start].ends_with("Gate::") =>
+        {
+            Kind::Gate
+        }
         // Blade directives take view names too.
         "extends" | "include" | "includeIf" | "includeWhen" | "includeFirst"
         | "each" if blade => Kind::View,
@@ -191,6 +205,7 @@ struct Lists {
     langs: Vec<String>,
     components: Vec<String>,
     assets: Vec<String>,
+    gates: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -403,6 +418,7 @@ fn lists(root: &Path) -> Lists {
     let langs = lang_keys(root);
     let components = component_names(root);
     let assets = asset_paths(root);
+    let gates = ability_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -415,6 +431,7 @@ fn lists(root: &Path) -> Lists {
         langs,
         components,
         assets,
+        gates,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -682,6 +699,74 @@ fn livewire_methods(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
 
 /// Completion items for the project context at the end of `line_before`.
 /// `file` is the edited file; only Livewire completion uses it.
+/// Gate abilities: public policy methods under `app/Policies`
+/// (reusing the policy index parser) plus `Gate::define('name')` names
+/// from `app/Providers`. Static text scan, bounded like the index.
+fn ability_names(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        if depth > 3 || out.len() >= 500 {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, out);
+            } else if ft.is_file()
+                && p.extension().is_some_and(|x| x == "php")
+            {
+                out.push(p);
+            }
+            if out.len() >= 500 {
+                return;
+            }
+        }
+    }
+    fn read(p: &Path) -> Option<String> {
+        let m = std::fs::metadata(p).ok()?;
+        if m.len() > (1 << 20) {
+            return None;
+        }
+        std::fs::read_to_string(p).ok()
+    }
+    let mut names: Vec<String> = Vec::new();
+    let mut push = |n: &str, names: &mut Vec<String>| {
+        if !n.is_empty() && n.len() <= 100 && !names.iter().any(|x| x == n) {
+            names.push(n.to_string());
+        }
+    };
+    let mut files = Vec::new();
+    walk(&root.join("app/Policies"), 0, &mut files);
+    for f in files.drain(..) {
+        let Some(text) = read(&f) else { continue };
+        let Some(p) = crate::policy_index::parse_policy(&text) else {
+            continue;
+        };
+        for (a, _, _) in p.abilities {
+            push(&a, &mut names);
+        }
+    }
+    walk(&root.join("app/Providers"), 0, &mut files);
+    for f in files {
+        let Some(text) = read(&f) else { continue };
+        for (n, _) in crate::policy_index::parse_gates(&text) {
+            push(&n, &mut names);
+        }
+    }
+    names.truncate(2000);
+    names
+}
+
 /// Files under `public/` as `asset()`-ready paths (`css/app.css`).
 /// Symlinks (common for `public/storage`) and hidden directories are
 /// skipped; the walk is bounded like the other static scans.
@@ -842,6 +927,7 @@ pub fn items(
         // Returned early above; the match must stay exhaustive.
         Kind::ComponentTag => (Vec::new(), "Blade component"),
         Kind::Asset => (lists.assets, "asset path"),
+        Kind::Gate => (lists.gates, "Gate ability"),
     };
     names
         .into_iter()
@@ -1068,6 +1154,54 @@ mod tests {
     {{ $x }}
 @endif
 "#;
+
+    #[test]
+    fn offers_gate_abilities() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "app/Policies/PostPolicy.php", "<?php
+final class PostPolicy {
+    public function before() {}
+    public function viewAny(User $user) {}
+    public function update(User $user, Post $post) {}
+    protected function hidden() {}
+}
+");
+        put(r, "app/Providers/AuthServiceProvider.php", "<?php
+Gate::define('sell-vinyl', [ShopGate::class, 'sell']);
+Gate::define(\"buy-cd\", 'shop.buy');
+");
+        let mut labels = items(r, None, "@can('")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        labels.sort();
+        assert_eq!(
+            labels,
+            [
+                "buy-cd".to_string(),
+                "sell-vinyl".to_string(),
+                "update".to_string(),
+                "viewAny".to_string(),
+            ]
+        );
+        // The whole family routes to the same kind.
+        for line in [
+            "@cannot('",
+            "@canany(['",
+            "$user->can('",
+            "$user?->cannot('",
+            "$this->authorize('",
+            "Gate::allows('",
+            "Gate::denies('",
+            "Gate::check('",
+        ] {
+            assert_eq!(context(line), Some(Kind::Gate), "{line}");
+        }
+        // Bare `can(` is not a Gate context.
+        assert_eq!(context("can('"), None);
+        assert_eq!(context("Str::of('"), None);
+    }
 
     #[test]
     fn offers_asset_paths() {
