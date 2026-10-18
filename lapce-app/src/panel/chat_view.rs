@@ -14,7 +14,7 @@ use floem::{
         ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith,
         create_effect, use_context,
     },
-    style::CursorStyle,
+    style::{CursorStyle, Display},
     views::{
         Decorators, container, dyn_stack, empty, h_stack, label, rich_text,
         scroll::scroll, svg, text_editor, v_stack,
@@ -1135,6 +1135,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let walkthrough = data.clone();
     let schedules_tab = tab.clone();
     let schedules_data = data.clone();
+    let empty_tab = tab.clone();
+    let empty_turns = data.clone();
     let agents_data = data.clone();
     // Cross-workspace Agents list (item 167): the current workspace
     // first, then recent local workspaces from the app database.
@@ -1462,6 +1464,52 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }),
         container(
             scroll(
+                v_stack((
+                    // Antigravity-style empty state: the workspace name
+                    // and a hint, hidden once the chat has turns.
+                    v_stack((
+                        label(move || {
+                            empty_tab
+                                .workspace
+                                .path
+                                .as_ref()
+                                .and_then(|p| {
+                                    p.file_name().map(|n| {
+                                        n.to_string_lossy().into_owned()
+                                    })
+                                })
+                                .unwrap_or_else(|| "Lapce".to_string())
+                        })
+                        .style(move |s| {
+                            s.font_bold().font_size(16.0).color(
+                                config
+                                    .get()
+                                    .color(LapceColor::EDITOR_FOREGROUND),
+                            )
+                        }),
+                        label(|| {
+                            "Ask the agent to work on this project."
+                                .to_string()
+                        })
+                        .style(move |s| {
+                            s.font_size(12.0).color(
+                                config.get().color(LapceColor::EDITOR_DIM),
+                            )
+                        }),
+                    ))
+                    .style(move |s| {
+                        let s = s
+                            .items_center()
+                            .justify_center()
+                            .width_full()
+                            .padding_vert(40.0)
+                            .gap(2.0);
+                        if empty_turns.turns.get().is_empty() {
+                            s
+                        } else {
+                            s.display(Display::None)
+                        }
+                    }),
                 dyn_stack(
                     move || data.turns.get().into_iter().enumerate(),
                     |(i, _)| *i,
@@ -1523,6 +1571,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         })
                     },
                 )
+                .style(|s| s.flex_col().width_full()),
+                ))
                 .style(|s| s.flex_col().width_full()),
             )
             .scroll_to_percent(move || {
@@ -1709,6 +1759,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .border_radius(8.0)
                 .border_color(config.get().color(LapceColor::LAPCE_BORDER))
                 .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
+        }),
+        // Antigravity-style disclaimer under the composer.
+        label(|| {
+            "AI can make mistakes - review changes before applying."
+                .to_string()
+        })
+        .style(move |s| {
+            s.font_size(11.0)
+                .align_self(Some(floem::style::AlignItems::Center))
+                .selectable(false)
+                .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
     ))
     .style(move |s| {
