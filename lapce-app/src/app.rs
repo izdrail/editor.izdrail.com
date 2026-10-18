@@ -745,6 +745,7 @@ fn editor_tab_header(
         }
     };
 
+    let plugin_for_menu = plugin.clone();
     let view_fn = move |(i, layout_rect, child): (
         RwSignal<usize>,
         RwSignal<Rect>,
@@ -1189,6 +1190,39 @@ fn editor_tab_header(
                         })
                 }),
                 stack((
+                    // Antigravity-style tab overflow: list every open
+                    // editor in this group and jump to the pick.
+                    clickable_icon(
+                        || LapceIcons::ELLIPSIS,
+                        move || {
+                            let children = editor_tab
+                                .with_untracked(|t| t.children.clone());
+                            let mut menu = Menu::new("");
+                            for (i, (_, _, child)) in
+                                children.iter().enumerate()
+                            {
+                                let name = child
+                                    .view_info(
+                                        editors,
+                                        diff_editors,
+                                        plugin_for_menu.clone(),
+                                        config,
+                                    )
+                                    .with_untracked(|info| info.name.clone());
+                                menu = menu.entry(
+                                    MenuItem::new(name).action(move || {
+                                        editor_tab.update(|t| t.active = i);
+                                    }),
+                                );
+                            }
+                            show_context_menu(menu, None);
+                        },
+                        || false,
+                        || false,
+                        || "Open Editors",
+                        config,
+                    )
+                    .style(|s| s.margin_left(6.0)),
                     clickable_icon(
                         || LapceIcons::SPLIT_HORIZONTAL,
                         move || {
