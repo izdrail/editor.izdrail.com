@@ -31,6 +31,7 @@ use crate::{
 
 pub fn terminal_panel(window_tab_data: Rc<WindowTabData>) -> impl View {
     let focus = window_tab_data.common.focus;
+    let config = window_tab_data.common.config;
     stack((
         terminal_tab_header(window_tab_data.clone()),
         terminal_tab_content(window_tab_data.clone()),
@@ -40,7 +41,21 @@ pub fn terminal_panel(window_tab_data: Rc<WindowTabData>) -> impl View {
             focus.set(Focus::Panel(PanelKind::Terminal));
         }
     })
-    .style(|s| s.absolute().size_pct(100.0, 100.0).flex_col())
+    .style(move |s| {
+        // 1px ring marks the focused panel; the panel-background color
+        // keeps it invisible otherwise, without layout shift.
+        let config = config.get();
+        let ring = if focus.get() == Focus::Panel(PanelKind::Terminal) {
+            config.color(LapceColor::EDITOR_FOCUS)
+        } else {
+            config.color(LapceColor::PANEL_BACKGROUND)
+        };
+        s.absolute()
+            .size_pct(100.0, 100.0)
+            .flex_col()
+            .border(1.0)
+            .border_color(ring)
+    })
     .debug_name("Terminal Panel")
 }
 

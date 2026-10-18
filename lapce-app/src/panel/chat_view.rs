@@ -6,8 +6,9 @@ use crate::{
     config::{LapceConfig, color::LapceColor, icon::LapceIcons},
     doc::DocContent,
     markdown::{MarkdownContent, parse_markdown},
-    window_tab::WindowTabData,
+    window_tab::{Focus, WindowTabData},
 };
+use super::kind::PanelKind;
 use floem::{
     IntoView, View,
     action::{add_overlay, remove_overlay},
@@ -1274,6 +1275,10 @@ fn dropdown_button_style(
 
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
+    let focus = tab.common.focus;
+    // Drives the composer card's focus ring; fed by the composer
+    // editor's floem focus events below.
+    let composer_focused = floem::reactive::create_rw_signal(false);
     let config = tab.common.config;
 
     let click_tab = tab.clone();
@@ -1552,6 +1557,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             if let Some(editor) = update.editor {
                 input_signal.set(editor.doc().text().to_string());
             }
+        })
+        // Floem focus events fire even where the editor stops pointer
+        // propagation, so this is the reliable hook: ring the composer
+        // card and move the app focus model onto this panel (which is
+        // what lets the terminal cursor go hollow).
+        .on_event_cont(EventListener::FocusGained, move |_| {
+            composer_focused.set(true);
+            if focus.get_untracked() != Focus::Panel(PanelKind::Chat) {
+                focus.set(Focus::Panel(PanelKind::Chat));
+            }
+        })
+        .on_event_cont(EventListener::FocusLost, move |_| {
+            composer_focused.set(false);
         });
     let composer_doc = composer.doc();
     create_effect(move |_| {
@@ -2394,12 +2412,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .style(|s| s.width_full().gap(4.0)),
         )
         .style(move |s| {
+            let config = config.get();
+            let ring = if composer_focused.get() {
+                config.color(LapceColor::EDITOR_FOCUS)
+            } else {
+                config.color(LapceColor::LAPCE_BORDER)
+            };
             s.width_full()
                 .padding(6.0)
                 .border(1.0)
                 .border_radius(8.0)
-                .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
+                .border_color(ring)
+                .background(config.color(LapceColor::EDITOR_BACKGROUND))
         }),
         // Antigravity-style disclaimer under the composer.
         label(|| {
@@ -2416,11 +2440,21 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     .style(move |s| {
         // Absolute and sized to the panel, like the other panels, so the
         // chat can neither overflow its slot nor sit under a sibling.
+        // The 1px ring marks the focused panel; drawn in the panel
+        // background color when unfocused, so no layout shift.
+        let config = config.get();
+        let ring = if focus.get() == Focus::Panel(PanelKind::Chat) {
+            config.color(LapceColor::EDITOR_FOCUS)
+        } else {
+            config.color(LapceColor::PANEL_BACKGROUND)
+        };
         s.absolute()
             .size_pct(100.0, 100.0)
             .padding(8.0)
             .gap(8.0)
-            .background(config.get().color(LapceColor::PANEL_BACKGROUND))
+            .border(1.0)
+            .border_color(ring)
+            .background(config.color(LapceColor::PANEL_BACKGROUND))
     })
 }
 
