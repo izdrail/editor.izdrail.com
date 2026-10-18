@@ -1,8 +1,9 @@
 use crate::chat_session::{self, RunGate, RunState, SavedTurn, Session};
 use crate::{
+    app::clickable_icon,
     chat::{self, Context, Update},
     command::InternalCommand,
-    config::{LapceConfig, color::LapceColor},
+    config::{LapceConfig, color::LapceColor, icon::LapceIcons},
     doc::DocContent,
     markdown::{MarkdownContent, parse_markdown},
     window_tab::WindowTabData,
@@ -1121,7 +1122,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let click_tab = tab.clone();
     let indicator_tab = tab.clone();
     let clear = data.clone();
+    let clear_busy = clear.busy;
     let stop = data.clone();
+    let stop_busy = stop.busy;
     let chat_mode = data.clone();
     let ask_mode = data.clone();
     let plan_mode = data.clone();
@@ -1182,92 +1185,136 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }
     });
     v_stack((
+        // Antigravity-style header: pane title on the left, icon
+        // actions on the right. The model indicator stays in this row
+        // until the composer parity work moves it into the composer card.
         h_stack((
-            label(|| "New chat".to_string())
-                .on_click_stop(move |_| {
-                    if !clear.busy.get_untracked() {
-                        clear.turns.set(Vec::new());
-                        clear.history.set(Vec::new());
-                        clear.input.set(String::new());
-                        clear.error.set(String::new());
-                        clear.session.set(Session::new());
-                        clear.state.set(RunState::Idle);
-                        clear.resume_id.set(None);
-                        clear.persist(config.get_untracked().ai_chat.save_history);
-                    }
-                })
-                .style(move |s| mode_button_style(s, config, false)),
-            label(|| "Stop".to_string())
-                .on_click_stop(move |_| { if stop.busy.get_untracked() { stop.stop(); stop.persist(config.get_untracked().ai_chat.save_history); } })
-                .style(move |s| mode_button_style(s, config, false)),
-            label(|| "Walkthrough".to_string())
-                .on_click_stop(move |_| {
-                    if walkthrough.busy.get_untracked() {
-                        return;
-                    }
-                    let Some(root) = walkthrough_tab.workspace.path.clone()
-                    else {
-                        walkthrough
-                            .error
-                            .set("Open a folder to export a walkthrough".into());
-                        return;
-                    };
-                    match walkthrough.export_walkthrough(&root) {
-                        Ok(path) => {
-                            walkthrough_tab
-                                .common
-                                .internal_command
-                                .send(InternalCommand::OpenFile { path });
-                        }
-                        Err(e) => walkthrough.error.set(e),
-                    }
-                })
-                .style(move |s| mode_button_style(s, config, false)),
-            label(|| "Schedules".to_string())
-                .on_click_stop(move |_| {
-                    let Some(root) = schedules_tab.workspace.path.clone()
-                    else {
-                        schedules_data
-                            .error
-                            .set("Open a folder to schedule prompts".into());
-                        return;
-                    };
-                    let dir = root.join(".lapce");
-                    let path = dir.join("scheduled-prompts.json");
-                    if !path.exists() {
-                        let _ = std::fs::create_dir_all(&dir);
-                        let _ = std::fs::write(
-                            &path,
-                            crate::chat_schedule::EXAMPLE_FILE,
-                        );
-                    }
-                    schedules_tab
-                        .common
-                        .internal_command
-                        .send(InternalCommand::OpenFile { path });
-                })
-                .style(move |s| mode_button_style(s, config, false)),
-            label(move || {
-                let c = config.get();
-                let model = if c.ai_chat.backend == "local" {
-                    &c.ai_chat.local_model
-                } else {
-                    &c.ai_chat.model
-                };
-                format!("{} | {model}", c.ai_chat.backend)
-            })
-            .style(move |s| {
-                s.font_size(11.0)
-                    .padding(6.0)
-                    .min_width(0.0)
-                    .text_ellipsis()
+            label(|| "Agent".to_string()).style(move |s| {
+                s.font_bold()
+                    .font_size(13.0)
                     .selectable(false)
-                    .color(config.get().color(LapceColor::EDITOR_DIM))
+                    .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
             }),
+            h_stack((
+                label(move || {
+                    let c = config.get();
+                    let model = if c.ai_chat.backend == "local" {
+                        c.ai_chat.local_model.clone()
+                    } else {
+                        c.ai_chat.model.clone()
+                    };
+                    format!("{} | {model}", c.ai_chat.backend)
+                })
+                .style(move |s| {
+                    s.font_size(11.0)
+                        .padding(6.0)
+                        .min_width(0.0)
+                        .max_width(160.0)
+                        .text_ellipsis()
+                        .selectable(false)
+                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                }),
+                clickable_icon(
+                    || LapceIcons::ADD,
+                    move || {
+                        if !clear_busy.get_untracked() {
+                            clear.turns.set(Vec::new());
+                            clear.history.set(Vec::new());
+                            clear.input.set(String::new());
+                            clear.error.set(String::new());
+                            clear.session.set(Session::new());
+                            clear.state.set(RunState::Idle);
+                            clear.resume_id.set(None);
+                            clear.persist(
+                                config.get_untracked().ai_chat.save_history,
+                            );
+                        }
+                    },
+                    || false,
+                    move || clear_busy.get(),
+                    || "New chat",
+                    config,
+                ),
+                clickable_icon(
+                    || LapceIcons::DEBUG_STOP,
+                    move || {
+                        if stop_busy.get_untracked() {
+                            stop.stop();
+                            stop.persist(
+                                config.get_untracked().ai_chat.save_history,
+                            );
+                        }
+                    },
+                    || false,
+                    move || !stop_busy.get(),
+                    || "Stop",
+                    config,
+                ),
+                clickable_icon(
+                    || LapceIcons::BOOK,
+                    move || {
+                        if walkthrough.busy.get_untracked() {
+                            return;
+                        }
+                        let Some(root) =
+                            walkthrough_tab.workspace.path.clone()
+                        else {
+                            walkthrough
+                                .error
+                                .set("Open a folder to export a walkthrough".into());
+                            return;
+                        };
+                        match walkthrough.export_walkthrough(&root) {
+                            Ok(path) => {
+                                walkthrough_tab
+                                    .common
+                                    .internal_command
+                                    .send(InternalCommand::OpenFile { path });
+                            }
+                            Err(e) => walkthrough.error.set(e),
+                        }
+                    },
+                    || false,
+                    || false,
+                    || "Export walkthrough",
+                    config,
+                ),
+                clickable_icon(
+                    || LapceIcons::HISTORY,
+                    move || {
+                        let Some(root) = schedules_tab.workspace.path.clone()
+                        else {
+                            schedules_data
+                                .error
+                                .set("Open a folder to schedule prompts".into());
+                            return;
+                        };
+                        let dir = root.join(".lapce");
+                        let path = dir.join("scheduled-prompts.json");
+                        if !path.exists() {
+                            let _ = std::fs::create_dir_all(&dir);
+                            let _ = std::fs::write(
+                                &path,
+                                crate::chat_schedule::EXAMPLE_FILE,
+                            );
+                        }
+                        schedules_tab
+                            .common
+                            .internal_command
+                            .send(InternalCommand::OpenFile { path });
+                    },
+                    || false,
+                    || false,
+                    || "Scheduled prompts",
+                    config,
+                ),
+            ))
+            .style(|s| s.items_center().gap(2.0)),
         ))
         .style(|s| {
-            s.flex_wrap(floem::style::FlexWrap::Wrap)
-                .gap(6.0)
+            s.width_full()
+                .items_center()
+                .justify_between()
                 .padding_vert(2.0)
         }),
         {
