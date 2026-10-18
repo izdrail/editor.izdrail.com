@@ -27,3 +27,15 @@ resume target, that selection clears too. There is no confirm: the
 record is a resumability pointer, not your data - the agent's own
 session lives in the agent. Deleting a record never stops a running
 agent turn. A missing id is a no-op.
+
+## Across workspaces (item 167)
+
+The Agents list is a cross-workspace mission view: it merges the
+stored sessions of the current project and your recent local
+workspaces (from the editor's workspace history; up to 20 roots,
+64 sessions total, newest first). Rows from other projects carry
+their folder name. Clicking a foreign row opens that project as a
+new workspace tab - resume then happens there, where the session
+tops the project's own Agents list. Delete works per row against
+the session's owning project. Remote workspaces are skipped: their
+sessions live behind SSH and are not scanned.

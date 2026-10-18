@@ -11,6 +11,7 @@ use floem::{
     IntoView, View,
     reactive::{
         RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
+        use_context,
     },
     style::CursorStyle,
     views::{
@@ -666,6 +667,38 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
         });
     });
 }
+/// Roots to search for stored agent sessions: the current workspace
+/// first, then recent local workspaces from the app database,
+/// canonicalized and deduplicated, capped so a long workspace history
+/// stays a bounded filesystem scan.
+fn agent_session_roots(
+    current: Option<PathBuf>,
+    db: Option<&Arc<crate::db::LapceDb>>,
+) -> Vec<PathBuf> {
+    const MAX_ROOTS: usize = 20;
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Some(p) = current {
+        roots.push(p);
+    }
+    if let Some(db) = db {
+        for w in db.recent_workspaces().unwrap_or_default() {
+            if roots.len() >= MAX_ROOTS {
+                break;
+            }
+            if !matches!(w.kind, crate::workspace::LapceWorkspaceType::Local) {
+                continue;
+            }
+            let Some(path) = w.path else { continue; };
+            let Ok(canon) = path.canonicalize() else { continue; };
+            if !roots.contains(&canon) {
+                roots.push(canon);
+            }
+        }
+    }
+    roots.truncate(MAX_ROOTS);
+    roots
+}
+
 /// `/learn <note>`: append a user-curated project knowledge note to
 /// .lapce/knowledge.md (Antigravity parity rows 15/24, honest subset:
 /// explicit notes, no agent autonomy). Later chat sends in this project
@@ -1068,19 +1101,29 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let walkthrough = data.clone();
     let schedules_tab = tab.clone();
     let schedules_data = data.clone();
-    let agents_tab = tab.clone();
     let agents_data = data.clone();
-    let agents_del_tab = tab.clone();
+    // Cross-workspace Agents list (item 167): the current workspace
+    // first, then recent local workspaces from the app database.
+    let agents_current_root: Option<PathBuf> = tab
+        .workspace
+        .path
+        .as_ref()
+        .and_then(|p| p.canonicalize().ok());
+    let agents_db: Option<Arc<crate::db::LapceDb>> = use_context();
+    // Own clone for the toggle closure so the row closure can still
+    // capture agents_current_root (both are `move`).
+    let agents_click_root = agents_current_root.clone();
+    let agents_window_command = tab.common.window_common.window_command;
     start_prompt_scheduler(tab.clone());
     let show_sessions = floem::reactive::create_rw_signal(false);
     let session_list = floem::reactive::create_rw_signal(
-        Vec::<crate::agent_acp_store::StoredSession>::new(),
+        Vec::<crate::agent_acp_store::RootedSession>::new(),
     );
     // Load once so the count starts truthful; the toggle reloads.
-    if let Some(root) =
-        tab.workspace.path.as_ref().and_then(|p| p.canonicalize().ok())
     {
-        session_list.set(crate::agent_acp_store::load_sessions(&root));
+        let roots =
+            agent_session_roots(agents_current_root.clone(), agents_db.as_ref());
+        session_list.set(crate::agent_acp_store::load_sessions_merged(&roots));
     }
     let trust = data.clone();
     let revoke = data.clone();
@@ -1233,16 +1276,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .on_click_stop(move |_| {
                     let show = !show_sessions.get_untracked();
                     if show {
-                        if let Some(root) = agents_tab
-                            .workspace
-                            .path
-                            .as_ref()
-                            .and_then(|p| p.canonicalize().ok())
-                        {
-                            session_list.set(
-                                crate::agent_acp_store::load_sessions(&root),
-                            );
-                        }
+                        let roots = agent_session_roots(
+                            agents_click_root.clone(),
+                            agents_db.as_ref(),
+                        );
+                        session_list.set(
+                            crate::agent_acp_store::load_sessions_merged(&roots),
+                        );
                     }
                     show_sessions.set(show);
                 }),
@@ -1250,8 +1290,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         scroll(
             dyn_stack(
                 move || session_list.get(),
-                |session| session.session_id.clone(),
-                move |session| {
+                |session| session.session.session_id.clone(),
+                move |rooted| {
+                    let session = rooted.session.clone();
+                    let row_root = rooted.root.clone();
+                    let foreign =
+                        agents_current_root.as_ref() != Some(&row_root);
                     let text = format!(
                         "{}  ·  {}  ·  {}",
                         session_title(&session.title),
@@ -1261,20 +1305,47 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             crate::agent_acp_store::now_unix(),
                         )
                     );
+                    // Foreign rows carry their workspace folder name.
+                    let text = if foreign {
+                        let folder = row_root
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        format!("{text}  ·  {folder}")
+                    } else {
+                        text
+                    };
                     let id = session.session_id.clone();
                     let del_id = session.session_id.clone();
+                    let del_root = row_root.clone();
                     let agents_data = agents_data.clone();
                     let del_data = agents_data.clone();
-                    let del_tab = agents_del_tab.clone();
                     h_stack((
                         label(move || text.clone())
                             .on_click_stop(move |_| {
-                                agents_data.error.set(String::new());
-                                agents_data.mode.set(None);
-                                agents_data.acp.set(true);
-                                agents_data.acp_resume.set(true);
-                                agents_data.resume_id.set(Some(id.clone()));
-                                show_sessions.set(false);
+                                if foreign {
+                                    // Resume happens in that project:
+                                    // open it as a tab, where the
+                                    // session tops its own Agents list.
+                                    agents_window_command.send(
+                                        crate::command::WindowCommand::NewWorkspaceTab {
+                                            workspace: crate::workspace::LapceWorkspace {
+                                                kind: crate::workspace::LapceWorkspaceType::Local,
+                                                path: Some(row_root.clone()),
+                                                last_open: 0,
+                                            },
+                                            end: true,
+                                        },
+                                    );
+                                    show_sessions.set(false);
+                                } else {
+                                    agents_data.error.set(String::new());
+                                    agents_data.mode.set(None);
+                                    agents_data.acp.set(true);
+                                    agents_data.acp_resume.set(true);
+                                    agents_data.resume_id.set(Some(id.clone()));
+                                    show_sessions.set(false);
+                                }
                             })
                             .style(|s| {
                                 s.padding(6.0)
@@ -1284,21 +1355,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             }),
                         label(|| "Delete".to_string())
                             .on_click_stop(move |_| {
-                                let Some(root) = del_tab
-                                    .workspace
-                                    .path
-                                    .as_ref()
-                                    .and_then(|p| p.canonicalize().ok())
-                                else {
-                                    return;
-                                };
                                 match crate::agent_acp_store::remove_session(
-                                    &root, &del_id,
+                                    &del_root, &del_id,
                                 ) {
                                     Ok(()) => {
                                         session_list.update(|v| {
                                             v.retain(|s| {
-                                                s.session_id != del_id
+                                                s.session.session_id != del_id
                                             })
                                         });
                                         if del_data.resume_id.get_untracked()

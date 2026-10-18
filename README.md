@@ -158,7 +158,7 @@ An opt-in, deliberately small CommonJS command shim runs in a seccomp-restricted
 Chat/Ask/Plan panel against any OpenAI-compatible server (Ollama by default), with explicit project-read approval, slash commands (`/plan`, `/ask`, `/btw`, `/learn`), user-curated project knowledge notes folded into chat prompts, and inline AI edits (`Ctrl+Shift+I`). See [docs/ai-chat.md](docs/ai-chat.md) and [docs/inline-ai-edit.md](docs/inline-ai-edit.md).
 
 ### External agents over ACP
-Run an external agent (opencode, or a Claude Code/Codex adapter) from the chat panel. Sessions are remembered per project and can be browsed, resumed and deleted from the Agents list. See [docs/agent-acp.md](docs/agent-acp.md), [docs/agent-acp-panel.md](docs/agent-acp-panel.md) and [docs/agent-sessions.md](docs/agent-sessions.md).
+Run an external agent (opencode, or a Claude Code/Codex adapter) from the chat panel. Sessions are remembered per project, and the Agents list is a cross-workspace view over recent projects: browse, resume (foreign sessions open their project as a tab) and delete. See [docs/agent-acp.md](docs/agent-acp.md), [docs/agent-acp-panel.md](docs/agent-acp-panel.md) and [docs/agent-sessions.md](docs/agent-sessions.md).
 
 ### MCP servers (probe)
 Workspace `.lapce/mcp.json` servers are handshaken and tool-listed on demand into a status buffer; tool calls stay gated until the review UI owns them. See [docs/mcp.md](docs/mcp.md).

@@ -77,6 +77,35 @@ fn store_sessions(root: &Path, sessions: &[StoredSession]) -> Result<(), String>
         .map_err(|e| format!("cannot store sessions: {e}"))
 }
 
+/// One stored session with the workspace root it belongs to.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RootedSession {
+    pub root: PathBuf,
+    pub session: StoredSession,
+}
+
+/// Merge sessions across workspace roots, newest first, capped at
+/// MAX_SESSIONS. Duplicate roots (same path) are searched once; roots
+/// that are missing or unreadable simply contribute nothing.
+pub fn load_sessions_merged(roots: &[PathBuf]) -> Vec<RootedSession> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for root in roots {
+        if !seen.insert(root.clone()) {
+            continue;
+        }
+        for session in load_sessions(root) {
+            out.push(RootedSession {
+                root: root.clone(),
+                session,
+            });
+        }
+    }
+    out.sort_by(|a, b| b.session.updated_unix.cmp(&a.session.updated_unix));
+    out.truncate(MAX_SESSIONS);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +185,24 @@ mod tests {
         // Removing the last entry leaves an empty, readable file.
         remove_session(&r, "s-2").unwrap();
         assert!(load_sessions(&r).is_empty());
+    }
+
+    #[test]
+    fn merged_load_sorts_dedupes_and_skips_missing() {
+        let a = root("merge-a");
+        let b = root("merge-b");
+        record_session(&a, entry("a-old", 100)).unwrap();
+        record_session(&b, entry("b-new", 200)).unwrap();
+        // Newest first across roots; a repeated root is searched once.
+        let merged = load_sessions_merged(&[a.clone(), b.clone(), a.clone()]);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].session.session_id, "b-new");
+        assert_eq!(merged[1].session.session_id, "a-old");
+        assert_eq!(merged[1].root, a.clone());
+        // Missing roots contribute nothing.
+        let merged = load_sessions_merged(&[b.join("nope"), a]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].session.session_id, "a-old");
     }
 }
 
