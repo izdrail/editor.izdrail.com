@@ -712,6 +712,14 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         )?;
                         Ok(serde_json::json!({"matches":result.matches,"truncated":result.truncated,"skipped_files":result.skipped_files}).to_string())
                     }
+                    "regex_search" => {
+                        let result = reader.search_regex(
+                            call.arguments["pattern"]
+                                .as_str()
+                                .ok_or("Missing pattern")?,
+                        )?;
+                        Ok(serde_json::json!({"matches":result.matches,"truncated":result.truncated,"skipped_files":result.skipped_files}).to_string())
+                    }
                     "run_command" => {
                         let command = call.arguments["command"]
                             .as_str()
@@ -773,6 +781,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                     .arguments
                                     .get("path")
                                     .or_else(|| call.arguments.get("literal"))
+                                    .or_else(|| call.arguments.get("pattern"))
                                     .or_else(|| call.arguments.get("command"))
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");

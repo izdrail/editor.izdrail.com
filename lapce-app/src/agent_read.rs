@@ -199,6 +199,30 @@ mod linux {
                         .into(),
                 );
             }
+            self.search_with(|line| line.contains(needle))
+        }
+        /// Regex variant of search: same bounds and walking, per-line
+        /// matching. Patterns are capped and compiled with a size
+        /// limit; matching is per line, so literal newlines are
+        /// rejected like the literal tool.
+        pub fn search_regex(&self, pattern: &str) -> Result<SearchResult, String> {
+            if pattern.is_empty() || pattern.len() > 256 || pattern.contains('\n') {
+                return Err(
+                    "Regex search requires a nonempty single-line pattern up to 256 bytes"
+                        .into(),
+                );
+            }
+            let re = regex::RegexBuilder::new(pattern)
+                .size_limit(1 << 20)
+                .dfa_size_limit(1 << 20)
+                .build()
+                .map_err(|e| format!("Invalid regex: {e}"))?;
+            self.search_with(|line| re.is_match(line))
+        }
+        fn search_with(
+            &self,
+            matcher: impl Fn(&str) -> bool,
+        ) -> Result<SearchResult, String> {
             let start = Instant::now();
             let mut queue = vec![PathBuf::from(".")];
             let mut entries = 0;
@@ -265,7 +289,7 @@ mod linux {
                         Ok(text) => {
                             total += text.len();
                             for (i, line) in text.lines().enumerate() {
-                                if line.contains(needle) {
+                                if matcher(line) {
                                     let mut end = line.len().min(1024);
                                     while !line.is_char_boundary(end) {
                                         end -= 1;
@@ -310,6 +334,28 @@ mod tests {
         assert_eq!(matches.matches.len(), 1);
         assert_eq!(matches.matches[0].0, "visible.php");
         assert_eq!(matches.matches[0].1, 2);
+    }
+    #[test]
+    fn regex_search_matches_per_line_and_respects_ignores() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join(".gitignore"), "hidden.php\n").unwrap();
+        fs::write(
+            d.path().join("visible.php"),
+            "fn handle_request() {}\nfn other() {}\n",
+        )
+        .unwrap();
+        fs::write(d.path().join("hidden.php"), "fn handle_hidden() {}\n").unwrap();
+        let r = ReadRoot::new(d.path(), true).unwrap();
+
+        let matches = r.search_regex("fn\\s+handle_\\w+").unwrap();
+        assert_eq!(matches.matches.len(), 1);
+        assert_eq!(matches.matches[0].0, "visible.php");
+        assert_eq!(matches.matches[0].1, 1);
+
+        // Invalid regex and newline patterns are rejected cleanly.
+        assert!(r.search_regex("fn(").is_err());
+        assert!(r.search_regex("a\nb").is_err());
+        assert!(r.search_regex("").is_err());
     }
     #[test]
     fn symlink_hardlink_special_and_secret_denied() {
