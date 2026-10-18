@@ -1028,6 +1028,9 @@ impl WindowTabData {
             GitPush => {
                 self.git_push();
             }
+            GitPull => {
+                self.git_pull();
+            }
             CloseWindow => {
                 self.common
                     .window_common
@@ -3541,6 +3544,72 @@ impl WindowTabData {
                 } else {
                     Err(format!(
                         "git push failed:\n{detail}\n\nNo upstream yet? Create one with `git push -u origin <branch>`. Credentials are never prompted on a hidden thread - set up a credential helper or SSH agent."
+                    ))
+                }
+            })();
+            send(result);
+        });
+    }
+
+    /// Fast-forward-only pull (`git pull --ff-only`) off the UI
+    /// thread, with toast feedback. ff-only is deliberate for a
+    /// palette action: it never creates a surprise merge commit, and a
+    /// diverged branch fails cleanly with guidance. Same
+    /// GIT_TERMINAL_PROMPT=0 reasoning as git_push.
+    fn git_pull(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_message(
+                "Git Pull",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "Open a folder first.".into(),
+                },
+            );
+            return;
+        };
+        let messages = self.messages;
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| {
+                let (typ, message) = match result {
+                    Ok(m) => (lsp_types::MessageType::INFO, m),
+                    Err(m) => (lsp_types::MessageType::ERROR, m),
+                };
+                push_unique_message(
+                    &messages,
+                    "Git Pull",
+                    &ShowMessageParams { typ, message },
+                );
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let out = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .args(["pull", "--ff-only"])
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                // Pull reports on stdout ("Already up to date."), but
+                // some errors only land on stderr; take whichever
+                // speaks.
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let detail = if stdout.trim().is_empty() {
+                    crate::worktree::clip_stderr(&stderr)
+                } else {
+                    crate::worktree::clip_stderr(&stdout)
+                };
+                if out.status.success() {
+                    Ok(if detail.is_empty() {
+                        "Pulled.".to_string()
+                    } else {
+                        format!("Pulled. {detail}")
+                    })
+                } else {
+                    Err(format!(
+                        "git pull failed:\n{detail}\n\nDiverged branches? This command never merges: run `git pull --rebase` or merge in a terminal, then pull again. Credentials are never prompted on a hidden thread."
                     ))
                 }
             })();

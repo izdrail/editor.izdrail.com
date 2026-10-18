@@ -170,7 +170,7 @@ Recurring and daily prompts fire into the chat panel from `.lapce/scheduled-prom
 Export a chat run as a Markdown walkthrough, and browse past exports from the palette. See [docs/walkthroughs.md](docs/walkthroughs.md).
 
 ### Git worktrees and push
-Palette commands create a worktree on a timestamped branch in a sibling directory and open it as a tab (its own chat sessions and schedules), list and open worktrees, remove them behind a confirm dialog, and push the current branch with toast feedback. See [docs/worktrees.md](docs/worktrees.md) and [docs/git-push.md](docs/git-push.md).
+Palette commands create a worktree on a timestamped branch in a sibling directory and open it as a tab (its own chat sessions and schedules), list and open worktrees, remove them behind a confirm dialog, and pull (fast-forward only) or push the current branch with toast feedback. See [docs/worktrees.md](docs/worktrees.md), [docs/git-pull.md](docs/git-pull.md) and [docs/git-push.md](docs/git-push.md).
 
 ### AI commit messages
 Generate a commit message from the staged diff in the source control panel. See [docs/ai-commit-messages.md](docs/ai-commit-messages.md).

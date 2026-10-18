@@ -381,6 +381,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "git_push")]
     GitPush,
 
+    #[strum(message = "Git: Pull (fast-forward only)")]
+    #[strum(serialize = "git_pull")]
+    GitPull,
+
     #[strum(message = "Close Window")]
     #[strum(serialize = "close_window")]
     CloseWindow,
