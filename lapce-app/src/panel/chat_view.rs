@@ -1468,25 +1468,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .max_height(180.0)
                 .width_full()
         }),
-        label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them. Reads: {}.", config.get().ai_chat.endpoint, if data.trust_reads.get() { "approved for this window" } else { "not approved" }))
-            .style(move |s| {
-                s.font_size(12.0)
-                    .line_height(1.4)
-                    .max_width_full()
-                    .color(config.get().color(LapceColor::EDITOR_DIM))
-            }),
-        h_stack((
-            label(|| "Approve project reads".to_string()).on_click_stop(move |_| { if !trust.busy.get_untracked() { trust.trusted_endpoint.set(config.get_untracked().ai_chat.endpoint.clone());
-                    trust.trust_reads.set(true); } })
-                .style(move |s| mode_button_style(s, config, false)),
-            label(|| "Revoke".to_string()).on_click_stop(move |_| { revoke.trust_reads.set(false); if revoke.busy.get_untracked() { revoke.stop(); revoke.persist(config.get_untracked().ai_chat.save_history); } })
-                .style(move |s| mode_button_style(s, config, false)),
-        ))
-        .style(|s| {
-            s.gap(6.0)
-                .padding_vert(4.0)
-                .flex_wrap(floem::style::FlexWrap::Wrap)
-        }),
         container(
             scroll(
                 v_stack((
@@ -1626,6 +1607,57 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             s.max_width_full()
                 .color(config.get().color(LapceColor::LAPCE_ERROR))
         }),
+        // Quiet trust line (Antigravity keeps chrome minimal): one dim
+        // line with the state and a single action, next to the composer.
+        h_stack((
+            label(move || {
+                if data.trust_reads.get() {
+                    "Project reads approved for this window".to_string()
+                } else {
+                    format!(
+                        "Ask/Plan sends project files to {} - not approved.",
+                        config.get().ai_chat.endpoint
+                    )
+                }
+            })
+            .style(move |s| {
+                s.font_size(11.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
+            label(move || {
+                if data.trust_reads.get() {
+                    "Revoke".to_string()
+                } else {
+                    "Approve".to_string()
+                }
+            })
+            .on_click_stop(move |_| {
+                if data.trust_reads.get_untracked() {
+                    revoke.trust_reads.set(false);
+                    if revoke.busy.get_untracked() {
+                        revoke.stop();
+                        revoke.persist(
+                            config.get_untracked().ai_chat.save_history,
+                        );
+                    }
+                } else if !trust.busy.get_untracked() {
+                    trust
+                        .trusted_endpoint
+                        .set(config.get_untracked().ai_chat.endpoint.clone());
+                    trust.trust_reads.set(true);
+                }
+            })
+            .style(move |s| {
+                s.font_size(11.0)
+                    .cursor(CursorStyle::Pointer)
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_LINK))
+            }),
+        ))
+        .style(|s| s.items_center().gap(6.0)),
         label(move || {
             if data.busy.get() {
                 "Thinking... (local replies arrive as a full turn)".to_string()
