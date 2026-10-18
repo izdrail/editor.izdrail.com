@@ -406,9 +406,15 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             label(move || {
                 let p = if title_proposal.get().is_some() { 1 } else { 0 };
                 let c = if title_checkpoint.get().is_some() { 1 } else { 0 };
-                format!("Reviewed edits - {p} proposal(s), {c} checkpoint(s) (Act remains disabled)")
+                format!("Reviewed edits ({p}/{c})")
             })
-            .style(|s| s.font_size(11.0).selectable(false)),
+            .style(|s| {
+                s.font_size(11.0)
+                    .flex_grow(1.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
+                    .selectable(false)
+            }),
             label(|| "Prepare review".to_string())
                 .on_click_stop(move |_| {
                     if let Err(e) = prepare.prepare(&prepare_tab, &prepare_tab.chat.input.get_untracked()) { error.set(e); }
@@ -426,7 +432,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         .on_click_stop(move |_| open.update(|o| *o = !*o)),
         container(
         scroll(v_stack((
-        label(|| "Paste changes JSON in the composer, then Prepare review. Only existing open files. Checkpoints store private code locally.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+        label(|| "Paste changes JSON in the composer, then Prepare review. Only existing open files. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
             let changes = proposal.changes.clone(); let digest = proposal.digest().unwrap_or_default();

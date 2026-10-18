@@ -1471,15 +1471,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }),
         label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them. Reads: {}.", config.get().ai_chat.endpoint, if data.trust_reads.get() { "approved for this window" } else { "not approved" }))
             .style(move |s| {
-                s.font_size(11.0)
+                s.font_size(12.0)
+                    .line_height(1.4)
                     .max_width_full()
                     .color(config.get().color(LapceColor::EDITOR_DIM))
             }),
         h_stack((
-            label(|| "Approve project reads for this window".to_string()).on_click_stop(move |_| { if !trust.busy.get_untracked() { trust.trusted_endpoint.set(config.get_untracked().ai_chat.endpoint.clone());
-                    trust.trust_reads.set(true); } }),
-            label(|| "Revoke".to_string()).on_click_stop(move |_| { revoke.trust_reads.set(false); if revoke.busy.get_untracked() { revoke.stop(); revoke.persist(config.get_untracked().ai_chat.save_history); } }),
-        )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
+            label(|| "Approve project reads".to_string()).on_click_stop(move |_| { if !trust.busy.get_untracked() { trust.trusted_endpoint.set(config.get_untracked().ai_chat.endpoint.clone());
+                    trust.trust_reads.set(true); } })
+                .style(move |s| mode_button_style(s, config, false)),
+            label(|| "Revoke".to_string()).on_click_stop(move |_| { revoke.trust_reads.set(false); if revoke.busy.get_untracked() { revoke.stop(); revoke.persist(config.get_untracked().ai_chat.save_history); } })
+                .style(move |s| mode_button_style(s, config, false)),
+        )).style(|s| s.gap(6.0).padding_vert(4.0)),
         container(
             scroll(
                 dyn_stack(
@@ -1567,7 +1570,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             }
         })
         .style(move |s| {
-            s.font_size(11.0)
+            s.font_size(12.0)
+                .line_height(1.4)
                 .max_width_full()
                 .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
