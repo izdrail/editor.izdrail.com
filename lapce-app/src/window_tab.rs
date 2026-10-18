@@ -3623,11 +3623,20 @@ impl WindowTabData {
                             // reload, not init_content: the scratch doc
                             // was already initialized with "" when the
                             // editor tab was created, and a second
-                            // init_content swaps the rope without a
-                            // delta, leaving screen lines / gutter
-                            // numbering stale (blame tab showed
-                            // 1, 1, 2, 3). reload applies a real delta.
+                            // init_content swaps the rope without a delta.
                             doc.reload(Rope::from(text), true);
+                            // Read-only scratch view: reject edits and
+                            // keep the gutter on absolute line numbers
+                            // (modal relative numbering is meaningless
+                            // here).
+                            doc.content.update(|content| {
+                                if let DocContent::Scratch {
+                                    read_only, ..
+                                } = content
+                                {
+                                    *read_only = true;
+                                }
+                            });
                             if let Some(lang) = LapceLanguage::from_name("diff")
                             {
                                 doc.set_language(lang);
@@ -3793,11 +3802,20 @@ impl WindowTabData {
                             // reload, not init_content: the scratch doc
                             // was already initialized with "" when the
                             // editor tab was created, and a second
-                            // init_content swaps the rope without a
-                            // delta, leaving screen lines / gutter
-                            // numbering stale (blame tab showed
-                            // 1, 1, 2, 3). reload applies a real delta.
+                            // init_content swaps the rope without a delta.
                             doc.reload(Rope::from(text), true);
+                            // Read-only scratch view: reject edits and
+                            // keep the gutter on absolute line numbers
+                            // (modal relative numbering is meaningless
+                            // here).
+                            doc.content.update(|content| {
+                                if let DocContent::Scratch {
+                                    read_only, ..
+                                } = content
+                                {
+                                    *read_only = true;
+                                }
+                            });
                         }
                     }
                 }

@@ -32,6 +32,26 @@ pub fn editor_gutter_view(
     }
 }
 
+/// Whether the gutter should show modal-relative line numbers.
+/// Read-only docs (git blame, git show, history views) always show
+/// absolute numbers: their gutter mirrors the underlying file's line
+/// numbering, and relative numbering there rendered as misleading
+/// cursor distances (the blame gutter read 1, 1, 2, 3 for a 4-line
+/// view with the cursor on line 1).
+fn show_relative_line_numbers(
+    modal: bool,
+    relative_config: bool,
+    mode: Mode,
+    kind_is_normal: bool,
+    doc_read_only: bool,
+) -> bool {
+    modal
+        && relative_config
+        && mode != Mode::Insert
+        && kind_is_normal
+        && !doc_read_only
+}
+
 impl EditorGutterView {
     fn paint_head_changes(
         &self,
@@ -134,11 +154,12 @@ impl View for EditorGutterView {
         let config = config.get_untracked();
         let line_height = config.editor.line_height() as f64;
         let last_line = self.editor.editor.last_line();
-        let current_line = self
-            .editor
-            .doc()
+        let doc = self.editor.doc();
+        let current_line = doc
             .buffer
             .with_untracked(|buffer| buffer.line_of_offset(offset));
+        let doc_read_only =
+            doc.content.with_untracked(|content| content.read_only());
 
         let family: Vec<FamilyOwned> =
             FamilyOwned::parse_list(&config.editor.font_family).collect();
@@ -152,10 +173,13 @@ impl View for EditorGutterView {
                 .clone()
                 .color(config.color(LapceColor::EDITOR_FOREGROUND)),
         );
-        let show_relative = config.core.modal
-            && config.editor.modal_mode_relative_line_numbers
-            && mode != Mode::Insert
-            && kind_is_normal;
+        let show_relative = show_relative_line_numbers(
+            config.core.modal,
+            config.editor.modal_mode_relative_line_numbers,
+            mode,
+            kind_is_normal,
+            doc_read_only,
+        );
 
         screen_lines.with_untracked(|screen_lines| {
             for (line, y) in screen_lines.iter_lines_y() {
@@ -249,5 +273,63 @@ impl From<lsp_types::FoldingRangeKind> for FoldingRangeKind {
             lsp_types::FoldingRangeKind::Imports => FoldingRangeKind::Imports,
             lsp_types::FoldingRangeKind::Region => FoldingRangeKind::Region,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::show_relative_line_numbers;
+    use lapce_core::mode::Mode;
+
+    #[test]
+    fn read_only_docs_always_show_absolute_numbers() {
+        // Blame gutter regression: modal + relative numbers rendered
+        // the read-only blame gutter as 1, 1, 2, 3 (cursor distances).
+        assert!(!show_relative_line_numbers(
+            true,
+            true,
+            Mode::Normal,
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn editable_docs_follow_the_modal_relative_config() {
+        assert!(show_relative_line_numbers(
+            true,
+            true,
+            Mode::Normal,
+            true,
+            false
+        ));
+        assert!(!show_relative_line_numbers(
+            true,
+            true,
+            Mode::Insert,
+            true,
+            false
+        ));
+        assert!(!show_relative_line_numbers(
+            true,
+            false,
+            Mode::Normal,
+            true,
+            false
+        ));
+        assert!(!show_relative_line_numbers(
+            false,
+            true,
+            Mode::Normal,
+            true,
+            false
+        ));
+        assert!(!show_relative_line_numbers(
+            true,
+            true,
+            Mode::Normal,
+            false,
+            false
+        ));
     }
 }

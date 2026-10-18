@@ -119,7 +119,14 @@ pub enum DocContent {
     /// A document of an old version in the source control
     History(DocHistory),
     /// A new file which doesn't exist in the file system
-    Scratch { id: BufferId, name: String },
+    Scratch {
+        id: BufferId,
+        name: String,
+        /// Read-only scratch views (git blame) reject edits and show
+        /// absolute gutter line numbers instead of modal-relative ones.
+        #[serde(default)]
+        read_only: bool,
+    },
 }
 
 impl DocContent {
@@ -136,7 +143,7 @@ impl DocContent {
             DocContent::File { read_only, .. } => *read_only,
             DocContent::Local => false,
             DocContent::History(_) => true,
-            DocContent::Scratch { .. } => false,
+            DocContent::Scratch { read_only, .. } => *read_only,
         }
     }
 

@@ -95,6 +95,7 @@ impl DiffEditorInfo {
                     let doc_content = DocContent::Scratch {
                         id: BufferId::next(),
                         name: name.to_string(),
+                        read_only: false,
                     };
                     let doc = Doc::new_content(
                         cx,

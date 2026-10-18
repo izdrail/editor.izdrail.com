@@ -1084,6 +1084,7 @@ impl MainSplitData {
                     let doc_content = DocContent::Scratch {
                         id: BufferId::next(),
                         name: name.clone(),
+                        read_only: false,
                     };
                     let doc = Doc::new_content(
                         self.scope,
