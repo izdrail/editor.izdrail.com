@@ -578,6 +578,70 @@ fn send(tab: &WindowTabData) {
 /// user's original text). Files are read through the scoped,
 /// size-capped ReadRoot lane; the total mention budget is 256 KiB.
 /// Returns (wire, attached, failed).
+/// The `@query` token being typed at the end of the composer text:
+/// the last whitespace-separated token, only when it starts with '@',
+/// uses mention characters, and the text does not end in whitespace
+/// (a trailing space means the mention was finished - keeps the popup
+/// closed right after an insert). Returns (query, token byte start).
+fn trailing_mention(text: &str) -> Option<(String, usize)> {
+    if text.is_empty() || text.chars().next_back()?.is_whitespace() {
+        return None;
+    }
+    let tail = text.split_whitespace().next_back()?;
+    let body = tail.strip_prefix('@')?;
+    if body.len() > 255
+        || !body
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '/' | '-'))
+    {
+        return None;
+    }
+    let start = text.len() - tail.len();
+    Some((body.to_string(), start))
+}
+
+/// Case-insensitive match of a mention query against a relative path:
+/// 0 = basename starts with the query, 1 = the path contains it,
+/// 2 = subsequence; None when it does not match. Lower ranks first,
+/// shorter paths win ties.
+fn mention_score(query: &str, path: &str) -> Option<i64> {
+    if query.is_empty() {
+        return Some(0);
+    }
+    let q = query.to_lowercase();
+    let p = path.to_lowercase();
+    let name = p.rsplit('/').next().unwrap_or(&p);
+    if name.starts_with(&q) {
+        return Some(0);
+    }
+    if p.contains(&q) {
+        return Some(1);
+    }
+    let mut chars = p.chars();
+    for qc in q.chars() {
+        loop {
+            match chars.next() {
+                Some(c) if c == qc => break,
+                Some(_) => continue,
+                None => return None,
+            }
+        }
+    }
+    Some(2)
+}
+
+/// The best `cap` workspace paths for a mention query, ranked.
+fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> {
+    let mut scored: Vec<(i64, &String)> = files
+        .iter()
+        .filter_map(|f| mention_score(query, f).map(|s| (s, f)))
+        .collect();
+    scored.sort_by(|a, b| {
+        a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())).then(a.1.cmp(b.1))
+    });
+    scored.into_iter().take(cap).map(|(_, f)| f.clone()).collect()
+}
+
 fn resolve_mentions(
     root: &std::path::Path,
     prompt: &str,
@@ -1593,16 +1657,20 @@ fn dropdown_row_style(
     config: ReadSignal<Arc<LapceConfig>>,
     active: bool,
 ) -> floem::style::Style {
+    // Unselected rows read as normal text (dim reads as disabled);
+    // only the selected row carries a persistent highlight, hover the
+    // transient one.
     s.width_full()
         .padding_horiz(8.0)
         .padding_vert(4.0)
         .cursor(CursorStyle::Pointer)
         .selectable(false)
-        .color(config.get().color(if active {
-            LapceColor::EDITOR_FOREGROUND
-        } else {
-            LapceColor::EDITOR_DIM
-        }))
+        .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
+        .apply_if(active, |s| {
+            s.background(
+                config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
+            )
+        })
         .hover(|s| {
             s.background(
                 config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
@@ -2065,6 +2133,90 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let trust = data.clone();
     let revoke = data.clone();
     let input_signal = data.input;
+    // @-mention autocomplete (item 197): typing @ in the composer opens
+    // a fuzzy file list above the input; arrows move, Enter inserts,
+    // Escape dismisses. The workspace file index loads lazily on first
+    // use via GetFiles (the palette's RPC), cached as relative paths.
+    // Popup state: (token byte start, selected row, items).
+    let mention_files =
+        floem::reactive::create_rw_signal(None::<Vec<String>>);
+    let mention_popup =
+        floem::reactive::create_rw_signal(None::<(usize, usize, Vec<String>)>);
+    let mention_requested = Rc::new(std::cell::Cell::new(false));
+    let (mention_tx, mention_rx) = std::sync::mpsc::channel::<Vec<String>>();
+    let mention_tx = Rc::new(mention_tx);
+    {
+        let mention_from_proxy =
+            floem::ext_event::create_signal_from_channel(mention_rx);
+        create_effect(move |_| {
+            if let Some(items) = mention_from_proxy.get() {
+                mention_files.set(Some(items));
+            }
+        });
+    }
+    {
+        let mention_data = data.clone();
+        let mention_tab = tab.clone();
+        let mention_requested = mention_requested.clone();
+        let mention_tx = mention_tx.clone();
+        create_effect(move |_| {
+            let input = mention_data.input.get();
+            let next = match trailing_mention(&input) {
+                Some((query, start)) if mention_tab.workspace.kind.is_local() => {
+                    match mention_files.get() {
+                        Some(files) => {
+                            let items = mention_candidates(&query, &files, 8);
+                            if items.is_empty() {
+                                None
+                            } else {
+                                Some((start, 0usize, items))
+                            }
+                        }
+                        None => {
+                            if !mention_requested.replace(true) {
+                                if let Some(root) =
+                                    mention_tab.workspace.path.clone()
+                                {
+                                    let tx = (*mention_tx).clone();
+                                    mention_tab.common.proxy.get_files(
+                                        move |result| {
+                                            if let Ok(
+                                                lapce_rpc::proxy::ProxyResponse::GetFilesResponse {
+                                                    items,
+                                                },
+                                            ) = result
+                                            {
+                                                let mut rel: Vec<String> = items
+                                                    .into_iter()
+                                                    .filter_map(|p| {
+                                                        p.strip_prefix(&root)
+                                                            .ok()
+                                                            .map(|r| {
+                                                                r.to_string_lossy()
+                                                                    .replace('\\', "/")
+                                                            })
+                                                    })
+                                                    .filter(|r| {
+                                                        !r.starts_with(".git/")
+                                                            && !r.contains("/.git/")
+                                                    })
+                                                    .collect();
+                                                rel.sort();
+                                                let _ = tx.send(rel);
+                                            }
+                                        },
+                                    );
+                                }
+                            }
+                            None
+                        }
+                    }
+                }
+                _ => None,
+            };
+            mention_popup.set(next);
+        });
+    }
     let composer = text_editor(data.input.get_untracked())
         .placeholder("Ask about this file or selection...")
         .editor_style(|s| s.hide_gutter(true).scroll_beyond_last_line(false))
@@ -2100,6 +2252,70 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             );
         }
     });
+    // Accepting a mention replaces the @token (tracked as trailing at
+    // popup-open time, so its end is the document end) through the
+    // editor doc, which re-syncs the input signal via .update().
+    let accept_mention = {
+        let doc = composer.doc();
+        Rc::new(move |index: usize| {
+            if let Some((start, _selected, items)) =
+                mention_popup.get_untracked()
+            {
+                if let Some(path) = items.get(index) {
+                    use floem::views::editor::core::{
+                        editor::EditType, selection::Selection,
+                    };
+                    let replacement = format!("@{path} ");
+                    doc.edit_single(
+                        Selection::region(start, doc.text().len()),
+                        replacement.as_str(),
+                        EditType::Other,
+                    );
+                }
+            }
+            mention_popup.set(None);
+        })
+    };
+    let composer = {
+        let accept_mention = accept_mention.clone();
+        composer.on_event(EventListener::KeyDown, move |event| {
+            let Event::KeyDown(key_event) = event else {
+                return EventPropagation::Continue;
+            };
+            let Some((start, selected, items)) = mention_popup.get_untracked()
+            else {
+                return EventPropagation::Continue;
+            };
+            let last = items.len().saturating_sub(1);
+            match &key_event.key.logical_key {
+                Key::Named(NamedKey::ArrowDown) => {
+                    mention_popup.set(Some((
+                        start,
+                        (selected + 1).min(last),
+                        items,
+                    )));
+                    EventPropagation::Stop
+                }
+                Key::Named(NamedKey::ArrowUp) => {
+                    mention_popup.set(Some((
+                        start,
+                        selected.saturating_sub(1),
+                        items,
+                    )));
+                    EventPropagation::Stop
+                }
+                Key::Named(NamedKey::Enter) => {
+                    accept_mention(selected);
+                    EventPropagation::Stop
+                }
+                Key::Named(NamedKey::Escape) => {
+                    mention_popup.set(None);
+                    EventPropagation::Stop
+                }
+                _ => EventPropagation::Continue,
+            }
+        })
+    };
     v_stack((
         // Antigravity-style header: pane title on the left, icon
         // actions on the right. The model indicator stays in this row
@@ -2942,6 +3158,79 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         .width_full()
                 })
         },
+                // Mention autocomplete popup: the fuzzy file list sits
+                // above the input inside the composer card (Antigravity
+                // position). Rows: relative path, selected highlighted,
+                // click accepts like Enter.
+                container(
+                    dyn_stack(
+                        move || {
+                            mention_popup
+                                .get()
+                                .map(|(_, selected, items)| {
+                                    items
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(i, p)| (p, i == selected))
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default()
+                        },
+                        |(path, _)| path.clone(),
+                        move |(path, selected)| {
+                            let row_accept = accept_mention.clone();
+                            let row_path = path.clone();
+                            label(move || path.clone())
+                                .on_click_stop(move |_| {
+                                    if let Some((_, _, items)) =
+                                        mention_popup.get_untracked()
+                                    {
+                                        if let Some(index) = items
+                                            .iter()
+                                            .position(|p| p == &row_path)
+                                        {
+                                            row_accept(index);
+                                        }
+                                    }
+                                })
+                                .style(move |s| {
+                                    let s = s
+                                        .font_size(12.0)
+                                        .width_full()
+                                        .padding_horiz(8.0)
+                                        .padding_vert(3.0)
+                                        .cursor(CursorStyle::Pointer)
+                                        .selectable(false)
+                                        .color(
+                                            config.get().color(
+                                                LapceColor::EDITOR_FOREGROUND,
+                                            ),
+                                        );
+                                    if selected {
+                                        s.background(config.get().color(
+                                            LapceColor::PANEL_CURRENT_BACKGROUND,
+                                        ))
+                                    } else {
+                                        s
+                                    }
+                                })
+                        },
+                    )
+                    .style(|s| s.flex_col().width_full()),
+                )
+                .style(move |s| {
+                    let s = s
+                        .width_full()
+                        .border(1)
+                        .border_radius(6.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .background(config.get().color(LapceColor::EDITOR_BACKGROUND));
+                    if mention_popup.get().is_some() {
+                        s
+                    } else {
+                        s.display(Display::None)
+                    }
+                }),
                 h_stack((
                     composer.style(|s| {
                         s.flex_grow(1.0).min_width(0.0).height(100.0)
@@ -3164,7 +3453,46 @@ fn symbol_rows_json(
 
 #[cfg(test)]
 mod tests {
-    use super::{clip_step_detail, resolve_mentions, symbol_rows_json};
+    use super::{
+        clip_step_detail, mention_candidates, resolve_mentions,
+        symbol_rows_json, trailing_mention,
+    };
+
+    #[test]
+    fn trailing_mention_reads_only_an_active_tail_token() {
+        assert_eq!(trailing_mention(""), None);
+        assert_eq!(trailing_mention("@"), Some(("".to_string(), 0)));
+        assert_eq!(
+            trailing_mention("check @sr"),
+            Some(("sr".to_string(), 6))
+        );
+        assert_eq!(trailing_mention("a@b"), None);
+        assert_eq!(trailing_mention("@sr "), None);
+        assert_eq!(trailing_mention("check @bad!"), None);
+        assert_eq!(
+            trailing_mention("multi line\n@src/a.rs"),
+            Some(("src/a.rs".to_string(), 11))
+        );
+    }
+
+    #[test]
+    fn mention_candidates_rank_and_cap() {
+        let files = vec![
+            "x/y/zmainlog.rs".to_string(),
+            "docs/main.md".to_string(),
+            "src/main.rs".to_string(),
+            "README".to_string(),
+        ];
+        let got = mention_candidates("main", &files, 8);
+        assert_eq!(got[0], "src/main.rs");
+        assert_eq!(got[1], "docs/main.md");
+        assert!(got.contains(&"x/y/zmainlog.rs".to_string()));
+        assert!(!got.contains(&"README".to_string()));
+        assert!(mention_candidates("zzz", &files, 8).is_empty());
+        let many: Vec<String> =
+            (0..20).map(|i| format!("f{i:02}.rs")).collect();
+        assert_eq!(mention_candidates("", &many, 8).len(), 8);
+    }
 
     #[test]
     fn resolve_mentions_attaches_files_and_reports_failures() {
