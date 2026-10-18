@@ -140,6 +140,37 @@ pub fn extract_mentions(input: &str) -> Vec<String> {
     out
 }
 
+/// `@https://...` / `@http://...` tokens to inline as fetched pages.
+/// Plain `@path` tokens are extract_mentions' job; a token is a web
+/// mention only when it starts with a scheme. Trailing sentence
+/// punctuation is trimmed, matching extract_mentions.
+pub fn extract_web_mentions(input: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for token in input.split_whitespace() {
+        let Some(url) = token.strip_prefix('@') else {
+            continue;
+        };
+        let url = url.trim_end_matches([',', '.', ';', '!', '?', ')', ']']);
+        let Some(body) = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+        else {
+            continue;
+        };
+        if body.is_empty() || url.len() > 2048 {
+            continue;
+        }
+        let url = url.to_string();
+        if !out.contains(&url) {
+            out.push(url);
+            if out.len() == 4 {
+                break;
+            }
+        }
+    }
+    out
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SlashCommand {
     Plan(String),
@@ -330,7 +361,33 @@ mod acp_agent_tests {
 
 #[cfg(test)]
 mod mention_tests {
-    use super::extract_mentions;
+    use super::{extract_mentions, extract_web_mentions};
+
+    #[test]
+    fn extracts_web_mentions_only_for_scheme_tokens() {
+        assert_eq!(
+            extract_web_mentions(
+                "read @https://example.com/docs and @src/main.rs, compare @http://a.b/c."
+            ),
+            vec![
+                "https://example.com/docs".to_string(),
+                "http://a.b/c".to_string()
+            ]
+        );
+        // No @ prefix, no scheme, or a bare scheme: not web mentions.
+        assert!(extract_web_mentions(
+            "https://example.com @https:// @file.rs"
+        )
+        .is_empty());
+        // Duplicates collapse; four at most.
+        assert_eq!(
+            extract_web_mentions(
+                "@https://a.com @https://a.com @https://b.com @https://c.com @https://d.com @https://e.com"
+            )
+            .len(),
+            4
+        );
+    }
 
     #[test]
     fn extracts_path_like_mentions_only() {

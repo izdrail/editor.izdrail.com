@@ -16,3 +16,7 @@ panel error line.
 Coverage: extraction rules (path-like only, punctuation, dedupe, cap)
 and real-FS resolution (attach order, fences, failure reporting,
 `..` escape refusal, passthrough) are behavior-tested.
+
+`@https://...` / `@http://...` tokens are web mentions (item 203):
+Ask/Plan/Act runs fetch and inline the page on the worker thread; see
+docs/agent-web-fetch.md. Plain Chat passes them through as text.

@@ -35,7 +35,15 @@ unit-tested; live fetches are covered by the host gate's manual runs.
 
 ## Follow-ups (not in this slice)
 
-- `@web` composer mention that inlines a fetched page like `@file` does
-  today (the mention resolver treats `@web` as a path-like token and
-  ignores it, so nothing breaks meanwhile).
 - DNS-resolution checks against private ranges.
+
+## @web composer mentions (item 203)
+
+Typing `@https://...` (or `@http://...`) in the composer inlines the
+fetched page as a `<mentioned_page>` block for Ask/Plan/Act runs,
+sharing the 256 KiB mention budget with `@file`. Fetches run on the
+agent worker thread (they block for seconds); the UI thread never
+fetches. Attached and failed pages show as step rows in the run's
+progress card. Plain Chat sends the token as literal text - the
+answer-only lanes have no fetch lane. Up to four pages per message;
+sentence-trailing punctuation is trimmed like `@file` mentions.
