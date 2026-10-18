@@ -109,6 +109,147 @@ pub fn stage_paths(
     Err(format!("git {verb} failed:\n{}", clip_stderr(&stderr)))
 }
 
+/// One parsed hunk from single-file `git diff` output.
+pub struct DiffHunk {
+    /// 1-based start line in the new (workdir) file.
+    pub new_start: usize,
+    /// Number of new-file lines the hunk covers (0 for pure
+    /// deletions).
+    pub new_len: usize,
+    /// The full hunk text including its `@@` header line.
+    pub text: String,
+}
+
+/// Split single-file `git diff` output into the file header
+/// (everything before the first `@@`) and its hunks. None when the
+/// diff has no hunks (unchanged file, untracked path, binary).
+pub fn split_file_diff(diff_text: &str) -> Option<(String, Vec<DiffHunk>)> {
+    let mut header = String::new();
+    let mut hunks = Vec::new();
+    let mut current: Option<DiffHunk> = None;
+    for line in diff_text.lines() {
+        if line.starts_with("@@ ") {
+            if let Some(hunk) = current.take() {
+                hunks.push(hunk);
+            }
+            let (new_start, new_len) = parse_hunk_header(line)?;
+            current = Some(DiffHunk {
+                new_start,
+                new_len,
+                text: format!("{line}\n"),
+            });
+        } else if let Some(hunk) = current.as_mut() {
+            hunk.text.push_str(line);
+            hunk.text.push('\n');
+        } else {
+            header.push_str(line);
+            header.push('\n');
+        }
+    }
+    if let Some(hunk) = current.take() {
+        hunks.push(hunk);
+    }
+    if hunks.is_empty() {
+        return None;
+    }
+    Some((header, hunks))
+}
+
+/// Parse the new-file range out of an `@@ -a[,b] +c[,d] @@` header.
+fn parse_hunk_header(line: &str) -> Option<(usize, usize)> {
+    let plus = line.find(" +")? + 2;
+    let rest = &line[plus..];
+    let end = rest.find(' ').unwrap_or(rest.len());
+    let range = &rest[..end];
+    match range.split_once(',') {
+        Some((start, len)) => Some((start.parse().ok()?, len.parse().ok()?)),
+        None => Some((range.parse().ok()?, 1)),
+    }
+}
+
+/// Index of the hunk covering `line` (1-based, new-file line
+/// numbers). A pure-deletion hunk owns no new-file lines, so it
+/// matches the line before or after its position.
+pub fn hunk_at_line(hunks: &[DiffHunk], line: usize) -> Option<usize> {
+    hunks.iter().position(|hunk| {
+        if hunk.new_len == 0 {
+            line == hunk.new_start || line == hunk.new_start + 1
+        } else {
+            line >= hunk.new_start && line < hunk.new_start + hunk.new_len
+        }
+    })
+}
+
+/// Rebuild a one-file patch carrying only the given hunk.
+pub fn build_single_hunk_patch(header: &str, hunk: &DiffHunk) -> String {
+    let mut patch = String::with_capacity(header.len() + hunk.text.len());
+    patch.push_str(header);
+    patch.push_str(&hunk.text);
+    patch
+}
+
+/// Stage the workdir hunk covering `line` (1-based) for `rel_path`:
+/// `git diff -- <path>`, pick the hunk, feed a single-hunk patch to
+/// `git apply --cached`. Ok(false) when no hunk covers the line (or
+/// the file has no unstaged changes).
+pub fn stage_hunk_at_line(
+    root: &Path,
+    rel_path: &Path,
+    line: usize,
+) -> Result<bool, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("diff")
+        .arg("--")
+        .arg(rel_path)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("git diff failed:\n{}", clip_stderr(&stderr)));
+    }
+    let diff_text = String::from_utf8_lossy(&out.stdout);
+    let Some((header, hunks)) = split_file_diff(&diff_text) else {
+        return Ok(false);
+    };
+    let Some(index) = hunk_at_line(&hunks, line) else {
+        return Ok(false);
+    };
+    let patch = build_single_hunk_patch(&header, &hunks[index]);
+    let mut child = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("apply")
+        .arg("--cached")
+        .arg("-")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    use std::io::Write;
+    child
+        .stdin
+        .as_mut()
+        .ok_or_else(|| "Could not open git apply stdin.".to_string())?
+        .write_all(patch.as_bytes())
+        .map_err(|e| format!("Could not write to git apply: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!(
+            "git apply --cached failed:\n{}",
+            clip_stderr(&stderr)
+        ));
+    }
+    Ok(true)
+}
+
 /// `git log` rows for the history palette: (full SHA, display text).
 /// Field separator is U+001F so subjects may contain any printable
 /// character. Parsing lives in parse_git_log_line for tests.
@@ -427,6 +568,107 @@ mod tests {
 
         stage_paths(dir.path(), std::slice::from_ref(&path), false).unwrap();
         assert!(!staged_names(dir.path()).contains("a.txt"));
+    }
+
+    // Written as one long literal: Rust's backslash-newline
+    // continuation strips leading whitespace, which would eat the
+    // leading space that marks context lines in a real diff.
+    const SAMPLE_DIFF: &str = "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,4 @@\n one\n+two changed\n two\n three\n@@ -10 +11,2 @@\n ten\n+eleven changed\n eleven\n";
+
+    #[test]
+    fn split_file_diff_parses_header_and_hunks() {
+        let (header, hunks) = split_file_diff(SAMPLE_DIFF).unwrap();
+        assert!(header.starts_with("diff --git a/a.txt"));
+        assert!(header.ends_with("+++ b/a.txt\n"));
+        assert_eq!(hunks.len(), 2);
+        assert_eq!((hunks[0].new_start, hunks[0].new_len), (1, 4));
+        // Omitted length means 1 for the old side; the new side here
+        // is "11,2".
+        assert_eq!((hunks[1].new_start, hunks[1].new_len), (11, 2));
+        assert!(hunks[0].text.starts_with("@@ -1,3 +1,4 @@\n"));
+        assert!(hunks[0].text.ends_with(" three\n"));
+    }
+
+    #[test]
+    fn hunk_at_line_boundaries() {
+        let (_, hunks) = split_file_diff(SAMPLE_DIFF).unwrap();
+        // First hunk covers new lines 1..=4.
+        assert_eq!(hunk_at_line(&hunks, 1), Some(0));
+        assert_eq!(hunk_at_line(&hunks, 4), Some(0));
+        assert_eq!(hunk_at_line(&hunks, 5), None);
+        // Second hunk covers new lines 11..=12.
+        assert_eq!(hunk_at_line(&hunks, 10), None);
+        assert_eq!(hunk_at_line(&hunks, 11), Some(1));
+        assert_eq!(hunk_at_line(&hunks, 12), Some(1));
+        assert_eq!(hunk_at_line(&hunks, 13), None);
+    }
+
+    #[test]
+    fn hunk_at_line_pure_deletion_matches_adjacent_lines() {
+        let diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -3,2 +2,0 @@\n-gone one\n-gone two\n";
+        let (_, hunks) = split_file_diff(diff).unwrap();
+        assert_eq!((hunks[0].new_start, hunks[0].new_len), (2, 0));
+        assert_eq!(hunk_at_line(&hunks, 2), Some(0));
+        assert_eq!(hunk_at_line(&hunks, 3), Some(0));
+        assert_eq!(hunk_at_line(&hunks, 4), None);
+    }
+
+    #[test]
+    fn build_single_hunk_patch_keeps_file_header() {
+        let (header, hunks) = split_file_diff(SAMPLE_DIFF).unwrap();
+        let patch = build_single_hunk_patch(&header, &hunks[1]);
+        let expected = "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n--- a/a.txt\n+++ b/a.txt\n@@ -10 +11,2 @@\n ten\n+eleven changed\n eleven\n";
+        assert_eq!(patch, expected);
+    }
+
+    #[test]
+    fn stage_hunk_at_line_stages_only_the_cursor_hunk() {
+        let dir = tempfile::tempdir().unwrap();
+        init_git_repo(dir.path());
+        let path = dir.path().join("a.txt");
+        let mut content = String::new();
+        for i in 1..=40 {
+            content.push_str(&format!("line {i}\n"));
+        }
+        std::fs::write(&path, &content).unwrap();
+        stage_paths(dir.path(), std::slice::from_ref(&path), true).unwrap();
+
+        // Two distant workdir edits; stage only the second one.
+        let content = content
+            .replacen("line 3\n", "line 3 changed\n", 1)
+            .replacen("line 38\n", "line 38 changed\n", 1);
+        std::fs::write(&path, &content).unwrap();
+
+        let staged = stage_hunk_at_line(
+            dir.path(),
+            std::path::Path::new("a.txt"),
+            38,
+        )
+        .unwrap();
+        assert!(staged);
+
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["diff", "--cached"])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .unwrap();
+        let cached = String::from_utf8_lossy(&out.stdout);
+        assert!(cached.contains("line 38 changed"));
+        assert!(!cached.contains("line 3 changed"));
+
+        // A line with no hunk reports Ok(false), not an error.
+        let dir2 = tempfile::tempdir().unwrap();
+        init_git_repo(dir2.path());
+        std::fs::write(dir2.path().join("b.txt"), "one\n").unwrap();
+        stage_paths(dir2.path(), &[dir2.path().join("b.txt")], true).unwrap();
+        assert!(!stage_hunk_at_line(
+            dir2.path(),
+            std::path::Path::new("b.txt"),
+            1
+        )
+        .unwrap());
     }
 
     #[test]

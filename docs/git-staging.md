@@ -28,3 +28,19 @@ assert the two `DiffInfo` lists stay separate
 
 Follow-up: hunk-level staging (stage the hunk at the cursor) via
 `git apply --cached`.
+
+## Staging the hunk at the cursor (item 177)
+
+Command palette: **Git: Stage Hunk at Cursor** (`git_stage_hunk`)
+stages only the workdir hunk enclosing the cursor in the active
+editor. The pipeline is pure and unit-tested: `git diff -- <path>` is
+split into file header + hunks (`split_file_diff`, including the
+`@@ -a +c,d @@` omitted-length form and pure-deletion hunks, which own
+no new-file lines and match the adjacent line), the hunk covering the
+cursor line is rebuilt into a single-hunk patch
+(`build_single_hunk_patch`) and fed to `git apply --cached -`. Runs
+off the UI thread; silent on success (the .git watcher moves the hunk
+into Staged Changes), warns when no unstaged hunk covers the cursor,
+and toasts clipped stderr on git failures. Untracked files have no
+`git diff` hunks, so they still stage whole-file via the panel's
+Stage entry.

@@ -1048,6 +1048,9 @@ impl WindowTabData {
             GitMergeAbort => {
                 self.git_merge_abort();
             }
+            GitStageHunk => {
+                self.git_stage_hunk_at_cursor();
+            }
             GitStash => {
                 self.git_stash(false);
             }
@@ -3702,6 +3705,54 @@ impl WindowTabData {
             changes: Some(changes),
             document_changes: None,
             change_annotations: None,
+        });
+    }
+
+    /// Stage the workdir hunk covering the cursor in the active
+    /// editor: `git diff -- <path>`, pick the hunk, feed a
+    /// single-hunk patch to `git apply --cached` (all in
+    /// worktree::stage_hunk_at_line, off the UI thread). Silent on
+    /// success - the .git watcher refreshes the panel; warns when no
+    /// hunk covers the cursor.
+    fn git_stage_hunk_at_cursor(&self) {
+        let Some(editor_data) = self.main_split.active_editor.get_untracked()
+        else {
+            return;
+        };
+        let doc = editor_data.doc();
+        let Some(path) = doc.content.get_untracked().path().cloned() else {
+            return;
+        };
+        let offset = editor_data.cursor().with_untracked(|c| c.offset());
+        let line = doc.buffer.with_untracked(|b| b.line_of_offset(offset));
+        let Some(root) = self.workspace.path.clone() else {
+            return;
+        };
+        let Ok(rel_path) = path.strip_prefix(&root) else {
+            return;
+        };
+        let rel_path = rel_path.to_path_buf();
+        // Hunk ranges are 1-based; line_of_offset is 0-based.
+        let line = line + 1;
+        let messages = self.messages;
+        let send =
+            create_ext_action(self.scope, move |result: Result<bool, String>| {
+                let (typ, message) = match result {
+                    Ok(true) => return,
+                    Ok(false) => (
+                        lsp_types::MessageType::WARNING,
+                        "No unstaged hunk at the cursor.".to_string(),
+                    ),
+                    Err(message) => (lsp_types::MessageType::ERROR, message),
+                };
+                push_unique_message(
+                    &messages,
+                    "Git Stage Hunk",
+                    &ShowMessageParams { typ, message },
+                );
+            });
+        std::thread::spawn(move || {
+            send(crate::worktree::stage_hunk_at_line(&root, &rel_path, line));
         });
     }
 
