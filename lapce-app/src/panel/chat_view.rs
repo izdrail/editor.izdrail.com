@@ -77,6 +77,9 @@ pub struct ChatData {
     pub trust_reads: RwSignal<bool>,
     pub trusted_endpoint: RwSignal<String>,
     pub review: crate::agent_review_ui::ReviewData,
+    /// Act run_command waiting on the owner: shown as an approval
+    /// card; the worker thread blocks on `respond`.
+    pub pending_command: RwSignal<Option<PendingCommand>>,
     gate: RunGate,
     cancellation: RwSignal<Arc<AtomicBool>>,
     storage: Option<PathBuf>,
@@ -84,6 +87,13 @@ pub struct ChatData {
     /// Pid of the live ACP agent subprocess, so Stop can signal it while
     /// the worker thread is parked in a blocking read.
     acp_pid: Arc<Mutex<Option<u32>>>,
+}
+/// One Act run_command awaiting a per-command owner decision.
+#[derive(Clone)]
+pub struct PendingCommand {
+    pub id: String,
+    pub command: String,
+    pub respond: std::sync::mpsc::Sender<bool>,
 }
 struct ChatWorker {
     local: lapce_ai::process::Worker,
@@ -141,6 +151,7 @@ impl ChatData {
             cancellation: cx.create_rw_signal(Arc::new(AtomicBool::new(false))),
             storage,
             review,
+            pending_command: cx.create_rw_signal(None),
             turns: cx.create_rw_signal(turns),
             input: cx.create_rw_signal(String::new()),
             busy: cx.create_rw_signal(false),
@@ -601,6 +612,17 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 return;
             }
             match update {
+                AgentUpdate::Approval {
+                    id,
+                    command,
+                    respond,
+                } => {
+                    done.pending_command.set(Some(PendingCommand {
+                        id,
+                        command,
+                        respond,
+                    }));
+                }
                 AgentUpdate::Step(row) => steps.update(|v| {
                     // Bounded: loop limits cap events well under this.
                     if v.len() < 128 {
@@ -620,6 +642,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     // Clear busy first: review prepare refuses while a
                     // run is active, and this run is finished.
                     done.busy.set(false);
+                    done.pending_command.set(None);
                     done.state.set(RunState::Done);
                     if mode == crate::agent_loop::Mode::Act {
                         // Hand the model's full-file proposal to the
@@ -648,6 +671,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 AgentUpdate::Error(error) => {
                     done.error.set(error);
                     done.busy.set(false);
+                    done.pending_command.set(None);
                     done.state.set(RunState::Error);
                     done.persist(save);
                 }
@@ -685,6 +709,49 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         )?;
                         Ok(serde_json::json!({"matches":result.matches,"truncated":result.truncated,"skipped_files":result.skipped_files}).to_string())
                     }
+                    "run_command" => {
+                        let command = call.arguments["command"]
+                            .as_str()
+                            .ok_or("Missing command")?;
+                        let (respond_tx, respond_rx) =
+                            std::sync::mpsc::channel();
+                        let _ = tx.send(AgentUpdate::Approval {
+                            id: call.id.clone(),
+                            command: command.to_string(),
+                            respond: respond_tx,
+                        });
+                        let deadline = std::time::Instant::now()
+                            + std::time::Duration::from_secs(300);
+                        let approved = loop {
+                            if cancelled.load(Ordering::Acquire) {
+                                return Err("Cancelled".into());
+                            }
+                            match respond_rx.recv_timeout(
+                                std::time::Duration::from_millis(100),
+                            ) {
+                                Ok(v) => break v,
+                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                    if std::time::Instant::now() > deadline {
+                                        return Err(
+                                            "Command approval timed out".into()
+                                        );
+                                    }
+                                }
+                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                    break false;
+                                }
+                            }
+                        };
+                        if !approved {
+                            return Err("Denied by owner".into());
+                        }
+                        crate::agent_exec::run_shell_command(
+                            &root,
+                            command,
+                            std::time::Duration::from_secs(30),
+                            cancelled.clone(),
+                        )
+                    }
                     _ => Err("Unregistered tool".into()),
                 },
                 |event| {
@@ -703,6 +770,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                     .arguments
                                     .get("path")
                                     .or_else(|| call.arguments.get("literal"))
+                                    .or_else(|| call.arguments.get("command"))
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
                                 let _ = tx.send(AgentUpdate::Step(AgentStepRow {
@@ -739,9 +807,99 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
 #[derive(Clone)]
 enum AgentUpdate {
     Step(AgentStepRow),
+    Approval {
+        id: String,
+        command: String,
+        respond: std::sync::mpsc::Sender<bool>,
+    },
     Done(String),
     Error(String),
 }
+/// Approval card for Act's run_command tool: the exact command plus
+/// Allow once / Deny. Each decision is one-shot - nothing is
+/// remembered, and a closed or interrupted run drops the card with
+/// the pending sender.
+fn pending_command_card(tab: Rc<WindowTabData>) -> impl View {
+    let data = tab.chat.clone();
+    let config = tab.common.config;
+    dyn_stack(
+        move || data.pending_command.get(),
+        |pending| pending.id.clone(),
+        move |pending| {
+            let allow = pending.respond.clone();
+            let deny = pending.respond.clone();
+            let allow_data = tab.chat.clone();
+            let deny_data = tab.chat.clone();
+            v_stack((
+                label(|| "Act wants to run this command:".to_string())
+                    .style(|s| s.selectable(false)),
+                label(move || pending.command.clone()).style(move |s| {
+                    s.width_full()
+                        .padding(6.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .border_color(
+                            config.get().color(LapceColor::LAPCE_BORDER),
+                        )
+                }),
+                h_stack((
+                    label(|| "Allow once".to_string())
+                        .on_click_stop(move |_| {
+                            let _ = allow.send(true);
+                            allow_data.pending_command.set(None);
+                        })
+                        .style(move |s| {
+                            s.padding_horiz(12.0)
+                                .padding_vert(4.0)
+                                .border(1.0)
+                                .border_radius(4.0)
+                                .border_color(
+                                    config.get().color(LapceColor::LAPCE_BORDER),
+                                )
+                                .cursor(CursorStyle::Pointer)
+                                .hover(|s| {
+                                    s.background(config.get().color(
+                                        LapceColor::PANEL_HOVERED_BACKGROUND,
+                                    ))
+                                })
+                        }),
+                    label(|| "Deny".to_string())
+                        .on_click_stop(move |_| {
+                            let _ = deny.send(false);
+                            deny_data.pending_command.set(None);
+                        })
+                        .style(move |s| {
+                            s.padding_horiz(12.0)
+                                .padding_vert(4.0)
+                                .border(1.0)
+                                .border_radius(4.0)
+                                .border_color(
+                                    config.get().color(LapceColor::LAPCE_BORDER),
+                                )
+                                .cursor(CursorStyle::Pointer)
+                                .hover(|s| {
+                                    s.background(config.get().color(
+                                        LapceColor::PANEL_HOVERED_BACKGROUND,
+                                    ))
+                                })
+                        }),
+                ))
+                .style(|s| s.gap(8.0)),
+            ))
+            .style(move |s| {
+                s.width_full()
+                    .gap(6.0)
+                    .padding(8.0)
+                    .margin_bottom(8.0)
+                    .border(1.0)
+                    .border_radius(6.0)
+                    .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            })
+        },
+    )
+    .style(|s| s.flex_col().width_full())
+}
+
 /// Clip a tool target or id for display: 120 chars, ellipsis after.
 pub fn clip_step_detail(s: &str) -> String {
     const CAP: usize = 120;
@@ -2194,6 +2352,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .flex_basis(0.0)
                 .min_height(0.0)
         }),
+        pending_command_card(tab.clone()),
         crate::agent_review_ui::panel(tab.clone()),
         label(move || data.error.get()).style(move |s| {
             s.max_width_full()

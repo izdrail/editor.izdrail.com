@@ -15,6 +15,27 @@ use std::{
 /// Combined stdout+stderr cap fed back to the model.
 const OUTPUT_CAP: usize = 64 * 1024;
 
+/// Kill the whole process group (the shell plus any grandchildren
+/// still holding the pipes), then reap the shell. Group-kill via the
+/// `kill` binary: lapce-app has no libc dep. On non-unix only the
+/// shell itself is killed. If the group is already gone this is a
+/// no-op; the window for the pgid being recycled before this call is
+/// microseconds and the worst case is a failed kill we ignore.
+fn teardown(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let pgid = child.id();
+        let _ = Command::new("kill")
+            .args(["-KILL", &format!("-{pgid}")])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 /// Run `sh -c <command>` in `root`: stdin closed, combined output
 /// capped, wall-clock limited, killed on cancel. Failing exit codes
 /// are Err with the capped output attached.
@@ -27,45 +48,77 @@ pub fn run_shell_command(
     if command.trim().is_empty() || command.len() > 4096 {
         return Err("Empty or oversized command".into());
     }
-    let mut child = Command::new("sh")
-        .arg("-c")
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c")
         .arg(command)
         .current_dir(root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .spawn()
-        .map_err(|e| format!("Could not start sh: {e}"))?;
+        .env("GIT_TERMINAL_PROMPT", "0");
+    // Own process group: `sh -c` pipelines spawn grandchildren that
+    // hold the output pipes; killing only the shell leaves them (and
+    // our reader threads) stuck. pgid == child pid after this.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("Could not start sh: {e}"))?;
+    // Drain both pipes on reader threads: a producer writing more
+    // than the pipe buffer must never block until the timeout.
+    let mut out_pipe = child.stdout.take().ok_or("Missing stdout pipe")?;
+    let mut err_pipe = child.stderr.take().ok_or("Missing stderr pipe")?;
+    let out_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut out_pipe, &mut buf);
+        buf
+    });
+    let err_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut err_pipe, &mut buf);
+        buf
+    });
     let deadline = Instant::now() + timeout;
-    let out = loop {
+    let mut timed_out = false;
+    let mut status = None;
+    loop {
         if cancelled.load(Ordering::Acquire) {
-            let _ = child.kill();
-            let _ = child.wait();
+            teardown(&mut child);
+            let _ = out_handle.join();
+            let _ = err_handle.join();
             return Err("Cancelled".into());
         }
         match child.try_wait() {
-            Ok(Some(_)) => {
-                break child
-                    .wait_with_output()
-                    .map_err(|e| format!("Could not collect output: {e}"))?;
+            Ok(Some(s)) => {
+                status = Some(s);
+                break;
             }
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "Command timed out after {}s",
-                        timeout.as_secs().max(1)
-                    ));
+                    timed_out = true;
+                    break;
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => return Err(format!("Could not wait for command: {e}")),
         }
-    };
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
+    }
+    // Kill the process group on every exit path: without it a
+    // surviving grandchild holds the pipes and the reader joins below
+    // would block past the wall-clock limit.
+    teardown(&mut child);
+    let stdout_bytes = out_handle.join().map_err(|_| "Output reader panicked")?;
+    let stderr_bytes = err_handle.join().map_err(|_| "Output reader panicked")?;
+    if timed_out {
+        return Err(format!(
+            "Command timed out after {}s",
+            timeout.as_secs().max(1)
+        ));
+    }
+    let status = status.ok_or("Command exited without a status")?;
+    let stdout = String::from_utf8_lossy(&stdout_bytes);
+    let stderr = String::from_utf8_lossy(&stderr_bytes);
     let mut text = String::new();
     text.push_str(stdout.trim_end());
     if !stderr.trim().is_empty() {
@@ -83,11 +136,10 @@ pub fn run_shell_command(
         text.truncate(end);
         text.push_str("\n[output clipped]");
     }
-    if out.status.success() {
+    if status.success() {
         Ok(text)
     } else {
-        let code = out
-            .status
+        let code = status
             .code()
             .map(|c| c.to_string())
             .unwrap_or_else(|| "signal".to_string());
