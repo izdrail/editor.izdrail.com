@@ -385,6 +385,18 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "git_pull")]
     GitPull,
 
+    #[strum(message = "Git: Stash")]
+    #[strum(serialize = "git_stash")]
+    GitStash,
+
+    #[strum(message = "Git: Stash (Include Untracked)")]
+    #[strum(serialize = "git_stash_include_untracked")]
+    GitStashIncludeUntracked,
+
+    #[strum(message = "Git: Stash Pop")]
+    #[strum(serialize = "git_stash_pop")]
+    GitStashPop,
+
     #[strum(message = "Close Window")]
     #[strum(serialize = "close_window")]
     CloseWindow,

@@ -1031,6 +1031,15 @@ impl WindowTabData {
             GitPull => {
                 self.git_pull();
             }
+            GitStash => {
+                self.git_stash(false);
+            }
+            GitStashIncludeUntracked => {
+                self.git_stash(true);
+            }
+            GitStashPop => {
+                self.git_stash_pop();
+            }
             CloseWindow => {
                 self.common
                     .window_common
@@ -3630,6 +3639,117 @@ impl WindowTabData {
                         "git pull failed:\n{detail}\n\nDiverged branches? This command never merges: run `git pull --rebase` or merge in a terminal, then pull again. Credentials are never prompted on a hidden thread."
                     ))
                 }
+            })();
+            send(result);
+        });
+    }
+
+    /// Stash local changes (`git stash push`) off the UI thread, with
+    /// toast feedback. `include_untracked` adds `-u` for the second
+    /// palette variant. Same GIT_TERMINAL_PROMPT=0 reasoning as
+    /// git_push. Stash reports its outcome on stdout ("Saved working
+    /// directory..." / "No local changes to save") and failures on
+    /// stderr - stash_result_message owns that split.
+    fn git_stash(&self, include_untracked: bool) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_message(
+                "Git Stash",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "Open a folder first.".into(),
+                },
+            );
+            return;
+        };
+        let title = if include_untracked {
+            "Git Stash (Include Untracked)"
+        } else {
+            "Git Stash"
+        };
+        let messages = self.messages;
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| {
+                let (typ, message) = match result {
+                    Ok(m) => (lsp_types::MessageType::INFO, m),
+                    Err(m) => (lsp_types::MessageType::ERROR, m),
+                };
+                push_unique_message(
+                    &messages,
+                    title,
+                    &ShowMessageParams { typ, message },
+                );
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let mut cmd = std::process::Command::new("git");
+                cmd.arg("-C").arg(&root).arg("stash").arg("push");
+                if include_untracked {
+                    cmd.arg("--include-untracked");
+                }
+                let out = cmd
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                crate::worktree::stash_result_message(
+                    out.status.success(),
+                    &stdout,
+                    &stderr,
+                )
+            })();
+            send(result);
+        });
+    }
+
+    /// Pop the most recent stash (`git stash pop`) off the UI thread.
+    /// A conflicting pop keeps the stash entry; the error toast says
+    /// so (stash_pop_result_message).
+    fn git_stash_pop(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_message(
+                "Git Stash Pop",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "Open a folder first.".into(),
+                },
+            );
+            return;
+        };
+        let messages = self.messages;
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| {
+                let (typ, message) = match result {
+                    Ok(m) => (lsp_types::MessageType::INFO, m),
+                    Err(m) => (lsp_types::MessageType::ERROR, m),
+                };
+                push_unique_message(
+                    &messages,
+                    "Git Stash Pop",
+                    &ShowMessageParams { typ, message },
+                );
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let out = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .arg("stash")
+                    .arg("pop")
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                crate::worktree::stash_pop_result_message(
+                    out.status.success(),
+                    &stdout,
+                    &stderr,
+                )
             })();
             send(result);
         });

@@ -36,6 +36,49 @@ pub fn clip_stderr(stderr: &str) -> String {
     format!("{}\n[output clipped]", &trimmed[..end])
 }
 
+/// Toast body for `git stash push`. Git reports the outcome on
+/// stdout ("Saved working directory..." or "No local changes to
+/// save") and failures on stderr.
+pub fn stash_result_message(
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+) -> Result<String, String> {
+    let stdout = stdout.trim();
+    if success {
+        if !stdout.is_empty() {
+            return Ok(stdout.to_string());
+        }
+        let detail = clip_stderr(stderr);
+        return Ok(if detail.is_empty() {
+            "Stashed.".to_string()
+        } else {
+            format!("Stashed. {detail}")
+        });
+    }
+    Err(format!("git stash failed:\n{}", clip_stderr(stderr)))
+}
+
+/// Toast body for `git stash pop`: same stdout/stderr split, plus the
+/// reminder that a conflicting pop keeps the stash entry.
+pub fn stash_pop_result_message(
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+) -> Result<String, String> {
+    let stdout = stdout.trim();
+    if success {
+        if !stdout.is_empty() {
+            return Ok(stdout.to_string());
+        }
+        return Ok("Stash popped.".to_string());
+    }
+    Err(format!(
+        "git stash pop failed:\n{}\n\nThe stash entry is kept when a pop conflicts.",
+        clip_stderr(stderr)
+    ))
+}
+
 /// One entry from `git worktree list --porcelain`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorktreeEntry {
@@ -250,5 +293,36 @@ mod tests {
         let clipped_len = out.len() - "\n[output clipped]".len();
         assert!(clipped_len <= 400);
         assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn stash_message_prefers_stdout_on_success() {
+        let msg = stash_result_message(
+            true,
+            "Saved working directory and index state WIP on main: abc123\n",
+            "",
+        )
+        .unwrap();
+        assert!(msg.starts_with("Saved working directory"));
+        let msg = stash_pop_result_message(true, "Dropped refs/stash@{0}", "")
+            .unwrap();
+        assert_eq!(msg, "Dropped refs/stash@{0}");
+    }
+
+    #[test]
+    fn stash_message_empty_and_failure_cases() {
+        assert_eq!(stash_result_message(true, "", "").unwrap(), "Stashed.");
+        assert_eq!(
+            stash_pop_result_message(true, " \n", "").unwrap(),
+            "Stash popped."
+        );
+        let err = stash_result_message(false, "", "error: nope").unwrap_err();
+        assert!(err.starts_with("git stash failed:"));
+        assert!(err.contains("error: nope"));
+        let err =
+            stash_pop_result_message(false, "", "No stash entries found.")
+                .unwrap_err();
+        assert!(err.contains("No stash entries found."));
+        assert!(err.contains("kept when a pop conflicts"));
     }
 }
