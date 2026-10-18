@@ -11,6 +11,7 @@ pub mod agent_changes;
 pub mod agent_checkpoint;
 pub mod agent_exec;
 pub mod agent_web;
+pub mod agent_anthropic;
 pub mod agent_mcp;
 pub mod agent_review_ui;
 pub mod agent_loop;
