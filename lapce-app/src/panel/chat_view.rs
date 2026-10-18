@@ -2,7 +2,7 @@ use crate::chat_session::{self, RunGate, RunState, SavedTurn, Session};
 use crate::{
     chat::{self, Context, Update},
     command::InternalCommand,
-    config::color::LapceColor,
+    config::{LapceConfig, color::LapceColor},
     doc::DocContent,
     markdown::{MarkdownContent, parse_markdown},
     window_tab::WindowTabData,
@@ -10,8 +10,8 @@ use crate::{
 use floem::{
     IntoView, View,
     reactive::{
-        RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
-        use_context,
+        ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith,
+        create_effect, use_context,
     },
     style::CursorStyle,
     views::{
@@ -1083,6 +1083,37 @@ fn drive_acp_turn(
     }
 }
 
+/// One compact button for the chat mode row: bordered, rounded, hover
+/// highlight; the active mode keeps the highlight.
+fn mode_button_style(
+    s: floem::style::Style,
+    config: ReadSignal<Arc<LapceConfig>>,
+    active: bool,
+) -> floem::style::Style {
+    let base = s
+        .padding_horiz(10.0)
+        .padding_vert(4.0)
+        .border(1.0)
+        .border_radius(4.0)
+        .cursor(CursorStyle::Pointer)
+        .selectable(false)
+        .hover(|s| {
+            s.background(
+                config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
+            )
+        });
+    if active {
+        base.background(
+            config.get().color(LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND),
+        )
+        .border_color(
+            config.get().color(LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND),
+        )
+    } else {
+        base.border_color(config.get().color(LapceColor::LAPCE_BORDER))
+    }
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let config = tab.common.config;
@@ -1241,12 +1272,53 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         .cursor(CursorStyle::Pointer)
                         .selectable(false)
                 }),
-        )),
-        h_stack((
-            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); chat_mode.resume_id.set(None); } }),
-            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); ask_mode.resume_id.set(None); } }),
-            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); plan_mode.resume_id.set(None); } }),
-            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); acp_mode.resume_id.set(None); } }),
+        ))
+        .style(|s| {
+            s.flex_wrap(floem::style::FlexWrap::Wrap)
+                .gap(4.0)
+                .padding_vert(2.0)
+        }),
+        {
+            let c_chat = data.clone();
+            let c_ask = data.clone();
+            let c_plan = data.clone();
+            let c_acp = data.clone();
+            let c_resume = data.clone();
+            h_stack((
+            label(|| "Chat".to_string()).on_click_stop(move |_| { if !chat_mode.busy.get_untracked() { chat_mode.mode.set(None); chat_mode.acp.set(false); chat_mode.acp_resume.set(false); chat_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_chat.mode.get().is_none()
+                            && !c_chat.acp.get()
+                            && !c_chat.acp_resume.get(),
+                    )
+                }),
+            label(|| "Ask".to_string()).on_click_stop(move |_| { if !ask_mode.busy.get_untracked() { ask_mode.mode.set(Some(crate::agent_loop::Mode::Ask)); ask_mode.acp.set(false); ask_mode.acp_resume.set(false); ask_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_ask.mode.get() == Some(crate::agent_loop::Mode::Ask),
+                    )
+                }),
+            label(|| "Plan".to_string()).on_click_stop(move |_| { if !plan_mode.busy.get_untracked() { plan_mode.mode.set(Some(crate::agent_loop::Mode::Plan)); plan_mode.acp.set(false); plan_mode.acp_resume.set(false); plan_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_plan.mode.get() == Some(crate::agent_loop::Mode::Plan),
+                    )
+                }),
+            label(|| "ACP".to_string()).on_click_stop(move |_| { if !acp_mode.busy.get_untracked() { acp_mode.mode.set(None); acp_mode.acp.set(true); acp_mode.acp_resume.set(false); acp_mode.resume_id.set(None); } })
+                .style(move |s| {
+                    mode_button_style(
+                        s,
+                        config,
+                        c_acp.acp.get() && !c_acp.acp_resume.get(),
+                    )
+                }),
             label(move || {
                 let settings = resume_tab.common.config.get().ai_chat.clone();
                 let count = resume_tab
@@ -1271,6 +1343,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     acp_resume.acp_resume.set(true);
                     acp_resume.resume_id.set(None);
                 }
+            })
+            .style(move |s| {
+                mode_button_style(
+                    s,
+                    config,
+                    c_resume.acp.get() && c_resume.acp_resume.get(),
+                )
             }),
             label(move || format!("Agents ({})", session_list.get().len()))
                 .on_click_stop(move |_| {
@@ -1285,8 +1364,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         );
                     }
                     show_sessions.set(show);
+                })
+                .style(move |s| {
+                    mode_button_style(s, config, show_sessions.get())
                 }),
-        )).style(|s| s.gap(12.0).padding(6.0).cursor(CursorStyle::Pointer)),
+        ))
+        .style(|s| {
+            s.flex_wrap(floem::style::FlexWrap::Wrap)
+                .gap(6.0)
+                .padding(6.0)
+        })
+        },
         scroll(
             dyn_stack(
                 move || session_list.get(),
