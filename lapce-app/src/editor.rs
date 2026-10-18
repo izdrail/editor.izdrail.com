@@ -2736,7 +2736,7 @@ impl EditorData {
             },
         };
         let doc = self.doc();
-        let (words, snippets, keywords, line_before) =
+        let (words, snippets, keywords, line_before, blade_vars) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
                 let len = buffer.len();
@@ -2750,8 +2750,9 @@ impl EditorData {
                     end_offset..len.min(end_offset + MAX_SCAN_BYTES / 2),
                 ));
                 let lang = lapce_proxy::buffer::language_id_from_path(path);
+                let is_blade = path.to_string_lossy().ends_with(".blade.php");
                 let mut words = word_items(&buffer_words(&text));
-                if lang == Some("php") {
+                if lang == Some("php") && !is_blade {
                     words.extend(php_variable_items(&text));
                 }
                 let project = lapce_core::project_profile::detect(path);
@@ -2800,7 +2801,17 @@ impl EditorData {
                     }
                     None => Vec::new(),
                 };
-                (words, snippets, keywords, line_before)
+                // Blade views: variables the view defines above the
+                // cursor (assignments, loop variables, @props, @inject).
+                let blade_vars = if is_blade {
+                    crate::project_completion::blade_variables(
+                        &before_cursor,
+                        &line_before,
+                    )
+                } else {
+                    Vec::new()
+                };
+                (words, snippets, keywords, line_before, blade_vars)
             });
         let wrap = |item, source| ScoredCompletionItem {
             item,
@@ -2829,6 +2840,11 @@ impl EditorData {
             )
             .chain(
                 project
+                    .into_iter()
+                    .map(|i| wrap(i, CompletionSource::Project)),
+            )
+            .chain(
+                blade_vars
                     .into_iter()
                     .map(|i| wrap(i, CompletionSource::Project)),
             )

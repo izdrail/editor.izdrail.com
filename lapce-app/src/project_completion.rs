@@ -3,7 +3,8 @@
 //! the env keys, inside `view('...')` its Blade view names, inside
 //! `__('...')` its translation keys, and inside `wire:model="..."` /
 //! `wire:click="..."` in a Livewire view the paired component's public
-//! properties / methods. Same static
+//! properties / methods. In a `.blade.php` view, typing `$` offers the
+//! variables the view defines above the cursor. Same static
 //! scans as the palettes (nothing is executed), cached 30 s per workspace
 //! (per component class for Livewire) so completion stays cheap on every
 //! keystroke.
@@ -417,6 +418,180 @@ fn livewire_props(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
     props.into_iter().take(MAX_ITEMS).map(prop_item).collect()
 }
 
+/// Variables a Blade view defines above the cursor: `$name = ...`
+/// assignments, `@foreach` / `@forelse` loop variables, `@props([...])`
+/// entries and `@inject('name', ...)` names. The compiled view is one PHP
+/// function scope, so anything assigned above the cursor is in scope.
+/// Static text scan only; at most the last 256 KiB before the cursor.
+pub fn blade_variables(
+    text_before: &str,
+    line_before: &str,
+) -> Vec<CompletionItem> {
+    // Only when the line ends inside a `$<partial>` token.
+    let bytes = line_before.as_bytes();
+    let mut i = bytes.len();
+    while i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_')
+    {
+        i -= 1;
+    }
+    if i == 0 || bytes[i - 1] != b'$' {
+        return Vec::new();
+    }
+    if i >= 2 {
+        let p = bytes[i - 2];
+        if p.is_ascii_alphanumeric() || p == b'_' || p == b'$' {
+            return Vec::new();
+        }
+    }
+
+    // At most the last 256 KiB.
+    let mut start = text_before.len().saturating_sub(262_144);
+    while !text_before.is_char_boundary(start) {
+        start += 1;
+    }
+    // Strip Blade comments so they cannot define variables.
+    let mut cleaned = String::with_capacity(text_before.len() - start);
+    let mut rest = &text_before[start..];
+    while let Some(o) = rest.find("{{--") {
+        cleaned.push_str(&rest[..o]);
+        rest = match rest[o..].find("--}}") {
+            Some(c) => &rest[o + c + 4..],
+            None => "",
+        };
+    }
+    cleaned.push_str(rest);
+    let text = cleaned.as_str();
+
+    let mut vars: Vec<String> = Vec::new();
+    let mut push = |name: &str, vars: &mut Vec<String>| {
+        if !name.is_empty()
+            && name.len() <= 60
+            && !vars.iter().any(|v| v == name)
+        {
+            vars.push(name.to_string());
+        }
+    };
+
+    // `$name` occurrences that are definitions: followed by a single `=`,
+    // or preceded by `as` (loop variables) or `=>` (foreach key => value).
+    let tb = text.as_bytes();
+    let mut at = 0;
+    while at < tb.len() {
+        if tb[at] != b'$' {
+            at += 1;
+            continue;
+        }
+        let ns = at + 1;
+        let mut ne = ns;
+        while ne < tb.len()
+            && (tb[ne].is_ascii_alphanumeric() || tb[ne] == b'_')
+        {
+            ne += 1;
+        }
+        let name = &text[ns..ne];
+        at = ne.max(ns);
+        if name.is_empty() || name.as_bytes()[0].is_ascii_digit() {
+            continue;
+        }
+        let mut fw = ne;
+        while fw < tb.len() && (tb[fw] == b' ' || tb[fw] == b'\t') {
+            fw += 1;
+        }
+        let assigns = fw < tb.len()
+            && tb[fw] == b'='
+            && tb.get(fw + 1) != Some(&b'=')
+            && tb.get(fw + 1) != Some(&b'>');
+        // Look back from `$` over spaces, then at the last three chars
+        // (char-aware: the bytes before may be multibyte).
+        let mut bw = ns - 1;
+        while bw > 0 && (tb[bw - 1] == b' ' || tb[bw - 1] == b'\t') {
+            bw -= 1;
+        }
+        let tail: Vec<char> = text[..bw].chars().rev().take(3).collect();
+        let after_as = tail.len() >= 2
+            && tail[0].eq_ignore_ascii_case(&'s')
+            && tail[1].eq_ignore_ascii_case(&'a')
+            && tail
+                .get(2)
+                .map_or(true, |c| !(c.is_ascii_alphanumeric() || *c == '_'));
+        let after_fat =
+            tail.len() >= 2 && tail[0] == '>' && tail[1] == '=';
+        if assigns || after_as || after_fat {
+            push(name, &mut vars);
+        }
+    }
+
+    // @props(['disabled' => ..., 'type']) keys and bare entries. A
+    // quoted string is a prop name only when followed by `=>` (key) or
+    // by `,` / `]` / `)` (bare entry) — and never right after `=>`
+    // (that is a default value, not a name).
+    let mut p = 0;
+    while let Some(o) = text[p..].find("@props") {
+        let o = p + o;
+        let after = &text[o + 6..];
+        let Some(op) = after.find('(') else { break };
+        let Some(cp) = after[op..].find(')') else { break };
+        let inner = &after[op + 1..op + cp];
+        let ib = inner.as_bytes();
+        let mut q = 0;
+        while q < ib.len() {
+            let quote = ib[q];
+            if quote != b'\'' && quote != b'"' {
+                q += 1;
+                continue;
+            }
+            let Some(e) = inner[q + 1..].find(quote as char).map(|e| q + 1 + e)
+            else {
+                break;
+            };
+            // Skip whitespace after the closing quote.
+            let mut n = e + 1;
+            while n < ib.len() && (ib[n] == b' ' || ib[n] == b'\t') {
+                n += 1;
+            }
+            // Non-whitespace before the opening quote.
+            let mut b = q;
+            while b > 0 && (ib[b - 1] == b' ' || ib[b - 1] == b'\t') {
+                b -= 1;
+            }
+            let is_value = b >= 2 && ib[b - 2] == b'=' && ib[b - 1] == b'>';
+            let is_key = ib.get(n) == Some(&b'=')
+                && ib.get(n + 1) == Some(&b'>');
+            let is_bare = matches!(ib.get(n), Some(b',') | Some(b']') | Some(b')'));
+            if !is_value && (is_key || is_bare) {
+                push(&inner[q + 1..e], &mut vars);
+            }
+            q = e + 1;
+        }
+        p = o + 6 + op + cp;
+    }
+
+    // @inject('name', 'Service') first argument.
+    let mut p = 0;
+    while let Some(o) = text[p..].find("@inject") {
+        let o = p + o;
+        let after = &text[o + 7..];
+        let Some(q1) = after.find(['\'', '"']) else { break };
+        let quote = after.as_bytes()[q1];
+        let Some(q2) = after[q1 + 1..].find(quote as char).map(|e| q1 + 1 + e)
+        else {
+            break;
+        };
+        push(&after[q1 + 1..q2], &mut vars);
+        p = o + 7 + q2;
+    }
+
+    vars.into_iter()
+        .take(100)
+        .map(|n| CompletionItem {
+            label: n,
+            kind: Some(CompletionItemKind::VARIABLE),
+            detail: Some("Blade variable".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 static METHOD_CACHE: std::sync::OnceLock<
     Mutex<Option<(PathBuf, Option<SystemTime>, Vec<String>)>>,
 > = std::sync::OnceLock::new();
@@ -691,5 +866,87 @@ mod tests {
         let props = labels("<input wire:model=\"");
         assert!(props.contains(&"email".to_string()));
         assert!(!props.contains(&"save".to_string()));
+    }
+    fn labels(items: Vec<CompletionItem>) -> Vec<String> {
+        items.into_iter().map(|i| i.label).collect()
+    }
+
+    const BLADE_VIEW: &str = r#"@props(['disabled' => false, 'type' => 'submit', 'flat'])
+@inject('metrics', 'App\Services\Metrics')
+@php
+    $title = 'Hello';
+    $count = $metrics->total();
+    $bad == $title;
+    $pair = ['k' => 1];
+@endphp
+@foreach($items as $idx => $item)
+    <li>{{ $item->name }} {{ $idx }}</li>
+@endforeach
+@forelse($users as $user)
+    <p>{{ $user->email }}</p>
+@endforelse
+{{-- $ghost = 1; @inject('sneaky', 'X') --}}
+@if($flag)
+    {{ $x }}
+@endif
+"#;
+
+    #[test]
+    fn blade_variables_collects_view_scope() {
+        let v = labels(blade_variables(BLADE_VIEW, "    {{ $fo"));
+        assert_eq!(
+            v,
+            [
+                "title", "count", "pair", "idx", "item", "user", "disabled",
+                "type", "flat", "metrics"
+            ]
+        );
+        let item = blade_variables(BLADE_VIEW, "{{ $fo")
+            .into_iter()
+            .next()
+            .unwrap();
+        assert_eq!(item.kind, Some(CompletionItemKind::VARIABLE));
+    }
+
+    #[test]
+    fn blade_variables_gate() {
+        // Only inside a `$<partial>` token at the end of the line.
+        assert!(blade_variables(BLADE_VIEW, "plain text").is_empty());
+        assert!(blade_variables(BLADE_VIEW, "{{ $x->fo").is_empty());
+        assert!(blade_variables("<?php $$x = 1;", "$$").is_empty());
+        assert!(!blade_variables(BLADE_VIEW, "{{ $").is_empty());
+    }
+
+    #[test]
+    fn blade_variables_excludes_non_definitions() {
+        assert!(blade_variables("<?php $x += 1;", "$").is_empty());
+        assert!(blade_variables("<?php $x == 1;", "$x == 1; $").is_empty());
+        assert!(blade_variables("{{ $this->foo }}", "{{ $").is_empty());
+        assert_eq!(
+            labels(blade_variables("<?php $1abc = 1; $ok2 = 2;", "$")),
+            ["ok2"]
+        );
+        // Values in @props are not prop names.
+        assert_eq!(
+            labels(blade_variables(
+                "@props([\"tone\" => 'info', \"size\"])",
+                "$"
+            )),
+            ["tone", "size"]
+        );
+    }
+
+    #[test]
+    fn blade_variables_non_ascii_safe() {
+        let mut fuzz = String::new();
+        let pieces = ["ab", "$", "\u{e9}", "\u{65e5}", " \t", "=", "<>", "@", "'\"", "{{}}"];
+        let mut n = 0usize;
+        while fuzz.len() < 4000 {
+            fuzz.push_str(pieces[n % pieces.len()]);
+            n += 1;
+        }
+        let _ = blade_variables(&fuzz, "$a");
+        let _ = blade_variables(&fuzz, "\u{e9}$x");
+        let _ = blade_variables(BLADE_VIEW, "{{ $n\u{e9}");
     }
 }
