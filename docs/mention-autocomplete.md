@@ -25,3 +25,20 @@ Coverage: trailing_mention (tail-token rules, trailing-whitespace
 close, punctuation rejection, multi-line offsets) and
 mention_candidates (basename-prefix ranking, substring and subsequence
 fallbacks, no-match empty, cap) are unit-tested.
+
+## Keyboard handling (0241)
+
+The composer's text editor consumes Enter/Tab/arrows in its own keymap
+before view-level `on_event` listeners ever see them, so the first
+popup build could not be driven from the keyboard: Enter inserted a
+newline (which also broke the tail token and closed the popup), arrows
+moved the caret, Tab did nothing.
+
+The composer is now built with `text_editor_keys`, whose key hook runs
+at the same point as the editor's own Enter-newline binding. While the
+mention popup is open: Up/Down move the selection (clamped, with a
+visible highlight on the selected row), Enter and Tab insert the
+selected candidate, Escape closes the popup; all of these return
+`CommandExecuted::Yes` so the editor never sees them. With the popup
+closed every key falls through to `default_key_handler`, so normal
+composer behavior (including Enter-to-newline) is unchanged.

@@ -23,8 +23,12 @@ use floem::{
     views::{
         Decorators, container, dyn_stack, empty, h_stack, label, rich_text,
         scroll::{PropagatePointerWheel, scroll},
-        svg, text_editor, v_stack,
+        svg, text_editor_keys, v_stack,
     },
+};
+use floem::views::editor::{
+    command::CommandExecuted,
+    keypress::{default_key_handler, key::KeyInput},
 };
 use lapce_ai::chat::Message;
 use lapce_core::buffer::rope_text::RopeText;
@@ -640,6 +644,32 @@ fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> 
         a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())).then(a.1.cmp(b.1))
     });
     scored.into_iter().take(cap).map(|(_, f)| f.clone()).collect()
+}
+
+/// Insert the selected mention over the tracked tail token (the
+/// token's end is the document end) via the editor doc, which re-syncs
+/// the input signal through the composer's .update() hook. Shared by
+/// the composer's key handler (Enter/Tab) and row clicks.
+fn accept_mention_at(
+    doc: &Rc<dyn floem::views::editor::text::Document>,
+    mention_popup: RwSignal<Option<(usize, usize, Vec<String>)>>,
+    index: usize,
+) {
+    if let Some((start, _selected, items)) = mention_popup.get_untracked()
+    {
+        if let Some(path) = items.get(index) {
+            use floem::views::editor::core::{
+                editor::EditType, selection::Selection,
+            };
+            let replacement = format!("@{path} ");
+            doc.edit_single(
+                Selection::region(start, doc.text().len()),
+                replacement.as_str(),
+                EditType::Other,
+            );
+        }
+    }
+    mention_popup.set(None);
 }
 
 fn resolve_mentions(
@@ -2217,7 +2247,55 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             mention_popup.set(next);
         });
     }
-    let composer = text_editor(data.input.get_untracked())
+    // text_editor_keys, not text_editor + on_event: the editor's own
+    // keymap runs before view event listeners, so listeners never saw
+    // Enter/arrows (popup Enter inserted a newline). The key handler
+    // hook is the condition point floem routes every key through:
+    // while the mention popup is open, arrows/Enter/Tab/Escape are
+    // consumed here and everything else falls to the default keymap.
+    let composer = text_editor_keys(
+        data.input.get_untracked(),
+        move |editor_sig, keypress, mods| {
+            if let Some((start, selected, items)) =
+                mention_popup.get_untracked()
+            {
+                let consumed = match &keypress.key {
+                    KeyInput::Keyboard(Key::Named(NamedKey::ArrowDown), _) => {
+                        let last = items.len().saturating_sub(1);
+                        mention_popup.set(Some((
+                            start,
+                            (selected + 1).min(last),
+                            items,
+                        )));
+                        true
+                    }
+                    KeyInput::Keyboard(Key::Named(NamedKey::ArrowUp), _) => {
+                        mention_popup.set(Some((
+                            start,
+                            selected.saturating_sub(1),
+                            items,
+                        )));
+                        true
+                    }
+                    KeyInput::Keyboard(Key::Named(NamedKey::Enter), _)
+                    | KeyInput::Keyboard(Key::Named(NamedKey::Tab), _) => {
+                        let doc = editor_sig.get_untracked().doc();
+                        accept_mention_at(&doc, mention_popup, selected);
+                        true
+                    }
+                    KeyInput::Keyboard(Key::Named(NamedKey::Escape), _) => {
+                        mention_popup.set(None);
+                        true
+                    }
+                    _ => false,
+                };
+                if consumed {
+                    return CommandExecuted::Yes;
+                }
+            }
+            default_key_handler(editor_sig)(keypress, mods)
+        },
+    )
         .placeholder("Ask about this file or selection...")
         .editor_style(|s| s.hide_gutter(true).scroll_beyond_last_line(false))
         .update(move |update| {
@@ -2252,68 +2330,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             );
         }
     });
-    // Accepting a mention replaces the @token (tracked as trailing at
-    // popup-open time, so its end is the document end) through the
-    // editor doc, which re-syncs the input signal via .update().
+    // Row-click accept goes through the same shared helper; keyboard
+    // accept lives in the composer's text_editor_keys handler above.
     let accept_mention = {
         let doc = composer.doc();
         Rc::new(move |index: usize| {
-            if let Some((start, _selected, items)) =
-                mention_popup.get_untracked()
-            {
-                if let Some(path) = items.get(index) {
-                    use floem::views::editor::core::{
-                        editor::EditType, selection::Selection,
-                    };
-                    let replacement = format!("@{path} ");
-                    doc.edit_single(
-                        Selection::region(start, doc.text().len()),
-                        replacement.as_str(),
-                        EditType::Other,
-                    );
-                }
-            }
-            mention_popup.set(None);
-        })
-    };
-    let composer = {
-        let accept_mention = accept_mention.clone();
-        composer.on_event(EventListener::KeyDown, move |event| {
-            let Event::KeyDown(key_event) = event else {
-                return EventPropagation::Continue;
-            };
-            let Some((start, selected, items)) = mention_popup.get_untracked()
-            else {
-                return EventPropagation::Continue;
-            };
-            let last = items.len().saturating_sub(1);
-            match &key_event.key.logical_key {
-                Key::Named(NamedKey::ArrowDown) => {
-                    mention_popup.set(Some((
-                        start,
-                        (selected + 1).min(last),
-                        items,
-                    )));
-                    EventPropagation::Stop
-                }
-                Key::Named(NamedKey::ArrowUp) => {
-                    mention_popup.set(Some((
-                        start,
-                        selected.saturating_sub(1),
-                        items,
-                    )));
-                    EventPropagation::Stop
-                }
-                Key::Named(NamedKey::Enter) => {
-                    accept_mention(selected);
-                    EventPropagation::Stop
-                }
-                Key::Named(NamedKey::Escape) => {
-                    mention_popup.set(None);
-                    EventPropagation::Stop
-                }
-                _ => EventPropagation::Continue,
-            }
+            accept_mention_at(&doc, mention_popup, index)
         })
     };
     v_stack((
