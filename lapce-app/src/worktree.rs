@@ -128,6 +128,44 @@ fn c_unquote(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// How many leading worktree rows get a live dirty check per palette
+/// open. Each check is one `git status --porcelain`; worktree counts
+/// are small, but a bound keeps a pathological list from stalling the
+/// palette.
+pub const MAX_DIRTY_CHECKS: usize = 8;
+
+/// Dirty check for one worktree: any `git status --porcelain` output
+/// counts (modified, staged or untracked - matching what makes
+/// `git worktree remove` refuse). Errors count as clean: a badge is a
+/// hint, not a gate.
+pub fn worktree_dirty(path: &Path) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false)
+}
+
+/// Filter text for one worktree palette row.
+pub fn worktree_row_label(
+    branch: Option<&str>,
+    path: &Path,
+    current: bool,
+    dirty: bool,
+) -> String {
+    let branch = branch.unwrap_or("(detached)");
+    let mut label = format!("{branch}  {}", path.display());
+    if current {
+        label.push_str("  (current)");
+    }
+    if dirty {
+        label.push_str("  (dirty)");
+    }
+    label
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +192,32 @@ mod tests {
         // Never panics on arbitrary bytes.
         let _ = parse_worktree_list("worktree \"unclosed\n\\zz\n\n\n");
         assert!(parse_worktree_list("").is_empty());
+    }
+
+    #[test]
+    fn row_label_marks_current_dirty_and_detached() {
+        assert_eq!(
+            worktree_row_label(
+                Some("main"),
+                Path::new("/home/dev/proj"),
+                true,
+                false
+            ),
+            "main  /home/dev/proj  (current)"
+        );
+        assert_eq!(
+            worktree_row_label(
+                None,
+                Path::new("/home/dev/\u{65e5}\u{672c}-proj"),
+                false,
+                true
+            ),
+            "(detached)  /home/dev/\u{65e5}\u{672c}-proj  (dirty)"
+        );
+        assert_eq!(
+            worktree_row_label(Some("f/x"), Path::new("/p"), false, false),
+            "f/x  /p"
+        );
     }
 
     #[test]

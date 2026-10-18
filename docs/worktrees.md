@@ -35,8 +35,7 @@ bytes arrive C-style quoted (core.quotePath) and are unquoted by
 `worktree::parse_worktree_list`, which is fuzzed with quoted non-ASCII
 paths, unknown attributes and malformed records.
 
-Still not here: dirty-state badges, multi-folder projects and
-per-worktree permission scopes.
+Still not here: multi-folder projects and per-worktree permission scopes.
 
 ## Removing worktrees (item 161)
 
@@ -54,3 +53,14 @@ with `git branch -d`. A refusal surfaces git's stderr, clipped.
 
 Known limitation: a window tab already open on the removed worktree is
 left pointing at a deleted directory; close it yourself.
+
+## Dirty badges (item 168)
+
+Both worktree palettes mark rows `(dirty)` when
+`git status --porcelain` reports anything (modified, staged or
+untracked - the same states that make `git worktree remove` refuse).
+Checks run live when the palette opens, bounded to the first
+MAX_DIRTY_CHECKS (8) rows so a pathological worktree list cannot
+stall the palette; a worktree that cannot be checked counts as clean
+(a badge is a hint, not a gate). In the remove palette the badge is
+the useful warning: dirty rows are the ones git will refuse.

@@ -1360,18 +1360,20 @@ impl PaletteData {
                 if is_current {
                     preselect = Some(i);
                 }
-                let label =
-                    e.branch.clone().unwrap_or_else(|| "(detached)".to_string());
+                // Bounded live dirty check (see MAX_DIRTY_CHECKS).
+                let dirty = i < crate::worktree::MAX_DIRTY_CHECKS
+                    && crate::worktree::worktree_dirty(&e.path);
                 PaletteItem {
                     content: PaletteItemContent::Worktree {
                         path: e.path.clone(),
-                        branch: e.branch,
+                        branch: e.branch.clone(),
                         current: is_current,
                     },
-                    filter_text: format!(
-                        "{label}  {}{}",
-                        e.path.display(),
-                        if is_current { "  (current)" } else { "" }
+                    filter_text: crate::worktree::worktree_row_label(
+                        e.branch.as_deref(),
+                        &e.path,
+                        is_current,
+                        dirty,
                     ),
                     score: 0,
                     indices: Vec::new(),
@@ -1408,15 +1410,23 @@ impl PaletteData {
                 e.path.canonicalize().unwrap_or_else(|_| e.path.clone())
                     != current
             })
-            .map(|e| {
-                let label =
-                    e.branch.clone().unwrap_or_else(|| "(detached)".to_string());
+            .enumerate()
+            .map(|(i, e)| {
+                // The badge that matters here: dirty rows are the ones
+                // git will refuse to remove.
+                let dirty = i < crate::worktree::MAX_DIRTY_CHECKS
+                    && crate::worktree::worktree_dirty(&e.path);
                 PaletteItem {
                     content: PaletteItemContent::WorktreeRemove {
                         path: e.path.clone(),
-                        branch: e.branch,
+                        branch: e.branch.clone(),
                     },
-                    filter_text: format!("{label}  {}", e.path.display()),
+                    filter_text: crate::worktree::worktree_row_label(
+                        e.branch.as_deref(),
+                        &e.path,
+                        false,
+                        dirty,
+                    ),
                     score: 0,
                     indices: Vec::new(),
                 }
