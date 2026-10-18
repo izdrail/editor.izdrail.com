@@ -97,6 +97,38 @@ pub fn knowledge_excerpt(text: &str) -> Option<String> {
 /// mode. Returns None
 /// when the input is not a command, Some(Err) for unknown or empty
 /// commands so the panel can say so instead of silently chatting.
+/// `@path` composer mentions (Antigravity parity: context mentions).
+/// A mention is `@` at the start or after whitespace, followed by a
+/// path-like token ([A-Za-z0-9_./-]+ that contains '/' or '.', up to
+/// 255 bytes). Trailing sentence punctuation is stripped, emails and
+/// Rust decorators are left alone, at most 8 unique paths in order.
+pub fn extract_mentions(input: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for token in input.split_whitespace() {
+        let Some(body) = token.strip_prefix('@') else {
+            continue;
+        };
+        let body = body.trim_end_matches([',', '.', ';', ':', '!', '?', ')', ']']);
+        if body.len() > 255
+            || body.is_empty()
+            || !body
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '/' | '-'))
+            || !(body.contains('/') || body.contains('.'))
+        {
+            continue;
+        }
+        let body = body.to_string();
+        if !out.contains(&body) {
+            out.push(body);
+            if out.len() == 8 {
+                break;
+            }
+        }
+    }
+    out
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SlashCommand {
     Plan(String),
@@ -266,6 +298,38 @@ fn parse_event(
     }
     Ok(false)
 }
+#[cfg(test)]
+mod mention_tests {
+    use super::extract_mentions;
+
+    #[test]
+    fn extracts_path_like_mentions_only() {
+        assert_eq!(
+            extract_mentions(
+                "compare @src/main.rs and @docs/guide.md, mail me@example.com about @decorator"
+            ),
+            vec!["src/main.rs".to_string(), "docs/guide.md".to_string()]
+        );
+        // Leading mention, trailing punctuation stripped.
+        assert_eq!(
+            extract_mentions("@src/lib.rs: fix it"),
+            vec!["src/lib.rs".to_string()]
+        );
+        assert!(extract_mentions("no mentions here").is_empty());
+        // '@' mid-token is not a mention.
+        assert!(extract_mentions("user@host.com hi").is_empty());
+    }
+
+    #[test]
+    fn dedupes_and_caps_at_eight() {
+        let input = "@a.rs ".repeat(12) + "@b.rs @c.rs @d.rs @e.rs @f.rs @g.rs @h.rs @i.rs";
+        let got = extract_mentions(&input);
+        assert_eq!(got.len(), 8);
+        assert_eq!(got[0], "a.rs");
+        assert!(!got.contains(&"i.rs".to_string()));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
