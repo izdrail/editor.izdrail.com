@@ -224,6 +224,15 @@ pub fn source_control_panel(
         ))
         .style(|s| s.flex_col().width_pct(100.0).padding(10.0)),
         foldable_panel_section(
+            text("Staged Changes"),
+            staged_diffs_view(source_control.clone()),
+            window_tab_data
+                .panel
+                .section_open(PanelSection::StagedChanges),
+            config,
+        )
+        .style(|s| s.flex_col().width_pct(100.0)),
+        foldable_panel_section(
             text("Changes"),
             file_diffs_view(source_control),
             window_tab_data.panel.section_open(PanelSection::Changes),
@@ -254,6 +263,8 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
         let full_path = path.clone();
         let diff_for_menu = diff.clone();
         let path_for_click = full_path.clone();
+        let path_for_menu = full_path.clone();
+        let lapce_command2 = lapce_command;
 
         let path = if let Some(workspace_path) = workspace.path.as_ref() {
             path.strip_prefix(workspace_path)
@@ -357,6 +368,7 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
         })
         .on_event_cont(EventListener::PointerDown, move |event| {
             let diff_for_menu = diff_for_menu.clone();
+            let path_for_menu = path_for_menu.clone();
 
             let discard = move || {
                 lapce_command.send(LapceCommand {
@@ -369,7 +381,16 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
 
             if let Event::PointerDown(pointer_event) = event {
                 if pointer_event.button.is_secondary() {
+                    let stage = move || {
+                        lapce_command2.send(LapceCommand {
+                            kind: CommandKind::Workbench(
+                                LapceWorkbenchCommand::SourceControlStageTargetFile,
+                            ),
+                            data: Some(serde_json::json!(path_for_menu.clone())),
+                        });
+                    };
                     let menu = Menu::new("")
+                        .entry(MenuItem::new("Stage").action(stage))
                         .entry(MenuItem::new("Discard Changes").action(discard));
                     show_context_menu(menu, None);
                 }
@@ -396,6 +417,162 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
                 |(path, (diff, checked))| {
                     (path.to_path_buf(), diff.clone(), *checked)
                 },
+                view_fn,
+            )
+            .style(|s| s.line_height(1.6).flex_col().width_pct(100.0))
+        })
+        .style(|s| s.absolute().size_pct(100.0, 100.0))
+    })
+    .on_resize(move |rect| {
+        panel_rect.set(rect);
+    })
+    .style(|s| s.size_pct(100.0, 100.0))
+}
+
+/// Rows for the "Staged Changes" section: same layout as the Changes
+/// rows minus the commit checkbox, with an "Unstage" context-menu
+/// entry instead of "Stage".
+fn staged_diffs_view(source_control: SourceControlData) -> impl View {
+    let staged_diffs = source_control.staged_file_diffs;
+    let config = source_control.common.config;
+    let workspace = source_control.common.workspace.clone();
+    let panel_rect = create_rw_signal(Rect::ZERO);
+    let panel_width = create_memo(move |_| panel_rect.get().width());
+    let lapce_command = source_control.common.lapce_command;
+    let internal_command = source_control.common.internal_command;
+
+    let view_fn = move |diff: FileDiff| {
+        let diff_for_style = diff.clone();
+        let full_path = diff.path().to_path_buf();
+        let path_for_menu = full_path.clone();
+        let path_for_click = full_path.clone();
+
+        let path = if let Some(workspace_path) = workspace.path.as_ref() {
+            full_path
+                .strip_prefix(workspace_path)
+                .unwrap_or(&full_path)
+                .to_path_buf()
+        } else {
+            full_path.clone()
+        };
+        let file_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let folder = path
+            .parent()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let style_path = path.clone();
+        stack((
+            svg(move || config.get().file_svg(&path).0).style(move |s| {
+                let config = config.get();
+                let size = config.ui.icon_size() as f32;
+                let color = config.file_svg(&style_path).1;
+                s.min_width(size)
+                    .size(size, size)
+                    .margin(6.0)
+                    .apply_opt(color, Style::color)
+            }),
+            label(move || file_name.clone()).style(move |s| {
+                let config = config.get();
+                let size = config.ui.icon_size() as f32;
+                let max_width =
+                    panel_width.get() as f32 - 10.0 - size - 6.0 - size - 6.0;
+                s.text_ellipsis()
+                    .margin_right(6.0)
+                    .max_width(max_width)
+                    .selectable(false)
+            }),
+            label(move || folder.clone()).style(move |s| {
+                s.text_ellipsis()
+                    .flex_grow(1.0f32)
+                    .flex_basis(0.0)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+                    .min_width(0.0)
+                    .selectable(false)
+            }),
+            container({
+                svg(move || {
+                    let svg = match &diff {
+                        FileDiff::Modified(_) => LapceIcons::SCM_DIFF_MODIFIED,
+                        FileDiff::Added(_) => LapceIcons::SCM_DIFF_ADDED,
+                        FileDiff::Deleted(_) => LapceIcons::SCM_DIFF_REMOVED,
+                        FileDiff::Renamed(_, _) => LapceIcons::SCM_DIFF_RENAMED,
+                        FileDiff::Conflicted(_) => LapceIcons::WARNING,
+                    };
+                    config.get().ui_svg(svg)
+                })
+                .style(move |s| {
+                    let config = config.get();
+                    let size = config.ui.icon_size() as f32;
+                    let color = match &diff_for_style {
+                        FileDiff::Modified(_) => LapceColor::SOURCE_CONTROL_MODIFIED,
+                        FileDiff::Added(_) => LapceColor::SOURCE_CONTROL_ADDED,
+                        FileDiff::Deleted(_) => LapceColor::SOURCE_CONTROL_REMOVED,
+                        FileDiff::Renamed(_, _) => {
+                            LapceColor::SOURCE_CONTROL_MODIFIED
+                        }
+                        FileDiff::Conflicted(_) => LapceColor::LAPCE_ERROR,
+                    };
+                    let color = config.color(color);
+                    s.min_width(size).size(size, size).color(color)
+                })
+            })
+            .style(|s| {
+                s.absolute()
+                    .size_pct(100.0, 100.0)
+                    .padding_right(20.0)
+                    .items_center()
+                    .justify_end()
+            }),
+        ))
+        .on_click_stop(move |_| {
+            internal_command.send(InternalCommand::OpenFileChanges {
+                path: path_for_click.clone(),
+            });
+        })
+        .on_event_cont(EventListener::PointerDown, move |event| {
+            let path_for_menu = path_for_menu.clone();
+
+            let unstage = move || {
+                lapce_command.send(LapceCommand {
+                    kind: CommandKind::Workbench(
+                        LapceWorkbenchCommand::SourceControlUnstageTargetFile,
+                    ),
+                    data: Some(serde_json::json!(path_for_menu.clone())),
+                });
+            };
+
+            if let Event::PointerDown(pointer_event) = event {
+                if pointer_event.button.is_secondary() {
+                    let menu = Menu::new("")
+                        .entry(MenuItem::new("Unstage").action(unstage));
+                    show_context_menu(menu, None);
+                }
+            }
+        })
+        .style(move |s| {
+            let config = config.get();
+            let size = config.ui.icon_size() as f32;
+            s.padding_left(10.0)
+                .padding_right(10.0 + size + 6.0)
+                .width_pct(100.0)
+                .items_center()
+                .cursor(CursorStyle::Pointer)
+                .hover(|s| {
+                    s.background(config.color(LapceColor::PANEL_HOVERED_BACKGROUND))
+                })
+        })
+    };
+
+    container({
+        scroll({
+            dyn_stack(
+                move || staged_diffs.get(),
+                |diff: &FileDiff| diff.path().to_path_buf(),
                 view_fn,
             )
             .style(|s| s.line_height(1.6).flex_col().width_pct(100.0))

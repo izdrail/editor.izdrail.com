@@ -71,6 +71,7 @@ pub enum PanelSection {
     Error,
     Warn,
     Changes,
+    StagedChanges,
     Installed,
     Available,
     VsxInstalled,

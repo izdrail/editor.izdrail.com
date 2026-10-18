@@ -28,6 +28,8 @@ use crate::{
 pub struct SourceControlData {
     // VCS modified files & whether they should be included in the next commit
     pub file_diffs: RwSignal<IndexMap<PathBuf, (FileDiff, bool)>>,
+    /// Changes staged in the index, shown in their own panel section.
+    pub staged_file_diffs: RwSignal<Vec<FileDiff>>,
     pub branch: RwSignal<String>,
     pub branches: RwSignal<im::Vector<String>>,
     pub tags: RwSignal<im::Vector<String>>,
@@ -78,6 +80,7 @@ impl SourceControlData {
     pub fn new(cx: Scope, editors: Editors, common: Rc<CommonData>) -> Self {
         Self {
             file_diffs: cx.create_rw_signal(IndexMap::new()),
+            staged_file_diffs: cx.create_rw_signal(Vec::new()),
             branch: cx.create_rw_signal("".to_string()),
             branches: cx.create_rw_signal(im::Vector::new()),
             tags: cx.create_rw_signal(im::Vector::new()),

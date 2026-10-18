@@ -79,6 +79,36 @@ pub fn merge_abort_result_message(
     ))
 }
 
+/// `git add -- <paths>` or `git reset -q -- <paths>`: stage or
+/// unstage paths. Silent on success (the fs watcher refreshes the
+/// panel); errors carry clipped stderr for a toast.
+pub fn stage_paths(
+    root: &Path,
+    paths: &[PathBuf],
+    stage: bool,
+) -> Result<(), String> {
+    let verb = if stage { "add" } else { "reset" };
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(root);
+    if stage {
+        cmd.arg("add").arg("--");
+    } else {
+        cmd.arg("reset").arg("-q").arg("--");
+    }
+    for path in paths {
+        cmd.arg(path);
+    }
+    let out = cmd
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    Err(format!("git {verb} failed:\n{}", clip_stderr(&stderr)))
+}
+
 /// `git log` rows for the history palette: (full SHA, display text).
 /// Field separator is U+001F so subjects may contain any printable
 /// character. Parsing lives in parse_git_log_line for tests.
@@ -355,6 +385,48 @@ mod tests {
         );
         // A filesystem root has no usable name.
         assert_eq!(worktree_path(Path::new("/"), 42), None);
+    }
+
+    fn init_git_repo(dir: &std::path::Path) {
+        for args in [
+            vec!["init", "-q"],
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@example.com"],
+        ] {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(&args)
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+    }
+
+    fn staged_names(dir: &std::path::Path) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["diff", "--cached", "--name-only"])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).to_string()
+    }
+
+    #[test]
+    fn stage_paths_adds_and_resets() {
+        let dir = tempfile::tempdir().unwrap();
+        init_git_repo(dir.path());
+        std::fs::write(dir.path().join("a.txt"), "v1").unwrap();
+        let path = dir.path().join("a.txt");
+
+        stage_paths(dir.path(), std::slice::from_ref(&path), true).unwrap();
+        assert!(staged_names(dir.path()).contains("a.txt"));
+
+        stage_paths(dir.path(), std::slice::from_ref(&path), false).unwrap();
+        assert!(!staged_names(dir.path()).contains("a.txt"));
     }
 
     #[test]

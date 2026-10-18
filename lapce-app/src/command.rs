@@ -706,6 +706,12 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "source_control_discard_target_file_changes")]
     SourceControlDiscardTargetFileChanges,
 
+    #[strum(serialize = "source_control_stage_target_file")]
+    SourceControlStageTargetFile,
+
+    #[strum(serialize = "source_control_unstage_target_file")]
+    SourceControlUnstageTargetFile,
+
     #[strum(message = "Source Control: Discard Workspace Changes")]
     #[strum(serialize = "source_control_discard_workspace_changes")]
     SourceControlDiscardWorkspaceChanges,

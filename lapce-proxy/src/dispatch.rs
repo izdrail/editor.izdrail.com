@@ -2146,62 +2146,13 @@ fn git_ahead_behind(repo: &Repository, head_name: &str) -> (usize, usize) {
     .unwrap_or((0, 0))
 }
 
-fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
-    let repo = Repository::discover(workspace_path).ok()?;
-    let name = match repo.head() {
-        Ok(head) => head.shorthand().ok()?.to_string(),
-        _ => "(No branch)".to_owned(),
-    };
-
-    let mut branches = Vec::new();
-    for branch in repo.branches(None).ok()? {
-        branches.push(branch.ok()?.0.name().ok()??.to_string());
-    }
-
-    let mut tags = Vec::new();
-    if let Ok(git_tags) = repo.tag_names(None) {
-        for tag in git_tags.into_iter().flatten() {
-            let Some(tag) = tag else {
-                continue;
-            };
-            tags.push(tag.to_owned());
-        }
-    }
-
-    let mut deltas = Vec::new();
-    let mut diff_options = DiffOptions::new();
-    let diff = repo
-        .diff_index_to_workdir(
-            None,
-            Some(
-                diff_options
-                    .include_untracked(true)
-                    .recurse_untracked_dirs(true),
-            ),
-        )
-        .ok()?;
-    for delta in diff.deltas() {
-        if let Some(delta) = git_delta_format(workspace_path, &delta) {
-            deltas.push(delta);
-        }
-    }
-
-    let oid = match repo.revparse_single("HEAD^{tree}") {
-        Ok(obj) => obj.id(),
-        _ => Oid::ZERO_SHA1,
-    };
-
-    let cached_diff = repo
-        .diff_tree_to_index(repo.find_tree(oid).ok().as_ref(), None, None)
-        .ok();
-
-    if let Some(cached_diff) = cached_diff {
-        for delta in cached_diff.deltas() {
-            if let Some(delta) = git_delta_format(workspace_path, &delta) {
-                deltas.push(delta);
-            }
-        }
-    }
+/// Rename-pair and convert raw git deltas into the `FileDiff` list
+/// (added / deleted / modified / renamed / conflicted), sorted by
+/// path. Shared by the workdir and staged-diff computations so both
+/// sections behave identically.
+fn deltas_to_file_diffs(
+    deltas: &[(git2::Delta, Oid, PathBuf)],
+) -> Vec<FileDiff> {
     let mut renames = Vec::new();
     let mut renamed_deltas = HashSet::new();
 
@@ -2245,12 +2196,79 @@ fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
         | FileDiff::Conflicted(p)
         | FileDiff::Deleted(p) => p.clone(),
     });
+    file_diffs
+}
+
+fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
+    let repo = Repository::discover(workspace_path).ok()?;
+    let name = match repo.head() {
+        Ok(head) => head.shorthand().ok()?.to_string(),
+        _ => "(No branch)".to_owned(),
+    };
+
+    let mut branches = Vec::new();
+    for branch in repo.branches(None).ok()? {
+        branches.push(branch.ok()?.0.name().ok()??.to_string());
+    }
+
+    let mut tags = Vec::new();
+    if let Ok(git_tags) = repo.tag_names(None) {
+        for tag in git_tags.into_iter().flatten() {
+            let Some(tag) = tag else {
+                continue;
+            };
+            tags.push(tag.to_owned());
+        }
+    }
+
+    let mut deltas = Vec::new();
+    let mut diff_options = DiffOptions::new();
+    let diff = repo
+        .diff_index_to_workdir(
+            None,
+            Some(
+                diff_options
+                    .include_untracked(true)
+                    .recurse_untracked_dirs(true),
+            ),
+        )
+        .ok()?;
+    for delta in diff.deltas() {
+        if let Some(delta) = git_delta_format(workspace_path, &delta) {
+            deltas.push(delta);
+        }
+    }
+    let file_diffs = deltas_to_file_diffs(&deltas);
+
+    let oid = match repo.revparse_single("HEAD^{tree}") {
+        Ok(obj) => obj.id(),
+        _ => Oid::ZERO_SHA1,
+    };
+
+    // Staged (index) changes: HEAD tree -> index, kept in their own
+    // list so the panel can show a separate "Staged Changes" section
+    // instead of mixing them into the workdir changes.
+    let cached_diff = repo
+        .diff_tree_to_index(repo.find_tree(oid).ok().as_ref(), None, None)
+        .ok();
+
+    let mut staged_deltas = Vec::new();
+    if let Some(cached_diff) = cached_diff {
+        for delta in cached_diff.deltas() {
+            if let Some(delta) = git_delta_format(workspace_path, &delta) {
+                staged_deltas.push(delta);
+            }
+        }
+    }
+    let staged_diffs = deltas_to_file_diffs(&staged_deltas);
+
     let (ahead, behind) = git_ahead_behind(&repo, &name);
     Some(DiffInfo {
         head: name,
         branches,
         tags,
         diffs: file_diffs,
+        staged_diffs,
         ahead,
         behind,
     })
@@ -2573,5 +2591,101 @@ mod git_create_branch_tests {
         assert!(git_create_branch(&dir, "bad..name").is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod git_staged_diff_tests {
+    use git2::Repository;
+
+    use super::git_diff_new;
+
+    fn init_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+        dir
+    }
+
+    fn commit_all(dir: &tempfile::TempDir, message: &str) {
+        let repo = Repository::open(dir.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let sig = repo.signature().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parents: Vec<git2::Commit> = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_commit().ok())
+            .into_iter()
+            .collect();
+        let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+            .unwrap();
+    }
+
+    #[test]
+    fn staged_and_unstaged_are_separate() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("a.txt"), "v1").unwrap();
+        commit_all(&dir, "init");
+
+        // Stage a modification to a.txt; leave b.txt as an unstaged
+        // new file.
+        std::fs::write(dir.path().join("a.txt"), "v2").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "new").unwrap();
+        {
+            let repo = Repository::open(dir.path()).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("a.txt")).unwrap();
+            index.write().unwrap();
+        }
+
+        let info =
+            git_diff_new(dir.path()).expect("git_diff_new returned None");
+
+        let staged: Vec<_> =
+            info.staged_diffs.iter().map(|d| d.path().clone()).collect();
+        let unstaged: Vec<_> =
+            info.diffs.iter().map(|d| d.path().clone()).collect();
+
+        // FileDiff paths are workspace-absolute.
+        assert!(staged.contains(&dir.path().join("a.txt")));
+        assert!(unstaged.contains(&dir.path().join("b.txt")));
+        assert!(!unstaged.contains(&dir.path().join("a.txt")));
+        assert!(!staged.contains(&dir.path().join("b.txt")));
+    }
+
+    #[test]
+    fn file_staged_then_modified_again_appears_in_both() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("a.txt"), "v1").unwrap();
+        commit_all(&dir, "init");
+
+        std::fs::write(dir.path().join("a.txt"), "v2").unwrap();
+        {
+            let repo = Repository::open(dir.path()).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("a.txt")).unwrap();
+            index.write().unwrap();
+        }
+        std::fs::write(dir.path().join("a.txt"), "v3").unwrap();
+
+        let info =
+            git_diff_new(dir.path()).expect("git_diff_new returned None");
+
+        let staged: Vec<_> =
+            info.staged_diffs.iter().map(|d| d.path().clone()).collect();
+        let unstaged: Vec<_> =
+            info.diffs.iter().map(|d| d.path().clone()).collect();
+
+        assert!(staged.contains(&dir.path().join("a.txt")));
+        assert!(unstaged.contains(&dir.path().join("a.txt")));
     }
 }

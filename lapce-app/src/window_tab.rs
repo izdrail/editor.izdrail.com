@@ -1557,6 +1557,20 @@ impl WindowTabData {
             }
             SourceControlCopyActiveFileRemoteUrl => {}
             SourceControlDiscardActiveFileChanges => {}
+            SourceControlStageTargetFile => {
+                if let Some(path) = data
+                    .and_then(|data| serde_json::from_value::<PathBuf>(data).ok())
+                {
+                    self.git_stage_paths(vec![path], true);
+                }
+            }
+            SourceControlUnstageTargetFile => {
+                if let Some(path) = data
+                    .and_then(|data| serde_json::from_value::<PathBuf>(data).ok())
+                {
+                    self.git_stage_paths(vec![path], false);
+                }
+            }
             SourceControlDiscardTargetFileChanges => {
                 if let Some(diff) = data
                     .and_then(|data| serde_json::from_value::<FileDiff>(data).ok())
@@ -2380,6 +2394,9 @@ impl WindowTabData {
                         })
                         .collect();
                 });
+                self.source_control
+                    .staged_file_diffs
+                    .set(diff.staged_diffs.clone());
 
                 let docs = self.main_split.docs.get_untracked();
                 for (_, doc) in docs {
@@ -3858,6 +3875,33 @@ impl WindowTabData {
                 }
             })();
             send(result);
+        });
+    }
+
+    /// Stage or unstage paths via [`crate::worktree::stage_paths`]
+    /// off the UI thread. Success is silent - the .git watcher
+    /// refreshes the panel; failures toast.
+    fn git_stage_paths(&self, paths: Vec<PathBuf>, stage: bool) {
+        let Some(root) = self.workspace.path.clone() else {
+            return;
+        };
+        let messages = self.messages;
+        let title = if stage { "Git Stage" } else { "Git Unstage" };
+        let send =
+            create_ext_action(self.scope, move |result: Result<(), String>| {
+                if let Err(message) = result {
+                    push_unique_message(
+                        &messages,
+                        title,
+                        &ShowMessageParams {
+                            typ: lsp_types::MessageType::ERROR,
+                            message,
+                        },
+                    );
+                }
+            });
+        std::thread::spawn(move || {
+            send(crate::worktree::stage_paths(&root, &paths, stage));
         });
     }
 

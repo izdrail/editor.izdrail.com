@@ -8,6 +8,10 @@ pub struct DiffInfo {
     pub branches: Vec<String>,
     pub tags: Vec<String>,
     pub diffs: Vec<FileDiff>,
+    /// Changes staged in the index (HEAD tree -> index), kept
+    /// separate from the workdir list so the panel can show them in
+    /// their own section.
+    pub staged_diffs: Vec<FileDiff>,
     /// Commits the checked-out branch is ahead of its upstream.
     /// 0 when the branch has no upstream or HEAD is detached.
     pub ahead: usize,
