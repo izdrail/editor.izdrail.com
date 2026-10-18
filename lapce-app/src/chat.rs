@@ -97,6 +97,17 @@ pub fn knowledge_excerpt(text: &str) -> Option<String> {
 /// mode. Returns None
 /// when the input is not a command, Some(Err) for unknown or empty
 /// commands so the panel can say so instead of silently chatting.
+/// First-class ACP agent picker entries (name, launch command).
+/// opencode speaks ACP natively; Claude Code and Codex run through
+/// the official Agent Client Protocol adapters
+/// (@agentclientprotocol/claude-agent-acp and
+/// @agentclientprotocol/codex-acp, invoked via npx).
+pub const ACP_AGENTS: [(&str, &str); 3] = [
+    ("opencode", "opencode acp"),
+    ("Claude Code", "npx @agentclientprotocol/claude-agent-acp"),
+    ("Codex", "npx @agentclientprotocol/codex-acp"),
+];
+
 /// `@path` composer mentions (Antigravity parity: context mentions).
 /// A mention is `@` at the start or after whitespace, followed by a
 /// path-like token ([A-Za-z0-9_./-]+ that contains '/' or '.', up to
@@ -298,6 +309,25 @@ fn parse_event(
     }
     Ok(false)
 }
+#[cfg(test)]
+mod acp_agent_tests {
+    #[test]
+    fn picker_commands_split_into_program_and_args() {
+        // Every picker entry must launch through the no-shell ACP
+        // transport: a valid program plus args, no empty segments.
+        let mut names = std::collections::BTreeSet::new();
+        for (name, command) in super::ACP_AGENTS {
+            assert!(!name.is_empty());
+            assert!(names.insert(name), "duplicate picker name {name}");
+            let (program, args) =
+                crate::agent_acp_session::split_command(command)
+                    .unwrap_or_else(|| panic!("{name} command must split: {command}"));
+            assert!(!program.is_empty());
+            assert!(args.iter().all(|a| !a.is_empty()));
+        }
+    }
+}
+
 #[cfg(test)]
 mod mention_tests {
     use super::extract_mentions;

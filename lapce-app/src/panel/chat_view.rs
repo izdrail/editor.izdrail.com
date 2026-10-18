@@ -16,7 +16,7 @@ use floem::{
     keyboard::{Key, NamedKey},
     peniko::kurbo::{Point, Size},
     reactive::{
-        ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith,
+        ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, WriteSignal,
         create_effect, use_context,
     },
     style::{CursorStyle, Display},
@@ -603,6 +603,50 @@ fn resolve_mentions(
         }
     }
     (wire, attached, failed)
+}
+
+/// One row of the ACP agent picker: picking an agent writes the
+/// launch command to settings.toml (the config file is watched) and
+/// to the live config, and switches the composer to ACP mode.
+fn acp_agent_row(
+    data: ChatData,
+    set_config: WriteSignal<Arc<LapceConfig>>,
+    config: ReadSignal<Arc<LapceConfig>>,
+    mode_expanded: RwSignal<bool>,
+    name: &'static str,
+    command: &'static str,
+) -> impl View {
+    let click = data.clone();
+    let state = data;
+    label(move || format!("Agent: {name}"))
+        .on_click_stop(move |_| {
+            if !click.busy.get_untracked() {
+                crate::config::LapceConfig::update_file(
+                    "ai-chat",
+                    "acp-command",
+                    toml_edit::Value::from(command),
+                );
+                let mut new_config = config.get_untracked();
+                Arc::make_mut(&mut new_config).ai_chat.acp_command =
+                    command.to_string();
+                set_config.set(new_config);
+                click.mode.set(None);
+                click.acp.set(true);
+                click.acp_resume.set(false);
+                click.resume_id.set(None);
+            }
+            mode_expanded.set(false);
+        })
+        .style(move |s| {
+            dropdown_row_style(
+                s,
+                config,
+                state.acp.get()
+                    && !state.acp_resume.get()
+                    && config.get_untracked().ai_chat.acp_command.trim()
+                        == command,
+            )
+        })
 }
 
 fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) {
@@ -1640,6 +1684,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let stop = data.clone();
     let stop_busy = stop.busy;
     let chat_mode = data.clone();
+    let picker_data = data.clone();
+    let picker_set_config = tab.set_config;
     let ask_mode = data.clone();
     let plan_mode = data.clone();
     let act_mode = data.clone();
@@ -1687,8 +1733,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         create_effect(move |_| {
             if mode_expanded.get() {
                 let run_tab = overlay_tab.clone();
+                let picker_data = picker_data.clone();
                 let id = add_overlay(Point::ZERO, move |_| {
                     let resume_tab = run_tab.clone();
+                    let picker_data = picker_data.clone();
                     let resume_count = move || -> usize {
                         let settings =
                             resume_tab.common.config.get().ai_chat.clone();
@@ -1827,6 +1875,32 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     data.acp.get() && data.acp_resume.get(),
                                 )
                             }),
+                        v_stack((
+                            acp_agent_row(
+                                picker_data.clone(),
+                                picker_set_config,
+                                config,
+                                mode_expanded,
+                                crate::chat::ACP_AGENTS[0].0,
+                                crate::chat::ACP_AGENTS[0].1,
+                            ),
+                            acp_agent_row(
+                                picker_data.clone(),
+                                picker_set_config,
+                                config,
+                                mode_expanded,
+                                crate::chat::ACP_AGENTS[1].0,
+                                crate::chat::ACP_AGENTS[1].1,
+                            ),
+                            acp_agent_row(
+                                picker_data.clone(),
+                                picker_set_config,
+                                config,
+                                mode_expanded,
+                                crate::chat::ACP_AGENTS[2].0,
+                                crate::chat::ACP_AGENTS[2].1,
+                            ),
+                        )),
                     ))
                     .style(|s| s.flex_col().width_full());
                     composer_dropdown_overlay(
