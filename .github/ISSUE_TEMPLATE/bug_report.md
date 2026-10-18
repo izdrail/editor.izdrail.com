@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-## Lapce Version
+## Gravity Version
 
 The Lapce version you are using, which can be found in "About Lapce" at the top right settings icon. 
 

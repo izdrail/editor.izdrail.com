@@ -12,7 +12,7 @@
 </div>
 <br/>
 
-Gravity Editor (editor.izdrail.com) is a native code editor written in Rust with a [Floem](https://github.com/lapce/floem) UI and [wgpu](https://github.com/gfx-rs/wgpu) rendering. It is a derivative of [Lapce](https://github.com/lapce/lapce) (Apache License 2.0, copyright the Lapce contributors), with its own highlighting engine, language server client, WASI plugin host, VS Code extension import and keymap presets. Debugging (DAP) is not part of this editor.
+Gravity Editor (editor.izdrail.com) is a native code editor written in Rust with a [Floem](https://github.com/lapce/floem) UI and [wgpu](https://github.com/gfx-rs/wgpu) rendering. It is a derivative of [Lapce](https://github.com/lapce/lapce) (Apache License 2.0, copyright the Lapce contributors), with its own highlighting engine, language server client, WASI plugin host, VS Code extension import and keymap presets. Debugging (DAP) is not part of this editor. The Lapce name remains only where it refers to upstream or to unchanged identifiers: the `.lapce` data directory, crate and binary names, the `LAPCE_DEBUG` environment variable, the `lapce` keymap preset, and attribution.
 
 ![](extra/images/screenshot.png)
 

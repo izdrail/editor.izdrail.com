@@ -52,11 +52,11 @@ line, Ctrl+Shift+K delete line. PhpStorm uses Ctrl+D duplicate line, Ctrl+Y dele
 line, Ctrl+Shift+Z redo and Ctrl+R Replace. Notepad++ uses Ctrl+D duplicate line,
 Ctrl+Shift+L delete line, Ctrl+Y redo and Ctrl+Q toggle line comment. Ctrl+L is NOT
 rebound to delete for Notepad++: upstream Notepad++ uses that for cut-line, and
-Lapce has no exact cut-line command. Duplication maps to Lapce's line duplication,
+Gravity has no exact cut-line command. Duplication maps to Gravity's line duplication,
 not arbitrary selection duplication. Profiles leave unmapped base shortcuts in
 place; this is an overlay, not a wholesale replacement.
 
-Ctrl+H (VSCode/Notepad++) and Ctrl+R (PhpStorm) open Lapce's Replace control. The
+Ctrl+H (VSCode/Notepad++) and Ctrl+R (PhpStorm) open Gravity's Replace control. The
 existing focus_replace_editor handler is fixed to open a closed Find/Replace
 control, instead of silently doing nothing.
 

@@ -8,8 +8,8 @@ Imports are stored per extension under `<data dir>/vsx/<publisher>.<name>/`:
 
 | Content | Handling |
 | --- | --- |
-| Color themes | VS Code theme JSON (JSONC, `include`, `colors`, `tokenColors`) converted to Lapce color-theme TOML, listed in `volt.toml` so the existing theme loader picks it up |
-| Icon themes | SVG icons copied, mapping converted to Lapce icon-theme TOML (file extensions, file names, folder names) |
+| Color themes | VS Code theme JSON (JSONC, `include`, `colors`, `tokenColors`) converted to Gravity color-theme TOML, listed in `volt.toml` so the existing theme loader picks it up |
+| Icon themes | SVG icons copied, mapping converted to Gravity icon-theme TOML (file extensions, file names, folder names) |
 | TextMate grammars | `.tmLanguage.json` kept verbatim and run by the built-in engine (`lapce-vsix::textmate`, Oniguruma regexes) for files Lexilla has no lexer for |
 | Snippets | parsed to a normalised JSON file (`Loaded::snippets_for`) |
 | Language configuration | parsed to normalised JSON (`Loaded::language_configs`) |
