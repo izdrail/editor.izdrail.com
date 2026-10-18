@@ -9,6 +9,7 @@ pub mod agent_transport;
 pub mod agent_read;
 pub mod agent_changes;
 pub mod agent_checkpoint;
+pub mod agent_exec;
 pub mod agent_review_ui;
 pub mod agent_loop;
 pub mod agent_acp;

@@ -540,7 +540,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let data = tab.chat.clone();
     let settings = tab.common.config.get_untracked().ai_chat.clone();
     if settings.backend != "ollama" {
-        data.error.set("Ask/Plan requires a tool-capable Ollama model. Simple Chat still works locally.".into());
+        data.error.set("Ask/Plan/Act requires a tool-capable Ollama model. Simple Chat still works locally.".into());
         return;
     }
     if !data.trust_reads.get_untracked()
@@ -594,6 +594,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let artifact_prompt = prompt.to_string();
     let main_split: crate::main_split::MainSplitData =
         tab.main_split.clone();
+    let review_tab = tab.clone();
     create_effect(move |_| {
         if let Some(update) = progress.get() {
             if !done.gate.accepts(run) {
@@ -616,9 +617,32 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             &text,
                         );
                     }
-                    reply.set(text);
+                    // Clear busy first: review prepare refuses while a
+                    // run is active, and this run is finished.
                     done.busy.set(false);
                     done.state.set(RunState::Done);
+                    if mode == crate::agent_loop::Mode::Act {
+                        // Hand the model's full-file proposal to the
+                        // owner-review lane: prepare re-validates
+                        // autosave, platform, open-buffer, path and
+                        // size rules and only stages an UNREVIEWED
+                        // proposal. Nothing is applied here.
+                        match review_tab.chat.review.prepare(&review_tab, &text)
+                        {
+                            Ok(()) => reply.set(
+                                "Proposal ready - nothing changed yet. Review every before/after in the review section below, then Apply or Reject."
+                                    .to_string(),
+                            ),
+                            Err(error) => {
+                                reply.set(text);
+                                done.error.set(format!(
+                                    "Act proposal failed pre-review validation: {error}"
+                                ));
+                            }
+                        }
+                    } else {
+                        reply.set(text);
+                    }
                     done.persist(save);
                 }
                 AgentUpdate::Error(error) => {
@@ -863,7 +887,7 @@ fn write_plan_artifact(
 fn send_agent(tab: &WindowTabData, _: crate::agent_loop::Mode, _: &str) {
     tab.chat
         .error
-        .set("Secure Ask/Plan project tools are Linux-only in this version.".into());
+        .set("Secure Ask/Plan/Act project tools are Linux-only in this version.".into());
 }
 
 /// ACP mode: one Send spawns the configured agent (fresh session per
@@ -1290,6 +1314,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let chat_mode = data.clone();
     let ask_mode = data.clone();
     let plan_mode = data.clone();
+    let act_mode = data.clone();
     let acp_mode = data.clone();
     let acp_resume = data.clone();
     let resume_tab = tab.clone();
@@ -1418,6 +1443,26 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     config,
                                     data.mode.get()
                                         == Some(crate::agent_loop::Mode::Plan),
+                                )
+                            }),
+                        label(|| "Act".to_string())
+                            .on_click_stop(move |_| {
+                                if !act_mode.busy.get_untracked() {
+                                    act_mode.mode.set(Some(
+                                        crate::agent_loop::Mode::Act,
+                                    ));
+                                    act_mode.acp.set(false);
+                                    act_mode.acp_resume.set(false);
+                                    act_mode.resume_id.set(None);
+                                }
+                                mode_expanded.set(false);
+                            })
+                            .style(move |s| {
+                                dropdown_row_style(
+                                    s,
+                                    config,
+                                    data.mode.get()
+                                        == Some(crate::agent_loop::Mode::Act),
                                 )
                             }),
                         label(|| "ACP".to_string())
