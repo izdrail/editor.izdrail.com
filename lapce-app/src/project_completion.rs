@@ -1,8 +1,9 @@
 //! Project-aware completion items: inside `route('...')` offer the app's
 //! named routes, inside `config('...')` its config keys, inside `env('...')`
 //! the env keys, inside `view('...')` its Blade view names, inside
-//! `__('...')` its translation keys, and inside `wire:model="..."` in a
-//! Livewire view the paired component's public properties. Same static
+//! `__('...')` its translation keys, and inside `wire:model="..."` /
+//! `wire:click="..."` in a Livewire view the paired component's public
+//! properties / methods. Same static
 //! scans as the palettes (nothing is executed), cached 30 s per workspace
 //! (per component class for Livewire) so completion stays cheap on every
 //! keystroke.
@@ -38,30 +39,54 @@ pub enum Kind {
     /// Livewire `wire:model="..."` (any modifier): a property of the
     /// component class paired with the view.
     LivewireModel,
+    /// Livewire `wire:click="..."` and the other event attributes: a
+    /// method of the component class paired with the view.
+    LivewireAction,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
 /// `word(` whose argument string is still open. Quote escapes are not read;
 /// `route('it\'s')` is rare and simply falls out of context.
 pub fn context(line: &str) -> Option<Kind> {
-    // Livewire `wire:model(.modifier)*="..."`: an open attribute value.
+    // Livewire `wire:<event>(.modifier)*="..."`: an open attribute value.
     // No parenthesis involved, so this runs before the call-argument scan.
-    if let Some(at) = line.rfind("wire:model") {
-        let after = &line[at + "wire:model".len()..];
+    let mut hay = line;
+    while let Some(at) = hay.rfind("wire:") {
+        // A name-ish char before `wire:` means it is part of a longer
+        // attribute (`data-wire:...` or Alpine `x-on:...wire:...`).
+        if hay[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| {
+                c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-' | '.')
+            })
+        {
+            hay = &hay[..at];
+            continue;
+        }
+        let after = &hay[at + 5..];
         let attr_len = after
             .find(|c: char| {
                 !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
             })
             .unwrap_or(after.len());
+        let attr = &after[..attr_len];
+        let event = attr.split('.').next().unwrap_or("");
         let rest = &after[attr_len..];
         let quoted = rest
             .strip_prefix('=')
             .and_then(|r| r.chars().next().map(|q| (q, &r[q.len_utf8()..])));
         if let Some((q, value)) = quoted {
             if (q == '"' || q == '\'') && !value.contains(q) {
-                return Some(Kind::LivewireModel);
+                if event == "model" {
+                    return Some(Kind::LivewireModel);
+                }
+                if crate::livewire_handlers::EVENTS.contains(&event) {
+                    return Some(Kind::LivewireAction);
+                }
             }
         }
+        break;
     }
     let paren = line.rfind('(')?;
     let before = &line[..paren];
@@ -392,6 +417,49 @@ fn livewire_props(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
     props.into_iter().take(MAX_ITEMS).map(prop_item).collect()
 }
 
+static METHOD_CACHE: std::sync::OnceLock<
+    Mutex<Option<(PathBuf, Option<SystemTime>, Vec<String>)>>,
+> = std::sync::OnceLock::new();
+
+fn method_item(n: String) -> CompletionItem {
+    CompletionItem {
+        label: n,
+        kind: Some(CompletionItemKind::METHOD),
+        detail: Some("Livewire method".to_string()),
+        ..Default::default()
+    }
+}
+
+/// Public methods of the Livewire component paired with `file`,
+/// re-parsed only when the class file changes.
+fn livewire_methods(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
+    let Some(file) = file else { return Vec::new() };
+    let Some(class) = crate::livewire_handlers::class_for_view(root, file)
+    else {
+        return Vec::new();
+    };
+    let Ok(md) = std::fs::metadata(&class) else { return Vec::new() };
+    let mtime = md.modified().ok();
+    let cache = METHOD_CACHE.get_or_init(|| Mutex::new(None));
+    {
+        let guard = cache.lock().unwrap();
+        if let Some((p, m, methods)) = guard.as_ref() {
+            if *p == class && *m == mtime {
+                return methods
+                    .iter()
+                    .take(MAX_ITEMS)
+                    .cloned()
+                    .map(method_item)
+                    .collect();
+            }
+        }
+    }
+    let Ok(text) = std::fs::read_to_string(&class) else { return Vec::new() };
+    let methods = crate::livewire_handlers::public_methods(&text);
+    *cache.lock().unwrap() = Some((class, mtime, methods.clone()));
+    methods.into_iter().take(MAX_ITEMS).map(method_item).collect()
+}
+
 /// Completion items for the project context at the end of `line_before`.
 /// `file` is the edited file; only Livewire completion uses it.
 pub fn items(
@@ -406,6 +474,9 @@ pub fn items(
     if kind == Kind::LivewireModel {
         return livewire_props(root, file);
     }
+    if kind == Kind::LivewireAction {
+        return livewire_methods(root, file);
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -417,6 +488,7 @@ pub fn items(
         Kind::Lang => (lists.langs, "translation key"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireModel => (Vec::new(), "Livewire property"),
+        Kind::LivewireAction => (Vec::new(), "Livewire method"),
     };
     names
         .into_iter()
@@ -492,8 +564,26 @@ mod tests {
         );
         // Closed value, other attributes and Alpine are not model contexts.
         assert_eq!(context("<input wire:model=\"em\""), None);
-        assert_eq!(context("<input wire:click=\"sa"), None);
         assert_eq!(context("<div x-data=\"{ m: 'x' }\">"), None);
+        // Livewire event attributes complete methods.
+        assert_eq!(
+            context("<button wire:click=\"sa"),
+            Some(Kind::LivewireAction)
+        );
+        assert_eq!(
+            context("<form wire:submit.prevent=\"sa"),
+            Some(Kind::LivewireAction)
+        );
+        assert_eq!(
+            context("<input wire:keydown.enter='sa"),
+            Some(Kind::LivewireAction)
+        );
+        // Non-event attributes and closed values are not method contexts.
+        assert_eq!(context("<div wire:loading.cla"), None);
+        assert_eq!(context("<div wire:key=\"it"), None);
+        assert_eq!(context("<button wire:click=\"sa\""), None);
+        assert_eq!(context("<button data-wire:click=\"sa"), None);
+        assert_eq!(context("<button x-on:wire:click=\"sa"), None);
     }
 
     #[test]
@@ -574,5 +664,32 @@ mod tests {
         assert!(labels(&plain, "<input wire:model=\"").is_empty());
         // Without a file there is nothing to pair.
         assert!(items(r, None, "<input wire:model=\"").is_empty());
+    }
+
+    #[test]
+    fn offers_livewire_methods() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/livewire/user-profile.blade.php", "<button wire:click=\"save\">\n");
+        put(r, "app/Livewire/UserProfile.php", "<?php\nclass UserProfile extends \\Livewire\\Component {\n    public $email = '';\n    public function save() {}\n    public function delete() {}\n    private function helper() {}\n    protected function boot() {}\n    public static function make() {}\n}\n");
+        let view = r.join("resources/views/livewire/user-profile.blade.php");
+        let labels = |line: &str| {
+            items(r, Some(view.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let methods = labels("<button wire:click=\"");
+        assert!(methods.contains(&"save".to_string()));
+        assert!(methods.contains(&"delete".to_string()));
+        // Private, protected and static members are excluded.
+        assert!(!methods.contains(&"helper".to_string()));
+        assert!(!methods.contains(&"boot".to_string()));
+        assert!(!methods.contains(&"make".to_string()));
+        // Properties are not methods and methods are not properties.
+        assert!(!methods.contains(&"email".to_string()));
+        let props = labels("<input wire:model=\"");
+        assert!(props.contains(&"email".to_string()));
+        assert!(!props.contains(&"save".to_string()));
     }
 }

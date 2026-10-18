@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 const MAX_FILE: u64 = 1 << 20;
 /// `wire:<event>` attributes whose value starts with a component member.
-const EVENTS: &[&str] = &[
+pub(crate) const EVENTS: &[&str] = &[
     "click", "submit", "model", "keydown", "keyup", "change", "input", "blur", "focus",
     "init", "poll", "intersect", "mouseenter", "mouseleave", "dblclick", "scroll",
     "paste", "select", "confirm",
@@ -124,6 +124,42 @@ pub fn public_props(text: &str) -> Vec<String> {
         let name: String =
             rest[d + 1..].chars().take_while(|c| is_name(*c)).collect();
         if !name.is_empty() && name.len() <= 60 && !out.contains(&name) {
+            out.push(name);
+        }
+        if out.len() >= 500 {
+            break;
+        }
+    }
+    out
+}
+
+/// Public method names of a component class (`public function save(`),
+/// with leading `#[...]` attributes skipped. Static methods are excluded;
+/// duplicates removed, capped at 500.
+pub fn public_methods(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for l in text.lines() {
+        let mut t = l.trim_start();
+        if t.starts_with("//") || t.starts_with('*') || t.starts_with('#') && !t.starts_with("#[") {
+            continue;
+        }
+        while t.starts_with("#[") {
+            let Some(e) = t.find(']') else { break };
+            t = t[e + 1..].trim_start();
+        }
+        let Some(rest) = t.strip_prefix("public ") else { continue };
+        if rest.starts_with("static ") {
+            continue;
+        }
+        let Some(rest) = rest.strip_prefix("function ") else { continue };
+        let rest = rest.strip_prefix('&').unwrap_or(rest);
+        let name: String = rest.chars().take_while(|c| is_name(*c)).collect();
+        let after = rest[name.len()..].chars().next();
+        if !name.is_empty()
+            && name.len() <= 60
+            && after.is_some_and(|c| c == '(' || c.is_whitespace())
+            && !out.contains(&name)
+        {
             out.push(name);
         }
         if out.len() >= 500 {

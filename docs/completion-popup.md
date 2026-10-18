@@ -8,7 +8,7 @@ fuzzy matcher:
 | LSP | first | Items keep their own edits, `sortText`, `filterText` and lazy resolve |
 | Snippets | second | Imported from `.vsix` extensions (see [vsix-import.md](vsix-import.md)), picked by the file's language id, re-indented to the current line, inserted with tab stops |
 | Language keywords | between snippets and words | PHP only for now: the keyword, builtin function, builtin type and constant lists the PHP lexer highlights |
-| Project strings | between keywords and words | Inside `route('...')`, `config('...')`, `env('...')`, `view('...')`, `@section` / `@yield` / `@push` / `@stack('...')`, `__('...')` / `trans(...)` / `@lang(...)` / `Lang::get('...')` and `wire:model="..."`: the app's route names, config keys, env keys, view names, section/stack names, translation keys and the paired Livewire component's public properties; static scans cached 30 s per workspace |
+| Project strings | between keywords and words | Inside `route('...')`, `config('...')`, `env('...')`, `view('...')`, `@section` / `@yield` / `@push` / `@stack('...')`, `__('...')` / `trans(...)` / `@lang(...)` / `Lang::get('...')` and `wire:model="..."` / `wire:click="..."` (and the other `wire:` event attributes): the app's route names, config keys, env keys, view names, section/stack names, translation keys and the paired Livewire component's public properties and methods; static scans cached 30 s per workspace |
 | Buffer words | third | Identifiers from the current file, most frequent first; offered after 2 typed characters; the word being typed is excluded |
 
 Ranking is the fuzzy score plus a bonus for a prefix match and a small source
