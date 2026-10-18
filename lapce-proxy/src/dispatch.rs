@@ -2481,12 +2481,9 @@ mod git_ahead_behind_tests {
     /// ahead/behind math, including the no-upstream case.
     #[test]
     fn ahead_behind_tracks_upstream_movement() {
-        let dir = std::env::temp_dir().join(format!(
-            "lapce-git-ahead-behind-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        let repo = Repository::init(&dir).expect("init scratch repo");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = dir.path();
+        let repo = Repository::init(dir).expect("init scratch repo");
 
         let sig = git2::Signature::now("lapce-test", "lapce-test@example.invalid")
             .expect("signature");
@@ -2519,6 +2516,15 @@ mod git_ahead_behind_tests {
 
         repo.remote("origin", "https://example.invalid/scratch.git")
             .expect("add origin");
+        // libgit2 refuses to set an upstream whose remote-tracking
+        // ref does not exist yet; create the ref first.
+        repo.reference(
+            &format!("refs/remotes/origin/{head_name}"),
+            c1,
+            true,
+            "test: upstream at c1",
+        )
+        .expect("upstream ref");
         let mut branch = repo
             .find_branch(&head_name, git2::BranchType::Local)
             .expect("local branch");
@@ -2527,13 +2533,6 @@ mod git_ahead_behind_tests {
             .expect("set upstream");
 
         // Upstream at the root: local is one ahead.
-        repo.reference(
-            &format!("refs/remotes/origin/{head_name}"),
-            c1,
-            true,
-            "test: upstream at c1",
-        )
-        .expect("upstream ref");
         assert_eq!(git_ahead_behind(&repo, &head_name), (1, 0));
 
         // Upstream past HEAD: local is one behind.
@@ -2545,8 +2544,6 @@ mod git_ahead_behind_tests {
         )
         .expect("move upstream ref");
         assert_eq!(git_ahead_behind(&repo, &head_name), (0, 1));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
