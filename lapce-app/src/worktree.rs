@@ -250,6 +250,121 @@ pub fn stage_hunk_at_line(
     Ok(true)
 }
 
+/// One line of `git blame` output.
+pub struct BlameLine {
+    /// Full commit SHA (all zeros for uncommitted lines).
+    pub sha: String,
+    pub author: String,
+    /// Author time as epoch seconds.
+    pub author_time: i64,
+    pub text: String,
+}
+
+/// Parse `git blame --line-porcelain` output. With --line-porcelain
+/// every line group repeats all keys, so a simple state machine
+/// suffices: a 40-hex first token starts a group, "author"/
+/// "author-time" keys fill it, and the tab-prefixed line is the
+/// content that closes it.
+pub fn parse_blame_porcelain(output: &str) -> Vec<BlameLine> {
+    let mut lines = Vec::new();
+    let mut sha = String::new();
+    let mut author = String::new();
+    let mut author_time = 0i64;
+    for line in output.lines() {
+        if let Some(text) = line.strip_prefix('\t') {
+            lines.push(BlameLine {
+                sha: std::mem::take(&mut sha),
+                author: std::mem::take(&mut author),
+                author_time,
+                text: text.to_string(),
+            });
+        } else if let Some(rest) = line.strip_prefix("author ") {
+            author = rest.to_string();
+        } else if let Some(rest) = line.strip_prefix("author-time ") {
+            author_time = rest.trim().parse().unwrap_or(0);
+        } else if line.len() > 40
+            && line[..40].chars().all(|c| c.is_ascii_hexdigit())
+            && line.as_bytes()[40] == b' '
+        {
+            sha = line[..40].to_string();
+        }
+    }
+    lines
+}
+
+/// Epoch seconds to a `YYYY-MM-DD` date, UTC (Howard Hinnant's
+/// civil-from-days algorithm).
+pub fn format_epoch_utc(epoch: i64) -> String {
+    let days = epoch.div_euclid(86400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Render blame lines as aligned columns:
+/// `abcdef12  Author Name  2026-10-18  | code`. Uncommitted lines
+/// (all-zero SHA) show dashes.
+pub fn format_blame_lines(lines: &[BlameLine]) -> String {
+    let width = lines
+        .iter()
+        .map(|l| l.author.chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(24);
+    let mut out = String::new();
+    for line in lines {
+        let short: String = line.sha.chars().take(8).collect();
+        let short = if short.chars().all(|c| c == '0') {
+            "--------".to_string()
+        } else {
+            short
+        };
+        let author: String = line.author.chars().take(24).collect();
+        let date = format_epoch_utc(line.author_time);
+        let pad = width.saturating_sub(author.chars().count());
+        out.push_str(&format!(
+            "{short}  {author}{}  {date}  | {}",
+            " ".repeat(pad),
+            line.text
+        ));
+        out.push('\n');
+    }
+    out
+}
+
+/// `git blame --line-porcelain -- <rel_path>`, parsed and rendered
+/// for a scratch editor.
+pub fn git_blame_lines(root: &Path, rel_path: &Path) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("blame")
+        .arg("--line-porcelain")
+        .arg("--")
+        .arg(rel_path)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("git blame failed:\n{}", clip_stderr(&stderr)));
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines = parse_blame_porcelain(&stdout);
+    if lines.is_empty() {
+        return Err("git blame produced no output (empty file?).".to_string());
+    }
+    Ok(format_blame_lines(&lines))
+}
+
 /// `git log` rows for the history palette: (full SHA, display text).
 /// Field separator is U+001F so subjects may contain any printable
 /// character. Parsing lives in parse_git_log_line for tests.
@@ -669,6 +784,77 @@ mod tests {
             1
         )
         .unwrap());
+    }
+
+    #[test]
+    fn format_epoch_utc_golden() {
+        assert_eq!(format_epoch_utc(0), "1970-01-01");
+        assert_eq!(format_epoch_utc(86400), "1970-01-02");
+        assert_eq!(format_epoch_utc(1_750_000_000), "2025-06-15");
+        // Negative epochs still produce sane dates.
+        assert_eq!(format_epoch_utc(-86400), "1969-12-31");
+    }
+
+    #[test]
+    fn parse_blame_porcelain_groups() {
+        let sample = "abc123000000000000000000000000000000abcd 1 1 1\n\
+author Alice Example\n\
+author-time 1750000000\n\
+summary first line\n\
+\tone\n\
+0000000000000000000000000000000000000000 2 2 1\n\
+author Not Committed Yet\n\
+author-time 1750000001\n\
+summary dirty\n\
+\ttwo\n";
+        let lines = parse_blame_porcelain(sample);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].author, "Alice Example");
+        assert_eq!(lines[0].author_time, 1_750_000_000);
+        assert_eq!(lines[0].text, "one");
+        assert_eq!(lines[1].author, "Not Committed Yet");
+    }
+
+    #[test]
+    fn format_blame_lines_aligns_columns() {
+        // Exactly 40 hex chars: the parser keys on hex[40] + space.
+        let sha = format!("abc12300{}", "0".repeat(32));
+        let sample = format!("{sha} 1 1 1\n\
+author Alice Example\n\
+author-time 1750000000\n\
+\tone\n\
+0000000000000000000000000000000000000000 2 2 1\n\
+author Not Committed Yet\n\
+author-time 1750000001\n\
+\ttwo\n");
+        let lines = parse_blame_porcelain(&sample);
+        let out = format_blame_lines(&lines);
+        assert_eq!(
+            out,
+            "abc12300  Alice Example      2025-06-15  | one\n--------  Not Committed Yet  2025-06-15  | two\n"
+        );
+    }
+
+    #[test]
+    fn git_blame_lines_real_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        init_git_repo(dir.path());
+        std::fs::write(dir.path().join("a.txt"), "one\ntwo\n").unwrap();
+        stage_paths(dir.path(), &[dir.path().join("a.txt")], true).unwrap();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["commit", "-q", "-m", "init"])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let blame =
+            git_blame_lines(dir.path(), std::path::Path::new("a.txt")).unwrap();
+        assert!(blame.contains("test"));
+        assert!(blame.contains("| one"));
+        assert!(blame.contains("| two"));
     }
 
     #[test]

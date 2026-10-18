@@ -1048,6 +1048,9 @@ impl WindowTabData {
             GitMergeAbort => {
                 self.git_merge_abort();
             }
+            GitBlame => {
+                self.git_blame_active_file();
+            }
             GitStageHunk => {
                 self.git_stage_hunk_at_cursor();
             }
@@ -3753,6 +3756,57 @@ impl WindowTabData {
             });
         std::thread::spawn(move || {
             send(crate::worktree::stage_hunk_at_line(&root, &rel_path, line));
+        });
+    }
+
+    /// `git blame --line-porcelain` for the active file, rendered as
+    /// aligned columns in a scratch editor (same lane as git show).
+    fn git_blame_active_file(&self) {
+        let Some(editor_data) = self.main_split.active_editor.get_untracked()
+        else {
+            return;
+        };
+        let doc = editor_data.doc();
+        let Some(path) = doc.content.get_untracked().path().cloned() else {
+            return;
+        };
+        let Some(root) = self.workspace.path.clone() else {
+            return;
+        };
+        let Ok(rel_path) = path.strip_prefix(&root) else {
+            return;
+        };
+        let rel_path = rel_path.to_path_buf();
+        let messages = self.messages;
+        let main_split = self.main_split.clone();
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| match result {
+                Ok(text) => {
+                    let child = main_split.new_file();
+                    if let EditorTabChild::Editor(editor_id) = child {
+                        if let Some(editor) =
+                            main_split.editors.editor_untracked(editor_id)
+                        {
+                            let doc = editor.doc();
+                            doc.init_content(Rope::from(text));
+                        }
+                    }
+                }
+                Err(message) => {
+                    push_unique_message(
+                        &messages,
+                        "Git Blame",
+                        &ShowMessageParams {
+                            typ: lsp_types::MessageType::ERROR,
+                            message,
+                        },
+                    );
+                }
+            },
+        );
+        std::thread::spawn(move || {
+            send(crate::worktree::git_blame_lines(&root, &rel_path));
         });
     }
 

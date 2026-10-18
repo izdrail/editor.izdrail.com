@@ -401,6 +401,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "git_merge_abort")]
     GitMergeAbort,
 
+    #[strum(message = "Git: Blame Current File")]
+    #[strum(serialize = "git_blame")]
+    GitBlame,
+
     #[strum(message = "Git: Stage Hunk at Cursor")]
     #[strum(serialize = "git_stage_hunk")]
     GitStageHunk,
