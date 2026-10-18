@@ -19,3 +19,20 @@ Two deliberate refusals keep the conflict state honest:
 Clicking a conflicted row opens the usual diff against HEAD, which
 shows the conflict markers in place. Follow-ups: an editor-level
 accept-current/incoming/both surface and a merge-abort command.
+
+## Resolving hunks (item 175)
+
+Command palette, operating on the hunk enclosing the cursor in the
+active editor: **Git: Accept Current Change** (`git_accept_current`),
+**Git: Accept Incoming Change** (`git_accept_incoming`), **Git:
+Accept Both Changes** (`git_accept_both`). The block detection is a
+pure function (`conflict::resolve_conflict_at_line`, unit-tested for
+each side, enclosing-block selection, marker-line cursors, empty
+sides, and unterminated blocks); the edit goes through the standard
+LSP workspace-edit lane, so it applies and undoes like a
+rename/refactor. diff3-style conflicts (with `||||||| base` sections)
+are detected and refused with a toast until supported.
+
+**Git: Merge Abort** (`git_merge_abort`) runs `git merge --abort` off
+the UI thread with the usual toast feedback - the explicit escape
+hatch the Discard refusal references.

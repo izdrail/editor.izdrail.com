@@ -385,6 +385,22 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "git_pull")]
     GitPull,
 
+    #[strum(message = "Git: Accept Current Change")]
+    #[strum(serialize = "git_accept_current")]
+    GitAcceptCurrent,
+
+    #[strum(message = "Git: Accept Incoming Change")]
+    #[strum(serialize = "git_accept_incoming")]
+    GitAcceptIncoming,
+
+    #[strum(message = "Git: Accept Both Changes")]
+    #[strum(serialize = "git_accept_both")]
+    GitAcceptBoth,
+
+    #[strum(message = "Git: Merge Abort")]
+    #[strum(serialize = "git_merge_abort")]
+    GitMergeAbort,
+
     #[strum(message = "Git: Stash")]
     #[strum(serialize = "git_stash")]
     GitStash,

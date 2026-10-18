@@ -76,6 +76,7 @@ pub mod completion_rank;
 pub mod emmet;
 pub mod completion_sources;
 pub mod config;
+pub mod conflict;
 pub mod db;
 pub mod debug;
 pub mod doc;

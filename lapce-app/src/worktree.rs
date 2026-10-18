@@ -59,6 +59,26 @@ pub fn stash_result_message(
     Err(format!("git stash failed:\n{}", clip_stderr(stderr)))
 }
 
+/// Toast body for `git merge --abort`: silent on success, fatal text
+/// on stderr when no merge is in progress.
+pub fn merge_abort_result_message(
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+) -> Result<String, String> {
+    let stdout = stdout.trim();
+    if success {
+        if !stdout.is_empty() {
+            return Ok(stdout.to_string());
+        }
+        return Ok("Merge aborted.".to_string());
+    }
+    Err(format!(
+        "git merge --abort failed:\n{}",
+        clip_stderr(stderr)
+    ))
+}
+
 /// `git log` rows for the history palette: (full SHA, display text).
 /// Field separator is U+001F so subjects may contain any printable
 /// character. Parsing lives in parse_git_log_line for tests.
@@ -377,6 +397,21 @@ mod tests {
                 .unwrap_err();
         assert!(err.contains("No stash entries found."));
         assert!(err.contains("kept when a pop conflicts"));
+    }
+
+    #[test]
+    fn merge_abort_message_cases() {
+        assert_eq!(
+            merge_abort_result_message(true, "", "").unwrap(),
+            "Merge aborted."
+        );
+        let err = merge_abort_result_message(
+            false,
+            "",
+            "fatal: There is no merge in progress",
+        )
+        .unwrap_err();
+        assert!(err.contains("no merge in progress"));
     }
 
     #[test]

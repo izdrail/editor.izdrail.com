@@ -46,8 +46,8 @@ use lapce_rpc::{
 };
 use lapce_xi_rope::Rope;
 use lsp_types::{
-    CodeActionOrCommand, CodeLens, Diagnostic, ProgressParams, ProgressToken,
-    ShowMessageParams,
+    CodeActionOrCommand, CodeLens, Diagnostic, Position, ProgressParams,
+    ProgressToken, Range, ShowMessageParams, TextEdit, Url, WorkspaceEdit,
 };
 use serde_json::Value;
 use tracing::{Level, debug, error, event};
@@ -1031,6 +1031,22 @@ impl WindowTabData {
             }
             GitPull => {
                 self.git_pull();
+            }
+            GitAcceptCurrent => {
+                self.git_accept_conflict_side(
+                    crate::conflict::ConflictSide::Current,
+                );
+            }
+            GitAcceptIncoming => {
+                self.git_accept_conflict_side(
+                    crate::conflict::ConflictSide::Incoming,
+                );
+            }
+            GitAcceptBoth => {
+                self.git_accept_conflict_side(crate::conflict::ConflictSide::Both);
+            }
+            GitMergeAbort => {
+                self.git_merge_abort();
             }
             GitStash => {
                 self.git_stash(false);
@@ -3608,6 +3624,115 @@ impl WindowTabData {
                         crate::worktree::clip_stderr(&stderr)
                     ))
                 }
+            })();
+            send(result);
+        });
+    }
+
+    /// Resolve the conflict hunk enclosing the cursor in the active
+    /// editor, keeping the chosen side. The text surgery is pure
+    /// (conflict::resolve_conflict_at_line); the edit goes through the
+    /// standard LSP workspace-edit lane, so application and undo
+    /// behave like a rename/refactor.
+    fn git_accept_conflict_side(&self, side: crate::conflict::ConflictSide) {
+        let Some(editor_data) = self.main_split.active_editor.get_untracked()
+        else {
+            return;
+        };
+        let doc = editor_data.doc();
+        let Some(path) = doc.content.get_untracked().path().cloned() else {
+            return;
+        };
+        let text = doc.buffer.with_untracked(|buffer| buffer.to_string());
+        let offset = editor_data.cursor().with_untracked(|c| c.offset());
+        let line = doc.buffer.with_untracked(|b| b.line_of_offset(offset));
+        let Some((start, end, replacement)) =
+            crate::conflict::resolve_conflict_at_line(&text, line, side)
+        else {
+            self.show_message(
+                "Git Conflict",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "No conflict hunk at the cursor. diff3-style conflicts (with ||||||| base sections) are not supported yet.".into(),
+                },
+            );
+            return;
+        };
+        let (Ok(start), Ok(end)) =
+            (u32::try_from(start), u32::try_from(end + 1))
+        else {
+            return;
+        };
+        let Ok(url) = Url::from_file_path(&path) else { return };
+        let mut changes = std::collections::HashMap::new();
+        changes.insert(
+            url,
+            vec![TextEdit {
+                range: Range {
+                    start: Position {
+                        line: start,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: end,
+                        character: 0,
+                    },
+                },
+                new_text: replacement,
+            }],
+        );
+        self.main_split.apply_workspace_edit(&WorkspaceEdit {
+            changes: Some(changes),
+            document_changes: None,
+            change_annotations: None,
+        });
+    }
+
+    /// `git merge --abort` off the UI thread, with toast feedback.
+    /// Same GIT_TERMINAL_PROMPT=0 reasoning as git_push.
+    fn git_merge_abort(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_message(
+                "Git Merge Abort",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "Open a folder first.".into(),
+                },
+            );
+            return;
+        };
+        let messages = self.messages;
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| {
+                let (typ, message) = match result {
+                    Ok(m) => (lsp_types::MessageType::INFO, m),
+                    Err(m) => (lsp_types::MessageType::ERROR, m),
+                };
+                push_unique_message(
+                    &messages,
+                    "Git Merge Abort",
+                    &ShowMessageParams { typ, message },
+                );
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let out = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .arg("merge")
+                    .arg("--abort")
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                crate::worktree::merge_abort_result_message(
+                    out.status.success(),
+                    &stdout,
+                    &stderr,
+                )
             })();
             send(result);
         });
