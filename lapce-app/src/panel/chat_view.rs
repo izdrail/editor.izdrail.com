@@ -1198,24 +1198,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
             }),
             h_stack((
-                label(move || {
-                    let c = config.get();
-                    let model = if c.ai_chat.backend == "local" {
-                        c.ai_chat.local_model.clone()
-                    } else {
-                        c.ai_chat.model.clone()
-                    };
-                    format!("{} | {model}", c.ai_chat.backend)
-                })
-                .style(move |s| {
-                    s.font_size(11.0)
-                        .padding(6.0)
-                        .min_width(0.0)
-                        .max_width(160.0)
-                        .text_ellipsis()
-                        .selectable(false)
-                        .color(config.get().color(LapceColor::EDITOR_DIM))
-                }),
                 clickable_icon(
                     || LapceIcons::ADD,
                     move || {
@@ -1737,6 +1719,24 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     c_resume.acp.get() && c_resume.acp_resume.get(),
                 )
             }),
+            label(move || {
+                let c = config.get();
+                let model = if c.ai_chat.backend == "local" {
+                    c.ai_chat.local_model.clone()
+                } else {
+                    c.ai_chat.model.clone()
+                };
+                format!("{} | {model}", c.ai_chat.backend)
+            })
+            .style(move |s| {
+                s.font_size(11.0)
+                    .padding(6.0)
+                    .min_width(0.0)
+                    .max_width(140.0)
+                    .text_ellipsis()
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
         ))
         .style(|s| {
             s.flex_wrap(floem::style::FlexWrap::Wrap)
@@ -1794,11 +1794,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }),
         // Antigravity-style disclaimer under the composer.
         label(|| {
-            "AI can make mistakes - review changes before applying."
-                .to_string()
+            "AI can make mistakes - review changes.".to_string()
         })
         .style(move |s| {
             s.font_size(11.0)
+                .max_width_full()
                 .align_self(Some(floem::style::AlignItems::Center))
                 .selectable(false)
                 .color(config.get().color(LapceColor::EDITOR_DIM))

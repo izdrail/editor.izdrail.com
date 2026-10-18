@@ -151,6 +151,7 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                         scroll(label(move || report_view.clone()).style(
                             move |s| {
                                 s.font_size(11.0)
+                                    .max_width_full()
                                     .color(
                                         config
                                             .get()
