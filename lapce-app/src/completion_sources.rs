@@ -17,7 +17,8 @@ pub enum CompletionSource {
     Snippet,
     /// Lexer word lists: language keywords, builtins, Laravel facades etc.
     Keyword,
-    /// Project strings: route names, config keys, env keys, view names.
+    /// Project strings: route names, config keys, env keys, view names,
+    /// Blade section/stack names, translation keys.
     Project,
     Word,
 }

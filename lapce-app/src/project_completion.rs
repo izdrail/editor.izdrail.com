@@ -1,8 +1,9 @@
 //! Project-aware completion items: inside `route('...')` offer the app's
 //! named routes, inside `config('...')` its config keys, inside `env('...')`
-//! the env keys, inside `view('...')` its Blade view names. Same static
-//! scans as the palettes (nothing is executed), cached 30 s per workspace
-//! so completion stays cheap on every keystroke.
+//! the env keys, inside `view('...')` its Blade view names, inside
+//! `__('...')` its translation keys. Same static scans as the palettes
+//! (nothing is executed), cached 30 s per workspace so completion stays
+//! cheap on every keystroke.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -29,6 +30,9 @@ pub enum Kind {
     Section,
     /// Blade `@push('...')` / `@stack('...')`.
     Stack,
+    /// Translation key: `__`, `trans`, `trans_choice`, Blade `@lang` /
+    /// `@choice`, `Lang::get` / `Lang::has` / `Lang::choice`.
+    Lang,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -76,6 +80,11 @@ pub fn context(line: &str) -> Option<Kind> {
         | "each" if blade => Kind::View,
         "section" | "yield" if blade => Kind::Section,
         "push" | "pushOnce" | "stack" if blade => Kind::Stack,
+        "__" | "trans" | "trans_choice" => Kind::Lang,
+        "lang" | "choice" if blade => Kind::Lang,
+        "get" | "has" | "choice" if head[..word_start].ends_with("Lang::") => {
+            Kind::Lang
+        }
         _ => return None,
     })
 }
@@ -90,6 +99,7 @@ struct Lists {
     views: Vec<String>,
     sections: Vec<String>,
     stacks: Vec<String>,
+    langs: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -273,6 +283,18 @@ fn env_config_keys(root: &Path) -> (Vec<String>, Vec<String>) {
     (envs, configs)
 }
 
+/// Translation keys from the Go to Translation index labels
+/// (`"lang  auth.failed  (resources/lang/en/auth.php)"`).
+fn lang_keys(root: &Path) -> Vec<String> {
+    crate::lang_index::discover(root)
+        .into_iter()
+        .filter_map(|t| {
+            let rest = t.label.strip_prefix("lang  ")?;
+            rest.rsplit_once("  (").map(|(k, _)| k.to_string())
+        })
+        .collect()
+}
+
 fn lists(root: &Path) -> Lists {
     let cache = CACHE.get_or_init(|| Mutex::new(None));
     {
@@ -287,6 +309,7 @@ fn lists(root: &Path) -> Lists {
     let views = view_names(root);
     let (envs, configs) = env_config_keys(root);
     let (sections, stacks) = layout_names(root);
+    let langs = lang_keys(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -296,6 +319,7 @@ fn lists(root: &Path) -> Lists {
         views,
         sections,
         stacks,
+        langs,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -315,6 +339,7 @@ pub fn items(root: &Path, line_before: &str) -> Vec<CompletionItem> {
         Kind::View => (lists.views, "Blade view"),
         Kind::Section => (lists.sections, "Blade section"),
         Kind::Stack => (lists.stacks, "Blade stack"),
+        Kind::Lang => (lists.langs, "translation key"),
     };
     names
         .into_iter()
@@ -362,6 +387,19 @@ mod tests {
         // Without the @, these are ordinary calls.
         assert_eq!(context("yield('x"), None);
         assert_eq!(context("section('x"), None);
+        // Translation keys.
+        assert_eq!(context("__('wel"), Some(Kind::Lang));
+        assert_eq!(context("__(\"wel"), Some(Kind::Lang));
+        assert_eq!(context("trans('mess"), Some(Kind::Lang));
+        assert_eq!(context("trans_choice('apple"), Some(Kind::Lang));
+        assert_eq!(context("@lang('mess"), Some(Kind::Lang));
+        assert_eq!(context("@choice('apple"), Some(Kind::Lang));
+        assert_eq!(context("Lang::get('mess"), Some(Kind::Lang));
+        assert_eq!(context("Lang::has('mess"), Some(Kind::Lang));
+        // Without the @ or Lang::, these are ordinary calls.
+        assert_eq!(context("lang('x"), None);
+        assert_eq!(context("$c->choice('x"), None);
+        assert_eq!(context("Str::get('x"), None);
     }
 
     #[test]
@@ -374,6 +412,9 @@ mod tests {
         put(r, "resources/views/pages/home.blade.php", "<h1>hi</h1>\n");
         put(r, "resources/views/emails/welcome.php", "<p>w</p>\n");
         put(r, "resources/views/layouts/app.blade.php", "<html>\n@yield('content')\n@yield(\"scripts\")\n@stack('modals')\n@section('sidebar')\n@show\n</html>\n");
+        put(r, "resources/lang/en/auth.php", "<?php\nreturn [\n    'failed' => 'These credentials do not match.',\n    'throttle' => [\n        'seconds' => 'Too many.',\n    ],\n];\n");
+        put(r, "resources/lang/fr/auth.php", "<?php\nreturn [\n    'failed' => 'Ces identifiants ne correspondent pas.',\n    'bonjour' => 'Bonjour',\n];\n");
+        put(r, "resources/lang/en.json", "{\n  \"Welcome back\": \"Welcome back\"\n}\n");
 
         let labels = |kind_line: &str| {
             items(r, kind_line)
@@ -393,5 +434,18 @@ mod tests {
         assert_eq!(labels("@yield('"), ["content", "scripts", "sidebar"]);
         assert_eq!(labels("@stack('"), ["modals"]);
         assert!(labels("@extends('").contains(&"layouts.app".to_string()));
+        // Translation keys: nested PHP keys dot-flattened, JSON keys as-is,
+        // a key in several locales listed once, fr-only keys included.
+        let langs = labels("__('");
+        assert!(langs.contains(&"auth.failed".to_string()));
+        assert!(langs.contains(&"auth.throttle.seconds".to_string()));
+        assert!(langs.contains(&"Welcome back".to_string()));
+        assert!(langs.contains(&"auth.bonjour".to_string()));
+        assert_eq!(
+            langs.iter().filter(|l| *l == "auth.failed").count(),
+            1
+        );
+        assert_eq!(labels("trans('"), langs);
+        assert_eq!(labels("@lang('"), langs);
     }
 }
