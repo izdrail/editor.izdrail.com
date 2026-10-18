@@ -154,6 +154,27 @@ An opt-in, deliberately small CommonJS command shim runs in a seccomp-restricted
 ### Keymap presets
 `Settings > Core > Keymap Preset`: `compact-65` (default, no Fn layer needed), `vscode`, `phpstorm`, `sublime`, `notepad-plus-plus` and `lapce` (original defaults). Your `keymaps.toml` always wins. See [docs/keymap-presets.md](docs/keymap-presets.md).
 
+### AI Chat
+Chat/Ask/Plan panel against any OpenAI-compatible server (Ollama by default), with explicit project-read approval, slash commands (`/plan`, `/ask`, `/btw`, `/learn`), user-curated project knowledge notes folded into chat prompts, and inline AI edits (`Ctrl+Shift+I`). See [docs/ai-chat.md](docs/ai-chat.md) and [docs/inline-ai-edit.md](docs/inline-ai-edit.md).
+
+### External agents over ACP
+Run an external agent (opencode, or a Claude Code/Codex adapter) from the chat panel. Sessions are remembered per project and can be browsed, resumed and deleted from the Agents list. See [docs/agent-acp.md](docs/agent-acp.md), [docs/agent-acp-panel.md](docs/agent-acp-panel.md) and [docs/agent-sessions.md](docs/agent-sessions.md).
+
+### MCP servers (probe)
+Workspace `.lapce/mcp.json` servers are handshaken and tool-listed on demand into a status buffer; tool calls stay gated until the review UI owns them. See [docs/mcp.md](docs/mcp.md).
+
+### Scheduled prompts
+Recurring and daily prompts fire into the chat panel from `.lapce/scheduled-prompts.json`, managed from the panel. See [docs/scheduled-prompts.md](docs/scheduled-prompts.md).
+
+### Walkthroughs
+Export a chat run as a Markdown walkthrough, and browse past exports from the palette. See [docs/walkthroughs.md](docs/walkthroughs.md).
+
+### Git worktrees and push
+Palette commands create a worktree on a timestamped branch in a sibling directory and open it as a tab (its own chat sessions and schedules), list and open worktrees, remove them behind a confirm dialog, and push the current branch with toast feedback. See [docs/worktrees.md](docs/worktrees.md) and [docs/git-push.md](docs/git-push.md).
+
+### AI commit messages
+Generate a commit message from the staged diff in the source control panel. See [docs/ai-commit-messages.md](docs/ai-commit-messages.md).
+
 ## Install
 
 Linux x86_64 binaries are attached to [GitHub releases](https://github.com/izdrail/editor.izdrail.com/releases) when a version tag (`vX.Y.Z`) is pushed. To build from source, see [docs/building-from-source.md](docs/building-from-source.md).
