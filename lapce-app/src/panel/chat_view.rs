@@ -36,6 +36,18 @@ pub struct Turn {
     pub role: &'static str,
     pub text: RwSignal<String>,
     pub context: String,
+    /// Structured agent progress (Ask/Plan/Act runs): one row per loop
+    /// step, proposed tool call and tool result. Empty for plain chat,
+    /// ACP and history-loaded turns. Not persisted.
+    pub steps: RwSignal<Vec<AgentStepRow>>,
+}
+/// One row in a turn's progress card. Antigravity calls these step
+/// cards; ours mirror the read-only agent loop's events.
+#[derive(Clone)]
+pub struct AgentStepRow {
+    pub title: String,
+    pub detail: String,
+    pub error: bool,
 }
 #[derive(Clone)]
 pub struct ChatData {
@@ -107,6 +119,7 @@ impl ChatData {
                 role: if t.role == "user" { "You" } else { "Assistant" },
                 text: cx.create_rw_signal(t.text.clone()),
                 context: t.context.clone(),
+                steps: cx.create_rw_signal(Vec::new()),
             })
             .collect();
         Self {
@@ -384,6 +397,7 @@ fn send(tab: &WindowTabData) {
         v.push(Turn {
             role: "You",
             text: tab.scope.create_rw_signal(prompt),
+            steps: tab.scope.create_rw_signal(Vec::new()),
             context: {
                 let base = ctx
                     .as_ref()
@@ -400,6 +414,7 @@ fn send(tab: &WindowTabData) {
             role: "Assistant",
             text: reply,
             context: String::new(),
+            steps: tab.scope.create_rw_signal(Vec::new()),
         });
     });
     data.input.set(String::new());
@@ -544,6 +559,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     data.busy.set(true);
     data.error.set(String::new());
     let reply = tab.scope.create_rw_signal(String::new());
+    let steps = tab.scope.create_rw_signal(Vec::new());
     data.turns.update(|turns| {
         turns.push(Turn {
             role: "You",
@@ -553,11 +569,13 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 mode,
                 root.display()
             ),
+            steps: tab.scope.create_rw_signal(Vec::new()),
         });
         turns.push(Turn {
             role: "Assistant",
             text: reply,
             context: String::new(),
+            steps,
         });
     });
     data.input.set(String::new());
@@ -568,15 +586,21 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let save = settings.save_history;
     let artifact_root = root.clone();
     let artifact_prompt = prompt.to_string();
-    let main_split = tab.main_split.clone();
+    let main_split: crate::main_split::MainSplitData =
+        tab.main_split.clone();
     create_effect(move |_| {
         if let Some(update) = progress.get() {
             if !done.gate.accepts(run) {
                 return;
             }
             match update {
-                Update::Delta(text) => reply.set(text),
-                Update::Done(text) => {
+                AgentUpdate::Step(row) => steps.update(|v| {
+                    // Bounded: loop limits cap events well under this.
+                    if v.len() < 128 {
+                        v.push(row);
+                    }
+                }),
+                AgentUpdate::Done(text) => {
                     if mode == crate::agent_loop::Mode::Plan {
                         write_plan_artifact(
                             &done,
@@ -591,7 +615,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     done.state.set(RunState::Done);
                     done.persist(save);
                 }
-                Update::Error(error) => {
+                AgentUpdate::Error(error) => {
                     done.error.set(error);
                     done.busy.set(false);
                     done.state.set(RunState::Error);
@@ -634,39 +658,68 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     _ => Err("Unregistered tool".into()),
                 },
                 |event| {
-                    let text = match event {
-                        crate::agent_loop::Event::Step(n) => format!(
-                            "Agent step {n}: reading and reasoning. No files will be changed."
-                        ),
-                        crate::agent_loop::Event::ProposedCalls(calls) => format!(
-                            "Proposed read tools: {}",
-                            calls
-                                .iter()
-                                .map(|c| c.name.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ),
-                        crate::agent_loop::Event::ToolResult { id, error } => {
-                            format!(
-                                "Tool {id}: {}",
-                                if error {
-                                    "denied or failed"
-                                } else {
-                                    "read completed"
-                                }
-                            )
+                    match event {
+                        crate::agent_loop::Event::Step(n) => {
+                            let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                                title: format!("Step {n}"),
+                                detail: "Reading and reasoning - no files are changed."
+                                    .to_string(),
+                                error: false,
+                            }));
                         }
-                        crate::agent_loop::Event::Finished(_) => return,
-                    };
-                    let _ = tx.send(Update::Delta(text));
+                        crate::agent_loop::Event::ProposedCalls(calls) => {
+                            for call in &calls {
+                                let target = call
+                                    .arguments
+                                    .get("path")
+                                    .or_else(|| call.arguments.get("literal"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                                    title: call.name.clone(),
+                                    detail: clip_step_detail(target),
+                                    error: false,
+                                }));
+                            }
+                        }
+                        crate::agent_loop::Event::ToolResult { id, error } => {
+                            let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                                title: clip_step_detail(&id),
+                                detail: if error {
+                                    "denied or failed".to_string()
+                                } else {
+                                    "read completed".to_string()
+                                },
+                                error,
+                            }));
+                        }
+                        crate::agent_loop::Event::Finished(_) => {}
+                    }
                 },
             )
         })();
         let _ = tx.send(match result {
-            Ok(text) => Update::Done(text),
-            Err(error) => Update::Error(error),
+            Ok(text) => AgentUpdate::Done(text),
+            Err(error) => AgentUpdate::Error(error),
         });
     });
+}
+/// Message from an Ask/Plan/Act worker thread: a progress row for the
+/// turn's step card, or the run's final outcome.
+#[derive(Clone)]
+enum AgentUpdate {
+    Step(AgentStepRow),
+    Done(String),
+    Error(String),
+}
+/// Clip a tool target or id for display: 120 chars, ellipsis after.
+pub fn clip_step_detail(s: &str) -> String {
+    const CAP: usize = 120;
+    let mut out: String = s.chars().take(CAP).collect();
+    if s.chars().count() > CAP {
+        out.push('\u{2026}');
+    }
+    out
 }
 /// Roots to search for stored agent sessions: the current workspace
 /// first, then recent local workspaces from the app database,
@@ -743,6 +796,7 @@ fn learn_note(tab: &WindowTabData, note: &str) {
         turns.push(Turn {
             role: "You",
             text: tab.scope.create_rw_signal(format!("/learn {note}")),
+            steps: tab.scope.create_rw_signal(Vec::new()),
             context: "saved to .lapce/knowledge.md".into(),
         });
         turns.push(Turn {
@@ -752,6 +806,7 @@ fn learn_note(tab: &WindowTabData, note: &str) {
                     .to_string(),
             ),
             context: String::new(),
+            steps: tab.scope.create_rw_signal(Vec::new()),
         });
     });
     data.input.set(String::new());
@@ -865,6 +920,7 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
         turns.push(Turn {
             role: "You",
             text: tab.scope.create_rw_signal(prompt.into()),
+            steps: tab.scope.create_rw_signal(Vec::new()),
             context: format!(
                 "ACP agent: {spec} | {}",
                 ctx.as_ref()
@@ -876,6 +932,7 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
             role: "Assistant",
             text: reply,
             context: String::new(),
+            steps: tab.scope.create_rw_signal(Vec::new()),
         });
     });
     data.input.set(String::new());
@@ -1554,6 +1611,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     move |(_, turn)| {
                         let body = turn.text;
                         let role = turn.role;
+                        let steps = turn.steps;
                         let render_id = std::sync::atomic::AtomicU64::new(0);
                         v_stack((
                             label(move || role.to_string()).style(move |s| {
@@ -1563,6 +1621,153 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             }),
                             label(move || turn.context.clone())
                                 .style(|s| s.font_size(10.0).max_width_full()),
+                            {
+                                // Antigravity-style step card: the
+                                // agent run's progress rows under a
+                                // collapsible header. Hidden for turns
+                                // without agent steps.
+                                let steps_expanded =
+                                    floem::reactive::create_rw_signal(true);
+                                container(
+                                    v_stack((
+                                        h_stack((
+                                            svg(move || {
+                                                config.get().ui_svg(
+                                                    if steps_expanded.get() {
+                                                        LapceIcons::FOLD_DOWN
+                                                    } else {
+                                                        LapceIcons::FOLD
+                                                    },
+                                                )
+                                            })
+                                            .style(move |s| {
+                                                let config = config.get();
+                                                let size = config
+                                                    .ui
+                                                    .icon_size()
+                                                    as f32;
+                                                s.size(size, size).color(
+                                                    config.color(
+                                                        LapceColor::LAPCE_ICON_ACTIVE,
+                                                    ),
+                                                )
+                                            }),
+                                            label(move || {
+                                                format!(
+                                                    "Progress updates ({})",
+                                                    steps.get().len()
+                                                )
+                                            })
+                                            .style(move |s| {
+                                                s.font_size(11.0)
+                                                    .selectable(false)
+                                                    .color(
+                                                        config.get().color(
+                                                            LapceColor::EDITOR_DIM,
+                                                        ),
+                                                    )
+                                            }),
+                                        ))
+                                        .on_click_stop(move |_| {
+                                            steps_expanded
+                                                .update(|e| *e = !*e);
+                                        })
+                                        .style(move |s| {
+                                            s.items_center()
+                                                .gap(4.0)
+                                                .cursor(CursorStyle::Pointer)
+                                                .selectable(false)
+                                        }),
+                                        container(
+                                            dyn_stack(
+                                                move || {
+                                                    steps
+                                                        .get()
+                                                        .into_iter()
+                                                        .enumerate()
+                                                },
+                                                |(i, _)| *i,
+                                                move |(_, row)| {
+                                                    let row_error = row.error;
+                                                    let row_title =
+                                                        row.title.clone();
+                                                    let row_detail =
+                                                        row.detail.clone();
+                                                    h_stack((
+                                                        label(move || {
+                                                            row_title.clone()
+                                                        })
+                                                        .style(move |s| {
+                                                            s.font_size(11.0)
+                                                                .font_bold()
+                                                                .color(
+                                                                    config.get().color(
+                                                                        if row_error {
+                                                                            LapceColor::LAPCE_ERROR
+                                                                        } else {
+                                                                            LapceColor::EDITOR_FOREGROUND
+                                                                        },
+                                                                    ),
+                                                                )
+                                                        }),
+                                                        label(move || {
+                                                            row_detail.clone()
+                                                        })
+                                                        .style(move |s| {
+                                                            s.font_size(11.0)
+                                                                .min_width(0.0)
+                                                                .text_ellipsis()
+                                                                .color(
+                                                                    config.get().color(
+                                                                        LapceColor::EDITOR_DIM,
+                                                                    ),
+                                                                )
+                                                        }),
+                                                    ))
+                                                    .style(|s| {
+                                                        s.items_center()
+                                                            .gap(6.0)
+                                                            .width_full()
+                                                    })
+                                                },
+                                            )
+                                            .style(|s| {
+                                                s.flex_col()
+                                                    .gap(2.0)
+                                                    .width_full()
+                                                    .margin_top(4.0)
+                                            }),
+                                        )
+                                        .style(move |s| {
+                                            let s = s.width_full();
+                                            if steps_expanded.get() {
+                                                s
+                                            } else {
+                                                s.display(Display::None)
+                                            }
+                                        }),
+                                    ))
+                                    .style(|s| s.flex_col().width_full()),
+                                )
+                                .style(move |s| {
+                                    let s = s
+                                        .width_full()
+                                        .margin_bottom(6.0)
+                                        .padding(6.0)
+                                        .border(1.0)
+                                        .border_radius(6.0)
+                                        .border_color(
+                                            config.get().color(
+                                                LapceColor::LAPCE_BORDER,
+                                            ),
+                                        );
+                                    if steps.get().is_empty() {
+                                        s.display(Display::None)
+                                    } else {
+                                        s
+                                    }
+                                })
+                            },
                             dyn_stack(
                                 move || {
                                     parse_markdown(&body.get(), 1.5, &config.get())
@@ -2183,5 +2388,27 @@ mod walkthrough_tests {
         assert!(md.ends_with("[walkthrough truncated to fit the file cap]\n"));
         assert!(std::str::from_utf8(md.as_bytes()).is_ok());
         assert!(md.len() <= super::WALKTHROUGH_CAP + 64);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clip_step_detail;
+
+    #[test]
+    fn clip_step_detail_bounds_and_ellipsis() {
+        assert_eq!(clip_step_detail("short.rs"), "short.rs");
+        let exact: String = "a".repeat(120);
+        assert_eq!(clip_step_detail(&exact), exact);
+        let long: String = "b".repeat(121);
+        let clipped = clip_step_detail(&long);
+        assert_eq!(clipped.chars().count(), 121);
+        assert!(clipped.ends_with('\u{2026}'));
+        // Non-ASCII: char-boundary safe, never panics.
+        let unicode: String = "\u{1f980}".repeat(200);
+        let clipped = clip_step_detail(&unicode);
+        assert_eq!(clipped.chars().count(), 121);
+        assert!(clipped.ends_with('\u{2026}'));
+        assert_eq!(clip_step_detail(""), "");
     }
 }
