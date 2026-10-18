@@ -769,36 +769,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                 return Err(format!("Symbol search failed: {e:?}"));
                             }
                         };
-                        let truncated = symbols.len() > 100;
-                        let rows: Vec<_> = symbols
-                            .into_iter()
-                            .take(100)
-                            .map(|s| {
-                                let path = s
-                                    .location
-                                    .uri
-                                    .to_file_path()
-                                    .ok()
-                                    .and_then(|p| {
-                                        p.strip_prefix(&root)
-                                            .ok()
-                                            .map(|r| {
-                                                r.to_string_lossy().into_owned()
-                                            })
-                                    })
-                                    .unwrap_or_else(|| {
-                                        s.location.uri.to_string()
-                                    });
-                                serde_json::json!({
-                                    "name": s.name,
-                                    "kind": format!("{:?}", s.kind),
-                                    "container": s.container_name,
-                                    "path": path,
-                                    "line": s.location.range.start.line + 1,
-                                })
-                            })
-                            .collect();
-                        Ok(serde_json::json!({"symbols": rows, "truncated": truncated}).to_string())
+                        Ok(symbol_rows_json(symbols, &root))
                     }
                     "run_command" => {
                         let command = call.arguments["command"]
@@ -811,28 +782,11 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             command: command.to_string(),
                             respond: respond_tx,
                         });
-                        let deadline = std::time::Instant::now()
-                            + std::time::Duration::from_secs(300);
-                        let approved = loop {
-                            if cancelled.load(Ordering::Acquire) {
-                                return Err("Cancelled".into());
-                            }
-                            match respond_rx.recv_timeout(
-                                std::time::Duration::from_millis(100),
-                            ) {
-                                Ok(v) => break v,
-                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                                    if std::time::Instant::now() > deadline {
-                                        return Err(
-                                            "Command approval timed out".into()
-                                        );
-                                    }
-                                }
-                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                                    break false;
-                                }
-                            }
-                        };
+                        let approved = crate::agent_exec::await_approval(
+                            &respond_rx,
+                            &cancelled,
+                            std::time::Duration::from_secs(300),
+                        )?;
                         if !approved {
                             return Err("Denied by owner".into());
                         }
@@ -2901,9 +2855,111 @@ mod walkthrough_tests {
     }
 }
 
+/// Render LSP workspace symbols as the tool result JSON the model
+/// reads: capped at 100 rows, workspace-relative paths when the URI
+/// maps under the scoped root, 1-based lines.
+fn symbol_rows_json(
+    symbols: Vec<lsp_types::SymbolInformation>,
+    root: &std::path::Path,
+) -> String {
+    let truncated = symbols.len() > 100;
+    let rows: Vec<_> = symbols
+        .into_iter()
+        .take(100)
+        .map(|s| {
+            let path = s
+                .location
+                .uri
+                .to_file_path()
+                .ok()
+                .and_then(|p| {
+                    p.strip_prefix(root)
+                        .ok()
+                        .map(|r| r.to_string_lossy().into_owned())
+                })
+                .unwrap_or_else(|| s.location.uri.to_string());
+            serde_json::json!({
+                "name": s.name,
+                "kind": format!("{:?}", s.kind),
+                "container": s.container_name,
+                "path": path,
+                "line": s.location.range.start.line + 1,
+            })
+        })
+        .collect();
+    serde_json::json!({"symbols": rows, "truncated": truncated}).to_string()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::clip_step_detail;
+    use super::{clip_step_detail, symbol_rows_json};
+
+    fn test_symbol(
+        name: &str,
+        path: &std::path::Path,
+        line: u32,
+    ) -> lsp_types::SymbolInformation {
+        #[allow(deprecated)]
+        lsp_types::SymbolInformation {
+            name: name.to_string(),
+            kind: lsp_types::SymbolKind::FUNCTION,
+            tags: None,
+            deprecated: None,
+            location: lsp_types::Location {
+                uri: lsp_types::Url::from_file_path(path).unwrap(),
+                range: lsp_types::Range {
+                    start: lsp_types::Position { line, character: 0 },
+                    end: lsp_types::Position { line, character: 1 },
+                },
+            },
+            container_name: Some("tests".to_string()),
+        }
+    }
+
+    #[test]
+    fn symbol_rows_relativize_and_number_lines() {
+        let root = std::env::temp_dir();
+        let inside = root.join("src").join("lib.rs");
+        let outside = std::path::PathBuf::from(if cfg!(windows) {
+            "C:/elsewhere/x.rs"
+        } else {
+            "/definitely/outside/x.rs"
+        });
+        let parsed: serde_json::Value = serde_json::from_str(&symbol_rows_json(
+            vec![test_symbol("run", &inside, 41), test_symbol("halt", &outside, 0)],
+            &root,
+        ))
+        .unwrap();
+        assert_eq!(parsed["truncated"], false);
+        let rows = parsed["symbols"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        let expected = std::path::Path::new("src").join("lib.rs");
+        assert_eq!(rows[0]["path"], serde_json::json!(expected.to_string_lossy()));
+        assert_eq!(rows[0]["line"], 42);
+        assert_eq!(rows[0]["container"], "tests");
+        assert_eq!(rows[0]["kind"], "Function");
+        // Outside the scoped root the raw URI is kept, never a fake
+        // relative path.
+        assert!(rows[1]["path"].as_str().unwrap().contains("outside/x.rs"));
+        assert_eq!(rows[1]["line"], 1);
+    }
+
+    #[test]
+    fn symbol_rows_cap_at_100_with_flag() {
+        let root = std::env::temp_dir();
+        let inside = root.join("a.rs");
+        let many: Vec<_> = (0..150)
+            .map(|i| test_symbol(&format!("f{i}"), &inside, i))
+            .collect();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&symbol_rows_json(many, &root)).unwrap();
+        assert_eq!(parsed["truncated"], true);
+        assert_eq!(parsed["symbols"].as_array().unwrap().len(), 100);
+        let empty: serde_json::Value =
+            serde_json::from_str(&symbol_rows_json(vec![], &root)).unwrap();
+        assert_eq!(empty["truncated"], false);
+        assert_eq!(empty["symbols"].as_array().unwrap().len(), 0);
+    }
 
     #[test]
     fn clip_step_detail_bounds_and_ellipsis() {

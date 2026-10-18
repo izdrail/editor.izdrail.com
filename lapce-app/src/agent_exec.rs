@@ -147,6 +147,33 @@ pub fn run_shell_command(
     }
 }
 
+/// Block the worker on the owner's Allow once / Deny decision for one
+/// command. Cancellation wins; a dropped card counts as denial; an
+/// unanswered card times out. One-shot: nothing is remembered.
+pub fn await_approval(
+    respond_rx: &std::sync::mpsc::Receiver<bool>,
+    cancelled: &Arc<AtomicBool>,
+    timeout: Duration,
+) -> Result<bool, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if cancelled.load(Ordering::Acquire) {
+            return Err("Cancelled".into());
+        }
+        match respond_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(v) => return Ok(v),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if Instant::now() > deadline {
+                    return Err("Command approval timed out".into());
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                return Ok(false);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +218,71 @@ mod tests {
             .unwrap();
         assert!(out.len() < 66 * 1024);
         assert!(out.ends_with("[output clipped]"));
+    }
+
+    #[test]
+    fn approval_allow_deny_disconnect() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(true).unwrap();
+        assert_eq!(
+            await_approval(
+                &rx,
+                &Arc::new(AtomicBool::new(false)),
+                Duration::from_secs(5)
+            )
+            .unwrap(),
+            true
+        );
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(false).unwrap();
+        assert_eq!(
+            await_approval(
+                &rx,
+                &Arc::new(AtomicBool::new(false)),
+                Duration::from_secs(5)
+            )
+            .unwrap(),
+            false
+        );
+
+        // Dropped card = denial, not a hang.
+        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+        drop(tx);
+        assert_eq!(
+            await_approval(
+                &rx,
+                &Arc::new(AtomicBool::new(false)),
+                Duration::from_secs(5)
+            )
+            .unwrap(),
+            false
+        );
+    }
+
+    #[test]
+    fn approval_timeout_and_cancellation() {
+        let (_tx, rx) = std::sync::mpsc::channel::<bool>();
+        let start = Instant::now();
+        let error = await_approval(
+            &rx,
+            &Arc::new(AtomicBool::new(false)),
+            Duration::from_millis(300),
+        )
+        .unwrap_err();
+        assert!(error.contains("timed out"), "unexpected: {error}");
+        assert!(start.elapsed() < Duration::from_secs(5));
+
+        let (_tx, rx) = std::sync::mpsc::channel::<bool>();
+        assert_eq!(
+            await_approval(
+                &rx,
+                &Arc::new(AtomicBool::new(true)),
+                Duration::from_secs(5)
+            )
+            .unwrap_err(),
+            "Cancelled"
+        );
     }
 
     #[test]
