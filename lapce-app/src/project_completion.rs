@@ -4,7 +4,8 @@
 //! `__('...')` its translation keys, and inside `wire:model="..."` /
 //! `wire:click="..."` in a Livewire view the paired component's public
 //! properties / methods. In a `.blade.php` view, typing `$` offers the
-//! variables the view defines above the cursor. Same static
+//! variables the view defines above the cursor, and typing `<x-`
+//! offers the app's Blade component tags. Same static
 //! scans as the palettes (nothing is executed), cached 30 s per workspace
 //! (per component class for Livewire) so completion stays cheap on every
 //! keystroke.
@@ -43,6 +44,8 @@ pub enum Kind {
     /// Livewire `wire:click="..."` and the other event attributes: a
     /// method of the component class paired with the view.
     LivewireAction,
+    /// Blade component tag `<x-<partial>` (dots for nested components).
+    ComponentTag,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -88,6 +91,36 @@ pub fn context(line: &str) -> Option<Kind> {
             }
         }
         break;
+    }
+    // Blade component tag `<x-<partial>`: the tail of the line is tag
+    // characters (letters, digits, `.`, `-`, `_`) right after `<x-`.
+    // Runs before the call-argument scan so a `(...)` earlier on the
+    // line cannot misroute it.
+    {
+        let b = line.as_bytes();
+        let mut i = b.len();
+        while i > 0
+            && matches!(b[i - 1], b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'-' | b'_')
+        {
+            i -= 1;
+        }
+        // The marker's `x-` is itself in the tail class, so the tail
+        // starts right after `<` (i is a char boundary: the scan only
+        // consumed ASCII bytes, and a non-class byte is never a UTF-8
+        // continuation byte that ends mid-tail).
+        if i >= 1
+            && line.get(..i).is_some_and(|h| h.ends_with('<'))
+            && line[i..].starts_with("x-")
+            && !line[i..].starts_with("x-slot")
+        {
+            let ident_end = line[..i - 1]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !ident_end {
+                return Some(Kind::ComponentTag);
+            }
+        }
     }
     let paren = line.rfind('(')?;
     let before = &line[..paren];
@@ -150,6 +183,7 @@ struct Lists {
     sections: Vec<String>,
     stacks: Vec<String>,
     langs: Vec<String>,
+    components: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -360,6 +394,7 @@ fn lists(root: &Path) -> Lists {
     let (envs, configs) = env_config_keys(root);
     let (sections, stacks) = layout_names(root);
     let langs = lang_keys(root);
+    let components = component_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -370,6 +405,7 @@ fn lists(root: &Path) -> Lists {
         sections,
         stacks,
         langs,
+        components,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -637,6 +673,88 @@ fn livewire_methods(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
 
 /// Completion items for the project context at the end of `line_before`.
 /// `file` is the edited file; only Livewire completion uses it.
+/// Blade component tag names from `resources/views/components`:
+/// `forms/input.blade.php` -> `forms.input`, and an `index.blade.php`
+/// names its directory, matching the component resolver in
+/// `props_draft.rs`. Symlinks are not followed; bounded walk.
+fn component_names(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, base: &Path, out: &mut Vec<String>) {
+        if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, base, out);
+            } else if ft.is_file() {
+                let Some(name) = p.file_name().and_then(|n| n.to_str())
+                else {
+                    continue;
+                };
+                let Some(stem) = name.strip_suffix(".blade.php") else {
+                    continue;
+                };
+                let Ok(rel) = p.strip_prefix(base) else { continue };
+                let parent = rel
+                    .parent()
+                    .map(|pp| pp.to_string_lossy().replace(['/', '\\'], "."))
+                    .filter(|s| !s.is_empty());
+                let dotted = if stem == "index" {
+                    match parent {
+                        Some(d) => d,
+                        None => continue,
+                    }
+                } else {
+                    match parent {
+                        Some(d) => format!("{d}.{stem}"),
+                        None => stem.to_string(),
+                    }
+                };
+                if out.len() < MAX_VIEW_FILES && !out.contains(&dotted) {
+                    out.push(dotted);
+                }
+            }
+        }
+    }
+    let base = root.join("resources").join("views").join("components");
+    let mut out = Vec::new();
+    walk(&base, 0, &base, &mut out);
+    out
+}
+
+/// `<x-...>` tag completion: only inside a `.blade.php` view.
+fn component_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
+    let is_blade = file
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(".blade.php"));
+    if !is_blade {
+        return Vec::new();
+    }
+    lists(root)
+        .components
+        .into_iter()
+        .take(MAX_ITEMS)
+        .map(|n| CompletionItem {
+            label: n,
+            kind: Some(CompletionItemKind::CLASS),
+            detail: Some("Blade component".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -652,6 +770,9 @@ pub fn items(
     if kind == Kind::LivewireAction {
         return livewire_methods(root, file);
     }
+    if kind == Kind::ComponentTag {
+        return component_tags(root, file);
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -664,6 +785,8 @@ pub fn items(
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireModel => (Vec::new(), "Livewire property"),
         Kind::LivewireAction => (Vec::new(), "Livewire method"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::ComponentTag => (Vec::new(), "Blade component"),
     };
     names
         .into_iter()
@@ -890,6 +1013,58 @@ mod tests {
     {{ $x }}
 @endif
 "#;
+
+    #[test]
+    fn component_tag_context() {
+        assert_eq!(context("<x-"), Some(Kind::ComponentTag));
+        assert_eq!(context("<x-al"), Some(Kind::ComponentTag));
+        assert_eq!(context(" <x-forms.in"), Some(Kind::ComponentTag));
+        assert_eq!(context("route(\"x\") <x-btn"), Some(Kind::ComponentTag));
+        // Multibyte chars before the tag must not break the tail scan.
+        assert_eq!(context("\u{e9}<x-fo"), Some(Kind::ComponentTag));
+        assert_eq!(context("\u{65e5}<x-"), Some(Kind::ComponentTag));
+        // Inside an attribute value, after a name char, slots, closed
+        // tag name, CSS class values, bare `<x`.
+        assert_eq!(context("<x-alert type=\"x-"), None);
+        assert_eq!(context("a<x-b"), None);
+        assert_eq!(context("x_<x-a"), None);
+        assert_eq!(context("<x-slot"), None);
+        assert_eq!(context("<x-slot:na"), None);
+        assert_eq!(context("<x-alert "), None);
+        assert_eq!(context("<div class=\"x-foo"), None);
+        assert_eq!(context("<x"), None);
+    }
+
+    #[test]
+    fn offers_component_tags() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/components/alert.blade.php", "");
+        put(r, "resources/views/components/forms/input.blade.php", "");
+        put(r, "resources/views/components/card/index.blade.php", "");
+        put(r, "resources/views/components/index.blade.php", "");
+        put(r, "resources/views/components/plain.php", "");
+        put(r, "resources/views/pages/home.blade.php", "");
+        let view = r.join("resources/views/pages/home.blade.php");
+        let labels = items(r, Some(&view), "<x-")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"alert".to_string()));
+        assert!(labels.contains(&"forms.input".to_string()));
+        // An index.blade.php names its directory; the top-level index
+        // names nothing; non-Blade files are not components.
+        assert!(labels.contains(&"card".to_string()));
+        assert!(!labels.contains(&"index".to_string()));
+        assert!(!labels.contains(&"plain".to_string()));
+        let item = items(r, Some(&view), "<x-al").into_iter().next().unwrap();
+        assert_eq!(item.kind, Some(CompletionItemKind::CLASS));
+        // Gate: component tags only complete inside a .blade.php view.
+        let plain = r.join("routes/web.php");
+        put(r, "routes/web.php", "<?php");
+        assert!(items(r, Some(&plain), "<x-").is_empty());
+        assert!(items(r, None, "<x-").is_empty());
+    }
 
     #[test]
     fn blade_variables_collects_view_scope() {
