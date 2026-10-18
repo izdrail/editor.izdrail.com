@@ -149,6 +149,7 @@ fn file_node_text_color(
         }
         Some(FileDiffKind::Added) => LapceColor::SOURCE_CONTROL_ADDED,
         Some(FileDiffKind::Deleted) => LapceColor::SOURCE_CONTROL_REMOVED,
+        Some(FileDiffKind::Conflicted) => LapceColor::LAPCE_ERROR,
         None => LapceColor::PANEL_FOREGROUND,
     };
 

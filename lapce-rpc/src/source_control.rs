@@ -21,6 +21,8 @@ pub enum FileDiff {
     Added(PathBuf),
     Deleted(PathBuf),
     Renamed(PathBuf, PathBuf),
+    /// Unmerged after a merge/pull: listed but refused by commit.
+    Conflicted(PathBuf),
 }
 
 impl FileDiff {
@@ -29,7 +31,8 @@ impl FileDiff {
             FileDiff::Modified(p)
             | FileDiff::Added(p)
             | FileDiff::Deleted(p)
-            | FileDiff::Renamed(_, p) => p,
+            | FileDiff::Renamed(_, p)
+            | FileDiff::Conflicted(p) => p,
         }
     }
 
@@ -39,6 +42,7 @@ impl FileDiff {
             FileDiff::Added(_) => FileDiffKind::Added,
             FileDiff::Deleted(_) => FileDiffKind::Deleted,
             FileDiff::Renamed(_, _) => FileDiffKind::Renamed,
+            FileDiff::Conflicted(_) => FileDiffKind::Conflicted,
         }
     }
 }
@@ -49,4 +53,5 @@ pub enum FileDiffKind {
     Added,
     Deleted,
     Renamed,
+    Conflicted,
 }

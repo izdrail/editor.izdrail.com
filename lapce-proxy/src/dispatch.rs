@@ -1937,6 +1937,14 @@ fn git_commit(
             FileDiff::Deleted(p) => {
                 index.remove_path(p.strip_prefix(workspace_path)?)?;
             }
+            FileDiff::Conflicted(p) => {
+                // Never `git add` a conflicted path: that would mark
+                // it resolved with the conflict markers included.
+                return Err(anyhow!(
+                    "{} has unresolved merge conflicts - resolve them in the editor first.",
+                    p.display()
+                ));
+            }
         }
     }
     index.write()?;
@@ -2104,6 +2112,11 @@ fn git_delta_format(
             delta.new_file().id(),
             delta.new_file().path().map(|p| workspace_path.join(p))?,
         )),
+        git2::Delta::Conflicted => Some((
+            git2::Delta::Conflicted,
+            delta.new_file().id(),
+            delta.new_file().path().map(|p| workspace_path.join(p))?,
+        )),
         _ => None,
     }
 }
@@ -2220,6 +2233,7 @@ fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
             git2::Delta::Added => FileDiff::Added(delta.2.clone()),
             git2::Delta::Deleted => FileDiff::Deleted(delta.2.clone()),
             git2::Delta::Modified => FileDiff::Modified(delta.2.clone()),
+            git2::Delta::Conflicted => FileDiff::Conflicted(delta.2.clone()),
             _ => continue,
         };
         file_diffs.push(diff);
@@ -2228,6 +2242,7 @@ fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
         FileDiff::Modified(p)
         | FileDiff::Added(p)
         | FileDiff::Renamed(p, _)
+        | FileDiff::Conflicted(p)
         | FileDiff::Deleted(p) => p.clone(),
     });
     let (ahead, behind) = git_ahead_behind(&repo, &name);

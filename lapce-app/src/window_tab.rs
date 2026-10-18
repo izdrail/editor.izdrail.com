@@ -1549,7 +1549,13 @@ impl WindowTabData {
                         FileDiff::Added(path) => {
                             self.common.proxy.trash_path(path, Box::new(|_| {}));
                         }
-                        FileDiff::Modified(path) | FileDiff::Deleted(path) => {
+                        FileDiff::Modified(path)
+                        | FileDiff::Deleted(path)
+                        // Conflicted entries keep their index stages, so
+                        // the proxy-side checkout refuses and nothing
+                        // happens - discarding merge state needs an
+                        // explicit abort, not a file restore.
+                        | FileDiff::Conflicted(path) => {
                             self.common.proxy.git_discard_files_changes(vec![path]);
                         }
                         FileDiff::Renamed(old_path, new_path) => {

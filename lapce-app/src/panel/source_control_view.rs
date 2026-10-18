@@ -322,6 +322,7 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
                         FileDiff::Added(_) => LapceIcons::SCM_DIFF_ADDED,
                         FileDiff::Deleted(_) => LapceIcons::SCM_DIFF_REMOVED,
                         FileDiff::Renamed(_, _) => LapceIcons::SCM_DIFF_RENAMED,
+                        FileDiff::Conflicted(_) => LapceIcons::WARNING,
                     };
                     config.get().ui_svg(svg)
                 })
@@ -335,6 +336,7 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
                         FileDiff::Renamed(_, _) => {
                             LapceColor::SOURCE_CONTROL_MODIFIED
                         }
+                        FileDiff::Conflicted(_) => LapceColor::LAPCE_ERROR,
                     };
                     let color = config.color(color);
                     s.min_width(size).size(size, size).color(color)
