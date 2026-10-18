@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use crate::agent_acp::{self, AcpError, AcpMessage, FsRead};
+use crate::agent_acp::{self, AcpError, AcpMessage, FsRead, FsWrite};
 use crate::agent_acp_process::next_id;
 
 /// Cap on bytes read when answering `fs/read_text_file`.
@@ -57,6 +57,11 @@ pub enum TurnEvent {
 pub struct AcpSession {
     phase: Phase,
     workspace: PathBuf,
+    /// Agent file writes staged for owner review: (canonical path,
+    /// content), last write per path wins. Drained at turn end and
+    /// handed to the review panel; never written to disk or buffers
+    /// by the session itself.
+    staged_writes: Vec<(String, String)>,
     session_id: Option<String>,
     init_id: i64,
     auth_id: Option<i64>,
@@ -98,15 +103,17 @@ impl AcpSession {
         resume: Option<String>,
     ) -> (Self, Value) {
         let init_id = next_id();
-        // Advertise fs read but NOT write: writes stay behind the review
-        // UI, and the agent must not plan around a capability we refuse.
+        // Advertise fs read AND write: writes are staged for owner
+        // review (never applied directly), so the capability is
+        // honest - the agent's writes do land, via the review panel.
         let mut hello = agent_acp::initialize(init_id, client_name, client_version, true, false);
         if let Some(w) = hello.pointer_mut("/params/clientCapabilities/fs/writeTextFile") {
-            *w = Value::Bool(false);
+            *w = Value::Bool(true);
         }
         let session = AcpSession {
             phase: Phase::Initializing,
             workspace,
+            staged_writes: Vec::new(),
             session_id: None,
             init_id,
             auth_id: None,
@@ -239,14 +246,16 @@ impl AcpSession {
                         out.push(error_response(id, -32602, "bad fs/read_text_file params"));
                     }
                 },
-                "fs/write_text_file" => {
-                    out.push(error_response(
-                        id,
-                        -32601,
-                        "writes are disabled until the review UI owns them",
-                    ));
-                    events.push(TurnEvent::Notice { text: "refused an agent file write".into() });
-                }
+                "fs/write_text_file" => match agent_acp::parse_fs_write(params) {
+                    Some(write) => {
+                        let (reply, event) = self.stage_fs_write(id, &write);
+                        out.push(reply);
+                        events.push(event);
+                    }
+                    None => {
+                        out.push(error_response(id, -32602, "bad fs/write_text_file params"));
+                    }
+                },
                 other => {
                     out.push(error_response(
                         id,
@@ -353,6 +362,90 @@ impl AcpSession {
         }
     }
 
+    /// Stage an agent file write for owner review instead of writing
+    /// it: confined, existing files only; last write per path wins.
+    /// The agent gets success - the write IS accepted, into the
+    /// review panel, which owns actually applying it.
+    fn stage_fs_write(&mut self, id: &Value, write: &FsWrite) -> (Value, TurnEvent) {
+        let candidate = {
+            let p = Path::new(&write.path);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                self.workspace.join(p)
+            }
+        };
+        let canonical = match candidate.canonicalize() {
+            Ok(c) => c,
+            Err(e) => {
+                return (
+                    error_response(
+                        id,
+                        -32602,
+                        &format!("cannot stage write to {}: {e}", write.path),
+                    ),
+                    TurnEvent::Notice {
+                        text: format!(
+                            "refused a write to {}: not an existing file",
+                            write.path
+                        ),
+                    },
+                );
+            }
+        };
+        if !canonical.starts_with(&self.workspace) {
+            return (
+                error_response(
+                    id,
+                    -32602,
+                    &format!("{} is outside the workspace", write.path),
+                ),
+                TurnEvent::Notice {
+                    text: format!(
+                        "refused an out-of-workspace write to {}",
+                        write.path
+                    ),
+                },
+            );
+        }
+        if write.content.len() > 2 * 1024 * 1024 {
+            return (
+                error_response(id, -32602, "write exceeds the 2 MiB review limit"),
+                TurnEvent::Notice {
+                    text: format!("refused an oversized write to {}", write.path),
+                },
+            );
+        }
+        let path = canonical.to_string_lossy().into_owned();
+        if let Some(entry) =
+            self.staged_writes.iter_mut().find(|(p, _)| *p == path)
+        {
+            entry.1 = write.content.clone();
+        } else {
+            if self.staged_writes.len() >= 32 {
+                return (
+                    error_response(id, -32602, "too many staged writes (32 max)"),
+                    TurnEvent::Notice {
+                        text: "refused a write past the 32-file review limit"
+                            .into(),
+                    },
+                );
+            }
+            self.staged_writes.push((path.clone(), write.content.clone()));
+        }
+        (
+            result_response(id.clone(), Value::Null),
+            TurnEvent::Notice {
+                text: format!("staged a write to {path} for owner review"),
+            },
+        )
+    }
+
+    /// Drain writes staged during the turn: (canonical path, content).
+    pub fn take_staged_writes(&mut self) -> Vec<(String, String)> {
+        std::mem::take(&mut self.staged_writes)
+    }
+
     fn answer_fs_read(&self, id: &Value, read: &FsRead) -> (Value, TurnEvent) {
         match read_within(&self.workspace, &read.path, read.line, read.limit) {
             Ok(content) => (
@@ -455,7 +548,82 @@ mod tests {
     }
 
     fn request(id: i64, method: &str, params: Value) -> AcpMessage {
-        AcpMessage::Request { id: json!(id), method: method.to_string(), params }
+        AcpMessage::Request {
+            id: json!(id),
+            method: method.to_string(),
+            params,
+        }
+    }
+
+    fn write_request(id: i64, path: &str, content: &str) -> AcpMessage {
+        request(
+            id,
+            "fs/write_text_file",
+            json!({"sessionId": "s", "path": path, "content": content}),
+        )
+    }
+
+    #[test]
+    fn writes_stage_for_review_and_last_write_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "old").unwrap();
+        let (mut session, hello) =
+            AcpSession::start_resumable(dir.path().to_path_buf(), "t", "1", None);
+        // Write capability is advertised.
+        assert_eq!(
+            hello.pointer("/params/clientCapabilities/fs/writeTextFile"),
+            Some(&Value::Bool(true))
+        );
+
+        let (events, out) = session.handle(&write_request(
+            7,
+            dir.path().join("a.txt").to_str().unwrap(),
+            "v1",
+        ));
+        assert!(out[0].pointer("/result").is_some());
+        assert!(matches!(events[0], TurnEvent::Notice { .. }));
+        // Disk is untouched: staging is not applying.
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "old"
+        );
+
+        let _ = session.handle(&write_request(
+            8,
+            dir.path().join("a.txt").to_str().unwrap(),
+            "v2",
+        ));
+        let staged = session.take_staged_writes();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].1, "v2");
+        // Drained.
+        assert!(session.take_staged_writes().is_empty());
+    }
+
+    #[test]
+    fn writes_refuse_outside_missing_and_oversized() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut session, _) =
+            AcpSession::start_resumable(dir.path().to_path_buf(), "t", "1", None);
+
+        let (_events, out) =
+            session.handle(&write_request(1, "/etc/hostname", "x"));
+        assert!(out[0].pointer("/error").is_some());
+
+        let missing = dir.path().join("new-file.txt");
+        let (_events, out) =
+            session.handle(&write_request(2, missing.to_str().unwrap(), "x"));
+        assert!(out[0].pointer("/error").is_some());
+
+        std::fs::write(dir.path().join("a.txt"), "old").unwrap();
+        let huge = "x".repeat(2 * 1024 * 1024 + 1);
+        let (_events, out) = session.handle(&write_request(
+            3,
+            dir.path().join("a.txt").to_str().unwrap(),
+            &huge,
+        ));
+        assert!(out[0].pointer("/error").is_some());
+        assert!(session.take_staged_writes().is_empty());
     }
 
     fn hello_result(auth: bool) -> Value {
@@ -608,6 +776,9 @@ mod tests {
 
     #[test]
     fn fs_write_is_refused() {
+        // Writes are staged for owner review since the review-lane
+        // milestone; a write to a file that does not exist is refused
+        // (no implicit creation) and stages nothing.
         let mut session = ready_session("fswrite");
         let req = request(
             9003,
@@ -615,8 +786,9 @@ mod tests {
             json!({ "sessionId": "s-1", "path": "x.php", "content": "owned" }),
         );
         let (events, out) = session.handle(&req);
-        assert_eq!(out[0]["error"]["code"], json!(-32601));
+        assert_eq!(out[0]["error"]["code"], json!(-32602));
         assert_eq!(events.len(), 1);
+        assert!(session.take_staged_writes().is_empty());
     }
 
     #[test]

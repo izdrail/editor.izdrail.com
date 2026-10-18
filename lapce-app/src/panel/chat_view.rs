@@ -450,6 +450,9 @@ fn send(tab: &WindowTabData) {
             }
             match update {
                 Update::Delta(text) => reply.set(text),
+                // Staged writes are drained for owner review at turn
+                // end by the other Update consumer.
+                Update::StagedWrites(_) => {}
                 Update::Done(text) => {
                     reply.set(text);
                     if record {
@@ -1129,6 +1132,11 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     let (tx, rx) = std::sync::mpsc::channel();
     let progress = floem::ext_event::create_signal_from_channel(rx);
     let done = data.clone();
+    let review_tab = tab.clone();
+    let staged_writes = std::rc::Rc::new(
+        std::cell::RefCell::new(Vec::<(String, String)>::new()),
+    );
+    let staged_writes_effect = staged_writes.clone();
     create_effect(move |_| {
         if let Some(update) = progress.get() {
             if !done.gate.accepts(run) {
@@ -1136,10 +1144,38 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
             }
             match update {
                 Update::Delta(text) => reply.set(text),
+                Update::StagedWrites(writes) => {
+                    *staged_writes_effect.borrow_mut() = writes;
+                }
                 Update::Done(text) => {
                     reply.set(text);
                     done.busy.set(false);
                     done.state.set(RunState::Done);
+                    // Hand any staged agent writes to the owner-review
+                    // lane (busy cleared, so prepare's guard passes).
+                    let writes = std::mem::take(
+                        &mut *staged_writes_effect.borrow_mut(),
+                    );
+                    if !writes.is_empty() {
+                        let json = serde_json::json!({
+                            "changes": writes.iter().map(|(path, content)| {
+                                serde_json::json!({
+                                    "path": path,
+                                    "replacement": content,
+                                })
+                            }).collect::<Vec<_>>()
+                        });
+                        match review_tab
+                            .chat
+                            .review
+                            .prepare(&review_tab, &json.to_string())
+                        {
+                            Ok(()) => {}
+                            Err(error) => done.error.set(format!(
+                                "Staged writes could not enter review: {error}"
+                            )),
+                        }
+                    }
                     done.persist(save);
                 }
                 Update::Error(error) => {
@@ -1159,7 +1195,21 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
             &program, &arg_refs, &root, &composed, resume, &cancelled, &acp_pid, &tx,
         );
         let _ = tx.send(match result {
-            Ok((text, resumable_id)) => {
+            Ok((text, resumable_id, writes)) => {
+                let writes: Vec<(String, String)> = writes
+                    .into_iter()
+                    .filter_map(|(path, content)| {
+                        let rel = std::path::Path::new(&path)
+                            .strip_prefix(&root)
+                            .ok()?
+                            .to_string_lossy()
+                            .into_owned();
+                        Some((rel, content))
+                    })
+                    .collect();
+                if !writes.is_empty() {
+                    let _ = tx.send(Update::StagedWrites(writes));
+                }
                 if let Some(session_id) = resumable_id {
                     let entry = crate::agent_acp_store::StoredSession {
                         session_id,
@@ -1221,7 +1271,7 @@ fn run_acp_turn(
     cancelled: &Arc<AtomicBool>,
     pid_slot: &Arc<Mutex<Option<u32>>>,
     tx: &std::sync::mpsc::Sender<Update>,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>, Vec<(String, String)>), String> {
     let mut process = crate::agent_acp_process::AcpProcess::spawn(program, args, root)
         .map_err(|e| format!("Could not launch `{program}`: {e}"))?;
     *pid_slot.lock().unwrap() = Some(process.id());
@@ -1241,7 +1291,7 @@ fn drive_acp_turn(
     resume: Option<String>,
     cancelled: &Arc<AtomicBool>,
     tx: &std::sync::mpsc::Sender<Update>,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>, Vec<(String, String)>), String> {
     use crate::agent_acp_session::{AcpSession, Phase, TurnEvent};
     let (mut session, hello) = AcpSession::start_resumable(
         root.to_path_buf(),
@@ -1324,7 +1374,8 @@ fn drive_acp_turn(
             } else {
                 None
             };
-            return Ok((text, resumable));
+            let writes = session.take_staged_writes();
+            return Ok((text, resumable, writes));
         }
     }
 }

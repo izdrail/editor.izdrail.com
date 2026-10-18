@@ -154,6 +154,9 @@ pub fn completion_url(endpoint: &str) -> Result<String, String> {
 #[derive(Clone)]
 pub enum Update {
     Delta(String),
+    /// ACP writes staged during the turn, awaiting owner review:
+    /// (workspace-relative path, full new content).
+    StagedWrites(Vec<(String, String)>),
     Done(String),
     Error(String),
 }
