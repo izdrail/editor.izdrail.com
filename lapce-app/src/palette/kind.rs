@@ -20,6 +20,7 @@ pub enum PaletteKind {
     Routes,
     BladeComponents,
     EnvConfigKeys,
+    Translations,
     Models,
     Tests,
     Migrations,
@@ -71,6 +72,7 @@ impl PaletteKind {
             | PaletteKind::Routes
             | PaletteKind::BladeComponents
             | PaletteKind::EnvConfigKeys
+            | PaletteKind::Translations
             | PaletteKind::Models
             | PaletteKind::Tests
             | PaletteKind::Migrations
@@ -149,6 +151,9 @@ impl PaletteKind {
             }
             PaletteKind::EnvConfigKeys => {
                 Some(LapceWorkbenchCommand::PaletteEnvConfigKeys)
+            }
+            PaletteKind::Translations => {
+                Some(LapceWorkbenchCommand::PaletteTranslations)
             }
             PaletteKind::Models => Some(LapceWorkbenchCommand::PaletteModels),
             PaletteKind::Tests => Some(LapceWorkbenchCommand::PaletteTests),
@@ -236,6 +241,7 @@ impl PaletteKind {
             | PaletteKind::Routes
             | PaletteKind::BladeComponents
             | PaletteKind::EnvConfigKeys
+            | PaletteKind::Translations
             | PaletteKind::Models
             | PaletteKind::Tests
             | PaletteKind::Migrations

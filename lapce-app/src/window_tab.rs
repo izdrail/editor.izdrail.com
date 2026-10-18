@@ -1256,6 +1256,9 @@ impl WindowTabData {
             PaletteEnvConfigKeys => {
                 self.palette.run(PaletteKind::EnvConfigKeys);
             }
+            PaletteTranslations => {
+                self.palette.run(PaletteKind::Translations);
+            }
             PaletteModels => {
                 self.palette.run(PaletteKind::Models);
             }

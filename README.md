@@ -130,6 +130,9 @@ Palette list of Eloquent models and their relationships (`hasMany`, `belongsTo`,
 ### Go to Env / Config Key
 Palette list of `.env` variable names and Laravel `config/*.php` keys. See [docs/go-to-env-config-key.md](docs/go-to-env-config-key.md).
 
+### Go to Translation
+Palette list of Laravel translation keys from PHP group files (dot-flattened, e.g. `auth.failed`) and JSON lang files, jumping to the defining line. See [docs/go-to-translation.md](docs/go-to-translation.md).
+
 ### Go to Blade Component
 Palette list of every `<x-...>` and `<livewire:...>` component in the project. See [docs/go-to-blade-component.md](docs/go-to-blade-component.md).
 
