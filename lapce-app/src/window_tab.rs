@@ -1286,6 +1286,9 @@ impl WindowTabData {
             PaletteRemoveWorktree => {
                 self.palette.run(PaletteKind::RemoveWorktree);
             }
+            PaletteWalkthroughs => {
+                self.palette.run(PaletteKind::Walkthroughs);
+            }
             PaletteCssClasses => {
                 self.palette.run(PaletteKind::CssClasses);
             }

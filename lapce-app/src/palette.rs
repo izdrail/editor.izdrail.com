@@ -462,6 +462,9 @@ impl PaletteData {
             PaletteKind::RemoveWorktree => {
                 self.get_worktrees_for_removal();
             }
+            PaletteKind::Walkthroughs => {
+                self.get_walkthroughs();
+            }
             PaletteKind::CssClasses => {
                 self.set_route_items(crate::tw_usage_index::discover);
             }
@@ -1437,6 +1440,45 @@ impl PaletteData {
             );
             return;
         }
+        self.items.set(items.into_iter().collect());
+    }
+
+    /// Exported walkthroughs (.lapce/walkthroughs/*.md, item 155),
+    /// newest first: the names are timestamped, so name order is time
+    /// order. Plain File items, so select opens them in the editor and
+    /// the standard file rendering applies. Capped at 50; a workspace
+    /// with no exports gets an empty list.
+    fn get_walkthroughs(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.items.set(Vec::new().into_iter().collect());
+            return;
+        };
+        let dir = root.join(".lapce").join("walkthroughs");
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().into_owned();
+                        name.ends_with(".md").then_some(name)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort_unstable_by(|a, b| b.cmp(a));
+        names.truncate(50);
+        let items: Vec<PaletteItem> = names
+            .into_iter()
+            .map(|name| {
+                let rel = PathBuf::from(".lapce").join("walkthroughs").join(&name);
+                let full_path = root.join(&rel);
+                PaletteItem {
+                    content: PaletteItemContent::File { path: rel, full_path },
+                    filter_text: name,
+                    score: 0,
+                    indices: Vec::new(),
+                }
+            })
+            .collect();
         self.items.set(items.into_iter().collect());
     }
 

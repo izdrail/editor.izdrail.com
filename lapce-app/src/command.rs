@@ -514,6 +514,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Git: Remove Worktree")]
     PaletteRemoveWorktree,
 
+    #[strum(serialize = "palette.walkthroughs")]
+    #[strum(message = "AI Chat: Walkthroughs")]
+    PaletteWalkthroughs,
+
     #[strum(serialize = "palette.css_classes")]
     #[strum(message = "CSS / Tailwind Classes in Use")]
     PaletteCssClasses,

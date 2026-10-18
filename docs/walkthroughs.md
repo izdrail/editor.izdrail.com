@@ -16,3 +16,12 @@ streaming; the file is capped at 512 KB with an explicit truncation
 marker, and a same-second export never overwrites the previous one.
 
 Requires an open folder; scratch windows have nowhere to write.
+
+## Browsing exports (item 162)
+
+Command palette: **AI Chat: Walkthroughs** (`palette.walkthroughs`)
+lists the workspace's `.lapce/walkthroughs/*.md` exports newest first
+(the timestamped names sort chronologically), capped at 50. Enter opens
+the walkthrough as a normal editor buffer - same open path as the file
+palette - so review and trimming happen in a real document. A workspace
+with no exports yet shows an empty list.
