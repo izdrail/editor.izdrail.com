@@ -134,6 +134,59 @@ impl Proposal {
         }
         Ok(Snapshot { before, applied })
     }
+    /// Like `stage`, but applies only the owner-accepted hunks of each
+    /// change. The digest still pins the full proposal; the masks are
+    /// owner input from the review UI, never model input, and are
+    /// validated against hunks recomputed from the pinned texts. A
+    /// change with no accepted hunk is left untouched.
+    pub fn stage_with_selection(
+        &self,
+        review: &Reviewed,
+        current: &BTreeMap<String, BufferState>,
+        masks: &[Vec<bool>],
+    ) -> Result<Snapshot, String> {
+        if self.digest()? != review.digest {
+            return Err("Approval does not cover this proposal".into());
+        }
+        if masks.len() != self.changes.len() {
+            return Err("Hunk selection does not match the proposal".into());
+        }
+        let mut before = BTreeMap::new();
+        let mut applied = BTreeMap::new();
+        for (change, mask) in self.changes.iter().zip(masks) {
+            let hunks = hunks(&change.base.text, &change.proposed);
+            if mask.len() != hunks.len() {
+                return Err("Hunk selection does not match the proposal".into());
+            }
+            if mask.iter().all(|a| !a) {
+                continue;
+            }
+            let state = current
+                .get(&change.path)
+                .ok_or("Open/validated document required; no implicit new file")?;
+            if state != &change.base {
+                return Err(format!(
+                    "Document changed since review: {}",
+                    change.path
+                ));
+            }
+            before.insert(change.path.clone(), state.clone());
+            applied.insert(
+                change.path.clone(),
+                BufferState {
+                    revision: state
+                        .revision
+                        .checked_add(1)
+                        .ok_or("Document revision overflow")?,
+                    text: merge_hunks(&change.base.text, &hunks, mask),
+                },
+            );
+        }
+        if before.is_empty() {
+            return Err("No hunks accepted; nothing to apply".into());
+        }
+        Ok(Snapshot { before, applied })
+    }
 }
 impl Snapshot {
     /// Restoring does not reset revisions, Git state or unrelated documents.
@@ -336,6 +389,67 @@ mod tests {
         assert_eq!(hs.len(), 1);
         assert_eq!(merge_hunks(base, &hs, &[true]), proposed);
         assert_eq!(merge_hunks(base, &hs, &[false]), base);
+    }
+
+    #[test]
+    fn stage_with_selection_applies_only_accepted_hunks() {
+        let mut current = BTreeMap::new();
+        current.insert(
+            "src/a.rs".into(),
+            BufferState {
+                revision: 3,
+                text: "a\nb\nc\nd\ne\nf\n".into(),
+            },
+        );
+        let proposal = Proposal {
+            run_id: "run1".into(),
+            changes: vec![Change {
+                path: "src/a.rs".into(),
+                base: current["src/a.rs"].clone(),
+                proposed: "a\nB\nc\nd\nE\nf\n".into(),
+            }],
+        };
+        let digest = proposal.digest().unwrap();
+        let reviewed = proposal.reviewed(&digest).unwrap();
+        // Accept the first hunk only.
+        let snapshot = proposal
+            .stage_with_selection(&reviewed, &current, &[vec![true, false]])
+            .unwrap();
+        assert_eq!(
+            snapshot.applied["src/a.rs"].text,
+            "a\nB\nc\nd\ne\nf\n"
+        );
+        assert_eq!(snapshot.applied["src/a.rs"].revision, 4);
+        assert_eq!(
+            snapshot.before["src/a.rs"].text,
+            "a\nb\nc\nd\ne\nf\n"
+        );
+        // All accepted == the full stage result.
+        let full = proposal
+            .stage_with_selection(&reviewed, &current, &[vec![true, true]])
+            .unwrap();
+        assert_eq!(full.applied["src/a.rs"].text, "a\nB\nc\nd\nE\nf\n");
+        // All rejected is an explicit no-op error, not a silent apply.
+        assert!(proposal
+            .stage_with_selection(&reviewed, &current, &[vec![false, false]])
+            .unwrap_err()
+            .contains("No hunks accepted"));
+        // A wrong-shaped or stale selection never stages.
+        assert!(proposal
+            .stage_with_selection(&reviewed, &current, &[vec![true]])
+            .unwrap_err()
+            .contains("does not match"));
+        assert!(proposal
+            .stage_with_selection(&reviewed, &current, &[])
+            .unwrap_err()
+            .contains("does not match"));
+        // A tampered proposal still fails the digest check first.
+        let mut tampered = proposal.clone();
+        tampered.changes[0].proposed = "a\nB\nc\nd\ne\nf\n".into();
+        assert!(tampered
+            .stage_with_selection(&reviewed, &current, &[vec![true, false]])
+            .unwrap_err()
+            .contains("Approval does not cover"));
     }
 
     fn fixture() -> (Proposal, BTreeMap<String, BufferState>) {

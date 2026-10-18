@@ -6,7 +6,7 @@ use crate::{
     window_tab::WindowTabData,
 };
 use floem::{
-    View,
+    AnyView, IntoView, View,
     reactive::{
         RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
         create_rw_signal,
@@ -187,6 +187,17 @@ impl ReviewData {
         tab: &WindowTabData,
         displayed: &Proposal,
     ) -> Result<(), String> {
+        self.apply_with(tab, displayed, None)
+    }
+    /// masks, when given, are the owner's per-hunk accept toggles -
+    /// one bool per hunk per change, recomputed against the pinned
+    /// proposal inside stage_with_selection.
+    pub fn apply_with(
+        &self,
+        tab: &WindowTabData,
+        displayed: &Proposal,
+        masks: Option<Vec<Vec<bool>>>,
+    ) -> Result<(), String> {
         if tab.chat.busy.get_untracked() {
             return Err("Stop current run first".into());
         }
@@ -213,7 +224,10 @@ impl ReviewData {
         }
         let states = Self::states(&docs);
         let reviewed = current.reviewed(&digest)?;
-        let mut snapshot = current.stage(&reviewed, &states)?;
+        let mut snapshot = match &masks {
+            Some(masks) => current.stage_with_selection(&reviewed, &states, masks)?,
+            None => current.stage(&reviewed, &states)?,
+        };
         let staged = staged_buffers(&docs, &snapshot.applied)?;
         snapshot.applied = staged
             .iter()
@@ -428,12 +442,18 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         label(|| "Paste changes JSON in the composer, then Prepare review. Only existing open files. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
-            let changes = proposal.changes.clone(); let digest = proposal.digest().unwrap_or_default();
+            let digest = proposal.digest().unwrap_or_default();
+            let items: Vec<(Change, RwSignal<Vec<bool>>)> = proposal.changes.iter().map(|c| {
+                let count = crate::agent_changes::hunks(&c.base.text, &c.proposed).len();
+                (c.clone(), create_rw_signal(vec![true; count]))
+            }).collect();
+            let items_apply = items.clone();
             v_stack((
                 label(move || format!("Proposal {digest}")).style(|s| s.font_size(10.0).max_width_full()),
-                dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), change_view),
-                label(|| "Apply this exact reviewed proposal to buffers".to_string()).on_click_stop(move |_| {
-                    if let Err(e) = apply.apply(&apply_tab, &proposal) { apply.error.set(e); }
+                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), |(change, mask)| change_view(change, Some(mask))),
+                label(|| "Apply the accepted hunks of this reviewed proposal to buffers".to_string()).on_click_stop(move |_| {
+                    let masks: Vec<Vec<bool>> = items_apply.iter().map(|(_, m)| m.get_untracked()).collect();
+                    if let Err(e) = apply.apply_with(&apply_tab, &proposal, Some(masks)) { apply.error.set(e); }
                 }),
                 label(|| "Discard proposal".to_string()).on_click_stop(move |_| { discard.proposal.set(None); }),
             ))
@@ -445,7 +465,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             }).collect();
             v_stack((
                 label(move || format!("Checkpoint {:?}: {} file(s). Restart is review-only. Restore fails on later changes.", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
-                dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), change_view),
+                dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), |change| change_view(change, None)),
                 label(|| "Restore this checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
                     if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
                 }),
@@ -460,14 +480,78 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     ))
     .style(|s| s.width_full())
 }
-fn change_view(change: Change) -> impl View {
+fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
     let before = change.base.text;
     let after = change.proposed;
+    let path = change.path;
+    let hunks = crate::agent_changes::hunks(&before, &after);
     let diff = change_diff(&before, &after);
+    let hunk_rows: Vec<(usize, String)> = hunks
+        .iter()
+        .enumerate()
+        .map(|(i, h)| {
+            let mut body = String::new();
+            for line in &h.removed {
+                body.push('-');
+                body.push_str(line);
+                if !line.ends_with('\n') {
+                    body.push_str(" [no newline]\n");
+                }
+            }
+            for line in &h.added {
+                body.push('+');
+                body.push_str(line);
+                if !line.ends_with('\n') {
+                    body.push_str(" [no newline]\n");
+                }
+            }
+            (
+                i,
+                format!(
+                    "Hunk {} @ line {} (-{}/+{})\n{body}",
+                    i + 1,
+                    h.base_start + 1,
+                    h.removed.len(),
+                    h.added.len()
+                ),
+            )
+        })
+        .collect();
+    let body_view: AnyView = match mask {
+        Some(mask) => scroll(dyn_stack(
+            move || hunk_rows.clone(),
+            |(i, _): &(usize, String)| *i,
+            move |(i, text)| {
+                h_stack((
+                    label(move || {
+                        if mask.with(|m| m.get(i).copied().unwrap_or(true)) {
+                            "\u{2611}"
+                        } else {
+                            "\u{2610}"
+                        }
+                    })
+                    .style(|s| s.width(16.0).selectable(false).cursor(CursorStyle::Pointer))
+                    .on_click_stop(move |_| {
+                        mask.update(|m| {
+                            if let Some(v) = m.get_mut(i) {
+                                *v = !*v;
+                            }
+                        })
+                    }),
+                    label(move || text.clone()).style(|s| s.font_size(11.0)),
+                ))
+                .style(|s| s.gap(4.0))
+            },
+        ))
+        .style(|s| s.max_height(140.0).width_full())
+        .into_any(),
+        None => scroll(label(move || diff.clone()).style(|s| s.font_size(11.0)))
+            .style(|s| s.max_height(140.0).width_full())
+            .into_any(),
+    };
     v_stack((
-        label(move || change.path.clone()),
-        scroll(label(move || diff.clone()).style(|s| s.font_size(11.0)))
-            .style(|s| s.max_height(140.0).width_full()),
+        label(move || path.clone()),
+        body_view,
         h_stack((
             scroll(
                 label(move || format!("BEFORE\n{before}"))
