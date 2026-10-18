@@ -705,3 +705,120 @@ fn get_modes(toml_keymap: &toml_edit::Table) -> Modes {
         .map(Modes::parse)
         .unwrap_or_else(Modes::empty)
 }
+
+#[cfg(test)]
+mod esc_modal_tests {
+    use std::rc::Rc;
+
+    use floem::keyboard::{
+        Key, KeyCode, KeyLocation, Modifiers, NamedKey, PhysicalKey,
+    };
+    use floem::reactive::Scope;
+    use indexmap::IndexMap;
+    use lapce_core::mode::Mode;
+
+    use super::key::KeyInput;
+    use super::keymap::KeymapMatch;
+    use super::loader::KeyMapLoader;
+    use super::press::KeyPress;
+    use super::{
+        DEFAULT_KEYMAPS_COMMON, KeyPressData, KeyPressFocus,
+        condition::Condition,
+    };
+    use crate::command::{CommandExecuted, LapceCommand};
+
+    #[derive(Clone, Copy, Debug)]
+    struct ModalFocus {
+        mode: Mode,
+        accepted_conditions: &'static [Condition],
+    }
+
+    impl KeyPressFocus for ModalFocus {
+        fn check_condition(&self, condition: Condition) -> bool {
+            self.accepted_conditions.contains(&condition)
+        }
+
+        fn get_mode(&self) -> Mode {
+            self.mode
+        }
+
+        fn run_command(
+            &self,
+            _command: &LapceCommand,
+            _count: Option<usize>,
+            _mods: Modifiers,
+        ) -> CommandExecuted {
+            unimplemented!()
+        }
+
+        fn receive_char(&self, _c: &str) {
+            unimplemented!()
+        }
+    }
+
+    fn esc() -> KeyPress {
+        KeyPress {
+            key: KeyInput::Keyboard {
+                physical: PhysicalKey::Code(KeyCode::Escape),
+                logical: Key::Named(NamedKey::Escape),
+                location: KeyLocation::Standard,
+                key_without_modifiers: Key::Named(NamedKey::Escape),
+                repeat: false,
+            },
+            mods: Modifiers::empty(),
+        }
+    }
+
+    fn modal_keymaps() -> KeyPressData {
+        let cx = Scope::new();
+        let mut loader = KeyMapLoader::new();
+        loader
+            .load_from_str(DEFAULT_KEYMAPS_COMMON, true)
+            .expect("default keymaps parse");
+        let (keymaps, command_keymaps) = loader.finalize();
+        KeyPressData {
+            count: cx.create_rw_signal(None),
+            pending_keypress: cx.create_rw_signal((Vec::new(), None)),
+            commands: Rc::new(IndexMap::new()),
+            keymaps: Rc::new(keymaps),
+            command_keymaps: Rc::new(command_keymaps),
+            commands_with_keymap: Rc::new(Vec::new()),
+            commands_without_keymap: Rc::new(Vec::new()),
+        }
+    }
+
+    /// Regression for the modal Esc chain in
+    /// defaults/keymaps-common.toml: with an inline completion visible,
+    /// Esc must cancel the completion and KEEP Insert mode (the
+    /// dedicated binding at line ~231); only with no completion does
+    /// Esc switch to Normal (line ~357). If the
+    /// inline_completion_visible guard is dropped from either binding,
+    /// one of these assertions fails.
+    #[test]
+    fn esc_cancels_inline_completion_before_switching_mode() {
+        let data = modal_keymaps();
+
+        let with_completion = ModalFocus {
+            mode: Mode::Insert,
+            accepted_conditions: &[
+                Condition::EditorFocus,
+                Condition::InlineCompletionVisible,
+            ],
+        };
+        assert_eq!(
+            data.match_keymap(&[esc()], &with_completion),
+            KeymapMatch::Full("inline_completion.cancel".to_string()),
+            "Esc with an inline completion visible must cancel it, not switch mode"
+        );
+
+        let without_completion = ModalFocus {
+            mode: Mode::Insert,
+            accepted_conditions: &[Condition::EditorFocus],
+        };
+        assert_eq!(
+            data.match_keymap(&[esc()], &without_completion),
+            KeymapMatch::Full("normal_mode".to_string()),
+            "Esc with no inline completion must switch to Normal"
+        );
+    }
+}
