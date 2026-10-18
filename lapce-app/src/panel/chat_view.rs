@@ -1259,6 +1259,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .style(move |s| {
                 s.font_size(11.0)
                     .padding(6.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
                     .selectable(false)
                     .color(config.get().color(LapceColor::EDITOR_DIM))
             }),
@@ -1502,7 +1504,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .style(move |s| mode_button_style(s, config, false)),
             label(|| "Revoke".to_string()).on_click_stop(move |_| { revoke.trust_reads.set(false); if revoke.busy.get_untracked() { revoke.stop(); revoke.persist(config.get_untracked().ai_chat.save_history); } })
                 .style(move |s| mode_button_style(s, config, false)),
-        )).style(|s| s.gap(6.0).padding_vert(4.0)),
+        ))
+        .style(|s| {
+            s.gap(6.0)
+                .padding_vert(4.0)
+                .flex_wrap(floem::style::FlexWrap::Wrap)
+        }),
         container(
             scroll(
                 dyn_stack(
@@ -1547,10 +1554,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             let user = role == "You";
                             let config = config.get();
                             let s = s
-                                .max_width_pct(85.0)
                                 .padding(10.0)
                                 .gap(5.0)
                                 .margin_bottom(8.0)
+                                .margin_right(10.0)
                                 .border_radius(8.0)
                                 .background(config.color(if user {
                                     LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND
@@ -1558,7 +1565,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     LapceColor::EDITOR_BACKGROUND
                                 }));
                             if user {
-                                s.align_self(Some(floem::style::AlignItems::End))
+                                s.max_width_pct(85.0)
+                                    .align_self(Some(floem::style::AlignItems::End))
                             } else {
                                 s
                             }
