@@ -307,6 +307,9 @@ pub enum ProxyNotification {
     GitCheckout {
         reference: String,
     },
+    GitCreateBranch {
+        name: String,
+    },
     GitDiscardFilesChanges {
         files: Vec<PathBuf>,
     },
@@ -632,6 +635,10 @@ impl ProxyRpcHandler {
 
     pub fn git_checkout(&self, reference: String) {
         self.notification(ProxyNotification::GitCheckout { reference });
+    }
+
+    pub fn git_create_branch(&self, name: String) {
+        self.notification(ProxyNotification::GitCreateBranch { name });
     }
 
     pub fn install_volt(&self, volt: VoltInfo) {

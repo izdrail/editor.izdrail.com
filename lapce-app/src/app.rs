@@ -2636,6 +2636,7 @@ fn palette_item(
         | PaletteItemContent::LineEnding { .. }
         | PaletteItemContent::ColorTheme { .. }
         | PaletteItemContent::SCMReference { .. }
+        | PaletteItemContent::SCMCreateBranch { .. }
         | PaletteItemContent::TerminalProfile { .. }
         | PaletteItemContent::Worktree { .. }
         | PaletteItemContent::WorktreeRemove { .. }

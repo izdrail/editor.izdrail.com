@@ -1503,6 +1503,18 @@ impl WindowTabData {
                 }
                 None => error!("No ref provided"),
             },
+            CreateBranch => match data {
+                Some(name) => {
+                    if let Some(name) = name.as_str() {
+                        self.proxy
+                            .proxy_rpc
+                            .git_create_branch(name.to_string());
+                    }
+                }
+                // Command-palette entry carries no name: the SCM
+                // references palette supplies it via its input.
+                None => self.palette.run(PaletteKind::SCMReferences),
+            },
             SourceControlCommit => {
                 self.source_control.commit();
             }

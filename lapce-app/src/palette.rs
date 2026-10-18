@@ -160,6 +160,11 @@ impl PaletteData {
                     let run_id = run_id.get_untracked();
                     let preselect_index =
                         preselect_index.try_update(|i| i.take()).unwrap();
+                    let items = if input.kind == PaletteKind::SCMReferences {
+                        Self::with_create_branch_item(&input.input, &items)
+                    } else {
+                        items
+                    };
                     if let Err(err) =
                         tx.send((run_id, input.input, items, preselect_index))
                     {
@@ -176,6 +181,11 @@ impl PaletteData {
                 }
                 let items = items.get_untracked();
                 let run_id = run_id.get_untracked();
+                let items = if kind == PaletteKind::SCMReferences {
+                    Self::with_create_branch_item(&input.input, &items)
+                } else {
+                    items
+                };
                 if let Err(err) = tx.send((run_id, input.input, items, None)) {
                     tracing::error!("{:?}", err);
                 }
@@ -1904,6 +1914,16 @@ impl PaletteData {
                         data: Some(serde_json::json!(name.to_owned())),
                     });
                 }
+                PaletteItemContent::SCMCreateBranch { name } => {
+                    self.common
+                        .lapce_command
+                        .send(crate::command::LapceCommand {
+                        kind: CommandKind::Workbench(
+                            crate::command::LapceWorkbenchCommand::CreateBranch,
+                        ),
+                        data: Some(serde_json::json!(name.to_owned())),
+                    });
+                }
                 PaletteItemContent::TerminalProfile { name: _, profile } => self
                     .common
                     .internal_command
@@ -2047,6 +2067,7 @@ impl PaletteData {
                         save: false,
                     }),
                 PaletteItemContent::SCMReference { .. } => {}
+                PaletteItemContent::SCMCreateBranch { .. } => {}
                 PaletteItemContent::TerminalProfile { .. } => {}
                 PaletteItemContent::KeymapPreset { .. } => {}
                 PaletteItemContent::Worktree { .. } => {}
@@ -2131,6 +2152,40 @@ impl PaletteData {
             _ => return CommandExecuted::No,
         }
         CommandExecuted::Yes
+    }
+
+    /// VS Code-style "Create new branch" row for the SCM references
+    /// palette: appended when the typed name is not an existing branch
+    /// or tag. The filter text ends with the raw input so the fuzzy
+    /// matcher always keeps the row visible while typing.
+    fn with_create_branch_item(
+        input: &str,
+        items: &im::Vector<PaletteItem>,
+    ) -> im::Vector<PaletteItem> {
+        let name = input.trim();
+        if name.is_empty() {
+            return items.clone();
+        }
+        let exists = items.iter().any(|item| {
+            matches!(
+                &item.content,
+                PaletteItemContent::SCMReference { name: existing }
+                if existing.as_str() == name
+            )
+        });
+        if exists {
+            return items.clone();
+        }
+        let mut items = items.clone();
+        items.push_back(PaletteItem {
+            content: PaletteItemContent::SCMCreateBranch {
+                name: name.to_string(),
+            },
+            filter_text: format!("Create new branch '{name}'"),
+            score: 0,
+            indices: Vec::new(),
+        });
+        items
     }
 
     fn filter_items(

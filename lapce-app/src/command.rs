@@ -564,6 +564,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "source_control.checkout_reference")]
     CheckoutReference,
 
+    #[strum(message = "Source Control: Create Branch")]
+    #[strum(serialize = "source_control.create_branch")]
+    CreateBranch,
+
     #[strum(serialize = "toggle_maximized_panel")]
     ToggleMaximizedPanel,
 

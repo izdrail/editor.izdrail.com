@@ -278,6 +278,14 @@ impl ProxyHandler for Dispatcher {
                     }
                 }
             }
+            GitCreateBranch { name } => {
+                if let Some(workspace) = self.workspace.as_ref() {
+                    match git_create_branch(workspace, &name) {
+                        Ok(()) => (),
+                        Err(e) => eprintln!("{e:?}"),
+                    }
+                }
+            }
             GitDiscardFilesChanges { files } => {
                 if let Some(workspace) = self.workspace.as_ref() {
                     match git_discard_files_changes(
@@ -2024,6 +2032,18 @@ fn git_checkout(workspace_path: &Path, reference: &str) -> Result<()> {
     Ok(())
 }
 
+/// Create a new branch at HEAD and switch to it. The working tree is
+/// untouched (the new branch points at the same commit), so unlike
+/// checkout this can never refuse over uncommitted changes. Existing
+/// names and invalid refnames error instead of overwriting.
+fn git_create_branch(workspace_path: &Path, name: &str) -> Result<()> {
+    let repo = Repository::discover(workspace_path)?;
+    let commit = repo.head()?.peel_to_commit()?;
+    repo.branch(name, &commit, false)?;
+    repo.set_head(&format!("refs/heads/{name}"))?;
+    Ok(())
+}
+
 fn git_discard_files_changes<'a>(
     workspace_path: &Path,
     files: impl Iterator<Item = &'a Path>,
@@ -2097,7 +2117,7 @@ fn git_ahead_behind(repo: &Repository, head_name: &str) -> (usize, usize) {
         let upstream_ref = repo
             .branch_upstream_name(&format!("refs/heads/{head_name}"))
             .ok()?;
-        let upstream_ref = upstream_ref.as_str()?;
+        let upstream_ref = upstream_ref.as_str().ok()?;
         let upstream_oid = repo
             .revparse_single(upstream_ref)
             .and_then(|obj| obj.peel_to_commit())
@@ -2492,6 +2512,50 @@ mod git_ahead_behind_tests {
         )
         .expect("move upstream ref");
         assert_eq!(git_ahead_behind(&repo, &head_name), (0, 1));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod git_create_branch_tests {
+    use super::*;
+
+    /// Creating a branch at HEAD switches HEAD to it and keeps the same
+    /// commit; duplicate names and invalid refnames error instead of
+    /// silently overwriting.
+    #[test]
+    fn create_branch_switches_head_without_overwrite() {
+        let dir = std::env::temp_dir().join(format!(
+            "lapce-git-create-branch-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = Repository::init(&dir).expect("init scratch repo");
+        let sig = git2::Signature::now("lapce-test", "lapce-test@example.invalid")
+            .expect("signature");
+        let tree_id = repo
+            .treebuilder(None)
+            .and_then(|mut tb| tb.write())
+            .expect("empty tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let head_commit = repo
+            .commit(Some("HEAD"), &sig, &sig, "c1", &tree, &[])
+            .expect("root commit");
+
+        git_create_branch(&dir, "feature/test").expect("create branch");
+
+        let head = repo.head().expect("head");
+        assert_eq!(head.shorthand().ok(), Some("feature/test"));
+        assert_eq!(
+            repo.head()
+                .and_then(|h| h.peel_to_commit())
+                .map(|c| c.id())
+                .expect("head commit"),
+            head_commit
+        );
+        assert!(git_create_branch(&dir, "feature/test").is_err());
+        assert!(git_create_branch(&dir, "bad..name").is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

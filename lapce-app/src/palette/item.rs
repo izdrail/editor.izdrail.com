@@ -112,6 +112,9 @@ pub enum PaletteItemContent {
     SCMReference {
         name: String,
     },
+    SCMCreateBranch {
+        name: String,
+    },
     TerminalProfile {
         name: String,
         profile: lapce_rpc::terminal::TerminalProfile,
