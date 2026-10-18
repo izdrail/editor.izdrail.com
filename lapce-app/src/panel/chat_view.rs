@@ -1183,7 +1183,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     });
     v_stack((
         h_stack((
-            label(|| "AI CHAT".to_string()),
             label(|| "New chat".to_string())
                 .on_click_stop(move |_| {
                     if !clear.busy.get_untracked() {
@@ -1197,18 +1196,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         clear.persist(config.get_untracked().ai_chat.save_history);
                     }
                 })
-                .style(move |s| {
-                    s.padding(6.0)
-                        .margin_left(8.0)
-                        .border(1.0)
-                        .border_radius(4.0)
-                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                        .cursor(CursorStyle::Pointer)
-                        .selectable(false)
-                }),
+                .style(move |s| mode_button_style(s, config, false)),
             label(|| "Stop".to_string())
                 .on_click_stop(move |_| { if stop.busy.get_untracked() { stop.stop(); stop.persist(config.get_untracked().ai_chat.save_history); } })
-                .style(move |s| s.padding(6.0).cursor(CursorStyle::Pointer).selectable(false)),
+                .style(move |s| mode_button_style(s, config, false)),
             label(|| "Walkthrough".to_string())
                 .on_click_stop(move |_| {
                     if walkthrough.busy.get_untracked() {
@@ -1231,15 +1222,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         Err(e) => walkthrough.error.set(e),
                     }
                 })
-                .style(move |s| {
-                    s.padding(6.0)
-                        .margin_left(8.0)
-                        .border(1.0)
-                        .border_radius(4.0)
-                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                        .cursor(CursorStyle::Pointer)
-                        .selectable(false)
-                }),
+                .style(move |s| mode_button_style(s, config, false)),
             label(|| "Schedules".to_string())
                 .on_click_stop(move |_| {
                     let Some(root) = schedules_tab.workspace.path.clone()
@@ -1263,19 +1246,26 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         .internal_command
                         .send(InternalCommand::OpenFile { path });
                 })
-                .style(move |s| {
-                    s.padding(6.0)
-                        .margin_left(8.0)
-                        .border(1.0)
-                        .border_radius(4.0)
-                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                        .cursor(CursorStyle::Pointer)
-                        .selectable(false)
-                }),
+                .style(move |s| mode_button_style(s, config, false)),
+            label(move || {
+                let c = config.get();
+                let model = if c.ai_chat.backend == "local" {
+                    &c.ai_chat.local_model
+                } else {
+                    &c.ai_chat.model
+                };
+                format!("{} | {model}", c.ai_chat.backend)
+            })
+            .style(move |s| {
+                s.font_size(11.0)
+                    .padding(6.0)
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
         ))
         .style(|s| {
             s.flex_wrap(floem::style::FlexWrap::Wrap)
-                .gap(4.0)
+                .gap(6.0)
                 .padding_vert(2.0)
         }),
         {
@@ -1478,21 +1468,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             s.apply_if(!show_sessions.get(), |s| s.hide())
                 .max_height(180.0)
                 .width_full()
-        }),
-        label(move || {
-            let mode = if data.acp.get() { "ACP agent" } else { match data.mode.get() { None => "Chat", Some(crate::agent_loop::Mode::Ask) => "Ask", Some(crate::agent_loop::Mode::Plan) => "Plan", Some(crate::agent_loop::Mode::Act) => "Act" } };
-            let c = config.get();
-            let model = if c.ai_chat.backend == "local" {
-                &c.ai_chat.local_model
-            } else {
-                &c.ai_chat.model
-            };
-            format!("Mode: {mode} - {} | {model} - Act unavailable; Ask/Plan never write files", c.ai_chat.backend)
-        })
-        .style(move |s| {
-            s.font_size(11.0)
-                .max_width_full()
-                .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
         label(move || format!("Ask/Plan reads project files and sends results to {}. Approve only this project and server if you trust them. Reads: {}.", config.get().ai_chat.endpoint, if data.trust_reads.get() { "approved for this window" } else { "not approved" }))
             .style(move |s| {
