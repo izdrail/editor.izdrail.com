@@ -2689,3 +2689,91 @@ mod git_staged_diff_tests {
         assert!(unstaged.contains(&dir.path().join("a.txt")));
     }
 }
+
+#[cfg(test)]
+mod git_commit_tests {
+    use std::fs;
+
+    use git2::Repository;
+
+    use super::{FileDiff, git_commit};
+
+    fn init_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+        dir
+    }
+
+    #[test]
+    fn commit_modified_file_roundtrip() {
+        let dir = init_repo();
+        let path = dir.path().join("a.txt");
+        fs::write(&path, "v1").unwrap();
+
+        // Unborn branch: commits with no parents.
+        git_commit(
+            dir.path(),
+            "init",
+            vec![FileDiff::Added(path.clone())],
+        )
+        .unwrap();
+        let repo = Repository::open(dir.path()).unwrap();
+        assert_eq!(
+            repo.head().unwrap().peel_to_commit().unwrap().message().ok(),
+            Some("init")
+        );
+        assert!(repo.statuses(None).unwrap().is_empty());
+
+        // A follow-up modification commits on top.
+        fs::write(&path, "v2").unwrap();
+        git_commit(
+            dir.path(),
+            "second",
+            vec![FileDiff::Modified(path.clone())],
+        )
+        .unwrap();
+        let repo = Repository::open(dir.path()).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.message().ok(), Some("second"));
+        assert_eq!(head.parents().count(), 1);
+    }
+
+    #[test]
+    fn commit_refuses_conflicted_paths_without_committing() {
+        let dir = init_repo();
+        let path = dir.path().join("a.txt");
+        fs::write(&path, "v1").unwrap();
+        git_commit(dir.path(), "init", vec![FileDiff::Added(path.clone())])
+            .unwrap();
+        let before = Repository::open(dir.path())
+            .unwrap()
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id();
+
+        let error = git_commit(
+            dir.path(),
+            "must not land",
+            vec![FileDiff::Conflicted(path)],
+        )
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("unresolved merge conflicts"),
+            "unexpected error: {error:#}"
+        );
+        // Nothing was committed.
+        let after = Repository::open(dir.path())
+            .unwrap()
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id();
+        assert_eq!(before, after);
+    }
+}

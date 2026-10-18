@@ -36,7 +36,7 @@ pub struct ReviewData {
 struct Draft {
     changes: Vec<DraftChange>,
 }
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DraftChange {
     path: String,
@@ -135,14 +135,8 @@ impl ReviewData {
         if tab.chat.busy.get_untracked() {
             return Err("Stop the current run before reviewing edits".into());
         }
-        if json.len() > 2 * 1024 * 1024 {
-            return Err("Proposal JSON too large".into());
-        }
-        let draft:Draft=serde_json::from_str(json).map_err(|e|format!("Expected {{\"changes\":[{{\"path\":\"app/User.php\",\"replacement\":\"...\"}}]}}: {e}"))?;
-        if draft.changes.is_empty() || draft.changes.len() > 32 {
-            return Err("Review requires 1-32 existing open files".into());
-        }
-        let docs = Self::docs(tab, draft.changes.iter().map(|c| c.path.clone()))?;
+        let changes = parse_draft(json)?;
+        let docs = Self::docs(tab, changes.iter().map(|c| c.path.clone()))?;
         let current = Self::states(&docs);
         if docs.iter().any(|(p, d)| {
             d.buffer.with_untracked(|b| {
@@ -155,8 +149,7 @@ impl ReviewData {
         }
         let proposal = Proposal {
             run_id: tab.chat.session.get_untracked().id,
-            changes: draft
-                .changes
+            changes: changes
                 .into_iter()
                 .map(|c| Change {
                     base: current[&c.path].clone(),
@@ -531,5 +524,84 @@ mod review_tests {
             "Changed lines at 2 (whole changed region)\n-before\n+after\n"
         );
         assert!(change_diff("x", "x\n").contains("-x [no newline]"));
+    }
+}
+
+/// Strictly parse the proposal JSON the owner pastes or Act mode
+/// produces. Pure and total: every rejection carries an actionable
+/// message.
+fn parse_draft(json: &str) -> Result<Vec<DraftChange>, String> {
+    if json.len() > 2 * 1024 * 1024 {
+        return Err("Proposal JSON too large".into());
+    }
+    let draft: Draft = serde_json::from_str(json).map_err(|e| {
+        format!(
+            "Expected {{\"changes\":[{{\"path\":\"app/User.php\",\"replacement\":\"...\"}}]}}: {e}"
+        )
+    })?;
+    if draft.changes.is_empty() || draft.changes.len() > 32 {
+        return Err("Review requires 1-32 existing open files".into());
+    }
+    Ok(draft.changes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_draft_accepts_one_change() {
+        let changes = parse_draft(
+            r#"{"changes":[{"path":"src/main.rs","replacement":"fn main() {}"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, "src/main.rs");
+        assert_eq!(changes[0].replacement, "fn main() {}");
+    }
+
+    #[test]
+    fn parse_draft_rejects_empty_and_oversized_batches() {
+        assert_eq!(
+            parse_draft(r#"{"changes":[]}"#).unwrap_err(),
+            "Review requires 1-32 existing open files"
+        );
+        let many = format!(
+            "{{\"changes\":[{}]}}",
+            vec![
+                r#"{"path":"a.rs","replacement":"x"}"#;
+                33
+            ]
+            .join(",")
+        );
+        assert_eq!(
+            parse_draft(&many).unwrap_err(),
+            "Review requires 1-32 existing open files"
+        );
+    }
+
+    #[test]
+    fn parse_draft_denies_unknown_fields_and_missing_replacement() {
+        assert!(parse_draft(
+            r#"{"changes":[{"path":"a.rs","replacement":"x","approved":true}]}"#
+        )
+        .unwrap_err()
+        .contains("Expected"));
+        assert!(parse_draft(r#"{"changes":[{"path":"a.rs"}]}"#)
+            .unwrap_err()
+            .contains("Expected"));
+        assert!(parse_draft("not json").is_err());
+    }
+
+    #[test]
+    fn parse_draft_rejects_over_limit_json() {
+        let huge = format!(
+            "{{\"changes\":[{{\"path\":\"a.rs\",\"replacement\":\"{}\"}}]}}",
+            "x".repeat(2 * 1024 * 1024)
+        );
+        assert_eq!(
+            parse_draft(&huge).unwrap_err(),
+            "Proposal JSON too large"
+        );
     }
 }

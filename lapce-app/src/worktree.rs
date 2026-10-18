@@ -365,6 +365,58 @@ pub fn git_blame_lines(root: &Path, rel_path: &Path) -> Result<String, String> {
     Ok(format_blame_lines(&lines))
 }
 
+/// `git stash push` (optionally including untracked files). Toast
+/// text comes from stash_result_message.
+pub fn stash_push(root: &Path, include_untracked: bool) -> Result<String, String> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(root).arg("stash").arg("push");
+    if include_untracked {
+        cmd.arg("--include-untracked");
+    }
+    let out = cmd
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    stash_result_message(out.status.success(), &stdout, &stderr)
+}
+
+/// `git stash pop`. Toast text comes from stash_pop_result_message.
+pub fn stash_pop(root: &Path) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("stash")
+        .arg("pop")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    stash_pop_result_message(out.status.success(), &stdout, &stderr)
+}
+
+/// `git show --format=fuller <sha>`, clipped for a scratch editor.
+pub fn git_show(root: &Path, sha: &str) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("show")
+        .arg("--format=fuller")
+        .arg(sha)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if out.status.success() {
+        Ok(clip_show_output(&stdout))
+    } else {
+        Err(format!("git show failed:\n{}", clip_stderr(&stderr)))
+    }
+}
+
 /// `git log` rows for the history palette: (full SHA, display text).
 /// Field separator is U+001F so subjects may contain any printable
 /// character. Parsing lives in parse_git_log_line for tests.
@@ -855,6 +907,102 @@ author-time 1750000001\n\
         assert!(blame.contains("test"));
         assert!(blame.contains("| one"));
         assert!(blame.contains("| two"));
+    }
+
+    fn commit_file(dir: &std::path::Path, name: &str, content: &str, message: &str) {
+        std::fs::write(dir.join(name), content).unwrap();
+        stage_paths(dir, &[dir.join(name)], true).unwrap();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["commit", "-q", "-m", message])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+
+    fn status_porcelain(dir: &std::path::Path) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["status", "--porcelain"])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).to_string()
+    }
+
+    #[test]
+    fn stash_push_pop_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        init_git_repo(dir.path());
+        commit_file(dir.path(), "a.txt", "v1\n", "init");
+
+        // Tracked modification stashes and pops back.
+        std::fs::write(dir.path().join("a.txt"), "v2\n").unwrap();
+        let message = stash_push(dir.path(), false).unwrap();
+        assert!(message.contains("Saved"), "unexpected: {message}");
+        assert_eq!(status_porcelain(dir.path()), "");
+        stash_pop(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "v2\n"
+        );
+
+        // Untracked files are left alone without the flag...
+        std::fs::write(dir.path().join("b.txt"), "new\n").unwrap();
+        stash_push(dir.path(), false).unwrap();
+        assert!(dir.path().join("b.txt").exists());
+        stash_pop(dir.path()).unwrap();
+
+        // ...and stashed with it.
+        stash_push(dir.path(), true).unwrap();
+        assert!(!dir.path().join("b.txt").exists());
+        stash_pop(dir.path()).unwrap();
+        assert!(dir.path().join("b.txt").exists());
+
+        // Nothing to stash reports cleanly, not as an error.
+        std::fs::remove_file(dir.path().join("b.txt")).unwrap();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["checkout", "--", "a.txt"])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let message = stash_push(dir.path(), false).unwrap();
+        assert!(message.contains("No local changes"), "unexpected: {message}");
+    }
+
+    #[test]
+    fn git_log_lines_real_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        init_git_repo(dir.path());
+        commit_file(dir.path(), "a.txt", "v1\n", "first commit");
+        commit_file(dir.path(), "b.txt", "v1\n", "second commit");
+
+        let rows = git_log_lines(dir.path()).unwrap();
+        assert_eq!(rows.len(), 2);
+        // Newest first; full 40-char SHA; subject and author present.
+        assert_eq!(rows[0].0.len(), 40);
+        assert!(rows[0].1.contains("second commit"));
+        assert!(rows[0].1.contains("test"));
+        assert!(rows[1].1.contains("first commit"));
+    }
+
+    #[test]
+    fn git_show_real_commit_and_bad_sha() {
+        let dir = tempfile::tempdir().unwrap();
+        init_git_repo(dir.path());
+        commit_file(dir.path(), "a.txt", "hello\n", "add greeting");
+
+        let rows = git_log_lines(dir.path()).unwrap();
+        let text = git_show(dir.path(), &rows[0].0).unwrap();
+        assert!(text.contains("add greeting"));
+        assert!(text.contains("+++ b/a.txt"));
+
+        assert!(git_show(dir.path(), "deadbeefdeadbeef").is_err());
     }
 
     #[test]

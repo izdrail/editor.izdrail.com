@@ -3627,28 +3627,7 @@ impl WindowTabData {
             },
         );
         std::thread::spawn(move || {
-            let result = (|| {
-                let out = std::process::Command::new("git")
-                    .arg("-C")
-                    .arg(&root)
-                    .arg("show")
-                    .arg("--format=fuller")
-                    .arg(&sha)
-                    .env("GIT_TERMINAL_PROMPT", "0")
-                    .output()
-                    .map_err(|e| format!("Could not run git: {e}"))?;
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                if out.status.success() {
-                    Ok(crate::worktree::clip_show_output(&stdout))
-                } else {
-                    Err(format!(
-                        "git show failed:\n{}",
-                        crate::worktree::clip_stderr(&stderr)
-                    ))
-                }
-            })();
-            send(result);
+            send(crate::worktree::git_show(&root, &sha));
         });
     }
 
@@ -4048,25 +4027,7 @@ impl WindowTabData {
             },
         );
         std::thread::spawn(move || {
-            let result = (|| {
-                let mut cmd = std::process::Command::new("git");
-                cmd.arg("-C").arg(&root).arg("stash").arg("push");
-                if include_untracked {
-                    cmd.arg("--include-untracked");
-                }
-                let out = cmd
-                    .env("GIT_TERMINAL_PROMPT", "0")
-                    .output()
-                    .map_err(|e| format!("Could not run git: {e}"))?;
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                crate::worktree::stash_result_message(
-                    out.status.success(),
-                    &stdout,
-                    &stderr,
-                )
-            })();
-            send(result);
+            send(crate::worktree::stash_push(&root, include_untracked));
         });
     }
 
@@ -4100,24 +4061,7 @@ impl WindowTabData {
             },
         );
         std::thread::spawn(move || {
-            let result = (|| {
-                let out = std::process::Command::new("git")
-                    .arg("-C")
-                    .arg(&root)
-                    .arg("stash")
-                    .arg("pop")
-                    .env("GIT_TERMINAL_PROMPT", "0")
-                    .output()
-                    .map_err(|e| format!("Could not run git: {e}"))?;
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                crate::worktree::stash_pop_result_message(
-                    out.status.success(),
-                    &stdout,
-                    &stderr,
-                )
-            })();
-            send(result);
+            send(crate::worktree::stash_pop(&root));
         });
     }
 
