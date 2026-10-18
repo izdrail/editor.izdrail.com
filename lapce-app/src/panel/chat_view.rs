@@ -682,6 +682,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
         }
     });
     let prompt = prompt.to_string();
+    let proxy = tab.common.proxy.clone();
     std::thread::spawn(move || {
         let result = (|| {
             let reader = crate::agent_read::ReadRoot::new(&root, true)?;
@@ -719,6 +720,85 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                 .ok_or("Missing pattern")?,
                         )?;
                         Ok(serde_json::json!({"matches":result.matches,"truncated":result.truncated,"skipped_files":result.skipped_files}).to_string())
+                    }
+                    "symbol_search" => {
+                        let query = call.arguments["query"]
+                            .as_str()
+                            .ok_or("Missing query")?;
+                        if query.is_empty() || query.len() > 256 {
+                            return Err(
+                                "Symbol search needs a nonempty query up to 256 bytes"
+                                    .into(),
+                            );
+                        }
+                        let (sym_tx, sym_rx) = std::sync::mpsc::channel();
+                        proxy.get_workspace_symbols(query.to_string(), move |result| {
+                            let _ = sym_tx.send(result);
+                        });
+                        let deadline = std::time::Instant::now()
+                            + std::time::Duration::from_secs(10);
+                        let response = loop {
+                            if cancelled.load(Ordering::Acquire) {
+                                return Err("Cancelled".into());
+                            }
+                            match sym_rx.recv_timeout(
+                                std::time::Duration::from_millis(100),
+                            ) {
+                                Ok(r) => break r,
+                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                    if std::time::Instant::now() > deadline {
+                                        return Err(
+                                            "Symbol search timed out (no language server?)"
+                                                .into(),
+                                        );
+                                    }
+                                }
+                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                    return Err("Symbol search unavailable".into());
+                                }
+                            }
+                        };
+                        let symbols = match response {
+                            Ok(lapce_rpc::proxy::ProxyResponse::GetWorkspaceSymbols {
+                                symbols,
+                            }) => symbols,
+                            Ok(_) => {
+                                return Err("Unexpected symbol response".into());
+                            }
+                            Err(e) => {
+                                return Err(format!("Symbol search failed: {e:?}"));
+                            }
+                        };
+                        let truncated = symbols.len() > 100;
+                        let rows: Vec<_> = symbols
+                            .into_iter()
+                            .take(100)
+                            .map(|s| {
+                                let path = s
+                                    .location
+                                    .uri
+                                    .to_file_path()
+                                    .ok()
+                                    .and_then(|p| {
+                                        p.strip_prefix(&root)
+                                            .ok()
+                                            .map(|r| {
+                                                r.to_string_lossy().into_owned()
+                                            })
+                                    })
+                                    .unwrap_or_else(|| {
+                                        s.location.uri.to_string()
+                                    });
+                                serde_json::json!({
+                                    "name": s.name,
+                                    "kind": format!("{:?}", s.kind),
+                                    "container": s.container_name,
+                                    "path": path,
+                                    "line": s.location.range.start.line + 1,
+                                })
+                            })
+                            .collect();
+                        Ok(serde_json::json!({"symbols": rows, "truncated": truncated}).to_string())
                     }
                     "run_command" => {
                         let command = call.arguments["command"]
@@ -782,6 +862,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                     .get("path")
                                     .or_else(|| call.arguments.get("literal"))
                                     .or_else(|| call.arguments.get("pattern"))
+                                    .or_else(|| call.arguments.get("query"))
                                     .or_else(|| call.arguments.get("command"))
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
