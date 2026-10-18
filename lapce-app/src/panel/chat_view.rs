@@ -1544,16 +1544,24 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             .style(|s| s.flex_col().max_width_full()),
                         ))
                         .style(move |s| {
-                            s.width_full()
+                            let user = role == "You";
+                            let config = config.get();
+                            let s = s
+                                .max_width_pct(85.0)
                                 .padding(10.0)
                                 .gap(5.0)
                                 .margin_bottom(8.0)
                                 .border_radius(8.0)
-                                .background(
-                                    config
-                                        .get()
-                                        .color(LapceColor::EDITOR_BACKGROUND),
-                                )
+                                .background(config.color(if user {
+                                    LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND
+                                } else {
+                                    LapceColor::EDITOR_BACKGROUND
+                                }));
+                            if user {
+                                s.align_self(Some(floem::style::AlignItems::End))
+                            } else {
+                                s
+                            }
                         })
                     },
                 )
