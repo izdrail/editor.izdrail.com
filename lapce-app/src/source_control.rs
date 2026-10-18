@@ -31,6 +31,9 @@ pub struct SourceControlData {
     pub branch: RwSignal<String>,
     pub branches: RwSignal<im::Vector<String>>,
     pub tags: RwSignal<im::Vector<String>>,
+    /// Commits the checked-out branch is ahead of / behind its upstream.
+    pub ahead: RwSignal<usize>,
+    pub behind: RwSignal<usize>,
     pub editor: EditorData,
     pub common: Rc<CommonData>,
     /// AI commit-message suggestion in flight; clicking again cancels it.
@@ -78,6 +81,8 @@ impl SourceControlData {
             branch: cx.create_rw_signal("".to_string()),
             branches: cx.create_rw_signal(im::Vector::new()),
             tags: cx.create_rw_signal(im::Vector::new()),
+            ahead: cx.create_rw_signal(0),
+            behind: cx.create_rw_signal(0),
             editor: editors.make_local(cx, common.clone()),
             common,
             suggesting: cx.create_rw_signal(false),

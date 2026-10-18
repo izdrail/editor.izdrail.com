@@ -2305,6 +2305,8 @@ impl WindowTabData {
             }
             CoreNotification::DiffInfo { diff } => {
                 self.source_control.branch.set(diff.head.clone());
+                self.source_control.ahead.set(diff.ahead);
+                self.source_control.behind.set(diff.behind);
                 self.source_control
                     .branches
                     .set(diff.branches.iter().cloned().collect());

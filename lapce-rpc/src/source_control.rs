@@ -8,6 +8,11 @@ pub struct DiffInfo {
     pub branches: Vec<String>,
     pub tags: Vec<String>,
     pub diffs: Vec<FileDiff>,
+    /// Commits the checked-out branch is ahead of its upstream.
+    /// 0 when the branch has no upstream or HEAD is detached.
+    pub ahead: usize,
+    /// Commits the checked-out branch is behind its upstream.
+    pub behind: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]

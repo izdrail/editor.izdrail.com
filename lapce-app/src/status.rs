@@ -58,16 +58,21 @@ pub fn status(
     });
     let branch = source_control.branch;
     let file_diffs = source_control.file_diffs;
+    let ahead = source_control.ahead;
+    let behind = source_control.behind;
     let branch = move || {
-        format!(
-            "{}{}",
-            branch.get(),
-            if file_diffs.with(|diffs| diffs.is_empty()) {
-                ""
-            } else {
-                "*"
-            }
-        )
+        let mut text = branch.get();
+        let (ahead, behind) = (ahead.get(), behind.get());
+        if ahead > 0 {
+            text.push_str(&format!(" ↑{ahead}"));
+        }
+        if behind > 0 {
+            text.push_str(&format!(" ↓{behind}"));
+        }
+        if !file_diffs.with(|diffs| diffs.is_empty()) {
+            text.push('*');
+        }
+        text
     };
 
     let progresses = window_tab_data.progresses;

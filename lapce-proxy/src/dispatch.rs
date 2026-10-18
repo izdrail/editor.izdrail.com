@@ -2088,6 +2088,31 @@ fn git_delta_format(
     }
 }
 
+/// Commits the checked-out branch is ahead of / behind its configured
+/// upstream, as `(ahead, behind)`. `(0, 0)` for detached HEADs, unborn
+/// branches, and branches without an upstream - the status bar hides
+/// zero counts, so every failure mode collapses to "show nothing".
+fn git_ahead_behind(repo: &Repository, head_name: &str) -> (usize, usize) {
+    (|| {
+        let upstream_ref = repo
+            .branch_upstream_name(&format!("refs/heads/{head_name}"))
+            .ok()?;
+        let upstream_ref = upstream_ref.as_str()?;
+        let upstream_oid = repo
+            .revparse_single(upstream_ref)
+            .and_then(|obj| obj.peel_to_commit())
+            .ok()?
+            .id();
+        let local_oid = repo
+            .revparse_single("HEAD")
+            .and_then(|obj| obj.peel_to_commit())
+            .ok()?
+            .id();
+        repo.graph_ahead_behind(local_oid, upstream_oid).ok()
+    })()
+    .unwrap_or((0, 0))
+}
+
 fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
     let repo = Repository::discover(workspace_path).ok()?;
     let name = match repo.head() {
@@ -2185,11 +2210,14 @@ fn git_diff_new(workspace_path: &Path) -> Option<DiffInfo> {
         | FileDiff::Renamed(p, _)
         | FileDiff::Deleted(p) => p.clone(),
     });
+    let (ahead, behind) = git_ahead_behind(&repo, &name);
     Some(DiffInfo {
         head: name,
         branches,
         tags,
         diffs: file_diffs,
+        ahead,
+        behind,
     })
 }
 
@@ -2388,5 +2416,83 @@ mod no_language_server_tests {
             rx.recv_timeout(Duration::from_secs(1)).unwrap(),
             Ok(ProxyResponse::NewBufferResponse { .. })
         ));
+    }
+}
+
+#[cfg(test)]
+mod git_ahead_behind_tests {
+    use super::*;
+
+    /// Scratch repo: c1 (root) -> c2 (HEAD) -> c3 (dangling, used as the
+    /// upstream tip). Moves refs/remotes/origin/<branch> and checks the
+    /// ahead/behind math, including the no-upstream case.
+    #[test]
+    fn ahead_behind_tracks_upstream_movement() {
+        let dir = std::env::temp_dir().join(format!(
+            "lapce-git-ahead-behind-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = Repository::init(&dir).expect("init scratch repo");
+
+        let sig = git2::Signature::now("lapce-test", "lapce-test@example.invalid")
+            .expect("signature");
+        let tree_id = repo
+            .treebuilder(None)
+            .and_then(|mut tb| tb.write())
+            .expect("empty tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+
+        let c1 = repo
+            .commit(Some("HEAD"), &sig, &sig, "c1", &tree, &[])
+            .expect("root commit");
+        let c1_commit = repo.find_commit(c1).expect("find c1");
+        let c2 = repo
+            .commit(Some("HEAD"), &sig, &sig, "c2", &tree, &[&c1_commit])
+            .expect("second commit");
+        let c2_commit = repo.find_commit(c2).expect("find c2");
+        let c3 = repo
+            .commit(None, &sig, &sig, "c3", &tree, &[&c2_commit])
+            .expect("dangling commit");
+
+        let head_name = repo
+            .head()
+            .expect("head")
+            .shorthand()
+            .expect("head shorthand")
+            .to_string();
+        // No upstream configured yet: zeroes, not an error.
+        assert_eq!(git_ahead_behind(&repo, &head_name), (0, 0));
+
+        repo.remote("origin", "https://example.invalid/scratch.git")
+            .expect("add origin");
+        let mut branch = repo
+            .find_branch(&head_name, git2::BranchType::Local)
+            .expect("local branch");
+        branch
+            .set_upstream(Some(&format!("origin/{head_name}")))
+            .expect("set upstream");
+
+        // Upstream at the root: local is one ahead.
+        repo.reference(
+            &format!("refs/remotes/origin/{head_name}"),
+            c1,
+            true,
+            "test: upstream at c1",
+        )
+        .expect("upstream ref");
+        assert_eq!(git_ahead_behind(&repo, &head_name), (1, 0));
+
+        // Upstream past HEAD: local is one behind.
+        repo.reference(
+            &format!("refs/remotes/origin/{head_name}"),
+            c3,
+            true,
+            "test: upstream at c3",
+        )
+        .expect("move upstream ref");
+        assert_eq!(git_ahead_behind(&repo, &head_name), (0, 1));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
