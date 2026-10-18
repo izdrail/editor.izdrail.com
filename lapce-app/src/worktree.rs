@@ -59,6 +59,59 @@ pub fn stash_result_message(
     Err(format!("git stash failed:\n{}", clip_stderr(stderr)))
 }
 
+/// `git log` rows for the history palette: (full SHA, display text).
+/// Field separator is U+001F so subjects may contain any printable
+/// character. Parsing lives in parse_git_log_line for tests.
+pub fn git_log_lines(root: &Path) -> Result<Vec<(String, String)>, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("log")
+        .arg("--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ar")
+        .arg("-n")
+        .arg("200")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("Could not run git: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success() {
+        return Err(format!("git log failed:\n{}", clip_stderr(&stderr)));
+    }
+    Ok(stdout.lines().filter_map(parse_git_log_line).collect())
+}
+
+fn parse_git_log_line(line: &str) -> Option<(String, String)> {
+    let mut fields = line.split('\u{1f}');
+    let full = fields.next()?;
+    let short = fields.next()?;
+    let subject = fields.next()?;
+    let author = fields.next()?;
+    let rel = fields.next()?;
+    if full.is_empty() || short.is_empty() {
+        return None;
+    }
+    Some((
+        full.to_string(),
+        format!("{short} {subject} ({author}, {rel})"),
+    ))
+}
+
+/// `git show` output capped for an editor buffer: generous, but a
+/// mass-rename commit should not load hundreds of MB into a doc.
+pub fn clip_show_output(text: &str) -> String {
+    const CAP: usize = 512 * 1024;
+    let trimmed = text.trim_end();
+    if trimmed.len() <= CAP {
+        return trimmed.to_string();
+    }
+    let mut end = CAP;
+    while !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n[output clipped]", &trimmed[..end])
+}
+
 /// Toast body for `git stash pop`: same stdout/stderr split, plus the
 /// reminder that a conflicting pop keeps the stash entry.
 pub fn stash_pop_result_message(
@@ -324,5 +377,31 @@ mod tests {
                 .unwrap_err();
         assert!(err.contains("No stash entries found."));
         assert!(err.contains("kept when a pop conflicts"));
+    }
+
+    #[test]
+    fn git_log_line_parses_fields() {
+        let (sha, display) = parse_git_log_line(
+            "abc123def\x1fabc123d\x1ffix: modal Esc chain\x1fStefan\x1f2 hours ago",
+        )
+        .unwrap();
+        assert_eq!(sha, "abc123def");
+        assert_eq!(
+            display,
+            "abc123d fix: modal Esc chain (Stefan, 2 hours ago)"
+        );
+        assert!(parse_git_log_line("no separators").is_none());
+        assert!(parse_git_log_line("\x1f\x1fs\x1fa\x1fr").is_none());
+    }
+
+    #[test]
+    fn clip_show_output_respects_cap_and_boundaries() {
+        assert_eq!(clip_show_output("short\n"), "short");
+        let big = "\u{65e5}".repeat(200_000); // 600 KB, 3-byte chars
+        let out = clip_show_output(&big);
+        assert!(out.ends_with("[output clipped]"));
+        let clipped_len = out.len() - "\n[output clipped]".len();
+        assert!(clipped_len <= 512 * 1024);
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
     }
 }

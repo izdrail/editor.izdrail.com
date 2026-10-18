@@ -31,8 +31,8 @@ use im::HashMap;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use lapce_core::{
-    command::FocusCommand, cursor::CursorAffinity, directory::Directory, meta,
-    mode::Mode, register::Register,
+    command::FocusCommand, cursor::CursorAffinity, directory::Directory,
+    language::LapceLanguage, meta, mode::Mode, register::Register,
 };
 use lapce_rpc::{
     RpcError,
@@ -44,6 +44,7 @@ use lapce_rpc::{
     source_control::FileDiff,
     terminal::TermId,
 };
+use lapce_xi_rope::Rope;
 use lsp_types::{
     CodeActionOrCommand, CodeLens, Diagnostic, ProgressParams, ProgressToken,
     ShowMessageParams,
@@ -1325,6 +1326,9 @@ impl WindowTabData {
             PaletteSCMReferences => {
                 self.palette.run(PaletteKind::SCMReferences);
             }
+            PaletteGitLog => {
+                self.palette.run(PaletteKind::GitLog);
+            }
             ChangeColorTheme => {
                 self.palette.run(PaletteKind::ColorTheme);
             }
@@ -1504,6 +1508,14 @@ impl WindowTabData {
             SourceControlInit => {
                 self.proxy.proxy_rpc.git_init();
             }
+            ShowGitCommit => match data {
+                Some(sha) => {
+                    if let Some(sha) = sha.as_str() {
+                        self.git_show_commit(sha.to_string());
+                    }
+                }
+                None => error!("No commit provided"),
+            },
             CheckoutReference => match data {
                 Some(reference) => {
                     if let Some(reference) = reference.as_str() {
@@ -3519,6 +3531,80 @@ impl WindowTabData {
                 action: Rc::new(remove),
             }],
         );
+    }
+
+    /// Open `git show <sha>` in a scratch editor with diff syntax
+    /// highlighting (the Git History palette's entry action). The git
+    /// subprocess runs off the UI thread; the scratch editor opens on
+    /// the UI thread via create_ext_action.
+    fn git_show_commit(&self, sha: String) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_message(
+                "Git History",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "Open a folder first.".into(),
+                },
+            );
+            return;
+        };
+        let messages = self.messages;
+        let main_split = self.main_split.clone();
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| match result {
+                Ok(text) => {
+                    let child = main_split.new_file();
+                    if let EditorTabChild::Editor(editor_id) = child {
+                        if let Some(editor) =
+                            main_split.editors.editor_untracked(editor_id)
+                        {
+                            let doc = editor.doc();
+                            doc.init_content(Rope::from(text));
+                            if let Some(lang) = LapceLanguage::from_name("diff")
+                            {
+                                doc.set_language(lang);
+                                doc.trigger_syntax_change(None);
+                            }
+                        }
+                    }
+                }
+                Err(m) => {
+                    push_unique_message(
+                        &messages,
+                        "Git History",
+                        &ShowMessageParams {
+                            typ: lsp_types::MessageType::ERROR,
+                            message: m,
+                        },
+                    );
+                }
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let out = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .arg("show")
+                    .arg("--format=fuller")
+                    .arg(&sha)
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if out.status.success() {
+                    Ok(crate::worktree::clip_show_output(&stdout))
+                } else {
+                    Err(format!(
+                        "git show failed:\n{}",
+                        crate::worktree::clip_stderr(&stderr)
+                    ))
+                }
+            })();
+            send(result);
+        });
     }
 
     /// Push the current branch (`git push`) off the UI thread, with

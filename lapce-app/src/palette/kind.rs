@@ -47,6 +47,7 @@ pub enum PaletteKind {
     Language,
     LineEnding,
     SCMReferences,
+    GitLog,
     TerminalProfile,
     DiffFiles,
     HelpAndFile,
@@ -99,6 +100,7 @@ impl PaletteKind {
             | PaletteKind::Language
             | PaletteKind::LineEnding
             | PaletteKind::SCMReferences
+            | PaletteKind::GitLog
             | PaletteKind::HelpAndFile
             | PaletteKind::DiffFiles => "",
             #[cfg(windows)]
@@ -213,6 +215,9 @@ impl PaletteKind {
             PaletteKind::SCMReferences => {
                 Some(LapceWorkbenchCommand::PaletteSCMReferences)
             }
+            PaletteKind::GitLog => {
+                Some(LapceWorkbenchCommand::PaletteGitLog)
+            }
             PaletteKind::TerminalProfile => None, // InternalCommand::NewTerminal
             PaletteKind::DiffFiles => Some(LapceWorkbenchCommand::DiffFiles),
         }
@@ -267,7 +272,9 @@ impl PaletteKind {
             | PaletteKind::IconTheme
             | PaletteKind::Language
             | PaletteKind::LineEnding
-            | PaletteKind::SCMReferences | PaletteKind::HelpAndFile
+            | PaletteKind::SCMReferences
+            | PaletteKind::GitLog
+            | PaletteKind::HelpAndFile
             | PaletteKind::DiffFiles => input,
             PaletteKind::PaletteHelp
             | PaletteKind::Command

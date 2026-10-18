@@ -109,6 +109,9 @@ pub enum PaletteItemContent {
     LineEnding {
         kind: LineEnding,
     },
+    GitLogEntry {
+        sha: String,
+    },
     SCMReference {
         name: String,
     },

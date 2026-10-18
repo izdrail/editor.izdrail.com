@@ -540,6 +540,9 @@ impl PaletteData {
             PaletteKind::SCMReferences => {
                 self.get_scm_references();
             }
+            PaletteKind::GitLog => {
+                self.get_git_log();
+            }
             PaletteKind::TerminalProfile => self.get_terminal_profiles(),
         }
     }
@@ -1545,6 +1548,30 @@ impl PaletteData {
         self.items.set(items);
     }
 
+    /// Recent commits for the Git History palette. Runs `git log`
+    /// synchronously: bounded at 200 entries and typically tens of
+    /// milliseconds, but it does block the palette open on a cold
+    /// cache - an async fill (references-lane signal) is the known
+    /// follow-up if this ever feels sticky.
+    fn get_git_log(&self) {
+        let entries = self
+            .workspace
+            .path
+            .as_ref()
+            .map(|root| crate::worktree::git_log_lines(root).unwrap_or_default())
+            .unwrap_or_default();
+        let items: im::Vector<PaletteItem> = entries
+            .into_iter()
+            .map(|(sha, display)| PaletteItem {
+                content: PaletteItemContent::GitLogEntry { sha },
+                filter_text: display,
+                score: 0,
+                indices: Vec::new(),
+            })
+            .collect();
+        self.items.set(items);
+    }
+
     fn get_scm_references(&self) {
         let branches = self.source_control.branches.get_untracked();
         let tags = self.source_control.tags.get_untracked();
@@ -1904,6 +1931,16 @@ impl PaletteData {
                         buffer.set_line_ending(*kind);
                     });
                 }
+                PaletteItemContent::GitLogEntry { sha } => {
+                    self.common
+                        .lapce_command
+                        .send(crate::command::LapceCommand {
+                        kind: CommandKind::Workbench(
+                            crate::command::LapceWorkbenchCommand::ShowGitCommit,
+                        ),
+                        data: Some(serde_json::json!(sha.to_owned())),
+                    });
+                }
                 PaletteItemContent::SCMReference { name } => {
                     self.common
                         .lapce_command
@@ -2067,6 +2104,7 @@ impl PaletteData {
                         save: false,
                     }),
                 PaletteItemContent::SCMReference { .. } => {}
+                PaletteItemContent::GitLogEntry { .. } => {}
                 PaletteItemContent::SCMCreateBranch { .. } => {}
                 PaletteItemContent::TerminalProfile { .. } => {}
                 PaletteItemContent::KeymapPreset { .. } => {}

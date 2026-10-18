@@ -557,6 +557,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "palette.scm_references")]
     PaletteSCMReferences,
 
+    #[strum(message = "Git: Show History")]
+    #[strum(serialize = "palette.git_log")]
+    PaletteGitLog,
+
     #[strum(message = "List Palette Types")]
     #[strum(serialize = "palette.palette_help")]
     PaletteHelp,
@@ -572,6 +576,9 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Run and Debug Stop Current Running")]
     #[strum(serialize = "palette.run_and_debug_stop")]
     RunAndDebugStop,
+
+    #[strum(serialize = "source_control.show_commit")]
+    ShowGitCommit,
 
     #[strum(serialize = "source_control.checkout_reference")]
     CheckoutReference,
