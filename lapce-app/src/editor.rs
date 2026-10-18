@@ -4354,7 +4354,8 @@ impl EditorData {
                     offset - buffer.offset_of_line(line),
                 )
             });
-            if let Some(md) = crate::tailwind_hover::help(&line_text, col) {
+            let root = self.common.workspace.path.as_deref();
+            if let Some(md) = crate::tailwind_hover::help(root, &line_text, col) {
                 let content =
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();

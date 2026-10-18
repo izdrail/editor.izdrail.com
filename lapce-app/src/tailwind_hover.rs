@@ -11,10 +11,23 @@
 //! `border-t-blue-600`) and arbitrary values (`w-[13px]`, `bg-[#1da1f2]`,
 //! `text-[length:14px]`). Classes that were renamed in Tailwind v4 say so
 //! (`shadow-sm` -> `shadow-xs`). Custom theme values from `tailwind.config.js`
-//! and other Tailwind v4 differences are not covered; a class that matches
-//! nothing gets no hover. Nothing is executed and no file is read: only the hovered line is looked at.
+//! plus `--color-*` values from `@theme` blocks in the project's
+//! `resources/css/*.css` (Tailwind v4); `@theme` colours override the
+//! default palette, as v4 does. `tailwind.config.js` and other v4
+//! differences are not covered; a class that matches nothing gets no hover.
+//! Nothing is executed; only the hovered line and bounded CSS files are read.
 
 const MAX_LINE: usize = 4096;
+const MAX_CSS: u64 = 1 << 20;
+const MAX_CSS_FILES: usize = 20;
+const MAX_THEME: usize = 500;
+const THEME_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+static THEME_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<
+        Option<(std::path::PathBuf, std::time::Instant, Vec<(String, String)>)>,
+    >,
+> = std::sync::OnceLock::new();
 
 const SPACING: &[(&str, &str)] = &[
     ("px", "1px"), ("0", "0px"), ("0.5", "0.125rem"), ("1", "0.25rem"), ("1.5", "0.375rem"),
@@ -236,6 +249,116 @@ const COLOR_PROPS: &[(&str, &str)] = &[
     ("outline", "outline-color"),
 ];
 
+/// `/* ... */` comments replaced by spaces (never nested in CSS).
+fn strip_css_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find("/*") {
+        out.push_str(&rest[..i]);
+        match rest[i + 2..].find("*/") {
+            Some(e) => rest = &rest[i + 2 + e + 2..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+        out.push(' ');
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `--color-name: value` entries from `@theme { ... }` (and `@theme inline`)
+/// blocks in a CSS file. Values keep their raw text (`oklch(...)`, `#abc`).
+fn parse_theme(text: &str) -> Vec<(String, String)> {
+    let text = strip_css_comments(text);
+    let mut out = Vec::new();
+    let mut rest = text.as_str();
+    while let Some(i) = rest.find("@theme") {
+        let after = &rest[i + 6..];
+        let Some(brace) = after.find('{') else { break };
+        let between = &after[..brace];
+        if between.len() > 40 || between.contains([';', '}', ')']) {
+            // Not a theme rule header (a comment or an @media mention).
+            rest = &after[brace..];
+            continue;
+        }
+        let body_start = i + 6 + brace + 1;
+        let b = rest.as_bytes();
+        let mut depth = 1usize;
+        let mut j = body_start;
+        while j < b.len() && depth > 0 {
+            match b[j] {
+                b'{' => depth += 1,
+                b'}' => depth -= 1,
+                _ => {}
+            }
+            j += 1;
+        }
+        let body_end = if depth == 0 { j - 1 } else { b.len() };
+        for decl in rest[body_start..body_end].split(';') {
+            let decl = decl.trim();
+            let Some(kv) = decl.strip_prefix("--color-") else { continue };
+            let Some((name, value)) = kv.split_once(':') else { continue };
+            let name = name.trim();
+            let value = value.trim();
+            let name_ok = !name.is_empty()
+                && name.len() <= 60
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            let value_ok =
+                !value.is_empty() && value.len() <= 200 && !value.contains(['{', '}']);
+            if name_ok && value_ok && !out.iter().any(|(n, _)| n == name) {
+                out.push((name.to_string(), value.to_string()));
+            }
+            if out.len() >= MAX_THEME {
+                return out;
+            }
+        }
+        rest = &rest[j..];
+    }
+    out
+}
+
+/// `--color-*` values from `@theme` blocks in `resources/css/*.css`,
+/// cached 30 s per workspace. Bounded files, symlinks skipped.
+pub fn theme_colors(root: &std::path::Path) -> Vec<(String, String)> {
+    let cache = THEME_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    {
+        let guard = cache.lock().unwrap();
+        if let Some((r, at, v)) = guard.as_ref() {
+            if r == root && at.elapsed() < THEME_TTL {
+                return v.clone();
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let dir = root.join("resources/css");
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        let mut files: Vec<std::path::PathBuf> = rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "css"))
+            .collect();
+        files.sort();
+        for f in files.into_iter().take(MAX_CSS_FILES) {
+            let Ok(md) = std::fs::symlink_metadata(&f) else { continue };
+            if !md.is_file() || md.len() > MAX_CSS {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&f) else { continue };
+            for (n, v) in parse_theme(&text) {
+                if !out.iter().any(|(x, _)| *x == n) && out.len() < MAX_THEME {
+                    out.push((n, v));
+                }
+            }
+        }
+    }
+    *cache.lock().unwrap() = Some((root.to_path_buf(), std::time::Instant::now(), out.clone()));
+    out
+}
+
 fn hex_rgb(hex: &str) -> Option<[u8; 3]> {
     if hex.len() != 6 {
         return None;
@@ -244,8 +367,10 @@ fn hex_rgb(hex: &str) -> Option<[u8; 3]> {
     Some([p(0)?, p(2)?, p(4)?])
 }
 
-/// `red-500`, `red-500/50`, `black`, `white/25`, `transparent`, `current`.
-fn color_declaration(class: &str) -> Option<String> {
+/// `red-500`, `red-500/50`, `black`, `white/25`, `transparent`, `current`,
+/// or a `--color-*` name from the project's `@theme` blocks (v4 wins over
+/// the default palette, as Tailwind v4 does).
+fn color_declaration(class: &str, theme: &[(String, String)]) -> Option<String> {
     let (prefix, prop) = COLOR_PROPS.iter().find(|(p, _)| {
         class.strip_prefix(p).is_some_and(|r| r.starts_with('-'))
     })?;
@@ -261,6 +386,13 @@ fn color_declaration(class: &str) -> Option<String> {
         }
         None => (rest, None),
     };
+    if let Some((_, tv)) = theme.iter().find(|(n, _)| n == name) {
+        let value = match alpha {
+            Some(a) => format!("color-mix(in oklab, {tv} {a}%, transparent)"),
+            None => tv.clone(),
+        };
+        return Some(format!("{prop}: {value};"));
+    }
     let (rgb, label): ([u8; 3], String) = match name {
         "black" => ([0, 0, 0], "#000".into()),
         "white" => ([255, 255, 255], "#fff".into()),
@@ -503,7 +635,7 @@ fn family_value(key: &str, auto: bool, sizes: bool, keywords: bool, neg: bool) -
     Some(if neg && base != "0px" { format!("-{base}") } else { base })
 }
 
-fn declarations(class: &str) -> Option<String> {
+fn declarations(class: &str, theme: &[(String, String)]) -> Option<String> {
     if class.contains('[') {
         return arbitrary(class);
     }
@@ -600,7 +732,7 @@ fn declarations(class: &str) -> Option<String> {
         };
         return Some(format!("{a}: 0px;\n{b}: {width}; /* on > :not([hidden]) ~ :not([hidden]) */"));
     }
-    if let Some(c) = color_declaration(class) {
+    if let Some(c) = color_declaration(class, theme) {
         return Some(c);
     }
     let (neg, body) = match class.strip_prefix('-') {
@@ -690,13 +822,14 @@ fn token_at(line: &str, col: usize) -> Option<&str> {
 }
 
 /// Markdown hover for the Tailwind class under byte `col` of `line`.
-pub fn help(line: &str, col: usize) -> Option<String> {
+pub fn help(root: Option<&std::path::Path>, line: &str, col: usize) -> Option<String> {
     if line.len() > MAX_LINE {
         return None;
     }
     let token = token_at(line, col)?;
     let (variants, utility) = split_variants(token);
-    let css = declarations(utility)?;
+    let theme = root.map(theme_colors).unwrap_or_default();
+    let css = declarations(utility, &theme)?;
     let mut md = format!("**Tailwind** `{token}`\n\n```css\n{css}\n```\n");
     if !variants.is_empty() {
         let notes: Vec<String> = variants.iter().map(|v| variant_note(v)).collect();
@@ -705,7 +838,14 @@ pub fn help(line: &str, col: usize) -> Option<String> {
     if let Some((_, v4)) = V4_RENAMES.iter().find(|(v3, _)| *v3 == utility) {
         md.push_str(&format!("\nTailwind v4: renamed to `{v4}`.\n"));
     }
-    md.push_str("\n_Tailwind v3 default theme. `tailwind.config.js` and other v4 differences are not read._");
+    if theme.is_empty() {
+        md.push_str("\n_Tailwind v3 default theme. `tailwind.config.js` is not read._");
+    } else {
+        md.push_str(&format!(
+            "\n_Tailwind v3 default theme plus {} `@theme` colour(s) from `resources/css`. `tailwind.config.js` is not read._",
+            theme.len()
+        ));
+    }
     Some(md)
 }
 
@@ -714,7 +854,7 @@ mod tests {
     use super::*;
 
     fn h(line: &str, needle: &str) -> Option<String> {
-        help(line, line.find(needle).unwrap() + 1)
+        help(None, line, line.find(needle).unwrap() + 1)
     }
 
     #[test]
@@ -759,6 +899,74 @@ mod tests {
     }
 
     #[test]
+    fn parses_theme_blocks() {
+        let css = "@theme {\n  --color-mint-500: oklch(0.72 0.11 178);\n  --color-brand: #3b82f6;\n  /* --color-hidden: #fff; */\n  --spacing: 0.25rem;\n}\n@media {}\n@theme inline {\n  --color-accent: hsl(200, 50%, 50%);\n}\n";
+        let t = parse_theme(css);
+        assert_eq!(
+            t,
+            [
+                ("mint-500".to_string(), "oklch(0.72 0.11 178)".to_string()),
+                ("brand".to_string(), "#3b82f6".to_string()),
+                ("accent".to_string(), "hsl(200, 50%, 50%)".to_string()),
+            ]
+        );
+        // Commented-out and non-color variables are skipped.
+        assert!(!t.iter().any(|(n, _)| n == "hidden"));
+        assert!(!t.iter().any(|(n, _)| n == "spacing"));
+        // Malformed and huge input never panics.
+        assert!(parse_theme("").is_empty());
+        let _ = parse_theme("@theme { --color-a: ");
+        let _ = parse_theme("@theme {".repeat(10_000).as_str());
+    }
+
+    #[test]
+    fn theme_colours_from_project_css() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("resources/css")).unwrap();
+        std::fs::write(
+            r.join("resources/css/app.css"),
+            "@import \"tailwindcss\";\n\n@theme {\n  --color-mint-500: oklch(0.72 0.11 178);\n  --color-brand: #3b82f6;\n}\n",
+        )
+        .unwrap();
+        let line = "<p class=\"bg-mint-500 text-brand/75\">";
+        let md = help(Some(r), line, line.find("bg-mint-500").unwrap() + 1).unwrap();
+        assert!(
+            md.contains("background-color: oklch(0.72 0.11 178);"),
+            "{md}"
+        );
+        assert!(md.contains("2 `@theme` colour(s)"), "{md}");
+        let md = help(Some(r), line, line.find("text-brand").unwrap() + 1).unwrap();
+        assert!(
+            md.contains("color: color-mix(in oklab, #3b82f6 75%, transparent);"),
+            "{md}"
+        );
+        // Unknown names still get nothing; builtins keep working.
+        let l = "<p class=\"bg-mint-600 bg-red-500\">";
+        assert_eq!(help(Some(r), l, l.find("bg-mint-600").unwrap() + 1), None);
+        let md = help(Some(r), l, l.find("bg-red-500").unwrap() + 1).unwrap();
+        assert!(md.contains("rgb(239 68 68)"), "{md}");
+        // Without a root only the default theme is known.
+        let l = "<p class=\"bg-mint-500\">";
+        assert_eq!(help(None, l, l.find("bg-mint-500").unwrap() + 1), None);
+    }
+
+    #[test]
+    fn theme_colours_override_the_default_palette() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("resources/css")).unwrap();
+        std::fs::write(
+            r.join("resources/css/app.css"),
+            "@theme {\n  --color-red-500: #123456;\n}\n",
+        )
+        .unwrap();
+        let l = "<p class=\"bg-red-500\">";
+        let md = help(Some(r), l, l.find("bg-red-500").unwrap() + 1).unwrap();
+        assert!(md.contains("background-color: #123456;"), "{md}");
+    }
+
+    #[test]
     fn unknown_dynamic_and_outside_attribute_are_ignored() {
         for (l, n) in [
             ("<a class=\"btn-primary\">", "btn-primary"),
@@ -772,7 +980,7 @@ mod tests {
         ] {
             assert_eq!(h(l, n), None, "{l}");
         }
-        assert_eq!(help(&"x".repeat(5000), 10), None);
+        assert_eq!(help(None, &"x".repeat(5000), 10), None);
     }
 
     #[test]
@@ -827,7 +1035,7 @@ mod tests {
     fn odd_input_does_not_panic() {
         for l in ["class=\"", "class=\"é ü\"", "className='日本 p-4'", "class=\"p-4\u{0301}\"", "class=\"::\"", "class=\"[:]\"", "class=\"-\"", "class=\"!\"", "class=\"w-[日本]\"", "class=\"p-[é] m-[\"", "class=\"bg-[#äää] text-[x\u{0301}]\"", "class=\"w-[]] z-[[\"", ""] {
             for c in 0..=l.len() + 2 {
-                let _ = help(l, c);
+                let _ = help(None, l, c);
             }
         }
     }

@@ -20,6 +20,11 @@ Colours: the default v3 palette (22 colours, shades 50 to 950, values from tailw
 `caret-`, `decoration-` and `outline-`, with `/50` style opacity. The hover shows `rgb(r g b)` and the hex
 in a comment; Tailwind itself emits the same colour through an opacity variable.
 
+Project colours (Tailwind v4): `--color-*` values from `@theme` blocks in `resources/css/*.css`
+are read (20 files, 1 MB each, cached 30 s) and override the default palette, as v4 does. The hover
+shows the raw value (`background-color: oklch(0.72 0.11 178);`), or `color-mix(in oklab, <value>
+<pct>%, transparent)` with a `/75` style opacity modifier.
+
 Arbitrary values: `w-[13px]`, `bg-[#1da1f2]`, `-mt-[0.5rem]`, `px-[calc(100%_-_1rem)]`. The value
 between the brackets is shown verbatim (underscores become spaces, except inside `url(...)`).
 Covered prefixes: the spacing/sizing families above, the colour prefixes above (a hex colour with a
@@ -33,7 +38,8 @@ Tailwind v4: hovering a class that v4 renamed shows the new name (`shadow-sm` ->
 `shadow` -> `shadow-sm`, `rounded-sm` -> `rounded-xs`, `rounded` -> `rounded-sm`; the full rename
 list from the v4 upgrade guide is in the table and shows once those classes are covered).
 
-Not covered: gradient and ring colours, custom values from `tailwind.config.js`, plugins, and
+Not covered: gradient and ring colours, custom values from `tailwind.config.js`, `@theme`
+variables other than `--color-*` (spacing, fonts, breakpoints), plugins, and
 other Tailwind v4 differences. A class that matches nothing gets no hover. Only the hovered line is read
 (4096 bytes at most, arbitrary values at most 60 bytes); classes built with `{{ }}`, `$` or `@` are
 skipped. Nothing is executed. Blade directive and component prop hover still win in Blade files.
