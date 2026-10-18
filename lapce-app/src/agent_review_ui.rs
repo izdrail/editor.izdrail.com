@@ -7,8 +7,12 @@ use crate::{
 };
 use floem::{
     View,
-    reactive::{RwSignal, Scope, SignalGet, SignalUpdate, SignalWith},
-    views::{Decorators, dyn_stack, h_stack, label, scroll, v_stack},
+    reactive::{
+        RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
+        create_rw_signal,
+    },
+    style::CursorStyle,
+    views::{Decorators, container, dyn_stack, h_stack, label, scroll, v_stack},
 };
 use lapce_core::{
     buffer::rope_text::RopeText, editor::EditType, selection::Selection,
@@ -381,12 +385,48 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     let notice = data.notice;
     let cp_data = data.clone();
     let cp_tab = tab.clone();
-    scroll(v_stack((
-        label(|| "REVIEWED EDITS (Act remains disabled)".to_string()),
+    // Collapsible: a one-line header by default, opening automatically
+    // when a proposal or checkpoint arrives. Prepare stays on the header.
+    let open = create_rw_signal(false);
+    {
+        let proposal = data.proposal;
+        let checkpoint = data.checkpoint;
+        create_effect(move |_| {
+            if proposal.get().is_some() || checkpoint.get().is_some() {
+                open.set(true);
+            }
+        });
+    }
+    let title_proposal = data.proposal;
+    let title_checkpoint = data.checkpoint;
+    v_stack((
+        h_stack((
+            label(move || if open.get() { "\u{25be}" } else { "\u{25b8}" })
+                .style(|s| s.width(14.0).selectable(false)),
+            label(move || {
+                let p = if title_proposal.get().is_some() { 1 } else { 0 };
+                let c = if title_checkpoint.get().is_some() { 1 } else { 0 };
+                format!("Reviewed edits - {p} proposal(s), {c} checkpoint(s) (Act remains disabled)")
+            })
+            .style(|s| s.font_size(11.0).selectable(false)),
+            label(|| "Prepare review".to_string())
+                .on_click_stop(move |_| {
+                    if let Err(e) = prepare.prepare(&prepare_tab, &prepare_tab.chat.input.get_untracked()) { error.set(e); }
+                })
+                .style(|s| {
+                    s.font_size(11.0)
+                        .padding_horiz(8.0)
+                        .padding_vert(2.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .cursor(CursorStyle::Pointer)
+                }),
+        ))
+        .style(move |s| s.gap(6.0).padding_vert(2.0).cursor(CursorStyle::Pointer))
+        .on_click_stop(move |_| open.update(|o| *o = !*o)),
+        container(
+        scroll(v_stack((
         label(|| "Paste changes JSON in the composer, then Prepare review. Only existing open files. Checkpoints store private code locally.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
-        label(|| "Prepare review from composer JSON".to_string()).on_click_stop(move |_| {
-            if let Err(e) = prepare.prepare(&prepare_tab, &prepare_tab.chat.input.get_untracked()) { error.set(e); }
-        }),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
             let changes = proposal.changes.clone(); let digest = proposal.digest().unwrap_or_default();
@@ -414,7 +454,12 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || notice.get()).style(|s| s.font_size(11.0).max_width_full()),
         label(move || error.get()).style(|s| s.font_size(11.0).max_width_full()),
-    )).style(|s| s.width_full().gap(6.0))).style(|s|s.width_full().max_height(300.0))
+    )).style(|s| s.width_full().gap(6.0)))
+        .style(|s|s.width_full().max_height(300.0)),
+        )
+        .style(move |s| s.width_full().apply_if(!open.get(), |s| s.hide())),
+    ))
+    .style(|s| s.width_full())
 }
 fn change_view(change: Change) -> impl View {
     let before = change.base.text;

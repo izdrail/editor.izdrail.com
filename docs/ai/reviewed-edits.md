@@ -7,7 +7,7 @@ execution. Ask/Plan stays read-only. Hosted providers remain off.
 
 Open an existing local project and the files you want to edit. On Linux, turn
 off editor autosave first. In the chat composer paste explicit JSON, then click
-"Prepare review from composer JSON":
+"Prepare review" (in the collapsible Reviewed edits section):
 
 ```json
 {"changes":[{"path":"app/User.php","replacement":"full replacement text\n"}]}
