@@ -77,3 +77,13 @@ Start the editor with `--debug`, reproduce the problem, then attach:
 
 Logs can contain file paths and project names. Read them before posting and
 remove anything private.
+
+## The diagnostics report
+
+The About popup (command palette: Show About) now shows a **Diagnostics** section:
+version and build hash, OS, whether debug mode is on, the config and logs
+directory paths, the crash log path, the AI backend/endpoint/model for both
+lanes, and the tail of `crash.log` when one exists. **Copy diagnostics**
+puts the whole report on the clipboard so it can be pasted into a bug
+report. The report is gathered when the popup opens; it is small and
+contains no code or file contents.

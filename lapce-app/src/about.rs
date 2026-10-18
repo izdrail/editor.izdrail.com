@@ -1,14 +1,17 @@
 use std::rc::Rc;
 
 use floem::{
-    View,
+    IntoView, View,
     event::EventListener,
     keyboard::Modifiers,
-    reactive::{RwSignal, Scope, SignalGet, SignalUpdate},
+    reactive::{RwSignal, Scope, SignalGet, SignalUpdate, create_rw_signal},
     style::{CursorStyle, Display, Position},
-    views::{Decorators, container, label, stack, svg},
+    views::{Decorators, container, label, scroll, stack, svg},
 };
-use lapce_core::{command::FocusCommand, meta::VERSION, mode::Mode};
+use floem::views::editor::text::SystemClipboard;
+use lapce_core::{
+    command::FocusCommand, meta::VERSION, mode::Mode, register::Clipboard,
+};
 
 use crate::{
     command::{CommandExecuted, CommandKind},
@@ -114,6 +117,94 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                 s.margin_top(10.0)
                     .color(config.get().color(LapceColor::EDITOR_DIM))
             }),
+            {
+                let report = {
+                    let c = config.get_untracked();
+                    let ai = &c.ai_autocomplete;
+                    let chat = &c.ai_chat;
+                    let chat_model = if chat.backend == "local" {
+                        chat.local_model.clone()
+                    } else {
+                        chat.model.clone()
+                    };
+                    let ai_model = if ai.backend == "local" {
+                        ai.local_model.clone()
+                    } else {
+                        ai.remote_model.clone()
+                    };
+                    lapce_core::diagnostics::diagnostics_report(
+                        VERSION,
+                        (&ai.backend, &ai.endpoint, &ai_model),
+                        (&chat.backend, &chat.endpoint, &chat_model),
+                        lapce_core::diagnostics::crash_log_tail(20),
+                    )
+                };
+                let copied = create_rw_signal(false);
+                let report_view = report.clone();
+                stack((
+                    label(|| "Diagnostics".to_string()).style(move |s| {
+                        s.font_bold()
+                            .margin_top(20.0)
+                            .color(config.get().color(LapceColor::EDITOR_DIM))
+                    }),
+                    container(
+                        scroll(label(move || report_view.clone()).style(
+                            move |s| {
+                                s.font_size(11.0)
+                                    .color(
+                                        config
+                                            .get()
+                                            .color(LapceColor::EDITOR_DIM),
+                                    )
+                                    .selectable(true)
+                            },
+                        ))
+                        .style(|s| s.width_full().height_full()),
+                    )
+                    .style(move |s| {
+                        s.width(420.0)
+                            .max_height(220.0)
+                            .margin_top(6.0)
+                            .padding(8.0)
+                            .border(1.0)
+                            .border_radius(6.0)
+                            .border_color(
+                                config.get().color(LapceColor::LAPCE_BORDER),
+                            )
+                    }),
+                    label(move || {
+                        if copied.get() {
+                            "Copied to clipboard".to_string()
+                        } else {
+                            "Copy diagnostics".to_string()
+                        }
+                    })
+                    .on_click_stop(move |_| {
+                        let mut clipboard = SystemClipboard::new();
+                        clipboard.put_string(report.clone());
+                        copied.set(true);
+                    })
+                    .style(move |s| {
+                        s.margin_top(8.0)
+                            .padding_horiz(12.0)
+                            .padding_vert(4.0)
+                            .border(1.0)
+                            .border_radius(6.0)
+                            .border_color(
+                                config.get().color(LapceColor::LAPCE_BORDER),
+                            )
+                            .hover(|s| {
+                                s.cursor(CursorStyle::Pointer).background(
+                                    config.get().color(
+                                        LapceColor::PANEL_HOVERED_BACKGROUND,
+                                    ),
+                                )
+                            })
+                    }),
+                ))
+                .style(|s| s.flex_col().items_center())
+                .into_any()
+            },
             web_link(
                 || "Website".to_string(),
                 || AboutUri::LAPCE.to_string(),

@@ -211,6 +211,82 @@ pub fn prune_logs(dir: &Path, max_total: u64) -> usize {
     removed
 }
 
+/// Last `max_lines` lines of the crash log, capped at 8 KiB. None when
+/// there is no crash log or it is empty.
+pub fn crash_log_tail(max_lines: usize) -> Option<String> {
+    let path = crash_log_path()?;
+    let meta = std::fs::metadata(&path).ok()?;
+    if meta.len() == 0 {
+        return None;
+    }
+    let text = std::fs::read_to_string(&path).ok()?;
+    let max_lines = max_lines.min(40);
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.len().saturating_sub(max_lines);
+    let mut tail: String = lines[start..].join("\n");
+    if tail.len() > 8192 {
+        // Keep the end; the cut point is at a char boundary because we
+        // walk forward from the byte estimate.
+        let mut keep_from = tail.len() - 8192;
+        while !tail.is_char_boundary(keep_from) {
+            keep_from += 1;
+        }
+        tail = tail[keep_from..].to_string();
+    }
+    if tail.trim().is_empty() { None } else { Some(tail) }
+}
+
+/// The copyable diagnostics report shown in the About popup. Best-effort
+/// and bounded: every line is short and the crash tail is capped.
+pub fn diagnostics_report(
+    version: &str,
+    ai_autocomplete: (&str, &str, &str),
+    ai_chat: (&str, &str, &str),
+    crash_tail: Option<String>,
+) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(1024);
+    let path = |p: Option<PathBuf>| {
+        p.map(|p| p.display().to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    };
+    let _ = writeln!(s, "Lapce diagnostics");
+    let _ = writeln!(s, "version: {version}");
+    let _ = writeln!(
+        s,
+        "os: {} {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    let _ = writeln!(
+        s,
+        "debug mode: {} (enable with --debug or {}=1)",
+        if is_debug() { "on" } else { "off" },
+        DEBUG_ENV
+    );
+    let _ = writeln!(s, "config dir: {}", path(Directory::config_directory()));
+    let _ = writeln!(s, "logs dir: {}", path(Directory::logs_directory()));
+    let _ = writeln!(s, "crash log: {}", path(crash_log_path()));
+    let _ = writeln!(
+        s,
+        "proxy: connected (this window is rendered over the proxy channel)"
+    );
+    let (b, e, m) = ai_autocomplete;
+    let _ = writeln!(s, "ai autocomplete: backend={b} endpoint={e} model={m}");
+    let (b, e, m) = ai_chat;
+    let _ = writeln!(s, "ai chat: backend={b} endpoint={e} model={m}");
+    match crash_tail {
+        Some(t) if !t.trim().is_empty() => {
+            let _ = writeln!(s, "recent crash reports:");
+            let _ = writeln!(s, "{t}");
+        }
+        _ => {
+            let _ = writeln!(s, "recent crash reports: none");
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,6 +298,35 @@ mod tests {
         assert!(r.contains("thread: main"));
         assert!(r.contains("location: a.rs:1:2"));
         assert!(r.contains("backtrace:\nbt"));
+    }
+
+    #[test]
+    fn diagnostics_report_has_all_sections() {
+        let r = diagnostics_report(
+            "1.0.0+test.abc1234",
+            ("ollama", "https://ai.izdrail.com", "qwen"),
+            ("local", "", "qwen-chat-1.5b"),
+            None,
+        );
+        assert!(r.contains("version: 1.0.0+test.abc1234"));
+        assert!(r.contains("os: "));
+        assert!(r.contains("debug mode:"));
+        assert!(r.contains("config dir:"));
+        assert!(r.contains("logs dir:"));
+        assert!(r.contains("crash log:"));
+        assert!(r.contains("proxy: connected"));
+        assert!(r.contains(
+            "ai autocomplete: backend=ollama endpoint=https://ai.izdrail.com model=qwen"
+        ));
+        assert!(r.contains("recent crash reports: none"));
+        assert!(r.len() < 2048, "report without crash tail stays small");
+        let with_crash = diagnostics_report(
+            "v",
+            ("b", "e", "m"),
+            ("b", "e", "m"),
+            Some("crash 1\ncrash 2".to_string()),
+        );
+        assert!(with_crash.contains("recent crash reports:\ncrash 1\ncrash 2"));
     }
 
     #[test]
