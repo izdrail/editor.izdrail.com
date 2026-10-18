@@ -1025,6 +1025,9 @@ impl WindowTabData {
             GitNewWorktree => {
                 self.git_new_worktree();
             }
+            GitPush => {
+                self.git_push();
+            }
             CloseWindow => {
                 self.common
                     .window_common
@@ -3486,6 +3489,63 @@ impl WindowTabData {
                 action: Rc::new(remove),
             }],
         );
+    }
+
+    /// Push the current branch (`git push`) off the UI thread, with
+    /// feedback in the messages list. GIT_TERMINAL_PROMPT=0 turns a
+    /// credential prompt into a fast, explainable failure instead of a
+    /// silently hung thread; SSH agents and credential helpers work.
+    fn git_push(&self) {
+        let Some(root) = self.workspace.path.clone() else {
+            self.show_message(
+                "Git Push",
+                &ShowMessageParams {
+                    typ: lsp_types::MessageType::WARNING,
+                    message: "Open a folder first.".into(),
+                },
+            );
+            return;
+        };
+        let messages = self.messages;
+        let send = create_ext_action(
+            self.scope,
+            move |result: Result<String, String>| {
+                let (typ, message) = match result {
+                    Ok(m) => (lsp_types::MessageType::INFO, m),
+                    Err(m) => (lsp_types::MessageType::ERROR, m),
+                };
+                push_unique_message(
+                    &messages,
+                    "Git Push",
+                    &ShowMessageParams { typ, message },
+                );
+            },
+        );
+        std::thread::spawn(move || {
+            let result = (|| {
+                let out = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .arg("push")
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .map_err(|e| format!("Could not run git: {e}"))?;
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let detail = crate::worktree::clip_stderr(&stderr);
+                if out.status.success() {
+                    Ok(if detail.is_empty() {
+                        "Pushed.".to_string()
+                    } else {
+                        format!("Pushed. {detail}")
+                    })
+                } else {
+                    Err(format!(
+                        "git push failed:\n{detail}\n\nNo upstream yet? Create one with `git push -u origin <branch>`. Credentials are never prompted on a hidden thread - set up a credential helper or SSH agent."
+                    ))
+                }
+            })();
+            send(result);
+        });
     }
 
     fn git_new_worktree(&self) {

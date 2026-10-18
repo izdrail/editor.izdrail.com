@@ -377,6 +377,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "git_new_worktree")]
     GitNewWorktree,
 
+    #[strum(message = "Git: Push")]
+    #[strum(serialize = "git_push")]
+    GitPush,
+
     #[strum(message = "Close Window")]
     #[strum(serialize = "close_window")]
     CloseWindow,
