@@ -1865,7 +1865,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         n.to_string_lossy().into_owned()
                                     })
                                 })
-                                .unwrap_or_else(|| "Lapce".to_string())
+                                .unwrap_or_else(|| "Gravity Editor".to_string())
                         })
                         .style(move |s| {
                             s.font_bold().font_size(16.0).color(

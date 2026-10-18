@@ -704,7 +704,7 @@ pub enum LapceWorkbenchCommand {
     ToggleInlayHints,
 
     #[strum(serialize = "show_about")]
-    #[strum(message = "About Lapce")]
+    #[strum(message = "About Gravity Editor")]
     ShowAbout,
 
     #[strum(message = "Save All Files")]

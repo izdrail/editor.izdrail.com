@@ -338,7 +338,7 @@ fn right(
                 ))
                 .separator()
                 .separator()
-                .entry(MenuItem::new("About Lapce").action(move || {
+                .entry(MenuItem::new("About Gravity Editor").action(move || {
                     workbench_command.send(LapceWorkbenchCommand::ShowAbout)
                 }))
         }),))
