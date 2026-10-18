@@ -11,6 +11,7 @@ popup (snippet source, above buffer words) when the project matches:
 | Twig | `.twig` files | `for`, `forelse`, `if`, `extends`, `block`, `include`, `includewith`, `macro`, `import`, `embed`, `set`, `path`, `pathp`, `asset`, `trans`, `form`, `form_row`, `csrf`, `flash`, `isgranted`, `twig-component` |
 | Blade | `.blade.php` files | `if`, `foreach`, `forelse`, `auth`, `can`, `section`, `extends`, `include`, `props`, `csrf`, `method`, `error`, `class`, `vite`, `echo`, `raw`, `x-`, `x-slot`, `livewire`, `wire-click`, `wire-model`, `wire-model-live`, `wire-submit`, `wire-loading`, `wire-poll`, `entangle`, `pushonce`, `prepend`, `session`, `checked`, `selected`, `disabled`, `required`, `readonly`, `style`, `aware`, `fragment`, `hassection`, `sectionmissing`, `verbatim`, `nonce`, `links`, `wire-navigate`, `wire-confirm`, `wire-dirty`, `wire-offline`, `wire-cloak` |
 | Livewire | PHP file in a Laravel project | `lw-component`, `lw-rule`, `lw-on`, `lw-computed`, `lw-dispatch`, `lw-mount`, `lw-redirect`, `lw-render`, `lw-form`, `lw-url`, `lw-locked`, `lw-modelable`, `lw-session`, `lw-test` |
+| JavaScript | `.js` / `.jsx` / `.ts` / `.tsx` files (any project) | `fn`, `afn`, `arrow`, `imp`, `impn`, `expd`, `fetch`, `map`, `filter`, `reduce`, `foreach`, `eli`, `qs`, `qsa`, `cl`, `prom`, `tc`, `class` |
 
 Project detection is the static profile in `lapce_core::project_profile`
 (Composer files, WordPress headers); nothing is executed. The packs are VS Code

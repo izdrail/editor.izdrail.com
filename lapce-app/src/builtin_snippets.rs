@@ -2,8 +2,9 @@
 //!
 //! Packs are chosen from the file's language and the detected project profile:
 //! Laravel, WordPress and Symfony snippets are offered for PHP only when the
-//! project shows that framework, Twig snippets for `.twig` files and Blade
-//! directive/Livewire snippets for `.blade.php` files.
+//! project shows that framework, Twig snippets for `.twig` files, Blade
+//! directive/Livewire snippets for `.blade.php` files and a core
+//! JavaScript pack for `js`/`jsx`/`ts`/`tsx` files.
 use std::sync::OnceLock;
 
 use lapce_core::project_profile::ProjectProfile;
@@ -15,6 +16,7 @@ const SYMFONY: &str = include_str!("../../defaults/snippets/symfony.json");
 const TWIG: &str = include_str!("../../defaults/snippets/twig.json");
 const BLADE: &str = include_str!("../../defaults/snippets/blade.json");
 const LIVEWIRE: &str = include_str!("../../defaults/snippets/livewire.json");
+const JAVASCRIPT: &str = include_str!("../../defaults/snippets/javascript.json");
 
 /// The language id used for bundled snippets: `.blade.php` files are PHP to
 /// the language server but get their own pack.
@@ -46,6 +48,7 @@ struct Packs {
     twig: Vec<Snippet>,
     blade: Vec<Snippet>,
     livewire: Vec<Snippet>,
+    javascript: Vec<Snippet>,
 }
 
 fn packs() -> &'static Packs {
@@ -57,6 +60,7 @@ fn packs() -> &'static Packs {
         twig: parse(TWIG),
         blade: parse(BLADE),
         livewire: parse(LIVEWIRE),
+        javascript: parse(JAVASCRIPT),
     })
 }
 
@@ -79,6 +83,9 @@ pub fn for_context(language_id: &str, profile: &ProjectProfile) -> Vec<&'static 
         }
         "twig" => out.extend(&p.twig),
         "blade" => out.extend(&p.blade),
+        "javascript" | "javascriptreact" | "typescript" | "typescriptreact" => {
+            out.extend(&p.javascript)
+        }
         _ => {}
     }
     out
@@ -94,7 +101,7 @@ mod tests {
     #[test]
     fn every_bundled_snippet_parses_and_has_a_prefix() {
         let p = packs();
-        for pack in [&p.laravel, &p.wordpress, &p.symfony, &p.twig, &p.blade, &p.livewire] {
+        for pack in [&p.laravel, &p.wordpress, &p.symfony, &p.twig, &p.blade, &p.livewire, &p.javascript] {
             assert!(pack.len() >= 8);
             for s in pack {
                 assert!(!s.prefix.is_empty(), "{}", s.name);
@@ -144,6 +151,21 @@ mod tests {
         assert!(for_context("php", &laravel).iter().any(|s| s.prefix.iter().any(|x| x == "lw-component")));
         assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "lw-component")));
         assert!(for_context("twig", &none).iter().any(|s| s.prefix.iter().any(|x| x == "macro")));
+    }
+
+    #[test]
+    fn javascript_pack_covers_js_ts_jsx_tsx() {
+        let none = ProjectProfile::default();
+        for lang in ["javascript", "javascriptreact", "typescript", "typescriptreact"] {
+            let got = for_context(lang, &none);
+            for want in ["fn", "fetch", "map", "eli", "qs", "tc"] {
+                assert!(got.iter().any(|s| s.prefix.iter().any(|x| x == want)), "{lang}: {want}");
+            }
+        }
+        // The JS pack stays out of PHP, Blade and Twig.
+        assert!(for_context("php", &none).is_empty());
+        assert!(!for_context("blade", &none).iter().any(|s| s.prefix.iter().any(|x| x == "fetch")));
+        assert!(!for_context("twig", &none).iter().any(|s| s.prefix.iter().any(|x| x == "fetch")));
     }
 
     #[test]

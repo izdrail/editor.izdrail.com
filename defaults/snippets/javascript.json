@@ -1,0 +1,132 @@
+{
+ "fn": {
+  "prefix": "fn",
+  "body": [
+   "function ${1:name}(${2:params}) {",
+   "\t$0",
+   "}"
+  ],
+  "description": "Function declaration"
+ },
+ "afn": {
+  "prefix": "afn",
+  "body": [
+   "async function ${1:name}(${2:params}) {",
+   "\t$0",
+   "}"
+  ],
+  "description": "Async function declaration"
+ },
+ "arrow": {
+  "prefix": "arrow",
+  "body": [
+   "const ${1:name} = (${2:params}) => {",
+   "\t$0",
+   "};"
+  ],
+  "description": "Arrow function assigned to a const"
+ },
+ "imp": {
+  "prefix": "imp",
+  "body": "import ${1:name} from '${2:module}';",
+  "description": "Default import"
+ },
+ "impn": {
+  "prefix": "impn",
+  "body": "import { ${1:name} } from '${2:module}';",
+  "description": "Named import"
+ },
+ "expd": {
+  "prefix": "expd",
+  "body": "export default ${1:value};",
+  "description": "Default export"
+ },
+ "fetch": {
+  "prefix": "fetch",
+  "body": [
+   "const ${1:response} = await fetch('${2:url}');",
+   "const ${3:data} = await ${1:response}.json();",
+   "$0"
+  ],
+  "description": "fetch with await and JSON parsing"
+ },
+ "map": {
+  "prefix": "map",
+  "body": "${1:items}.map((${2:item}) => ${3:expr});",
+  "description": "Array map"
+ },
+ "filter": {
+  "prefix": "filter",
+  "body": "${1:items}.filter((${2:item}) => ${3:condition});",
+  "description": "Array filter"
+ },
+ "reduce": {
+  "prefix": "reduce",
+  "body": "${1:items}.reduce((${2:acc}, ${3:item}) => ${4:expr}, ${5:initial});",
+  "description": "Array reduce"
+ },
+ "foreach": {
+  "prefix": "foreach",
+  "body": [
+   "${1:items}.forEach((${2:item}) => {",
+   "\t$0",
+   "});"
+  ],
+  "description": "Array forEach"
+ },
+ "eli": {
+  "prefix": "eli",
+  "body": [
+   "${1:element}.addEventListener('${2:event}', (${3:e}) => {",
+   "\t$0",
+   "});"
+  ],
+  "description": "addEventListener"
+ },
+ "qs": {
+  "prefix": "qs",
+  "body": "document.querySelector('${1:selector}');",
+  "description": "querySelector"
+ },
+ "qsa": {
+  "prefix": "qsa",
+  "body": "document.querySelectorAll('${1:selector}');",
+  "description": "querySelectorAll"
+ },
+ "cl": {
+  "prefix": "cl",
+  "body": "console.log(${1:value});",
+  "description": "console.log"
+ },
+ "prom": {
+  "prefix": "prom",
+  "body": [
+   "new Promise((resolve, reject) => {",
+   "\t$0",
+   "});"
+  ],
+  "description": "new Promise"
+ },
+ "tc": {
+  "prefix": "tc",
+  "body": [
+   "try {",
+   "\t$1",
+   "} catch (${2:error}) {",
+   "\t$0",
+   "}"
+  ],
+  "description": "try / catch"
+ },
+ "class": {
+  "prefix": "class",
+  "body": [
+   "class ${1:Name} {",
+   "\tconstructor(${2:params}) {",
+   "\t\t$0",
+   "\t}",
+   "}"
+  ],
+  "description": "Class with constructor"
+ }
+}
