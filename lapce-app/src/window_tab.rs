@@ -2884,16 +2884,17 @@ impl WindowTabData {
     /// Get the mode for the current editor or terminal
     pub fn mode(&self) -> Mode {
         if self.common.config.get().core.modal {
-            let mode = if self.common.focus.get() == Focus::Workbench {
+            // Always the active editor's real cursor mode, even while
+            // a panel (terminal, explorer, agent composer, ...) has
+            // focus. The old Focus::Workbench gate reported Normal
+            // whenever a panel was focused, so the status bar lied
+            // about the mode you return to on the next click.
+            indicator_mode(
                 self.main_split
                     .active_editor
                     .get()
-                    .map(|editor| editor.cursor().with(|c| c.get_mode()))
-            } else {
-                None
-            };
-
-            mode.unwrap_or(Mode::Normal)
+                    .map(|editor| editor.cursor().with(|c| c.get_mode())),
+            )
         } else {
             Mode::Insert
         }
@@ -3898,5 +3899,29 @@ mod toast_tests {
         }
         assert_eq!(v.len(), MAX_TOASTS);
         assert_eq!(v.last().unwrap().1.message, "msg 9");
+    }
+}
+
+/// Status-bar mode indicator: the active editor's real cursor mode,
+/// or Normal when no editor is active. Never downgraded by panel
+/// focus - the indicator must describe the editor you return to.
+pub fn indicator_mode(editor_mode: Option<Mode>) -> Mode {
+    editor_mode.unwrap_or(Mode::Normal)
+}
+
+#[cfg(test)]
+mod indicator_mode_tests {
+    use super::indicator_mode;
+    use lapce_core::mode::Mode;
+
+    #[test]
+    fn panel_focus_keeps_real_mode() {
+        // Regression: the old Focus::Workbench gate in
+        // WindowTabData::mode reported Normal whenever a panel
+        // (terminal, explorer, agent composer) had focus, desyncing
+        // the status bar from the editor's actual mode.
+        assert_eq!(indicator_mode(Some(Mode::Insert)), Mode::Insert);
+        assert_eq!(indicator_mode(Some(Mode::Normal)), Mode::Normal);
+        assert_eq!(indicator_mode(None), Mode::Normal);
     }
 }
