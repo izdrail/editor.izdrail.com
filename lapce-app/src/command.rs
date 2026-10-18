@@ -277,6 +277,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "MCP Servers: Connect and Show Tools")]
     StartMcpServers,
 
+    #[strum(serialize = "open_plan_artifacts")]
+    #[strum(message = "Plans: Index and Open Artifacts")]
+    OpenPlanArtifacts,
+
     #[strum(serialize = "open_settings_directory")]
     #[strum(message = "Open Settings Directory")]
     OpenSettingsDirectory,

@@ -929,6 +929,30 @@ impl WindowTabData {
                     let _ = tx.send(crate::mcp_connect::run_report(local, root));
                 });
             }
+            OpenPlanArtifacts => {
+                if self.workspace.kind.is_local() {
+                    if let Some(root) = self.workspace.path.clone() {
+                        let path = root.join(".lapce").join("plans").join("index.md");
+                        if let Some(dir) = path.parent() {
+                            let _ = std::fs::create_dir_all(dir);
+                        }
+                        if std::fs::write(&path, crate::agent_loop::plan_index(&root))
+                            .is_ok()
+                        {
+                            self.main_split.jump_to_location(
+                                EditorLocation {
+                                    path,
+                                    position: None,
+                                    scroll_offset: None,
+                                    ignore_unconfirmed: false,
+                                    same_editor_tab: false,
+                                },
+                                None,
+                            );
+                        }
+                    }
+                }
+            }
             OpenSettingsDirectory => {
                 if let Some(dir) = Directory::config_directory() {
                     open_uri(&dir);
