@@ -10,6 +10,10 @@ use crate::{
 };
 use floem::{
     IntoView, View,
+    action::{add_overlay, remove_overlay},
+    event::{Event, EventListener, EventPropagation},
+    keyboard::{Key, NamedKey},
+    peniko::kurbo::{Point, Size},
     reactive::{
         ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith,
         create_effect, use_context,
@@ -17,7 +21,8 @@ use floem::{
     style::{CursorStyle, Display},
     views::{
         Decorators, container, dyn_stack, empty, h_stack, label, rich_text,
-        scroll::scroll, svg, text_editor, v_stack,
+        scroll::{PropagatePointerWheel, scroll},
+        svg, text_editor, v_stack,
     },
 };
 use lapce_ai::chat::Message;
@@ -1168,17 +1173,82 @@ fn dropdown_row_style(
 }
 
 /// The expanded dropdown list container: bordered card above the buttons.
-fn dropdown_list_style(
-    s: floem::style::Style,
+/// A floating composer dropdown list: a window-level overlay positioned
+/// at the trigger button, dismissed by focus loss (a click anywhere
+/// outside it) or Escape. Mirrors the settings dropdown (settings.rs
+/// dropdown / dropdown_scroll).
+fn composer_dropdown_overlay<V: View + 'static>(
+    rows: V,
+    expanded: RwSignal<bool>,
+    origin: RwSignal<Point>,
+    trigger_size: RwSignal<Size>,
+    list_size: RwSignal<Size>,
+    window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
-) -> floem::style::Style {
-    s.width_full()
-        .margin_horiz(6.0)
-        .margin_top(4.0)
-        .border(1.0)
-        .border_radius(6.0)
-        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-        .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
+) -> impl View + use<V> {
+    scroll(
+        rows.style(|s| s.flex_col().width_full().cursor(CursorStyle::Pointer)),
+    )
+    .style(|s| {
+        s.width_pct(100.0)
+            .max_height(220.0)
+            .set(PropagatePointerWheel, false)
+    })
+    .keyboard_navigable()
+    .request_focus(|| {})
+    .on_event_stop(EventListener::FocusLost, move |_| {
+        if expanded.get_untracked() {
+            expanded.set(false);
+        }
+    })
+    .on_event_stop(EventListener::PointerMove, |_| {})
+    .on_event_stop(EventListener::PointerDown, |_| {})
+    .on_event(EventListener::KeyDown, move |event| {
+        if let Event::KeyDown(key_event) = event {
+            if matches!(
+                &key_event.key.logical_key,
+                Key::Named(NamedKey::Escape)
+            ) {
+                expanded.set(false);
+                return EventPropagation::Stop;
+            }
+        }
+        EventPropagation::Continue
+    })
+    .on_resize(move |rect| {
+        list_size.set(rect.size());
+    })
+    .style(move |s| {
+        let config = config.get();
+        let origin = origin.get();
+        let trigger = trigger_size.get();
+        let list = list_size.get();
+        let window = window_size.get();
+        let x = if origin.x + list.width + 5.0 > window.width {
+            window.width - list.width - 5.0
+        } else {
+            origin.x
+        };
+        let y = if origin.y + trigger.height + list.height + 5.0
+            > window.height
+        {
+            origin.y - list.height + 1.0
+        } else {
+            origin.y + trigger.height - 1.0
+        };
+        s.width(240.0)
+            .font_size(config.ui.font_size() as f32)
+            .font_family(config.ui.font_family.clone())
+            .color(config.color(LapceColor::EDITOR_FOREGROUND))
+            .background(config.color(LapceColor::EDITOR_BACKGROUND))
+            .border(1)
+            .border_radius(6.0)
+            .border_color(config.color(LapceColor::LAPCE_BORDER))
+            .box_shadow_blur(3.0)
+            .box_shadow_color(config.color(LapceColor::LAPCE_DROPDOWN_SHADOW))
+            .inset_left(x)
+            .inset_top(y)
+    })
 }
 
 /// A composer dropdown button: a small bordered chip.
@@ -1241,6 +1311,228 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let show_sessions = floem::reactive::create_rw_signal(false);
     let mode_expanded = floem::reactive::create_rw_signal(false);
     let model_expanded = floem::reactive::create_rw_signal(false);
+    // Floating overlay dropdowns (settings.rs pattern): opening a
+    // composer dropdown adds a window-level overlay positioned at its
+    // trigger; closing removes it. The overlay takes keyboard focus, so
+    // a click anywhere outside it (FocusLost) or Escape dismisses it.
+    let mode_overlay = floem::reactive::create_rw_signal(None);
+    let model_overlay = floem::reactive::create_rw_signal(None);
+    let mode_origin = floem::reactive::create_rw_signal(Point::ZERO);
+    let model_origin = floem::reactive::create_rw_signal(Point::ZERO);
+    let mode_trigger_size = floem::reactive::create_rw_signal(Size::ZERO);
+    let model_trigger_size = floem::reactive::create_rw_signal(Size::ZERO);
+    let mode_list_size = floem::reactive::create_rw_signal(Size::ZERO);
+    let model_list_size = floem::reactive::create_rw_signal(Size::ZERO);
+    let window_size = tab.common.window_common.size;
+    let overlay_tab = tab.clone();
+    {
+        create_effect(move |_| {
+            if mode_expanded.get() {
+                let run_tab = overlay_tab.clone();
+                let id = add_overlay(Point::ZERO, move |_| {
+                    let resume_tab = run_tab.clone();
+                    let resume_count = move || -> usize {
+                        let settings =
+                            resume_tab.common.config.get().ai_chat.clone();
+                        resume_tab
+                            .workspace
+                            .path
+                            .as_ref()
+                            .and_then(|p| p.canonicalize().ok())
+                            .map(|root| {
+                                let cwd =
+                                    root.to_string_lossy().into_owned();
+                                crate::agent_acp_store::load_sessions(
+                                    &root,
+                                )
+                                .into_iter()
+                                .filter(|s| {
+                                    s.agent
+                                        == settings.acp_command.trim()
+                                        && s.cwd == cwd
+                                })
+                                .count()
+                            })
+                            .unwrap_or(0)
+                    };
+                    let rows = v_stack((
+                        label(|| "Chat".to_string())
+                            .on_click_stop(move |_| {
+                                if !chat_mode.busy.get_untracked() {
+                                    chat_mode.mode.set(None);
+                                    chat_mode.acp.set(false);
+                                    chat_mode.acp_resume.set(false);
+                                    chat_mode.resume_id.set(None);
+                                }
+                                mode_expanded.set(false);
+                            })
+                            .style(move |s| {
+                                dropdown_row_style(
+                                    s,
+                                    config,
+                                    data.mode.get().is_none()
+                                        && !data.acp.get()
+                                        && !data.acp_resume.get(),
+                                )
+                            }),
+                        label(|| "Ask".to_string())
+                            .on_click_stop(move |_| {
+                                if !ask_mode.busy.get_untracked() {
+                                    ask_mode.mode.set(Some(
+                                        crate::agent_loop::Mode::Ask,
+                                    ));
+                                    ask_mode.acp.set(false);
+                                    ask_mode.acp_resume.set(false);
+                                    ask_mode.resume_id.set(None);
+                                }
+                                mode_expanded.set(false);
+                            })
+                            .style(move |s| {
+                                dropdown_row_style(
+                                    s,
+                                    config,
+                                    data.mode.get()
+                                        == Some(crate::agent_loop::Mode::Ask),
+                                )
+                            }),
+                        label(|| "Plan".to_string())
+                            .on_click_stop(move |_| {
+                                if !plan_mode.busy.get_untracked() {
+                                    plan_mode.mode.set(Some(
+                                        crate::agent_loop::Mode::Plan,
+                                    ));
+                                    plan_mode.acp.set(false);
+                                    plan_mode.acp_resume.set(false);
+                                    plan_mode.resume_id.set(None);
+                                }
+                                mode_expanded.set(false);
+                            })
+                            .style(move |s| {
+                                dropdown_row_style(
+                                    s,
+                                    config,
+                                    data.mode.get()
+                                        == Some(crate::agent_loop::Mode::Plan),
+                                )
+                            }),
+                        label(|| "ACP".to_string())
+                            .on_click_stop(move |_| {
+                                if !acp_mode.busy.get_untracked() {
+                                    acp_mode.mode.set(None);
+                                    acp_mode.acp.set(true);
+                                    acp_mode.acp_resume.set(false);
+                                    acp_mode.resume_id.set(None);
+                                }
+                                mode_expanded.set(false);
+                            })
+                            .style(move |s| {
+                                dropdown_row_style(
+                                    s,
+                                    config,
+                                    data.acp.get() && !data.acp_resume.get(),
+                                )
+                            }),
+                        label(move || format!("Resume ({})", resume_count()))
+                            .on_click_stop(move |_| {
+                                if !acp_resume.busy.get_untracked() {
+                                    acp_resume.mode.set(None);
+                                    acp_resume.acp.set(true);
+                                    acp_resume.acp_resume.set(true);
+                                    acp_resume.resume_id.set(None);
+                                }
+                                mode_expanded.set(false);
+                            })
+                            .style(move |s| {
+                                dropdown_row_style(
+                                    s,
+                                    config,
+                                    data.acp.get() && data.acp_resume.get(),
+                                )
+                            }),
+                    ))
+                    .style(|s| s.flex_col().width_full());
+                    composer_dropdown_overlay(
+                        rows,
+                        mode_expanded,
+                        mode_origin,
+                        mode_trigger_size,
+                        mode_list_size,
+                        window_size,
+                        config,
+                    )
+                });
+                mode_overlay.set(Some(id));
+            } else if let Some(id) = mode_overlay.get_untracked() {
+                remove_overlay(id);
+                mode_overlay.set(None);
+            }
+        });
+    }
+    {
+        create_effect(move |_| {
+            if model_expanded.get() {
+                let id = add_overlay(Point::ZERO, move |_| {
+                    let rows = dyn_stack(
+                        move || {
+                            let c = config.get();
+                            if c.ai_chat.backend == "local" {
+                                lapce_ai::catalog::MODELS
+                                    .iter()
+                                    .filter(|m| m.chat)
+                                    .map(|m| m.id.to_string())
+                                    .collect::<Vec<_>>()
+                            } else {
+                                Vec::new()
+                            }
+                            .into_iter()
+                            .enumerate()
+                        },
+                        |(i, _)| *i,
+                        move |(_, id)| {
+                            let id_pick = id.clone();
+                            let id_active = id.clone();
+                            label(move || id.clone())
+                                .on_click_stop(move |_| {
+                                    LapceConfig::update_file(
+                                        "ai-chat",
+                                        "local-model",
+                                        toml_edit::Value::from(
+                                            id_pick.clone(),
+                                        ),
+                                    );
+                                    model_expanded.set(false);
+                                })
+                                .style(move |s| {
+                                    dropdown_row_style(
+                                        s,
+                                        config,
+                                        config
+                                            .get()
+                                            .ai_chat
+                                            .local_model
+                                            == id_active,
+                                    )
+                                })
+                        },
+                    )
+                    .style(|s| s.flex_col().width_full());
+                    composer_dropdown_overlay(
+                        rows,
+                        model_expanded,
+                        model_origin,
+                        model_trigger_size,
+                        model_list_size,
+                        window_size,
+                        config,
+                    )
+                });
+                model_overlay.set(Some(id));
+            } else if let Some(id) = model_overlay.get_untracked() {
+                remove_overlay(id);
+                model_overlay.set(None);
+            }
+        });
+    }
     let session_list = floem::reactive::create_rw_signal(
         Vec::<crate::agent_acp_store::RootedSession>::new(),
     );
@@ -1916,32 +2208,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         container(
             v_stack((
         // Antigravity-style composer dropdowns: one mode dropdown and
-        // one model dropdown replace the mode chips. The lists expand
-        // upward, above the buttons, inside the composer card. The
-        // model dropdown lists the local catalog; with the ollama
-        // backend the model comes from the endpoint, so the button is
-        // display-only.
+        // one model dropdown replace the mode chips. The lists are
+        // floating window-level overlays, opened/closed by the effects
+        // above; the buttons below only toggle them. The model dropdown
+        // lists the local catalog; with the ollama backend the model
+        // comes from the endpoint, so the button is display-only.
         {
             let resume_tab3 = resume_tab.clone();
-            let resume_count = move || -> usize {
-                let settings = resume_tab.common.config.get().ai_chat.clone();
-                resume_tab
-                    .workspace
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.canonicalize().ok())
-                    .map(|root| {
-                        let cwd = root.to_string_lossy().into_owned();
-                        crate::agent_acp_store::load_sessions(&root)
-                            .into_iter()
-                            .filter(|s| {
-                                s.agent == settings.acp_command.trim()
-                                    && s.cwd == cwd
-                            })
-                            .count()
-                    })
-                    .unwrap_or(0)
-            };
             let resume_count2 = move || -> usize {
                 let settings = resume_tab3.common.config.get().ai_chat.clone();
                 resume_tab3
@@ -1961,166 +2234,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     })
                     .unwrap_or(0)
             };
-            v_stack((
-                container(
-                    v_stack((
-                        label(|| "Chat".to_string())
-                            .on_click_stop(move |_| {
-                                if !chat_mode.busy.get_untracked() {
-                                    chat_mode.mode.set(None);
-                                    chat_mode.acp.set(false);
-                                    chat_mode.acp_resume.set(false);
-                                    chat_mode.resume_id.set(None);
-                                }
-                                mode_expanded.set(false);
-                            })
-                            .style(move |s| {
-                                dropdown_row_style(
-                                    s,
-                                    config,
-                                    data.mode.get().is_none()
-                                        && !data.acp.get()
-                                        && !data.acp_resume.get(),
-                                )
-                            }),
-                        label(|| "Ask".to_string())
-                            .on_click_stop(move |_| {
-                                if !ask_mode.busy.get_untracked() {
-                                    ask_mode.mode.set(Some(
-                                        crate::agent_loop::Mode::Ask,
-                                    ));
-                                    ask_mode.acp.set(false);
-                                    ask_mode.acp_resume.set(false);
-                                    ask_mode.resume_id.set(None);
-                                }
-                                mode_expanded.set(false);
-                            })
-                            .style(move |s| {
-                                dropdown_row_style(
-                                    s,
-                                    config,
-                                    data.mode.get()
-                                        == Some(crate::agent_loop::Mode::Ask),
-                                )
-                            }),
-                        label(|| "Plan".to_string())
-                            .on_click_stop(move |_| {
-                                if !plan_mode.busy.get_untracked() {
-                                    plan_mode.mode.set(Some(
-                                        crate::agent_loop::Mode::Plan,
-                                    ));
-                                    plan_mode.acp.set(false);
-                                    plan_mode.acp_resume.set(false);
-                                    plan_mode.resume_id.set(None);
-                                }
-                                mode_expanded.set(false);
-                            })
-                            .style(move |s| {
-                                dropdown_row_style(
-                                    s,
-                                    config,
-                                    data.mode.get()
-                                        == Some(crate::agent_loop::Mode::Plan),
-                                )
-                            }),
-                        label(|| "ACP".to_string())
-                            .on_click_stop(move |_| {
-                                if !acp_mode.busy.get_untracked() {
-                                    acp_mode.mode.set(None);
-                                    acp_mode.acp.set(true);
-                                    acp_mode.acp_resume.set(false);
-                                    acp_mode.resume_id.set(None);
-                                }
-                                mode_expanded.set(false);
-                            })
-                            .style(move |s| {
-                                dropdown_row_style(
-                                    s,
-                                    config,
-                                    data.acp.get() && !data.acp_resume.get(),
-                                )
-                            }),
-                        label(move || format!("Resume ({})", resume_count()))
-                            .on_click_stop(move |_| {
-                                if !acp_resume.busy.get_untracked() {
-                                    acp_resume.mode.set(None);
-                                    acp_resume.acp.set(true);
-                                    acp_resume.acp_resume.set(true);
-                                    acp_resume.resume_id.set(None);
-                                }
-                                mode_expanded.set(false);
-                            })
-                            .style(move |s| {
-                                dropdown_row_style(
-                                    s,
-                                    config,
-                                    data.acp.get() && data.acp_resume.get(),
-                                )
-                            }),
-                    ))
-                    .style(|s| s.flex_col().width_full()),
-                )
-                .style(move |s| {
-                    let s = dropdown_list_style(s, config);
-                    if mode_expanded.get() {
-                        s
-                    } else {
-                        s.display(Display::None)
-                    }
-                }),
-                container(
-                    dyn_stack(
-                        move || {
-                            let c = config.get();
-                            if c.ai_chat.backend == "local" {
-                                lapce_ai::catalog::MODELS
-                                    .iter()
-                                    .filter(|m| m.chat)
-                                    .map(|m| m.id.to_string())
-                                    .collect::<Vec<_>>()
-                            } else {
-                                Vec::new()
-                            }
-                            .into_iter()
-                            .enumerate()
-                        },
-                        |(i, _)| *i,
-                        move |(_, id)| {
-                            let id_pick = id.clone();
-                            let id_active = id.clone();
-                            label(move || id.clone())
-                                .on_click_stop(move |_| {
-                                    LapceConfig::update_file(
-                                        "ai-chat",
-                                        "local-model",
-                                        toml_edit::Value::from(id_pick.clone()),
-                                    );
-                                    model_expanded.set(false);
-                                })
-                                .style(move |s| {
-                                    dropdown_row_style(
-                                        s,
-                                        config,
-                                        config
-                                            .get()
-                                            .ai_chat
-                                            .local_model
-                                            == id_active,
-                                    )
-                                })
-                        },
-                    )
-                    .style(|s| s.flex_col().width_full()),
-                )
-                .style(move |s| {
-                    let s = dropdown_list_style(s, config);
-                    if model_expanded.get() {
-                        s
-                    } else {
-                        s.display(Display::None)
-                    }
-                }),
-                h_stack((
+            h_stack((
                     h_stack((
                         label(move || {
                             if data.acp.get() && data.acp_resume.get() {
@@ -2169,6 +2283,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             model_expanded.set(false);
                         }
                     })
+                    .on_move(move |point| {
+                        mode_origin.set(point);
+                        if mode_expanded.get_untracked() {
+                            mode_expanded.set(false);
+                        }
+                    })
+                    .on_resize(move |rect| {
+                        mode_trigger_size.set(rect.size());
+                    })
                     .style(move |s| dropdown_button_style(s, config)),
                     h_stack((
                         label(move || {
@@ -2212,15 +2335,23 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             mode_expanded.set(false);
                         }
                     })
+                    .on_move(move |point| {
+                        model_origin.set(point);
+                        if model_expanded.get_untracked() {
+                            model_expanded.set(false);
+                        }
+                    })
+                    .on_resize(move |rect| {
+                        model_trigger_size.set(rect.size());
+                    })
                     .style(move |s| dropdown_button_style(s, config)),
                 ))
                 .style(|s| {
                     s.flex_wrap(floem::style::FlexWrap::Wrap)
                         .gap(6.0)
                         .padding(6.0)
-                }),
-            ))
-            .style(|s| s.flex_col().width_full())
+                        .width_full()
+                })
         },
                 h_stack((
                     composer.style(|s| {
