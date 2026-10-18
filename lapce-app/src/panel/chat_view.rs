@@ -1576,40 +1576,47 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .flex_basis(0.0)
                 .min_height(0.0)
         }),
-        label(move || format!("Session: {:?}", data.state.get()))
-            .style(|s| s.font_size(11.0).max_width_full()),
         crate::agent_review_ui::panel(tab.clone()),
         label(move || data.error.get()).style(move |s| {
             s.max_width_full()
                 .color(config.get().color(LapceColor::LAPCE_ERROR))
         }),
         label(move || {
-            context(&indicator_tab)
-                .map(|c| format!("On Send: {}", c.indicator()))
-                .unwrap_or_else(|| "On Send: no editor context".into())
-        })
-        .style(|s| s.font_size(10.0).max_width_full()),
-        label(move || {
             if data.busy.get() {
                 "Thinking... (local replies arrive as a full turn)".to_string()
             } else {
-                "Enter inserts a new line. Click Send. History is opt-in in Settings."
-                    .to_string()
+                let on_send = context(&indicator_tab)
+                    .map(|c| format!("On Send: {}", c.indicator()))
+                    .unwrap_or_else(|| "On Send: no editor context".into());
+                format!("{on_send} - Enter for newline, click Send")
             }
         })
-        .style(|s| s.font_size(11.0).max_width_full()),
+        .style(move |s| {
+            s.font_size(11.0)
+                .max_width_full()
+                .color(config.get().color(LapceColor::EDITOR_DIM))
+        }),
         h_stack((
             composer.style(|s| s.flex_grow(1.0).min_width(0.0).height(100.0)),
             label(|| "Send".to_string())
                 .on_click_stop(move |_| send(&click_tab))
                 .style(move |s| {
-                    s.padding(8.0)
+                    s.padding_horiz(16.0)
+                        .padding_vert(8.0)
                         .margin_left(6.0)
                         .border(1.0)
-                        .border_radius(4.0)
+                        .border_radius(6.0)
+                        .font_bold()
                         .border_color(config.get().color(LapceColor::LAPCE_BORDER))
                         .cursor(CursorStyle::Pointer)
                         .selectable(false)
+                        .hover(|s| {
+                            s.background(
+                                config
+                                    .get()
+                                    .color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                            )
+                        })
                 }),
         ))
         .style(|s| s.width_full().padding_bottom(8.0)),
