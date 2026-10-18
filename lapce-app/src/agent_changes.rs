@@ -343,6 +343,18 @@ pub fn merge_hunks(base: &str, hunks: &[Hunk], accepted: &[bool]) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn hunks_empty_base_is_one_insertion() {
+        // New-file proposal: empty base diffs to a single all-added hunk.
+        let hs = super::hunks("", "fn main() {}\nfn helper() {}\n");
+        assert_eq!(hs.len(), 1);
+        assert_eq!(hs[0].base_start, 0);
+        assert!(hs[0].removed.is_empty());
+        assert_eq!(hs[0].added, vec!["fn main() {}\n", "fn helper() {}\n"]);
+        // Empty to empty is no change at all.
+        assert!(super::hunks("", "").is_empty());
+    }
+
+    #[test]
     fn hunks_split_separate_regions() {
         let base = "a\nb\nc\nd\ne\nf\n";
         let proposed = "a\nB\nc\nd\nE\nf\n";

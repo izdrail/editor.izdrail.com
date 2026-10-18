@@ -93,10 +93,21 @@ impl ReviewData {
         let mut result = BTreeMap::new();
         let mut identities = std::collections::BTreeSet::new();
         for relative in paths {
+            #[cfg(not(target_os = "linux"))]
+            let exists = true;
             #[cfg(target_os = "linux")]
-            reader.read(std::path::Path::new(&relative))?;
+            let exists = match reader.read(std::path::Path::new(&relative)) {
+                Ok(_) => true,
+                Err(e) => {
+                    // New-file proposal: allowed only as a missing
+                    // path under an existing in-root directory.
+                    creation_target(&root, &relative)
+                        .map_err(|re| format!("{re} ({relative}: {e})"))?;
+                    false
+                }
+            };
             let path = root.join(&relative);
-            let doc = all
+            let existing = all
                 .get(&path)
                 .cloned()
                 .or_else(|| {
@@ -104,8 +115,14 @@ impl ReviewData {
                         (p.canonicalize().ok().as_ref() == Some(&path))
                             .then(|| d.clone())
                     })
-                })
-                .ok_or_else(|| format!("Open file before review: {relative}"))?;
+                });
+            let doc = match (existing, exists) {
+                (Some(doc), _) => doc,
+                (None, true) => {
+                    return Err(format!("Open file before review: {relative}"));
+                }
+                (None, false) => tab.main_split.create_unsaved_doc(path.clone()),
+            };
             if !doc.loaded.get_untracked()
                 || doc.content.with_untracked(|c| c.read_only())
             {
@@ -439,7 +456,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         .on_click_stop(move |_| open.update(|o| *o = !*o)),
         container(
         scroll(v_stack((
-        label(|| "Paste changes JSON in the composer, then Prepare review. Only existing open files. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+        label(|| "Paste changes JSON in the composer, then Prepare review. Existing files or new paths, all under owner review. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
             let digest = proposal.digest().unwrap_or_default();
@@ -614,6 +631,47 @@ mod review_tests {
 /// Strictly parse the proposal JSON the owner pastes or Act mode
 /// produces. Pure and total: every rejection carries an actionable
 /// message.
+/// Validate a proposed NEW file: the path must stay under the
+/// project root, not exist yet, and sit in an existing directory.
+/// Confinement is checked on the lexical path (the file does not
+/// exist to canonicalize); parent symlinks are resolved before the
+/// root comparison.
+fn creation_target(root: &std::path::Path, relative: &str) -> Result<(), String> {
+    use std::path::Component;
+    let rel = std::path::Path::new(relative);
+    if relative.is_empty()
+        || rel.is_absolute()
+        || !rel
+            .components()
+            .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+    {
+        return Err("New-file path must stay inside the project".into());
+    }
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("Project root unavailable: {e}"))?;
+    let target = root.join(rel);
+    if target.exists() {
+        return Err("New-file target already exists".into());
+    }
+    let Some(parent) = target.parent() else {
+        return Err("New-file path needs a directory".into());
+    };
+    let parent = parent
+        .canonicalize()
+        .map_err(|_| "New-file directory does not exist".to_string())?;
+    if !parent.starts_with(&root) {
+        return Err("New-file path must stay inside the project".into());
+    }
+    if rel
+        .components()
+        .any(|c| matches!(c, Component::Normal(n) if n == ".git"))
+    {
+        return Err("New-file path must stay inside the project".into());
+    }
+    Ok(())
+}
+
 fn parse_draft(json: &str) -> Result<Vec<DraftChange>, String> {
     if json.len() > 2 * 1024 * 1024 {
         return Err("Proposal JSON too large".into());
@@ -624,9 +682,40 @@ fn parse_draft(json: &str) -> Result<Vec<DraftChange>, String> {
         )
     })?;
     if draft.changes.is_empty() || draft.changes.len() > 32 {
-        return Err("Review requires 1-32 existing open files".into());
+        return Err("Review requires 1-32 files".into());
     }
     Ok(draft.changes)
+}
+
+#[cfg(test)]
+mod creation_tests {
+    #[test]
+    fn creation_target_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src").join("old.rs"), "fn old() {}").unwrap();
+        std::fs::create_dir(root.join(".git")).unwrap();
+
+        // Missing file under an existing directory: allowed.
+        super::creation_target(root, "src/new.rs").unwrap();
+        super::creation_target(root, "top.rs").unwrap();
+        // Existing file, escape, absolute path, missing directory,
+        // .git internals: all refused.
+        assert!(super::creation_target(root, "src/old.rs").is_err());
+        assert!(super::creation_target(root, "../outside.rs").is_err());
+        assert!(super::creation_target(root, "/etc/passwd").is_err());
+        assert!(super::creation_target(root, "nope/new.rs").is_err());
+        assert!(super::creation_target(root, ".git/hooks/x").is_err());
+        assert!(super::creation_target(root, "").is_err());
+        // A symlinked parent pointing outside the root is refused.
+        #[cfg(unix)]
+        {
+            let outside = tempfile::tempdir().unwrap();
+            std::os::unix::fs::symlink(outside.path(), root.join("link")).unwrap();
+            assert!(super::creation_target(root, "link/new.rs").is_err());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -648,7 +737,7 @@ mod tests {
     fn parse_draft_rejects_empty_and_oversized_batches() {
         assert_eq!(
             parse_draft(r#"{"changes":[]}"#).unwrap_err(),
-            "Review requires 1-32 existing open files"
+            "Review requires 1-32 files"
         );
         let many = format!(
             "{{\"changes\":[{}]}}",
@@ -660,7 +749,7 @@ mod tests {
         );
         assert_eq!(
             parse_draft(&many).unwrap_err(),
-            "Review requires 1-32 existing open files"
+            "Review requires 1-32 files"
         );
     }
 

@@ -613,6 +613,31 @@ impl MainSplitData {
         self.go_to_location(location, edits);
     }
 
+    /// Create an in-memory document for a path that does NOT exist on
+    /// disk yet (agent-proposed new files under review). Unlike
+    /// get_doc this makes no proxy new_buffer request, so no async
+    /// NewBufferResponse can land later and clobber applied text; the
+    /// buffer starts empty and loaded, and only reaches disk if the
+    /// owner saves.
+    pub fn create_unsaved_doc(&self, path: PathBuf) -> Rc<Doc> {
+        if let Some(doc) = self.docs.with_untracked(|docs| docs.get(&path).cloned()) {
+            return doc;
+        }
+        let diagnostic_data = self.get_diagnostic_data(&path);
+        let doc = Rc::new(Doc::new(
+            self.scope,
+            path.clone(),
+            diagnostic_data,
+            self.editors,
+            self.common.clone(),
+        ));
+        doc.init_content(Rope::from(""));
+        self.docs.update(|docs| {
+            docs.insert(path, doc.clone());
+        });
+        doc
+    }
+
     pub fn get_doc(
         &self,
         path: PathBuf,
