@@ -158,6 +158,82 @@ fn tool_arg_key(name: &str) -> Result<&'static str, String> {
         _ => Err(format!("Unregistered tool: {name}")),
     }
 }
+
+/// Length of the balanced `{...}` slice that starts at `text`'s first
+/// byte, string- and escape-aware. None when the braces never close.
+fn balanced_json_len(text: &str) -> Option<usize> {
+    debug_assert!(text.starts_with('{'));
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Recover tool calls a model wrote into its prose answer as JSON
+/// objects (`{"name":..., "arguments":{...}}`, bare or inside fenced
+/// ```json blocks) instead of native tool calls - small local models
+/// do this often. Only registered names with schema-valid arguments
+/// are recovered (unregistered names such as a hallucinated "edit"
+/// stay prose); recovered calls get synthesized ids and flow through
+/// the loop's normal validation, limits and owner-approval gates.
+fn extract_prose_tool_calls(
+    content: &str,
+    allowed: &[&str],
+    step: usize,
+) -> Vec<ToolCall> {
+    let mut calls = Vec::new();
+    let mut rest = content;
+    while let Some(start) = rest.find('{') {
+        let Some(len) = balanced_json_len(&rest[start..]) else {
+            // Not a complete object; skip past this brace.
+            rest = &rest[start + 1..];
+            continue;
+        };
+        let candidate = &rest[start..start + len];
+        if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(candidate)
+        {
+            let name = map.get("name").and_then(Value::as_str);
+            let arguments = map.get("arguments").cloned();
+            if let (Some(name), Some(arguments)) = (name, arguments) {
+                if allowed.contains(&name) && calls.len() < 8 {
+                    let call = ToolCall {
+                        id: format!("prose-{step}-{}", calls.len()),
+                        name: name.into(),
+                        arguments,
+                    };
+                    if validate_arguments(&call).is_ok() {
+                        calls.push(call);
+                    }
+                }
+            }
+        }
+        rest = &rest[start + len..];
+    }
+    calls
+}
 /// The host supplies a configured provider and scoped executor. This cannot obtain keys,
 /// choose roots, grant trust, execute shell, approve plans, or apply a code patch.
 pub fn run(
@@ -227,12 +303,19 @@ pub fn run(
             return Err("Agent time limit reached".into());
         }
         emit(Event::Step(step + 1));
-        let reply = model(&messages, &tools)?;
+        let mut reply = model(&messages, &tools)?;
         if cancelled.load(Ordering::Acquire) {
             return Err("Cancelled".into());
         }
         if start.elapsed() > limits.elapsed {
             return Err("Agent time limit reached".into());
+        }
+        // Small local models answer with tool-call JSON written as
+        // prose instead of native tool calls; recover registered calls
+        // so they run under the same validation and approval gates.
+        if mode == Mode::Act && reply.calls.is_empty() {
+            reply.calls =
+                extract_prose_tool_calls(&reply.content, &allowed, step);
         }
         // Validate all proposed calls before any executor is invoked.
         let mut validation = messages.clone();
@@ -729,5 +812,105 @@ mod act_command_tests {
         assert!(result
             .unwrap_err()
             .contains("Invalid, duplicate or unregistered tool call"));
+    }
+}
+
+#[cfg(test)]
+mod prose_call_tests {
+    use super::*;
+
+    #[test]
+    fn recovers_bare_and_fenced_calls() {
+        let text = "I will read it first:\n```json\n{\"name\":\"read_file\",\"arguments\":{\"path\":\"a.txt\"}}\n```\nthen run {\"name\":\"run_command\",\"arguments\":{\"command\":\"ls\"}}\n";
+        let calls =
+            extract_prose_tool_calls(text, &["read_file", "run_command"], 2);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].name, "read_file");
+        assert_eq!(calls[0].id, "prose-2-0");
+        assert_eq!(calls[1].name, "run_command");
+        assert_eq!(calls[1].id, "prose-2-1");
+    }
+
+    #[test]
+    fn skips_unknown_malformed_and_non_call_objects() {
+        // "edit" is not a registered tool, the second object fails the
+        // argument schema, the third is a changes proposal - all prose.
+        let text = "{\"name\":\"edit\",\"arguments\":{\"path\":\"a.txt\"}} {\"name\":\"read_file\",\"arguments\":{\"wrong\":1}} {\"changes\":[]}";
+        let calls = extract_prose_tool_calls(text, &["read_file"], 0);
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn skips_unbalanced_and_brace_in_strings() {
+        let text = "use \\{ carefully {\"name\":\"read_file\",\"arguments\":{\"path\":\"a } b.txt\"}}";
+        let calls = extract_prose_tool_calls(text, &["read_file"], 0);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].arguments["path"], "a } b.txt");
+        assert!(extract_prose_tool_calls(
+            "{\"name\":\"read_file\"",
+            &["read_file"],
+            0
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn act_mode_prose_calls_execute_through_the_loop() {
+        let mut turns = 0;
+        let mut executed = String::new();
+        run(
+            Mode::Act,
+            "list the files",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            |_, _| {
+                turns += 1;
+                if turns == 1 {
+                    Ok(Reply {
+                        content: "Let me check: {\"name\":\"run_command\",\"arguments\":{\"command\":\"ls\"}}"
+                            .into(),
+                        calls: Vec::new(),
+                    })
+                } else {
+                    Ok(Reply {
+                        content: "{}".into(),
+                        calls: Vec::new(),
+                    })
+                }
+            },
+            |call| {
+                assert_eq!(call.name, "run_command");
+                executed =
+                    call.arguments["command"].as_str().unwrap().to_string();
+                Ok("a.txt".into())
+            },
+            |_| {},
+            &[],
+        )
+        .unwrap();
+        assert_eq!(executed, "ls");
+        assert_eq!(turns, 2);
+    }
+
+    #[test]
+    fn ask_mode_prose_calls_stay_prose() {
+        let result = run(
+            Mode::Ask,
+            "what is here",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            |_, _| {
+                Ok(Reply {
+                    content: "answer {\"name\":\"run_command\",\"arguments\":{\"command\":\"ls\"}}"
+                        .into(),
+                    calls: Vec::new(),
+                })
+            },
+            |_| panic!("Ask mode must never execute prose calls"),
+            |_| {},
+            &[],
+        )
+        .unwrap();
+        assert!(result.contains("run_command"));
     }
 }

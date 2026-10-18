@@ -1878,6 +1878,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             plans_list.set(entries);
         });
     }
+    // The empty-prompt error is stale the moment the composer holds
+    // text again; clear only that message, never real run errors.
+    {
+        let typing_data = data.clone();
+        create_effect(move |_| {
+            if !typing_data.input.get().trim().is_empty()
+                && typing_data.error.get_untracked()
+                    == "Type a message first."
+            {
+                typing_data.error.set(String::new());
+            }
+        });
+    }
     let plans_open = tab.main_split.clone();
     let mode_expanded = floem::reactive::create_rw_signal(false);
     let model_expanded = floem::reactive::create_rw_signal(false);

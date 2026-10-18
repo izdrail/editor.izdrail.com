@@ -678,7 +678,7 @@ fn parse_draft(json: &str) -> Result<Vec<DraftChange>, String> {
     }
     let draft: Draft = serde_json::from_str(json).map_err(|e| {
         format!(
-            "Expected {{\"changes\":[{{\"path\":\"app/User.php\",\"replacement\":\"...\"}}]}}: {e}"
+            "Expected a proposal JSON object like {{\"changes\":[{{\"path\":\"relative/file\",\"replacement\":\"...\"}}]}}, but the answer did not parse: {e}"
         )
     })?;
     if draft.changes.is_empty() || draft.changes.len() > 32 {
