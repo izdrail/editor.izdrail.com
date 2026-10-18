@@ -582,6 +582,8 @@ fn panel_picker(
                     }
                 }
             };
+            let is_active_pill = is_active.clone();
+            let is_active_for_hover = is_active.clone();
             container(stack((
                 clickable_icon(
                     || icon,
@@ -639,7 +641,31 @@ fn panel_picker(
                         )
                 }),
             )))
-            .style(|s| s.padding(6.0))
+            .style(move |s| {
+                let config = config.get();
+                // The style closure is Fn: it cannot move its captured
+                // closure into the hover closure, so clone per call.
+                let is_active_hover = is_active_for_hover.clone();
+                s.padding(6.0)
+                    .margin(2.0)
+                    .border_radius(8.0)
+                    .apply_if(is_active_pill(), |s| {
+                        s.background(
+                            config.color(
+                                LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
+                            ),
+                        )
+                    })
+                    .hover(move |s| {
+                        s.apply_if(!is_active_hover(), |s| {
+                            s.background(
+                                config.color(
+                                    LapceColor::PANEL_HOVERED_BACKGROUND,
+                                ),
+                            )
+                        })
+                    })
+            })
         },
     )
     .style(move |s| {

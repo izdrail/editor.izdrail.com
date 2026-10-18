@@ -367,6 +367,10 @@ pub fn status(
             })
             .on_click_stop(move |_| {
                 palette_clone.run(PaletteKind::LineEnding);
+            })
+            .style(move |s| {
+                s.border_left(1.0)
+                    .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             });
             let palette_clone = palette.clone();
             let language_info = status_text(config, editor, move || {
@@ -379,6 +383,10 @@ pub fn status(
             })
             .on_click_stop(move |_| {
                 palette_clone.run(PaletteKind::Language);
+            })
+            .style(move |s| {
+                s.border_left(1.0)
+                    .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             });
             (cursor_info, line_ending_info, language_info)
         })
