@@ -14,7 +14,7 @@ use floem::{
 };
 use indexmap::IndexMap;
 use lapce_core::{buffer::rope_text::RopeText, mode::Mode};
-use lapce_rpc::source_control::FileDiff;
+use lapce_rpc::source_control::{DiffInfo, FileDiff};
 
 use crate::{
     command::{CommandExecuted, CommandKind},
@@ -248,9 +248,71 @@ pub fn commit_message_messages(diff: &str) -> Vec<lapce_ai::chat::Message> {
     ]
 }
 
+/// Merge one DiffInfo into the panel lists: workdir rows keep their
+/// per-file commit checkbox state, staged rows replace the staged
+/// list wholesale. Extracted from the CoreNotification::DiffInfo
+/// handler so the mapping is unit-testable.
+pub fn merge_diff_info(
+    diff: &DiffInfo,
+    previous: &IndexMap<PathBuf, (FileDiff, bool)>,
+) -> (IndexMap<PathBuf, (FileDiff, bool)>, Vec<FileDiff>) {
+    let diffs = diff
+        .diffs
+        .iter()
+        .cloned()
+        .map(|d| {
+            let checked = previous.get(d.path()).is_none_or(|(_, c)| *c);
+            (d.path().clone(), (d, checked))
+        })
+        .collect();
+    (diffs, diff.staged_diffs.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The 0216 panel-model contract, exercised the way the bug
+    /// report hit it: a file staged outside the app must land in the
+    /// Staged list (and only there), and unstaging must move it back.
+    /// The proxy half of this path (git2 index -> DiffInfo) is covered
+    /// by dispatch.rs's staged_and_unstaged_are_separate.
+    #[test]
+    fn merge_diff_info_lists_staged_and_moves_files_between_sections() {
+        let staged_path = PathBuf::from("/ws/b.txt");
+        let workdir_path = PathBuf::from("/ws/a.txt");
+        let diff = DiffInfo {
+            diffs: vec![FileDiff::Modified(workdir_path.clone())],
+            staged_diffs: vec![FileDiff::Modified(staged_path.clone())],
+            ..Default::default()
+        };
+        let mut previous = IndexMap::new();
+        previous.insert(
+            workdir_path.clone(),
+            (FileDiff::Modified(workdir_path.clone()), false),
+        );
+        let (diffs, staged) = merge_diff_info(&diff, &previous);
+        assert_eq!(staged, vec![FileDiff::Modified(staged_path.clone())]);
+        assert!(!diffs.contains_key(&staged_path));
+        assert!(diffs.contains_key(&workdir_path));
+        // The workdir row keeps its unchecked commit checkbox.
+        assert!(!diffs[&workdir_path].1);
+
+        // Unstaging (staged list empties) moves the file back to
+        // Changes on the next DiffInfo; new rows default to checked.
+        let diff = DiffInfo {
+            diffs: vec![
+                FileDiff::Modified(workdir_path.clone()),
+                FileDiff::Modified(staged_path.clone()),
+            ],
+            staged_diffs: Vec::new(),
+            ..Default::default()
+        };
+        let (diffs, staged) = merge_diff_info(&diff, &diffs);
+        assert!(staged.is_empty());
+        assert!(diffs.contains_key(&staged_path));
+        assert!(diffs[&staged_path].1);
+    }
 
     #[test]
     fn commit_prompt_shape_and_small_diff() {

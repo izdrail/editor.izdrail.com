@@ -2412,21 +2412,12 @@ impl WindowTabData {
                 self.source_control
                     .tags
                     .set(diff.tags.iter().cloned().collect());
-                self.source_control.file_diffs.update(|file_diffs| {
-                    *file_diffs = diff
-                        .diffs
-                        .iter()
-                        .cloned()
-                        .map(|diff| {
-                            let checked =
-                                file_diffs.get(diff.path()).is_none_or(|(_, c)| *c);
-                            (diff.path().clone(), (diff, checked))
-                        })
-                        .collect();
-                });
-                self.source_control
-                    .staged_file_diffs
-                    .set(diff.staged_diffs.clone());
+                let previous =
+                    self.source_control.file_diffs.get_untracked();
+                let (diffs, staged) =
+                    crate::source_control::merge_diff_info(&diff, &previous);
+                self.source_control.file_diffs.set(diffs);
+                self.source_control.staged_file_diffs.set(staged);
 
                 let docs = self.main_split.docs.get_untracked();
                 for (_, doc) in docs {

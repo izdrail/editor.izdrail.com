@@ -431,7 +431,11 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
 
 /// Rows for the "Staged Changes" section: same layout as the Changes
 /// rows minus the commit checkbox, with an "Unstage" context-menu
-/// entry instead of "Stage".
+/// entry instead of "Stage". Unlike the Changes view (which fills the
+/// panel with size_pct), this section is content-sized with a height
+/// cap: giving it no definite height collapses the body to zero
+/// (the inner scroll is absolute, so nothing sizes the section),
+/// which hid every staged row.
 fn staged_diffs_view(source_control: SourceControlData) -> impl View {
     let staged_diffs = source_control.staged_file_diffs;
     let config = source_control.common.config;
@@ -577,10 +581,10 @@ fn staged_diffs_view(source_control: SourceControlData) -> impl View {
             )
             .style(|s| s.line_height(1.6).flex_col().width_pct(100.0))
         })
-        .style(|s| s.absolute().size_pct(100.0, 100.0))
+        .style(|s| s.width_pct(100.0).max_height(180.0))
     })
     .on_resize(move |rect| {
         panel_rect.set(rect);
     })
-    .style(|s| s.size_pct(100.0, 100.0))
+    .style(|s| s.width_pct(100.0))
 }
