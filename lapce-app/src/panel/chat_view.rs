@@ -1319,6 +1319,49 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .justify_between()
                 .padding_vert(2.0)
         }),
+        // Quiet section header with a collapse chevron (Antigravity
+        // panel chrome) - replaces the Agents text button.
+        h_stack((
+            svg(move || {
+                config.get().ui_svg(if show_sessions.get() {
+                    LapceIcons::FOLD_DOWN
+                } else {
+                    LapceIcons::FOLD
+                })
+            })
+            .style(move |s| {
+                let config = config.get();
+                let size = config.ui.icon_size() as f32;
+                s.size(size, size)
+                    .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
+            }),
+            label(move || format!("Agents ({})", session_list.get().len()))
+                .style(move |s| {
+                    s.font_size(11.0)
+                        .selectable(false)
+                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                }),
+        ))
+        .on_click_stop(move |_| {
+            let show = !show_sessions.get_untracked();
+            if show {
+                let roots = agent_session_roots(
+                    agents_click_root.clone(),
+                    agents_db.as_ref(),
+                );
+                session_list.set(
+                    crate::agent_acp_store::load_sessions_merged(&roots),
+                );
+            }
+            show_sessions.set(show);
+        })
+        .style(move |s| {
+            s.items_center()
+                .gap(4.0)
+                .padding_vert(2.0)
+                .cursor(CursorStyle::Pointer)
+                .selectable(false)
+        }),
         scroll(
             dyn_stack(
                 move || session_list.get(),
@@ -1694,23 +1737,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     c_resume.acp.get() && c_resume.acp_resume.get(),
                 )
             }),
-            label(move || format!("Agents ({})", session_list.get().len()))
-                .on_click_stop(move |_| {
-                    let show = !show_sessions.get_untracked();
-                    if show {
-                        let roots = agent_session_roots(
-                            agents_click_root.clone(),
-                            agents_db.as_ref(),
-                        );
-                        session_list.set(
-                            crate::agent_acp_store::load_sessions_merged(&roots),
-                        );
-                    }
-                    show_sessions.set(show);
-                })
-                .style(move |s| {
-                    mode_button_style(s, config, show_sessions.get())
-                }),
         ))
         .style(|s| {
             s.flex_wrap(floem::style::FlexWrap::Wrap)
