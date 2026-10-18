@@ -33,8 +33,8 @@ version      = "0.4.6"
 edition      = "2024"
 rust-version = "1.98.0"
 license      = "Apache-2.0"
-homepage     = "https://lapce.dev"
-authors      = ["Dongdong Zhou <dzhou121@gmail.com>"]
+homepage     = "https://izdrail.com"
+authors      = ["Dongdong Zhou <dzhou121@gmail.com>", "Stefan Bogdanel"]
 
 [workspace.dependencies]
 lapce-vsix        = { path = "lapce-vsix" }

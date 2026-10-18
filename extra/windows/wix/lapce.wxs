@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="windows-1252"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
-    <Product Name="Lapce" Id="*" UpgradeCode="9c09a374-1135-4782-959f-2dec376a1dfa" Language="1033" Codepage="1252" Version="0.4.6" Manufacturer="Lapce">
+    <Product Name="Gravity Editor" Id="*" UpgradeCode="9c09a374-1135-4782-959f-2dec376a1dfa" Language="1033" Codepage="1252" Version="0.4.6" Manufacturer="Izdrail">
         <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine"/>
         <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of [ProductName] is already installed."/>
         <Icon Id="lapce.exe" SourceFile=".\extra\windows\lapce.ico"/>
@@ -19,10 +19,10 @@
         <!-- Create directories -->
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFiles64Folder">
-                <Directory Id="LapceProgramFiles" Name="Lapce"/>
+                <Directory Id="LapceProgramFiles" Name="Gravity Editor"/>
             </Directory>
             <Directory Id="ProgramMenuFolder">
-                <Directory Id="LapceProgramMenu" Name="Lapce"/>
+                <Directory Id="LapceProgramMenu" Name="Gravity Editor"/>
             </Directory>
         </Directory>
 
@@ -36,7 +36,7 @@
         <DirectoryRef Id="LapceProgramMenu">
             <!-- Application shortcut -->
             <Component Id="LapceShortcut" Guid="7d3d3a8e-febb-4759-8eca-873676d5066a">
-                <Shortcut Id="LapceShortcutFile" Icon="lapce.exe" Name="Lapce" Description="Lightning-fast and Powerful Code Editor" Target="[LapceProgramFiles]lapce.exe"/>
+                <Shortcut Id="LapceShortcutFile" Icon="lapce.exe" Name="Gravity Editor" Description="Lightning-fast and Powerful Code Editor" Target="[LapceProgramFiles]lapce.exe"/>
                 <RemoveFolder Id="LapceProgramMenu" On="uninstall"/>
                 <RegistryValue Root="HKCU" Key="Software\Microsoft\Lapce" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
             </Component>
@@ -52,10 +52,10 @@
         <DirectoryRef Id="TARGETDIR">
             <!-- Add context menu -->
             <Component Id="ContextMenu" Guid="22ad399b-1d77-416c-ae33-57e8f8511177">
-                <RegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\Open Lapce here\command">
+                <RegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\Open Gravity Editor here\command">
                     <RegistryValue Type="string" Value="[LapceProgramFiles]lapce.exe &quot;%V&quot;" KeyPath="yes"/>
                 </RegistryKey>
-                <RegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\Open Lapce here">
+                <RegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\Open Gravity Editor here">
                     <RegistryValue Type="string" Name="Icon" Value="[LapceProgramFiles]lapce.exe"/>
                 </RegistryKey>
             </Component>
