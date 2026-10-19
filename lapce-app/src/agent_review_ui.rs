@@ -55,7 +55,10 @@ struct Draft {
 #[serde(deny_unknown_fields)]
 struct DraftChange {
     path: String,
-    replacement: String,
+    /// Full new file content, or an exact edit via old_text/new_text.
+    replacement: Option<String>,
+    old_text: Option<String>,
+    new_text: Option<String>,
 }
 impl ReviewData {
     pub fn new(cx: Scope, path: Option<PathBuf>) -> Self {
@@ -198,18 +201,39 @@ impl ReviewData {
             run_id: tab.chat.session.get_untracked().id,
             changes: changes
                 .into_iter()
-                .map(|c| Change {
-                    base: current[&c.path].clone(),
-                    path: c.path.clone(),
-                    proposed: docs[&c.path].buffer.with_untracked(|b| {
-                        b.line_ending()
-                            .normalize(&lapce_xi_rope::Rope::from(
-                                c.replacement.as_str(),
-                            ))
-                            .to_string()
-                    }),
+                .map(|c| {
+                    let base = current[&c.path].clone();
+                    // Exact-edit form: derive the full new content
+                    // host-side from the current file (item 228).
+                    let proposed_text = match (c.replacement, c.old_text, c.new_text) {
+                        (Some(replacement), _, _) => replacement,
+                        (None, Some(old_text), Some(new_text)) => {
+                            crate::agent_changes::apply_exact_edit(
+                                &base.text,
+                                &old_text,
+                                &new_text,
+                            )?
+                        }
+                        _ => {
+                            return Err(
+                                "Invalid change shape (parse_draft accepted it)"
+                                    .into(),
+                            );
+                        }
+                    };
+                    Ok(Change {
+                        base,
+                        path: c.path.clone(),
+                        proposed: docs[&c.path].buffer.with_untracked(|b| {
+                            b.line_ending()
+                                .normalize(&lapce_xi_rope::Rope::from(
+                                    proposed_text.as_str(),
+                                ))
+                                .to_string()
+                        }),
+                    })
                 })
-                .collect(),
+                .collect::<Result<Vec<Change>, String>>()?,
         };
         proposal.digest()?;
         let stale = match reads {
@@ -941,6 +965,17 @@ fn parse_draft(json: &str) -> Result<Vec<DraftChange>, String> {
     if draft.changes.is_empty() || draft.changes.len() > 32 {
         return Err("Review requires 1-32 files".into());
     }
+    for c in &draft.changes {
+        let full = c.replacement.is_some();
+        let old = c.old_text.is_some();
+        let new = c.new_text.is_some();
+        if full == (old || new) || old != new {
+            return Err(
+                "Expected a proposal JSON object like {\"changes\":[{\"path\":\"relative/file\",\"replacement\":\"...\"}]} or an exact-edit object like {\"changes\":[{\"path\":\"relative/file\",\"old_text\":\"exact existing text\",\"new_text\":\"its replacement\"}]} - each change needs replacement, or old_text AND new_text, never both forms, never a partial one."
+                    .into(),
+            );
+        }
+    }
     Ok(draft.changes)
 }
 
@@ -1043,7 +1078,10 @@ mod tests {
         .unwrap();
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].path, "src/main.rs");
-        assert_eq!(changes[0].replacement, "fn main() {}");
+        assert_eq!(
+            changes[0].replacement.as_deref(),
+            Some("fn main() {}")
+        );
     }
 
     #[test]
@@ -1077,6 +1115,27 @@ mod tests {
             .unwrap_err()
             .contains("Expected"));
         assert!(parse_draft("not json").is_err());
+    }
+
+    #[test]
+    fn parse_draft_accepts_exact_edit_form() {
+        let changes = parse_draft(
+            r#"{"changes":[{"path":"a.txt","old_text":"dirty","new_text":"clean"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].replacement.is_none());
+        // Mixed or partial forms are refused.
+        assert!(parse_draft(
+            r#"{"changes":[{"path":"a","replacement":"x","old_text":"y","new_text":"z"}]}"#
+        )
+        .unwrap_err()
+        .contains("Expected"));
+        assert!(parse_draft(
+            r#"{"changes":[{"path":"a","old_text":"y"}]}"#
+        )
+        .unwrap_err()
+        .contains("Expected"));
     }
 
     #[test]

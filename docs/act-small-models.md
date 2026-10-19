@@ -52,3 +52,22 @@ Also: checkpoint before/after diffs start collapsed behind a "Show
 before/after (N file(s))" toggle, so a stale checkpoint card no
 longer pushes the review section down the panel; Restore and Dismiss
 stay visible.
+
+## Exact-edit proposals and ambiguity refusal (item 228, host QA on 571af35)
+
+A qwen3:4b Act run for "change dirty to clean" produced a proposal
+whose replacement deleted two of three lines. Two hardenings:
+
+1. Extraction refuses ambiguity: when an answer holds several
+   DIFFERENT proposal JSON objects, extraction errors (triggering the
+   repair retry / a parse error) instead of silently picking the
+   first. The same proposal repeated verbatim still extracts.
+
+2. Small models get a simpler contract: an exact-edit form
+   {"changes":[{"path":"...","old_text":"exact existing text",
+   "new_text":"its replacement"}]} - old_text must occur exactly once
+   in the current file; the host derives the full new content
+   (agent_changes::apply_exact_edit) and the normal hunk review shows
+   the minimal diff. No whole-file retyping, no JSON-escaping a whole
+   file. The full-replacement form still works; mixing or partial
+   forms are rejected. Both Act contract variants document the form.

@@ -351,32 +351,50 @@ pub fn merge_hunks(base: &str, hunks: &[Hunk], accepted: &[bool]) -> String {
 /// the block is accepted as the full replacement for that file - the
 /// no-JSON path for models too small to escape a whole file into a
 /// JSON string.
+fn proposal_candidate(text: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(text.trim()).ok()?;
+    if value.get("changes").is_some_and(|v| v.is_array()) {
+        Some(text.trim().to_string())
+    } else {
+        None
+    }
+}
+
 pub fn extract_proposal_json(
     answer: &str,
     default_path: Option<&str>,
 ) -> Result<String, String> {
-    let candidate = |text: &str| -> Option<String> {
-        let value: Value = serde_json::from_str(text.trim()).ok()?;
-        if value.get("changes").is_some_and(|v| v.is_array()) {
-            Some(text.trim().to_string())
-        } else {
-            None
+    // Collect every DISTINCT candidate. More than one different
+    // proposal in one answer means the model contradicted itself;
+    // picking the first would silently build a destructive
+    // replacement from an ambiguous extraction (host QA on 571af35:
+    // a whole file reduced to one line).
+    let mut found: Vec<String> = Vec::new();
+    let mut collect = |text: &str, found: &mut Vec<String>| {
+        if let Some(c) = proposal_candidate(text) {
+            if !found.iter().any(|f| f == &c) {
+                found.push(c);
+            }
         }
     };
-    if let Some(found) = candidate(answer) {
-        return Ok(found);
-    }
+    collect(answer, &mut found);
     let fences = fenced_blocks(answer);
     for (_, body) in &fences {
-        if let Some(found) = candidate(body) {
-            return Ok(found);
-        }
+        collect(body, &mut found);
     }
     for (start, _) in answer.match_indices('{') {
         if let Some(end) = balanced_object_end(answer, start) {
-            if let Some(found) = candidate(&answer[start..=end]) {
-                return Ok(found);
-            }
+            collect(&answer[start..=end], &mut found);
+        }
+    }
+    match found.len() {
+        1 => return Ok(found.remove(0)),
+        0 => {}
+        _ => {
+            return Err(
+                "the answer holds several different proposal JSON objects; refusing to guess which"
+                    .into(),
+            );
         }
     }
     if let Some(path) = default_path {
@@ -391,6 +409,29 @@ pub fn extract_proposal_json(
         }
     }
     Err("no proposal JSON object found in the answer".into())
+}
+
+/// Apply an exact-edit change: `old_text` must occur exactly once in
+/// `base`, so a small model can name the text to change instead of
+/// retyping (and JSON-escaping) the whole file.
+pub fn apply_exact_edit(
+    base: &str,
+    old_text: &str,
+    new_text: &str,
+) -> Result<String, String> {
+    if old_text.is_empty() {
+        return Err("old_text must not be empty".into());
+    }
+    let occurrences = base.matches(old_text).count();
+    if occurrences == 0 {
+        return Err("old_text does not occur in the current file content".into());
+    }
+    if occurrences > 1 {
+        return Err(format!(
+            "old_text occurs {occurrences} times in the current file; make it more specific so it matches exactly once"
+        ));
+    }
+    Ok(base.replacen(old_text, new_text, 1))
 }
 
 /// Fenced code blocks as (info string, body) pairs.
@@ -493,9 +534,53 @@ mod extraction_tests {
     }
 
     #[test]
+    fn conflicting_proposals_are_refused() {
+        let a = r#"{"changes":[{"path":"a","replacement":"x"}]} or maybe {"changes":[{"path":"b","replacement":"y"}]}"#;
+        let e = extract_proposal_json(a, None).unwrap_err();
+        assert!(e.contains("several different proposal"));
+        // The SAME proposal repeated (fence + bare) is unambiguous.
+        let one = r#"{"changes":[{"path":"a","replacement":"x"}]}"#;
+        let a = format!("```json\n{one}\n```\nAs above: {one}");
+        assert_eq!(extract_proposal_json(&a, None).unwrap(), one);
+    }
+
+    #[test]
     fn no_proposal_anywhere_errors() {
         assert!(extract_proposal_json("a node tutorial", None).is_err());
         assert!(extract_proposal_json(r#"{"other":true}"#, None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod exact_edit_tests {
+    use super::apply_exact_edit;
+
+    #[test]
+    fn exact_edit_applies_once() {
+        // The scripted host flow: a.txt "1 / dirty / more", change
+        // dirty to clean.
+        let base = "1\ndirty\nmore\n";
+        assert_eq!(
+            apply_exact_edit(base, "dirty", "clean").unwrap(),
+            "1\nclean\nmore\n"
+        );
+    }
+
+    #[test]
+    fn exact_edit_requires_exactly_one_occurrence() {
+        let base = "1\ndirty\nmore\n";
+        assert!(apply_exact_edit(base, "missing", "x").is_err());
+        assert!(apply_exact_edit("a a", "a", "b")
+            .unwrap_err()
+            .contains("exactly once"));
+        assert!(apply_exact_edit(base, "", "x")
+            .unwrap_err()
+            .contains("empty"));
+        // A longer, unique old_text wins over a repeated substring.
+        assert_eq!(
+            apply_exact_edit("a a", "a a", "b").unwrap(),
+            "b"
+        );
     }
 }
 
