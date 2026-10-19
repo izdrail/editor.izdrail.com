@@ -444,6 +444,10 @@ impl WindowTabData {
 
         let title_height = cx.create_rw_signal(0.0);
         let status_height = cx.create_rw_signal(0.0);
+        // Clone the run registry handle before the closures below:
+        // several move closures capture window_common, and chat
+        // construction still needs the registry after them.
+        let agent_runs = window_common.agent_runs.clone();
         let panel_available_size = cx.create_memo(move |_| {
             let title_height = title_height.get();
             let status_height = status_height.get();
@@ -559,7 +563,7 @@ impl WindowTabData {
         let chat_storage = Directory::data_local_directory().map(|root| {
             crate::chat_session::workspace_directory(&root, &format!("{}:{:?}", workspace.kind, workspace.path))
         });
-        let chat = crate::panel::chat_view::ChatData::new(cx, chat_storage, common.config.get_untracked().ai_chat.save_history);
+        let chat = crate::panel::chat_view::ChatData::new(cx, chat_storage, common.config.get_untracked().ai_chat.save_history, agent_runs);
         let window_tab_data = Self {
             scope: cx,
             window_tab_id: WindowTabId::next(),

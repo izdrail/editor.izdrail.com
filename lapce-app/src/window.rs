@@ -51,6 +51,10 @@ pub struct WindowCommonData {
     pub hide_cursor: RwSignal<bool>,
     pub app_view_id: RwSignal<ViewId>,
     pub extra_plugin_paths: Arc<Vec<PathBuf>>,
+    /// Live agent runs across every workspace tab of this window
+    /// (item 205): the chat panel's Runs section is the manager
+    /// surface; registration lives in the chat send paths.
+    pub agent_runs: crate::agent_runs::RunRegistry,
 }
 
 /// `WindowData` is the application model for a top-level window.
@@ -120,6 +124,7 @@ impl WindowData {
             hide_cursor,
             app_view_id,
             extra_plugin_paths,
+            agent_runs: crate::agent_runs::RunRegistry::new(cx),
         });
 
         for w in info.tabs.workspaces {

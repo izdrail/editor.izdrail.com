@@ -87,6 +87,12 @@ pub struct ChatData {
     /// Bumped each time a plan artifact is written under .lapce/plans,
     /// so the panel's Plans section re-reads the directory.
     pub plans_version: RwSignal<u64>,
+    /// Window-wide live-run registry (item 205): every send path
+    /// registers its run so the Runs section lists and stops runs
+    /// across the window's workspace tabs.
+    pub agent_runs: crate::agent_runs::RunRegistry,
+    /// The registry id of this panel's live run, if any.
+    active_run: RwSignal<Option<u64>>,
     gate: RunGate,
     cancellation: RwSignal<Arc<AtomicBool>>,
     storage: Option<PathBuf>,
@@ -113,7 +119,12 @@ impl Drop for ChatWorker {
     }
 }
 impl ChatData {
-    pub fn new(cx: Scope, storage: Option<PathBuf>, restore: bool) -> Self {
+    pub fn new(
+        cx: Scope,
+        storage: Option<PathBuf>,
+        restore: bool,
+        agent_runs: crate::agent_runs::RunRegistry,
+    ) -> Self {
         let worker = lapce_ai::process::Worker::new(
             std::env::current_exe().unwrap_or_default(),
         );
@@ -160,6 +171,8 @@ impl ChatData {
             review,
             pending_command: cx.create_rw_signal(None),
             plans_version: cx.create_rw_signal(0),
+            agent_runs,
+            active_run: cx.create_rw_signal(None),
             turns: cx.create_rw_signal(turns),
             input: cx.create_rw_signal(String::new()),
             busy: cx.create_rw_signal(false),
@@ -237,8 +250,18 @@ impl ChatData {
             .get_untracked()
             .store(true, Ordering::Release);
         self.worker.local.cancel();
-        self.busy.set(false);
+        self.end_active_run();
         self.state.set(RunState::Cancelled);
+    }
+    /// Finish the live run: drop its manager-registry entry and clear
+    /// busy together. Every termination path routes through here so
+    /// the window's Runs section never lists a finished run.
+    fn end_active_run(&self) {
+        if let Some(id) = self.active_run.get_untracked() {
+            self.agent_runs.finish(id);
+            self.active_run.set(None);
+        }
+        self.busy.set(false);
     }
     fn persist(&self, enabled: bool) {
         if !enabled {
@@ -431,6 +454,7 @@ fn send(tab: &WindowTabData) {
     data.cancellation.set(cancelled.clone());
     *data.worker.network.borrow_mut() = cancelled.clone();
     data.state.set(RunState::Running);
+    let run_title = crate::agent_runs::run_title(&prompt);
     let reply = tab.scope.create_rw_signal(String::new());
     data.turns.update(|v| {
         v.push(Turn {
@@ -459,6 +483,11 @@ fn send(tab: &WindowTabData) {
     });
     data.input.set(String::new());
     data.busy.set(true);
+    data.active_run.set(Some(tab.common.window_common.agent_runs.start(
+        &run_title,
+        "Chat",
+        cancelled.clone(),
+    )));
     data.error.set(if mention_failed.is_empty() {
         String::new()
     } else {
@@ -490,13 +519,13 @@ fn send(tab: &WindowTabData) {
                         });
                         done_data.history.set(history);
                     }
-                    done_data.busy.set(false);
+                    done_data.end_active_run();
                     done_data.state.set(RunState::Done);
                     done_data.persist(save_history);
                 }
                 Update::Error(error) => {
                     done_data.error.set(error);
-                    done_data.busy.set(false);
+                    done_data.end_active_run();
                     done_data.state.set(RunState::Error);
                     done_data.persist(save_history);
                 }
@@ -801,6 +830,16 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     *data.worker.network.borrow_mut() = cancelled.clone();
     data.state.set(RunState::Running);
     data.busy.set(true);
+    let mode_label = match mode {
+        crate::agent_loop::Mode::Ask => "Ask",
+        crate::agent_loop::Mode::Plan => "Plan",
+        crate::agent_loop::Mode::Act => "Act",
+    };
+    data.active_run.set(Some(tab.common.window_common.agent_runs.start(
+        &crate::agent_runs::run_title(prompt),
+        mode_label,
+        cancelled.clone(),
+    )));
     data.error.set(if failed.is_empty() {
         String::new()
     } else {
@@ -877,7 +916,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     }
                     // Clear busy first: review prepare refuses while a
                     // run is active, and this run is finished.
-                    done.busy.set(false);
+                    done.end_active_run();
                     done.pending_command.set(None);
                     done.state.set(RunState::Done);
                     if mode == crate::agent_loop::Mode::Act {
@@ -906,7 +945,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 }
                 AgentUpdate::Error(error) => {
                     done.error.set(error);
-                    done.busy.set(false);
+                    done.end_active_run();
                     done.pending_command.set(None);
                     done.state.set(RunState::Error);
                     done.persist(save);
@@ -1448,6 +1487,11 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     *data.worker.network.borrow_mut() = cancelled.clone();
     data.state.set(RunState::Running);
     data.busy.set(true);
+    data.active_run.set(Some(tab.common.window_common.agent_runs.start(
+        &crate::agent_runs::run_title(prompt),
+        "ACP",
+        cancelled.clone(),
+    )));
     data.error.set(if failed.is_empty() {
         String::new()
     } else {
@@ -1496,7 +1540,7 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
                 }
                 Update::Done(text) => {
                     reply.set(text);
-                    done.busy.set(false);
+                    done.end_active_run();
                     done.state.set(RunState::Done);
                     // Hand any staged agent writes to the owner-review
                     // lane (busy cleared, so prepare's guard passes).
@@ -1527,7 +1571,7 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
                 }
                 Update::Error(error) => {
                     done.error.set(error);
-                    done.busy.set(false);
+                    done.end_active_run();
                     done.state.set(RunState::Error);
                     done.persist(save);
                 }
@@ -1908,6 +1952,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let plans_list = floem::reactive::create_rw_signal(
         Vec::<(std::path::PathBuf, u64, String, String)>::new(),
     );
+    let runs_registry = tab.common.window_common.agent_runs.clone();
+    let runs_list = runs_registry.clone();
     {
         let plans_tab = tab.clone();
         let plans_data = data.clone();
@@ -2734,6 +2780,61 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         ))
         .style(move |s| {
             s.apply_if(plans_list.get().is_empty(), |s| s.hide())
+                .width_full()
+                .gap(2.0)
+        }),
+        // Live runs (item 205): every agent run in this window, newest
+        // first, each Stop wired to the run's own cancellation flag -
+        // the same flag the panel's Stop button sets. Hidden when
+        // nothing is running. Runs in different workspace tabs already
+        // execute in parallel; this is their manager surface.
+        v_stack((
+            label(|| "Running".to_string()).style(move |s| {
+                s.font_size(11.0)
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
+            dyn_stack(
+                move || runs_list.entries(),
+                |entry: &crate::agent_runs::RunEntry| entry.id,
+                move |entry: crate::agent_runs::RunEntry| {
+                    let stop = entry.cancellation.clone();
+                    h_stack((
+                        label(move || {
+                            format!(
+                                "{} · {} - {}",
+                                entry.mode, entry.started, entry.title
+                            )
+                        })
+                        .style(move |s| {
+                            s.font_size(11.0).selectable(false).color(
+                                config.get().color(LapceColor::EDITOR_DIM),
+                            )
+                        }),
+                        label(|| "Stop".to_string())
+                            .on_click_stop(move |_| {
+                                stop.store(true, Ordering::Release);
+                            })
+                            .style(move |s| {
+                                s.font_size(10.0)
+                                    .padding_horiz(6.0)
+                                    .border(1.0)
+                                    .border_radius(4.0)
+                                    .cursor(CursorStyle::Pointer)
+                                    .selectable(false)
+                                    .color(
+                                        config
+                                            .get()
+                                            .color(LapceColor::LAPCE_ERROR),
+                                    )
+                            }),
+                    ))
+                    .style(|s| s.width_full().gap(6.0).items_center())
+                },
+            ),
+        ))
+        .style(move |s| {
+            s.apply_if(runs_registry.entries().is_empty(), |s| s.hide())
                 .width_full()
                 .gap(2.0)
         }),
