@@ -19,7 +19,11 @@ use lapce_core::{
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, path::PathBuf, rc::Rc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 #[derive(Clone)]
 pub struct ReviewData {
     pub proposal: RwSignal<Option<Proposal>>,
@@ -842,6 +846,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn agent_touched_files_reads_walkthrough_artifacts() {
+        let dir = std::env::temp_dir().join(format!(
+            "lapce-attribution-test-{}",
+            std::process::id()
+        ));
+        let plans = dir.join(".lapce").join("plans");
+        std::fs::create_dir_all(&plans).unwrap();
+        std::fs::write(
+            plans.join("walkthrough-100.md"),
+            "# Walkthrough\n\n## Run\n\nr1\n\n## Proposal\n\nd\n\n## Applied changes\n\n- `src/a.rs` (2 hunks)\n- `src/b.rs` (1 hunk)\n\n## Next\n",
+        )
+        .unwrap();
+        std::fs::write(
+            plans.join("walkthrough-200.md"),
+            "# Walkthrough\n\n## Run\n\nr2\n\n## Proposal\n\nd\n\n## Applied changes\n\n- `src/b.rs` (1 hunk)\n- `src/c.rs` (4 hunks)\n\n## Next\n",
+        )
+        .unwrap();
+        // Decoys: a non-walkthrough file and a no-changes artifact.
+        std::fs::write(plans.join("notes.md"), "- `src/decoy.rs` (1 hunk)\n")
+            .unwrap();
+        std::fs::write(
+            plans.join("walkthrough-empty.md"),
+            "# Walkthrough\n\n## Applied changes\n\n- (no file changes)\n",
+        )
+        .unwrap();
+        let touched = agent_touched_files(&dir);
+        assert_eq!(
+            touched.into_iter().collect::<Vec<_>>(),
+            vec![
+                "src/a.rs".to_string(),
+                "src/b.rs".to_string(),
+                "src/c.rs".to_string()
+            ]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn agent_touched_files_missing_dir_is_empty() {
+        let dir = std::env::temp_dir().join(format!(
+            "lapce-attribution-missing-{}",
+            std::process::id()
+        ));
+        assert!(agent_touched_files(&dir).is_empty());
+    }
+
+    #[test]
     fn parse_draft_accepts_one_change() {
         let changes = parse_draft(
             r#"{"changes":[{"path":"src/main.rs","replacement":"fn main() {}"}]}"#,
@@ -959,4 +1010,40 @@ pub fn stale_against_reads(
             (live != *seen).then(|| c.path.clone())
         })
         .collect()
+}
+
+/// Relative paths of every file an applied agent run recorded in its
+/// walkthrough artifacts (`<workspace>/.lapce/plans/walkthrough-*.md`).
+/// The source control panel badges these files so the owner can tell
+/// agent-made changes from their own edits in the diff list. Missing
+/// or unreadable artifacts are skipped: attribution is advisory.
+pub fn agent_touched_files(workspace: &Path) -> BTreeSet<String> {
+    let mut touched = BTreeSet::new();
+    let dir = workspace.join(".lapce").join("plans");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return touched;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !(name.starts_with("walkthrough-") && name.ends_with(".md")) {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        for line in body.lines() {
+            // "- `path/inside/worktree.rs` (3 hunks)"
+            let Some(rest) = line.strip_prefix("- `") else {
+                continue;
+            };
+            let Some(end) = rest.find('`') else {
+                continue;
+            };
+            touched.insert(rest[..end].to_string());
+        }
+    }
+    touched
 }

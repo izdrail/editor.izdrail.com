@@ -253,6 +253,19 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
     let file_diffs = source_control.file_diffs;
     let config = source_control.common.config;
     let workspace = source_control.common.workspace.clone();
+    // Agent-edit attribution (item 212): files an applied agent run
+    // recorded in its walkthrough artifacts get an "agent" badge, so
+    // the owner can tell agent-made changes from their own edits.
+    // Rescanned when the diff list changes; advisory only.
+    let workspace_for_attribution = workspace.clone();
+    let agent_touched = create_memo(move |_| {
+        file_diffs.track();
+        workspace_for_attribution
+            .path
+            .as_deref()
+            .map(crate::agent_review_ui::agent_touched_files)
+            .unwrap_or_default()
+    });
     let panel_rect = create_rw_signal(Rect::ZERO);
     let panel_width = create_memo(move |_| panel_rect.get().width());
     let lapce_command = source_control.common.lapce_command;
@@ -284,6 +297,7 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
             .unwrap_or("")
             .to_string();
         let style_path = path.clone();
+        let rel_path = path.to_string_lossy().to_string();
         stack((
             checkbox(move || checked, config).on_click_stop(move |_| {
                 file_diffs.update(|diffs| {
@@ -324,6 +338,20 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
                     .flex_basis(0.0)
                     .color(config.get().color(LapceColor::EDITOR_DIM))
                     .min_width(0.0)
+                    .selectable(false)
+            }),
+            label(|| "agent".to_string()).style(move |s| {
+                let config = config.get();
+                let is_agent = agent_touched.get().contains(&rel_path);
+                s.font_size(10.0)
+                    .padding_left(4.0)
+                    .padding_right(4.0)
+                    .margin_right(4.0)
+                    .border(1.0)
+                    .border_radius(4.0)
+                    .color(config.color(LapceColor::EDITOR_DIM))
+                    .border_color(config.color(LapceColor::LAPCE_BORDER))
+                    .apply_if(!is_agent, |s| s.hide())
                     .selectable(false)
             }),
             container({
