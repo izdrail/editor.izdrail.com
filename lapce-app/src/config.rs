@@ -1007,10 +1007,16 @@ impl LapceConfig {
             }),
             ("ai chat" | "ai-chat", "endpoint")
             | ("ai autocomplete" | "ai-autocomplete", "endpoint") => {
-                // Key-less endpoints Stefan runs. ai.izdrail.com is his
-                // Ollama; freellm.izdrail.com is the shared lane (both
-                // speak the OpenAI /v1 wire format the ollama backend
-                // uses). A custom endpoint stays selectable.
+                // Endpoints Stefan runs (both speak the OpenAI /v1
+                // wire format the ollama backend uses).
+                // llm.izdrail.com is his gateway - the default
+                // (Stefan 2026-10-19): ~197 models, `auto` routing,
+                // set LAPCE_LLM_API_KEY (it rejects key-less calls
+                // with a validated 401; Ollama emulation disabled).
+                // ai.izdrail.com is his key-less Ollama, kept
+                // selectable. freellm.izdrail.com is not his address
+                // and 503s on every path - removed. A custom endpoint
+                // stays selectable.
                 let chat = kind == "ai chat" || kind == "ai-chat";
                 let selected = if chat {
                     &self.ai_chat.endpoint
@@ -1018,8 +1024,8 @@ impl LapceConfig {
                     &self.ai_autocomplete.endpoint
                 };
                 let mut items: im::Vector<String> = im::vector![
+                    "https://llm.izdrail.com".to_string(),
                     "https://ai.izdrail.com".to_string(),
-                    "https://freellm.izdrail.com".to_string(),
                 ];
                 let active_index = match items.iter().position(|u| u == selected)
                 {
@@ -1142,20 +1148,29 @@ mod endpoint_dropdown_tests {
     #[test]
     fn ai_endpoints_are_dropdown_selectable() {
         let config = LapceConfig::default();
+        // Both kinds offer both presets...
         for kind in ["ai chat", "ai autocomplete"] {
             let info = config.get_dropdown_info(kind, "endpoint").unwrap();
-            assert_eq!(info.active_index, 0, "{kind}");
             let got: Vec<&str> =
                 info.items.iter().map(|s| s.as_str()).collect();
             assert_eq!(
                 got,
                 [
+                    "https://llm.izdrail.com",
                     "https://ai.izdrail.com",
-                    "https://freellm.izdrail.com",
                 ],
                 "{kind}"
             );
         }
+        // ...but the lanes default differently: chat talks to the
+        // gateway (index 0) while ghost text keeps the key-less
+        // Ollama (index 1) so a typing pause never needs a key.
+        let info = config.get_dropdown_info("ai chat", "endpoint").unwrap();
+        assert_eq!(info.active_index, 0);
+        let info = config
+            .get_dropdown_info("ai autocomplete", "endpoint")
+            .unwrap();
+        assert_eq!(info.active_index, 1);
         // A custom endpoint stays selectable instead of being dropped.
         let mut config = LapceConfig::default();
         config.ai_chat.endpoint = "https://selfhost.example".into();
@@ -1165,8 +1180,8 @@ mod endpoint_dropdown_tests {
             info.items.iter().last().map(|s| s.as_str()),
             Some("https://selfhost.example")
         );
-        // freellm selected -> index 1.
-        config.ai_chat.endpoint = "https://freellm.izdrail.com".into();
+        // The key-less Ollama selected -> index 1.
+        config.ai_chat.endpoint = "https://ai.izdrail.com".into();
         let info = config.get_dropdown_info("ai chat", "endpoint").unwrap();
         assert_eq!(info.active_index, 1);
         assert_eq!(info.items.len(), 2);

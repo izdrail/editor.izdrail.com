@@ -1,6 +1,9 @@
-//! AI chat defaults. Stefan's directive (2026-10-17): the default backend is
-//! his key-less Ollama at https://ai.izdrail.com; the local Candle lane stays
-//! available as an opt-in. Pinned by the test at the bottom.
+//! AI chat defaults. Stefan's directive (2026-10-19): the default backend
+//! talks to his gateway at https://llm.izdrail.com (OpenAI-compatible /v1,
+//! ~197 models, `auto` routing; set LAPCE_LLM_API_KEY - the gateway rejects
+//! key-less calls with 401, and its Ollama emulation is disabled). His
+//! key-less Ollama at ai.izdrail.com stays selectable; the local Candle
+//! lane stays available as an opt-in. Pinned by the test at the bottom.
 use serde::{Deserialize, Serialize};
 use structdesc::FieldNames;
 #[derive(FieldNames, Debug, Clone, Deserialize, Serialize)]
@@ -19,13 +22,13 @@ pub struct ChatConfig {
     )]
     pub hosted_providers: Vec<crate::agent_protocol::ProviderConfig>,
     #[field_names(
-        desc = "Backend: local (CPU Candle) or ollama (any OpenAI-compatible /v1 server - ai.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
+        desc = "Backend: local (CPU Candle) or ollama (any OpenAI-compatible /v1 server - llm.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
     )]
     pub backend: String,
     #[field_names(desc = "Curated local instruct model. Pick and download below.")]
     pub local_model: String,
     #[field_names(
-        desc = "Ollama endpoint, root or /v1. No hosted service or API key required."
+        desc = "OpenAI-compatible endpoint, root or /v1. llm.izdrail.com is the default and needs LAPCE_LLM_API_KEY set in the environment."
     )]
     pub endpoint: String,
     #[field_names(desc = "Ollama chat model name.")]
@@ -53,8 +56,8 @@ impl Default for ChatConfig {
             ],
             backend: "ollama".into(),
             local_model: "qwen-chat-1.5b".into(),
-            endpoint: "https://ai.izdrail.com".into(),
-            model: "qwen2.5-coder:1.5b-instruct-q4_K_M".into(),
+            endpoint: "https://llm.izdrail.com".into(),
+            model: "auto".into(),
             acp_command: String::new(),
         }
     }
@@ -65,13 +68,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_point_at_the_izdrail_ollama() {
+    fn defaults_point_at_the_llm_gateway() {
         let config = ChatConfig::default();
         assert_eq!(config.backend, "ollama");
-        assert_eq!(config.endpoint, "https://ai.izdrail.com");
-        // Verified on /api/tags and /v1/models 2026-10-17.
-        assert_eq!(config.model, "qwen2.5-coder:1.5b-instruct-q4_K_M");
-        // The key-less server must not be mistaken for a hosted provider:
+        assert_eq!(config.endpoint, "https://llm.izdrail.com");
+        // The gateway's routing alias (verified 2026-10-08); /v1
+        // re-probed 2026-10-19: validated 401 without
+        // LAPCE_LLM_API_KEY, Ollama emulation disabled.
+        assert_eq!(config.model, "auto");
+        // The key-less servers must not be mistaken for hosted providers:
         // hosted lanes stay present-but-disabled by default.
         assert!(config.hosted_providers.iter().all(|p| !p.enabled));
     }

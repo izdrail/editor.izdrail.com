@@ -34,14 +34,20 @@ Use this model switches only its matching lane (FIM or Chat) after a successful
 download; no path editing is needed. Existing manual FIM paths remain supported
 and override the picker. Clear those overrides to use a curated FIM choice.
 
-## Your Ollama server
+## Your LLM server
 
-`backend = "ollama"` is the default. Endpoint defaults to
-`https://ai.izdrail.com`; a root URL or `/v1` URL is accepted. Model defaults
-to `qwen2.5-coder:1.5b-instruct-q4_K_M`, verified on `/api/tags` and
-`/v1/models` on 2026-10-17. Endpoint and model are editable - point them at any
-Ollama-compatible server. No OpenAI key, OpenAI service or hidden hosted
-fallback is used. Errors stay in the panel.
+`backend = "ollama"` is the default: any OpenAI-compatible `/v1` server.
+Endpoint defaults to `https://llm.izdrail.com`, Stefan's gateway (~197
+models, `auto` routing - the default model is `auto`). The gateway rejects
+key-less calls: set `LAPCE_LLM_API_KEY` in the editor's environment and it
+rides every chat, agent, model-list and capability request as
+`Authorization: Bearer`. His key-less Ollama at `https://ai.izdrail.com`
+stays selectable in the endpoint dropdown. (freellm.izdrail.com is not his
+address and answers 503 on every path - removed.)
+Endpoint and model are editable - point them at any OpenAI-compatible server.
+No OpenAI key, OpenAI service or hidden hosted fallback is used. Errors stay
+in the panel, and a 401/403 names the LAPCE_LLM_API_KEY fix. Verified against
+the live gateway 2026-10-19 (401 without a key; Ollama emulation disabled).
 
 Responses stream when the server returns SSE. Servers that reject streaming
 with 400/405/422/501 are retried once in full-response mode. A broken partial

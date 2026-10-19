@@ -233,6 +233,45 @@ pub fn completion_url(endpoint: &str) -> Result<String, String> {
 }
 /// The OpenAI-style model-list URL, mirroring completion_url's path
 /// rules so both always target the same endpoint shape.
+/// The API key for the configured LLM endpoint, from the
+/// LAPCE_LLM_API_KEY environment variable (standard
+/// OPENAI_API_KEY-style: one key, sent to whatever endpoint is
+/// configured). Key-less servers (local Ollama) simply leave it
+/// unset; Stefan's gateway at llm.izdrail.com requires it (item
+/// 237).
+pub fn api_key() -> Option<String> {
+    parse_api_key(std::env::var("LAPCE_LLM_API_KEY").ok().as_deref())
+}
+/// Trim and reject empty: an unset or whitespace-only variable is
+/// no key. Pure, so tests never touch the environment.
+pub fn parse_api_key(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_string)
+}
+/// Attach `Authorization: Bearer <key>` when LAPCE_LLM_API_KEY is
+/// set; key-less endpoints see no header either way.
+pub(crate) fn with_auth(
+    req: reqwest::RequestBuilder,
+) -> reqwest::RequestBuilder {
+    match api_key() {
+        Some(key) => req.header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {key}"),
+        ),
+        None => req,
+    }
+}
+/// The actionable suffix for a 401/403 from the configured
+/// endpoint: a keyed lane (llm.izdrail.com) wants the env var.
+pub(crate) fn auth_hint(status: reqwest::StatusCode) -> &'static str {
+    if status.as_u16() == 401 || status.as_u16() == 403 {
+        " If this endpoint needs a key, set LAPCE_LLM_API_KEY."
+    } else {
+        ""
+    }
+}
+
 pub fn models_url(endpoint: &str) -> Result<String, String> {
     let base = checked_base(endpoint)?;
     Ok(if base.ends_with("/v1") {
@@ -257,12 +296,15 @@ pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
-        let mut response =
-            client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let mut response = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
         if !response.status().is_success() {
             return Err(format!(
-                "The model list returned HTTP {}. Check the endpoint.",
-                response.status()
+                "The model list returned HTTP {}. Check the endpoint.{}",
+                response.status(),
+                auth_hint(response.status())
             ));
         }
         let mut bytes = Vec::new();
@@ -369,12 +411,12 @@ pub fn model_capabilities(
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
-        let mut response = client
-            .post(&url)
-            .json(&json!({"model": model}))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let mut response = with_auth(
+            client.post(&url).json(&json!({"model": model})),
+        )
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
         if !response.status().is_success() {
             return Ok::<Option<bool>, String>(None);
         }
@@ -425,10 +467,10 @@ pub fn ollama(
     runtime.block_on(async {
         let request = async {
             let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
-            let make = |stream| client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})).send();
+            let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512}))).send();
             let mut response = make(true).await.map_err(|e| e.to_string())?;
             if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
-            if !response.status().is_success() { return Err(format!("The chat server returned HTTP {}. Check endpoint and model.", response.status())); }
+            if !response.status().is_success() { return Err(format!("The chat server returned HTTP {}. Check endpoint and model.{}", response.status(), auth_hint(response.status()))); }
             let streaming = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).is_some_and(|h| h.contains("text/event-stream"));
             if streaming {
                 let mut buffer = Vec::new();
@@ -590,6 +632,17 @@ mod mention_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_api_key_trims_and_rejects_empty() {
+        assert_eq!(parse_api_key(None), None);
+        assert_eq!(parse_api_key(Some("")), None);
+        assert_eq!(parse_api_key(Some("   \n ")), None);
+        assert_eq!(
+            parse_api_key(Some("  sk-abc\n")),
+            Some("sk-abc".to_string())
+        );
+    }
     #[test]
     fn parse_model_names_shapes_and_cleanups() {
         // OpenAI shape.
