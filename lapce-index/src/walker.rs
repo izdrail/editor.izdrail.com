@@ -1,6 +1,7 @@
 //! Filesystem walking and bulk indexing: the "first-open" pass that
 //! feeds every workspace file into the project index.
 
+use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -49,6 +50,18 @@ pub fn language_for_path(path: &Path) -> String {
         None => "text",
     }
     .to_string()
+}
+
+/// Read at most the cap plus one sentinel byte. A file can grow between
+/// metadata inspection and reading, so metadata alone is not a memory bound.
+fn read_bounded(mut reader: impl Read) -> std::io::Result<Option<Vec<u8>>> {
+    let mut bytes = Vec::new();
+    reader.by_ref().take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        Ok(None)
+    } else {
+        Ok(Some(bytes))
+    }
 }
 
 /// Walk `root` (respecting .gitignore and the usual standard filters),
@@ -102,7 +115,11 @@ pub fn index_workspace(
             continue;
         }
 
-        let Ok(bytes) = std::fs::read(path) else {
+        let Ok(file) = std::fs::File::open(path) else {
+            stats.files_skipped += 1;
+            continue;
+        };
+        let Ok(Some(bytes)) = read_bounded(file) else {
             stats.files_skipped += 1;
             continue;
         };
@@ -152,6 +169,27 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("lapce-index-walker-{tag}-{unique}"))
+    }
+
+    #[test]
+    fn bounded_read_accepts_cap_and_rejects_growth_without_reading_everything() {
+        let exact = vec![b'a'; MAX_FILE_BYTES as usize];
+        assert_eq!(read_bounded(exact.as_slice()).unwrap().unwrap().len(), exact.len());
+        // Represents a stream that grew after the earlier metadata check.
+        let mut growing = std::io::repeat(b'b');
+        assert!(read_bounded(&mut growing).unwrap().is_none());
+        assert_eq!(read_bounded(&b""[..]).unwrap(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn bounded_read_propagates_io_errors() {
+        struct Failing;
+        impl std::io::Read for Failing {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("fixture failure"))
+            }
+        }
+        assert!(read_bounded(Failing).is_err());
     }
 
     #[test]

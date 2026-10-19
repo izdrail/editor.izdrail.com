@@ -42,7 +42,7 @@ Queries run over `symbol` and `body` with BM25 ranking
 1. (this patch) Crate skeleton: schema, add/remove/commit/search, unit tests.
 2. (item 243) Walker: `walker::index_workspace` walks the workspace
    (respecting .gitignore, hidden files, and a 1 MiB size cap; skips binary
-   files), indexes every text file, commits in batches of 50, and reports
+   files), indexes eligible text files, commits in batches of 50, and reports
    progress/cancellation. Each pass is a full rebuild, not incremental:
    it clears previous records before walking, avoiding duplicates and stale
    entries for deleted or newly ignored files. Pre-cancelled passes leave
@@ -60,3 +60,12 @@ Queries run over `symbol` and `body` with BM25 ranking
 5. Per-framework LSP presets (PHP/Magento/WordPress/Symfony, TS/React/Angular,
    Vue via Volar, Liquid via Shopify theme-check).
 6. MCP presets and ACP docs for Claude/Codex/opencode.
+
+## Read limits
+
+Item 249 enforces the 1 MiB cap on actual bytes read as well as metadata.
+A file that grows after its metadata check is skipped once the bounded reader
+sees one extra byte; it is never read to the end without a bound. Read failures
+also count as skipped files. This bounds per-file input allocation, not total
+index size or total process memory. Ignore/hidden filters and the cap mean
+this is not literal all-file coverage; coverage controls remain future work.
