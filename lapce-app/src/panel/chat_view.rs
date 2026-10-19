@@ -824,6 +824,19 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
         return;
     };
     let (wire, attached, failed) = resolve_mentions(&root, prompt);
+    // The agent lane must see the same editor context the Chat lane
+    // gets (the "On Send" chip): without it the model never receives
+    // the active file and small models answer off-topic prose (host
+    // QA: a 1.5B model replied with a node tutorial to a PHP fix).
+    let editor_ctx = context(tab);
+    let mut wire = wire;
+    if let Some(ctx) = &editor_ctx {
+        wire.push_str(&format!(
+            "\n\nEditor context ({})\n<editor_context>\n{}\n</editor_context>",
+            ctx.indicator(),
+            ctx.text
+        ));
+    }
     let run = data.gate.begin();
     let cancelled = Arc::new(AtomicBool::new(false));
     data.cancellation.set(cancelled.clone());

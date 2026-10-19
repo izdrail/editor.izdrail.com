@@ -262,8 +262,12 @@ pub fn run(
     mut emit: impl FnMut(Event),
     extra_tools: &[Value],
 ) -> Result<String, String> {
+    // The prompt cap must fit the assembly above: the typed prompt,
+    // up to 256 KiB of @-mentioned files (resolve_mentions budget)
+    // and up to 12 KiB of editor context. A 12000-byte cap rejected
+    // real Act runs the moment a file was attached (host QA).
     if prompt.trim().is_empty()
-        || prompt.len() > 12000
+        || prompt.len() > 280_000
         || limits.steps == 0
         || limits.steps > 16
         || limits.calls > 32
@@ -488,6 +492,48 @@ pub fn walkthrough_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prompt_cap_fits_mentions_and_context() {
+        let big = "x".repeat(200_000);
+        let result = run(
+            Mode::Ask,
+            &big,
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                Ok(Reply {
+                    content: "done".into(),
+                    calls: Vec::new(),
+                })
+            },
+            |_| Ok(String::new()),
+            |_| {},
+            &[],
+        );
+        assert_eq!(result.unwrap(), "done");
+        let over = "x".repeat(300_000);
+        assert_eq!(
+            run(
+                Mode::Ask,
+                &over,
+                Limits::default(),
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicU64::new(0)),
+                |_, _| {
+                    Ok(Reply {
+                        content: "done".into(),
+                        calls: Vec::new(),
+                    })
+                },
+                |_| Ok(String::new()),
+                |_| {},
+                &[],
+            )
+            .unwrap_err(),
+            "Invalid agent prompt or limits"
+        );
+    }
     #[test]
     fn read_then_answer_and_plan_never_act() {
         let mut turns = 0;
