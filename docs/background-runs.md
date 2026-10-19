@@ -111,10 +111,11 @@ workspace folder name when more than one workspace has live runs.
 
 - Slice 1 (item 236): DONE - FinishGuard + tick sweep.
 - Slice 2 foundation (item 239): DONE - RunJournal + caps.
-- Slice 2 wiring (item 240): DONE for the Ask/Plan/Act worker -
-  every AgentUpdate (steps, approval requests as "awaiting
-  approval" rows, the terminal Done/Error) is journaled before it
-  is sent, via journal_and_send. Chat (ollama/local) and ACP lanes
-  journal their terminal outcome in the follow-up patch; they have
-  no step rows to replay.
+- Slice 2 wiring (items 240 + 241): DONE. The Ask/Plan/Act worker
+  journals every AgentUpdate (steps, approval requests as
+  "awaiting approval" rows, the terminal Done/Error) before it is
+  sent, via journal_and_send. The step-less chat (ollama + local)
+  and ACP lanes journal their terminal outcome only, via
+  journal_chat_outcome; a cancelled local completion records
+  JournalOutcome::Cancelled.
 - Slices 3 (reattach) and 4 (workspace labels): pending.

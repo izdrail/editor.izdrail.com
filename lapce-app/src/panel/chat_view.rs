@@ -562,20 +562,39 @@ fn send(tab: &WindowTabData) {
                 // worker drops it, the run is marked worker-done even
                 // if this panel is already gone (item 236).
                 let finish_guard = data.agent_runs.finish_guard(run_id);
+                let journal = data.agent_runs.journal(run_id).unwrap_or_else(|| {
+                    std::sync::Arc::new(std::sync::Mutex::new(
+                        crate::agent_runs::RunJournal::default(),
+                    ))
+                });
                 data.worker
                     .local
                     .complete(request, move |result| {
                         let _finish_guard = &finish_guard;
                         match result {
                             Ok(c) if c.cancelled => {
+                                journal
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .finish(
+                                        crate::agent_runs::JournalOutcome::Cancelled,
+                                    );
                                 let _ = tx
                                     .send(Update::Error("Cancelled".into()));
                             }
                             Ok(c) => {
+                                journal_chat_outcome(
+                                    &journal,
+                                    &Update::Done(c.text.clone()),
+                                );
                                 let _ = tx.send(Update::Delta(c.text.clone()));
                                 let _ = tx.send(Update::Done(c.text.clone()));
                             }
                             Err(e) => {
+                                journal_chat_outcome(
+                                    &journal,
+                                    &Update::Error(e.clone()),
+                                );
                                 let _ = tx.send(Update::Error(e));
                             }
                         }
@@ -589,6 +608,11 @@ fn send(tab: &WindowTabData) {
         // Worker-owned end of the registry entry (item 236): even a
         // closed panel cannot strand this run's Runs-section row.
         let finish_guard = data.agent_runs.finish_guard(run_id);
+        let journal = data.agent_runs.journal(run_id).unwrap_or_else(|| {
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::agent_runs::RunJournal::default(),
+            ))
+        });
         std::thread::spawn(move || {
             let _finish_guard = finish_guard;
             let accumulated = std::cell::RefCell::new(String::new());
@@ -608,10 +632,13 @@ fn send(tab: &WindowTabData) {
                         }
                         u => u,
                     };
+                    journal_chat_outcome(&journal, &u);
                     let _ = tx.send(u);
                 },
             ) {
-                let _ = tx.send(Update::Error(e));
+                let update = Update::Error(e);
+                journal_chat_outcome(&journal, &update);
+                let _ = tx.send(update);
             }
         });
     } else {
@@ -1415,6 +1442,31 @@ fn journal_and_send(
     }
     let _ = tx.send(update);
 }
+/// Outcome-only journaling for the step-less lanes (item 241 /
+/// parity 7 slice 2): chat and ACP have no step rows, so only the
+/// terminal update lands in the run's journal.
+fn journal_chat_outcome(
+    journal: &std::sync::Arc<
+        std::sync::Mutex<crate::agent_runs::RunJournal>,
+    >,
+    update: &Update,
+) {
+    let outcome = match update {
+        Update::Done(text) => {
+            Some(crate::agent_runs::JournalOutcome::Done(text.clone()))
+        }
+        Update::Error(text) => {
+            Some(crate::agent_runs::JournalOutcome::Error(text.clone()))
+        }
+        _ => None,
+    };
+    if let Some(outcome) = outcome {
+        journal
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .finish(outcome);
+    }
+}
 /// Approval card for Act's run_command tool: the exact command plus
 /// Allow once / Deny. Each decision is one-shot - nothing is
 /// remembered, and a closed or interrupted run drops the card with
@@ -1865,13 +1917,18 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     let title: String = prompt.lines().next().unwrap_or("").chars().take(80).collect();
     // Worker-owned end of the registry entry (item 236).
     let finish_guard = data.agent_runs.finish_guard(run_id);
+    let journal = data.agent_runs.journal(run_id).unwrap_or_else(|| {
+        std::sync::Arc::new(std::sync::Mutex::new(
+            crate::agent_runs::RunJournal::default(),
+        ))
+    });
     std::thread::spawn(move || {
         let _finish_guard = finish_guard;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let result = run_acp_turn(
             &program, &arg_refs, &root, &composed, resume, &cancelled, &acp_pid, &tx,
         );
-        let _ = tx.send(match result {
+        let update = match result {
             Ok((text, resumable_id, writes)) => {
                 let writes: Vec<(String, String)> = writes
                     .into_iter()
@@ -1900,7 +1957,9 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
                 Update::Done(text)
             }
             Err(error) => Update::Error(error),
-        });
+        };
+        journal_chat_outcome(&journal, &update);
+        let _ = tx.send(update);
     });
 }
 #[cfg(not(target_os = "linux"))]
@@ -4169,9 +4228,35 @@ fn symbol_rows_json(
 mod tests {
     use super::{
         clip_step_detail, elapsed_label, journal_and_send,
-        mention_candidates, model_row_pick, resolve_mentions,
-        symbol_rows_json, trailing_mention, AgentStepRow, AgentUpdate,
+        journal_chat_outcome, mention_candidates, model_row_pick,
+        resolve_mentions, symbol_rows_json, trailing_mention,
+        AgentStepRow, AgentUpdate, Update,
     };
+
+    #[test]
+    fn journal_chat_outcome_records_only_terminal_updates() {
+        let journal = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::agent_runs::RunJournal::default(),
+        ));
+        // Deltas and staged writes are not outcomes.
+        journal_chat_outcome(&journal, &Update::Delta("part".into()));
+        journal_chat_outcome(&journal, &Update::StagedWrites(Vec::new()));
+        assert!(journal
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .outcome()
+            .is_none());
+        journal_chat_outcome(&journal, &Update::Done("reply".into()));
+        // The first terminal state wins.
+        journal_chat_outcome(&journal, &Update::Error("late".into()));
+        let j = journal.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(
+            j.outcome(),
+            Some(&crate::agent_runs::JournalOutcome::Done(
+                "reply".into()
+            ))
+        );
+    }
 
     #[test]
     fn journal_and_send_writes_then_forwards() {
