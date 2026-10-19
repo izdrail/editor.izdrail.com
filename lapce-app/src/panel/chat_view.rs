@@ -1136,15 +1136,22 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             respond: respond_tx,
                         });
                         let wait_start = std::time::Instant::now();
+                        // One card may wait up to 30 minutes. The wait
+                        // is recorded on BOTH the answer and timeout
+                        // paths: the `?` version skipped it, and the
+                        // run then died as "Agent time limit reached"
+                        // even though the deadline excludes owner wait
+                        // (gate 489).
                         let approved = crate::agent_exec::await_approval(
                             &respond_rx,
                             &cancelled,
-                            std::time::Duration::from_secs(300),
-                        )?;
+                            std::time::Duration::from_secs(1800),
+                        );
                         approval_wait.fetch_add(
                             wait_start.elapsed().as_millis() as u64,
                             std::sync::atomic::Ordering::Release,
                         );
+                        let approved = approved?;
                         if !approved {
                             return Err("Denied by owner".into());
                         }
@@ -1170,15 +1177,22 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             respond: respond_tx,
                         });
                         let wait_start = std::time::Instant::now();
+                        // One card may wait up to 30 minutes. The wait
+                        // is recorded on BOTH the answer and timeout
+                        // paths: the `?` version skipped it, and the
+                        // run then died as "Agent time limit reached"
+                        // even though the deadline excludes owner wait
+                        // (gate 489).
                         let approved = crate::agent_exec::await_approval(
                             &respond_rx,
                             &cancelled,
-                            std::time::Duration::from_secs(300),
-                        )?;
+                            std::time::Duration::from_secs(1800),
+                        );
                         approval_wait.fetch_add(
                             wait_start.elapsed().as_millis() as u64,
                             std::sync::atomic::Ordering::Release,
                         );
+                        let approved = approved?;
                         if !approved {
                             return Err("Denied by owner".into());
                         }
@@ -1217,11 +1231,18 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         }
                         // The call id is protocol plumbing, not UI:
                         // the row shows the outcome, never the token.
-                        crate::agent_loop::Event::ToolResult { id: _, error } => {
+                        crate::agent_loop::Event::ToolResult {
+                            id: _,
+                            error,
+                            message,
+                        } => {
                             let _ = tx.send(AgentUpdate::Step(AgentStepRow {
                                 title: "Result".to_string(),
                                 detail: if error {
-                                    "denied or failed".to_string()
+                                    // The real reason, e.g. "Tool
+                                    // failed: Command approval timed
+                                    // out" vs "Denied by owner".
+                                    clip_step_detail(&message)
                                 } else {
                                     "read completed".to_string()
                                 },

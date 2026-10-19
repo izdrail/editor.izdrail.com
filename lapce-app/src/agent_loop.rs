@@ -23,7 +23,14 @@ pub enum Mode {
 pub enum Event {
     Step(usize),
     ProposedCalls(Vec<ToolCall>),
-    ToolResult { id: String, error: bool },
+    /// `message` carries the clipped failure reason (empty on
+    /// success) so the UI can say WHY a call failed - e.g. an
+    /// approval timeout reads differently from a denial.
+    ToolResult {
+        id: String,
+        error: bool,
+        message: String,
+    },
     Finished(String),
 }
 pub struct Limits {
@@ -384,6 +391,11 @@ pub fn run(
             emit(Event::ToolResult {
                 id: call.id.clone(),
                 error,
+                message: if error {
+                    content.chars().take(160).collect()
+                } else {
+                    String::new()
+                },
             });
             messages.push(AgentMessage::Tool {
                 tool_call_id: call.id,
@@ -750,6 +762,48 @@ mod tests {
         assert!(!command_writes_files("grep 'a -> b' src/main.rs"));
         assert!(!command_writes_files("sed 's/a/b/' a.txt"));
         assert!(!command_writes_files("git status"));
+    }
+
+    #[test]
+    fn tool_result_event_carries_the_failure_reason() {
+        let events = std::cell::RefCell::new(Vec::new());
+        let mut turns = 0;
+        let _ = run(
+            Mode::Act,
+            "inspect",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                turns += 1;
+                if turns == 1 {
+                    Ok(Reply {
+                        content: String::new(),
+                        calls: vec![ToolCall {
+                            id: "a".into(),
+                            name: "run_command".into(),
+                            arguments: json!({"command":"ls"}),
+                        }],
+                    })
+                } else {
+                    Ok(Reply {
+                        content: "done".into(),
+                        calls: vec![],
+                    })
+                }
+            },
+            |_| Err("Denied by owner".into()),
+            |event| {
+                if let Event::ToolResult { message, error, .. } = event {
+                    events.borrow_mut().push((message, error));
+                }
+            },
+            &[],
+        );
+        let events = events.borrow();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].1);
+        assert!(events[0].0.contains("Denied by owner"));
     }
 
     #[test]
