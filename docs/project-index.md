@@ -36,8 +36,15 @@ Queries run over `symbol` and `body` with BM25 ranking
 ## Build plan status
 
 1. (this patch) Crate skeleton: schema, add/remove/commit/search, unit tests.
-2. First-open indexer: walk the workspace (respecting .gitignore), index every
-   file on a background thread with status-bar progress.
+2. (item 243) Walker: `walker::index_workspace` walks the workspace
+   (respecting .gitignore, hidden files, and a 1 MiB size cap; skips binary
+   files), indexes every text file, commits in batches of 50, and reports
+   progress/cancellation. Each pass is a full rebuild, not incremental:
+   it clears previous records before walking, avoiding duplicates and stale
+   entries for deleted or newly ignored files. Pre-cancelled passes leave
+   the existing cache intact; cancellation mid-pass leaves a partial index.
+   The lapce-app thread spawn and status display wire
+   in next.
 3. tree-sitter symbol extraction per saved file (delete-by-path, re-add).
 4. Completion cascade: local index -> LSP -> llm.izdrail.com.
 5. Per-framework LSP presets (PHP/Magento/WordPress/Symfony, TS/React/Angular,

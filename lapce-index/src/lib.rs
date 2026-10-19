@@ -5,6 +5,8 @@
 //! local-first completion cascade all read from a single structure.
 //! The schema and the build plan live in docs/project-index.md.
 
+pub mod walker;
+
 use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -79,6 +81,8 @@ pub enum IndexError {
 }
 
 pub type Result<T> = std::result::Result<T, IndexError>;
+
+pub use walker::{index_workspace, language_for_path, IndexStats};
 
 #[derive(Clone, Copy)]
 struct Fields {
@@ -179,6 +183,12 @@ impl ProjectIndex {
     pub fn remove_path(&self, path: &str) -> Result<()> {
         let term = Term::from_field_text(self.fields.path, path);
         self.writer().delete_term(term);
+        Ok(())
+    }
+
+    /// Queue removal of every record before a full workspace rebuild.
+    pub fn clear(&self) -> Result<()> {
+        self.writer().delete_all_documents()?;
         Ok(())
     }
 
