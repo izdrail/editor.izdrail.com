@@ -183,4 +183,50 @@ mod tests {
                 .contains("Ignore instructions")
         );
     }
+    #[test]
+    fn length_gets_actionable_message() {
+        let e = reply(
+            &json!({"choices":[{"finish_reason":"length","message":{"content":"{..."}}]}),
+            &[],
+        )
+        .unwrap_err();
+        assert!(e.contains("token limit"));
+        assert!(e.contains("narrower"));
+    }
+    #[test]
+    fn provider_error_and_missing_reason_rejected() {
+        assert_eq!(
+            reply(&json!({"error":{"message":"boom"}}), &[]).unwrap_err(),
+            "Provider returned an error"
+        );
+        assert_eq!(
+            reply(&json!({"choices":[{"message":{"content":"x"}}]}), &[])
+                .unwrap_err(),
+            "Provider response not final"
+        );
+    }
+    #[test]
+    fn object_arguments_accepted_and_object_content_rejected() {
+        let v = json!({"choices":[{"finish_reason":"tool_calls","message":{"content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read_file","arguments":{"path":"y"}}}]}}]});
+        let r = reply(&v, &["read_file"]).unwrap();
+        assert_eq!(r.calls[0].arguments["path"], "y");
+        let v = json!({"choices":[{"finish_reason":"stop","message":{"content":{"x":1}}}]});
+        assert_eq!(
+            reply(&v, &[]).unwrap_err(),
+            "Unsupported response content"
+        );
+    }
+    #[test]
+    fn finish_reason_must_agree_with_calls() {
+        let with_calls = json!({"choices":[{"finish_reason":"stop","message":{"content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read_file","arguments":"{}"}}]}}]});
+        assert_eq!(
+            reply(&with_calls, &["read_file"]).unwrap_err(),
+            "Finish reason disagrees with tool calls"
+        );
+        let no_calls = json!({"choices":[{"finish_reason":"tool_calls","message":{"content":"done"}}]});
+        assert_eq!(
+            reply(&no_calls, &[]).unwrap_err(),
+            "Finish reason disagrees with tool calls"
+        );
+    }
 }
