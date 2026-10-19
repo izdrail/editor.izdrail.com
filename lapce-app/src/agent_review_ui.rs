@@ -610,7 +610,8 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 // grow a horizontal bar whose thumb paints over the
                 // buttons (host QA on c59c3e9).
                 label(move || format!("Checkpoint {:?}: {} file(s).", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
-                label(|| "Restart is review-only. Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+                label(|| "Restart is review-only.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+                label(|| "Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
                 dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), |change| change_view(change, None)),
                 v_stack((
                     label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
@@ -633,7 +634,10 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                             .selectable(false)
                     }),
                 ))
-                .style(|s| s.gap(4.0)),
+                // Bottom padding keeps Dismiss above any residual
+                // horizontal scrollbar thumb (host QA on f68f497:
+                // the bar painted over the Dismiss hit area).
+                .style(|s| s.gap(4.0).padding_bottom(14.0)),
             )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || {

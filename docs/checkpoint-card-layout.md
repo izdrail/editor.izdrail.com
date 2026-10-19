@@ -14,3 +14,11 @@ so the surrounding scroll never grows a horizontal bar. Standing rule
 for this panel: every row in a scroll must fit the panel on its own -
 the scroll measures content at infinite width, so labels do not wrap
 inside it and wide rows produce the paint-over thumb.
+
+Update (item 221, host QA on f68f497): the combined second line
+"Restart is review-only. Restore fails on later changes." was still
+wider than the panel at 11px, so it is now two lines ("Restart is
+review-only." / "Restore fails on later changes."), and the
+Restore/Dismiss stack carries bottom padding so a residual scrollbar
+thumb can never sit on the Dismiss hit area. Observed fit limit in
+this panel: about 31 chars per line at 11px.
