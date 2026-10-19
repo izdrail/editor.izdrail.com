@@ -1,4 +1,5 @@
 //! Revision-checked change proposals and owned-buffer checkpoints. No disk writes.
+use serde_json::Value;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -337,6 +338,165 @@ pub fn merge_hunks(base: &str, hunks: &[Hunk], accepted: &[bool]) -> String {
         out.push_str(line);
     }
     out
+}
+
+/// Extract the proposal JSON object from a model answer. Small local
+/// models wrap the JSON in prose or markdown fences, or emit another
+/// JSON object first; a strict whole-answer parse fails on all of
+/// those (host QA: qwen2.5-coder answered with a tutorial and Act
+/// reported "did not parse: expected value at line 1 column 1").
+/// Tries the whole trimmed answer, each fenced code block, then every
+/// balanced {...} object containing "changes". When the answer holds
+/// exactly one non-empty fenced block and `default_path` is known,
+/// the block is accepted as the full replacement for that file - the
+/// no-JSON path for models too small to escape a whole file into a
+/// JSON string.
+pub fn extract_proposal_json(
+    answer: &str,
+    default_path: Option<&str>,
+) -> Result<String, String> {
+    let candidate = |text: &str| -> Option<String> {
+        let value: Value = serde_json::from_str(text.trim()).ok()?;
+        if value.get("changes").is_some_and(|v| v.is_array()) {
+            Some(text.trim().to_string())
+        } else {
+            None
+        }
+    };
+    if let Some(found) = candidate(answer) {
+        return Ok(found);
+    }
+    let fences = fenced_blocks(answer);
+    for (_, body) in &fences {
+        if let Some(found) = candidate(body) {
+            return Ok(found);
+        }
+    }
+    for (start, _) in answer.match_indices('{') {
+        if let Some(end) = balanced_object_end(answer, start) {
+            if let Some(found) = candidate(&answer[start..=end]) {
+                return Ok(found);
+            }
+        }
+    }
+    if let Some(path) = default_path {
+        let non_empty: Vec<&String> = fences
+            .iter()
+            .map(|(_, body)| body)
+            .filter(|body| !body.trim().is_empty())
+            .collect();
+        if non_empty.len() == 1 {
+            return Ok(serde_json::json!({"changes":[{"path":path,"replacement":non_empty[0]}]})
+                .to_string());
+        }
+    }
+    Err("no proposal JSON object found in the answer".into())
+}
+
+/// Fenced code blocks as (info string, body) pairs.
+fn fenced_blocks(text: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(open) = rest.find("```") {
+        let after = &rest[open + 3..];
+        let Some(nl) = after.find('\n') else { break };
+        let info = after[..nl].trim().to_string();
+        let after_info = &after[nl + 1..];
+        let Some(close) = after_info.find("```") else { break };
+        out.push((info, after_info[..close].to_string()));
+        rest = &after_info[close + 3..];
+    }
+    out
+}
+
+/// Byte index of the } closing the balanced {...} object that starts
+/// at `start` (text[start] == '{'), string- and escape-aware so
+/// braces inside replacement text do not end the object early.
+fn balanced_object_end(text: &str, start: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod extraction_tests {
+    use super::extract_proposal_json;
+
+    #[test]
+    fn whole_answer_json_wins() {
+        let a = r#"{"changes":[{"path":"a.php","replacement":"hi"}]}"#;
+        assert_eq!(extract_proposal_json(a, None).unwrap(), a);
+    }
+
+    #[test]
+    fn fenced_json_inside_prose_is_found() {
+        let a = "Sure! Here is the change:\n```json\n{\"changes\":[{\"path\":\"a.php\",\"replacement\":\"hi\"}]}\n```\nHope this helps!";
+        assert!(extract_proposal_json(a, None)
+            .unwrap()
+            .contains("\"changes\""));
+    }
+
+    #[test]
+    fn later_object_wins_over_earlier_non_proposal() {
+        let a = r#"First: {"step":1,"note":"braces } inside"} then {"changes":[{"path":"a","replacement":"x"}]} done"#;
+        let out = extract_proposal_json(a, None).unwrap();
+        assert!(out.contains("\"changes\""));
+    }
+
+    #[test]
+    fn braces_inside_strings_do_not_end_the_object() {
+        let a = r#"text {"changes":[{"path":"a","replacement":"} ] { }"}]} tail"#;
+        let out = extract_proposal_json(a, None).unwrap();
+        assert!(out.contains("replacement"));
+    }
+
+    #[test]
+    fn single_fence_maps_to_default_path() {
+        let a = "```\n<?php echo 1; ?>\n```";
+        let out = extract_proposal_json(a, Some("src/a.php")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["changes"][0]["path"], "src/a.php");
+        assert_eq!(
+            v["changes"][0]["replacement"],
+            "<?php echo 1; ?>\n"
+        );
+        // Two fences: ambiguous, no mapping.
+        assert!(extract_proposal_json("```\nx\n```\n```\ny\n```", Some("a"))
+            .is_err());
+        // No default path: no mapping.
+        assert!(extract_proposal_json("```\nx\n```", None).is_err());
+    }
+
+    #[test]
+    fn no_proposal_anywhere_errors() {
+        assert!(extract_proposal_json("a node tutorial", None).is_err());
+        assert!(extract_proposal_json(r#"{"other":true}"#, None).is_err());
+    }
 }
 
 #[cfg(test)]

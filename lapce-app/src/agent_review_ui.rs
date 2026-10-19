@@ -895,7 +895,15 @@ fn parse_draft(json: &str) -> Result<Vec<DraftChange>, String> {
     if json.len() > 2 * 1024 * 1024 {
         return Err("Proposal JSON too large".into());
     }
-    let draft: Draft = serde_json::from_str(json).map_err(|e| {
+    // Small models wrap the proposal in prose or fences; find the
+    // JSON object first (item 226).
+    let extracted =
+        crate::agent_changes::extract_proposal_json(json, None).map_err(|e| {
+            format!(
+                "Expected a proposal JSON object like {{\"changes\":[{{\"path\":\"relative/file\",\"replacement\":\"...\"}}]}}, but the answer did not parse: {e}"
+            )
+        })?;
+    let draft: Draft = serde_json::from_str(&extracted).map_err(|e| {
         format!(
             "Expected a proposal JSON object like {{\"changes\":[{{\"path\":\"relative/file\",\"replacement\":\"...\"}}]}}, but the answer did not parse: {e}"
         )

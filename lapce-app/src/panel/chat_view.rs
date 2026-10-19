@@ -837,6 +837,19 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
             ctx.text
         ));
     }
+    // The fenced full-file fallback target for small Act models
+    // (item 226): the open file, workspace-relative.
+    let act_target: Option<String> =
+        if mode == crate::agent_loop::Mode::Act {
+            editor_ctx.as_ref().and_then(|ctx| {
+                std::path::Path::new(&ctx.name)
+                    .strip_prefix(&root)
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            })
+        } else {
+            None
+        };
     let run = data.gate.begin();
     let cancelled = Arc::new(AtomicBool::new(false));
     data.cancellation.set(cancelled.clone());
@@ -1282,6 +1295,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     }
                 },
                 &mcp_tools,
+                act_target.as_deref(),
             )
         })();
         let _ = tx.send(match result {
