@@ -76,6 +76,8 @@ pub enum IndexError {
     Tantivy(#[from] TantivyError),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("project index schema does not match this editor version; use a new cache directory")]
+    SchemaMismatch,
     #[error("query parse: {0}")]
     QueryParse(#[from] QueryParserError),
 }
@@ -137,9 +139,18 @@ impl ProjectIndex {
     pub fn open_or_create(dir: &Path) -> Result<Self> {
         fs::create_dir_all(dir)?;
         let (schema, fields) = build_schema();
-        let index = match Index::open_in_dir(dir) {
-            Ok(index) => index,
-            Err(_) => Index::create_in_dir(dir, schema)?,
+        // Only an absent metadata file means a new index. Corruption or
+        // permission errors must not be mistaken for permission to recreate it.
+        let index = if dir.join("meta.json").try_exists()? {
+            let index = Index::open_in_dir(dir)?;
+            // Fields are numeric IDs derived from build_schema; accepting a
+            // different layout could read/write the wrong fields silently.
+            if index.schema() != schema {
+                return Err(IndexError::SchemaMismatch);
+            }
+            index
+        } else {
+            Index::create_in_dir(dir, schema)?
         };
         Self::from_index(index, fields)
     }
@@ -351,6 +362,38 @@ mod tests {
         }
 
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn opening_foreign_schema_fails_without_replacing_it() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("lapce-index-schema-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let mut builder = Schema::builder();
+        builder.add_text_field("foreign", TEXT | STORED);
+        let foreign_schema = builder.build();
+        drop(Index::create_in_dir(&dir, foreign_schema.clone()).unwrap());
+        let before = fs::read(dir.join("meta.json")).unwrap();
+
+        assert!(matches!(ProjectIndex::open_or_create(&dir), Err(IndexError::SchemaMismatch)));
+        assert_eq!(fs::read(dir.join("meta.json")).unwrap(), before);
+        assert_eq!(Index::open_in_dir(&dir).unwrap().schema(), foreign_schema);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn corrupt_metadata_is_not_recreated() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("lapce-index-corrupt-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let bytes = b"not valid index metadata";
+        fs::write(dir.join("meta.json"), bytes).unwrap();
+
+        assert!(ProjectIndex::open_or_create(&dir).is_err());
+        assert_eq!(fs::read(dir.join("meta.json")).unwrap(), bytes);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

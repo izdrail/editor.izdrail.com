@@ -1,7 +1,7 @@
 # Project index (lapce-index)
 
-The editor keeps one embedded [tantivy](https://github.com/quickwit-oss/tantivy)
-index per workspace. It is the single structure behind file search,
+The current foundation creates one embedded [tantivy](https://github.com/quickwit-oss/tantivy)
+index per local workspace tab. It is intended to supply file search,
 workspace-symbol search, and the local-first completion cascade
 (local index -> attached LSP server -> llm.izdrail.com fallback).
 Research and the tool comparison that chose tantivy:
@@ -27,6 +27,10 @@ Queries run over `symbol` and `body` with BM25 ranking
 ## Lifecycle
 
 - `ProjectIndex::open_or_create(dir)` opens or creates the on-disk index.
+  An existing metadata file must open successfully with the exact expected
+  schema. Corrupt metadata or a different schema returns an error without
+  overwriting the cache. The app logs the failure and disables indexing for
+  that tab. Automatic cache migration/rebuild is not implemented yet.
 - `add_entry` queues a record; `remove_path` queues deletion of every record
   for one path (used on save: delete, then re-add that file's records);
   `commit` flushes and explicitly reloads the reader, so searches made
