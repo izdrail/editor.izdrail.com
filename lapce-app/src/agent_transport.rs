@@ -77,7 +77,172 @@ mod tests {
     use std::{
         io::{Read, Write},
         net::TcpListener,
+        sync::atomic::AtomicU64,
     };
+    /// Read one HTTP request fully (headers + content-length body):
+    /// an Act request with the contract and tool definitions runs
+    /// several KB, past a single read.
+    fn read_request(socket: &mut std::net::TcpStream) -> String {
+        let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(
+            5,
+        )));
+        let mut buf = Vec::new();
+        let mut chunk = [0; 8192];
+        loop {
+            let n = match socket.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(head_end) = buf
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+            {
+                let head = String::from_utf8_lossy(&buf[..head_end]);
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                if buf.len() >= head_end + 4 + len {
+                    break;
+                }
+            }
+            if buf.len() > 1024 * 1024 {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+    fn respond(socket: &mut std::net::TcpStream, body: &str) {
+        write!(
+            socket,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+    }
+    fn body_of(request: &str) -> &str {
+        request.split("\r\n\r\n").nth(1).unwrap_or("")
+    }
+    /// End to end (item 234): the loop drives a real Act wire
+    /// conversation - the first request carries the contract and
+    /// tool definitions, a tool reply follows, and the second
+    /// request carries the tool result back to the provider.
+    #[test]
+    fn act_wire_round_trip_tool_call_then_proposal() {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", server.local_addr().unwrap());
+        let (req_tx, req_rx) = std::sync::mpsc::channel::<String>();
+        let worker = std::thread::spawn(move || {
+            let (mut s, _) = server.accept().unwrap();
+            req_tx.send(read_request(&mut s)).unwrap();
+            respond(
+                &mut s,
+                r#"{"choices":[{"finish_reason":"tool_calls","message":{"content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"run_command","arguments":"{\"command\":\"ls -la\"}"}}]}}]}"#,
+            );
+            let (mut s, _) = server.accept().unwrap();
+            req_tx.send(read_request(&mut s)).unwrap();
+            respond(
+                &mut s,
+                r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"changes\":[{\"path\":\"a.txt\",\"old_text\":\"dirty\",\"new_text\":\"clean\"}]}"}}]}"#,
+            );
+        });
+        let ep = endpoint.clone();
+        let result = crate::agent_loop::run(
+            crate::agent_loop::Mode::Act,
+            "change the word dirty to clean",
+            crate::agent_loop::Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            move |messages, tools| {
+                ollama(
+                    &ep,
+                    "test",
+                    messages,
+                    tools,
+                    512,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            },
+            |_| Ok("file-a\nfile-b".to_string()),
+            |_| {},
+            &[],
+            Some("a.txt"),
+        )
+        .unwrap();
+        worker.join().unwrap();
+        assert!(result.contains("old_text"));
+        let req1 = req_rx.recv().unwrap();
+        let body1 = body_of(&req1);
+        // The Act contract with the worked example naming the open
+        // file, plus the tool definitions.
+        assert!(body1.contains("\"role\":\"system\""));
+        assert!(body1.contains("Example:"));
+        assert!(body1.contains("a.txt"));
+        assert!(body1.contains("run_command"));
+        let req2 = req_rx.recv().unwrap();
+        let body2 = body_of(&req2);
+        // The tool result rides back as a tool-role message keyed by
+        // the provider's call id.
+        assert!(body2.contains("\"role\":\"tool\""));
+        assert!(body2.contains("c1"));
+        assert!(body2.contains("file-a"));
+    }
+    /// End to end (item 234): a prose first answer produces a second
+    /// request carrying the repair message, not a run failure.
+    #[test]
+    fn act_wire_bad_answer_triggers_repair_request() {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", server.local_addr().unwrap());
+        let (req_tx, req_rx) = std::sync::mpsc::channel::<String>();
+        let worker = std::thread::spawn(move || {
+            let (mut s, _) = server.accept().unwrap();
+            req_tx.send(read_request(&mut s)).unwrap();
+            respond(
+                &mut s,
+                r#"{"choices":[{"finish_reason":"stop","message":{"content":"just some prose"}}]}"#,
+            );
+            let (mut s, _) = server.accept().unwrap();
+            req_tx.send(read_request(&mut s)).unwrap();
+            respond(
+                &mut s,
+                r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"changes\":[{\"path\":\"a.txt\",\"old_text\":\"dirty\",\"new_text\":\"clean\"}]}"}}]}"#,
+            );
+        });
+        let ep = endpoint.clone();
+        let result = crate::agent_loop::run(
+            crate::agent_loop::Mode::Act,
+            "change the word dirty to clean",
+            crate::agent_loop::Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            move |messages, tools| {
+                ollama(
+                    &ep,
+                    "test",
+                    messages,
+                    tools,
+                    512,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            },
+            |_| Ok(String::new()),
+            |_| {},
+            &[],
+            Some("a.txt"),
+        )
+        .unwrap();
+        worker.join().unwrap();
+        assert!(result.contains("old_text"));
+        let _ = req_rx.recv().unwrap();
+        let req2 = req_rx.recv().unwrap();
+        assert!(body_of(&req2).contains("not a valid Act proposal"));
+    }
     #[test]
     fn loopback_tool_reply_no_execution() {
         let server = TcpListener::bind("127.0.0.1:0").unwrap();
