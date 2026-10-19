@@ -38,7 +38,17 @@ pub fn ollama(
         let run=async {
             let client=reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e|e.to_string())?;
             let mut response=client.post(url).json(&request).send().await.map_err(|e|e.to_string())?;
-            if !response.status().is_success() {return Err(format!("Agent provider returned HTTP {}",response.status()));}
+            if !response.status().is_success() {
+                let status = response.status();
+                // The provider's error body says WHY (unknown model,
+                // unsupported tools, schema rejection); clip it into
+                // the message so a 400 is debuggable from the panel.
+                let body = response.text().await.unwrap_or_default();
+                let detail: String = body.chars().take(500).collect();
+                return Err(format!(
+                    "Agent provider returned HTTP {status}: {detail}"
+                ));
+            }
             let mut bytes=Vec::new();
             while let Some(chunk)=response.chunk().await.map_err(|e|e.to_string())? {
                 if bytes.len()+chunk.len()>2*1024*1024 {return Err("Agent response too large".into());}bytes.extend_from_slice(&chunk);
@@ -91,6 +101,34 @@ mod tests {
         assert_eq!(r.calls[0].arguments["path"], "README.md");
         worker.join().unwrap();
     }
+    #[test]
+    fn http_error_surfaces_provider_body() {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", server.local_addr().unwrap());
+        let worker = std::thread::spawn(move || {
+            let (mut s, _) = server.accept().unwrap();
+            let mut buf = [0; 8192];
+            let _ = s.read(&mut buf).unwrap();
+            let body =
+                r#"{"error":{"message":"model 'x' does not support tools"}}"#;
+            write!(s,"HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+        });
+        let result = ollama(
+            &endpoint,
+            "x",
+            &[AgentMessage::User {
+                content: "hi".into(),
+            }],
+            &[],
+            64,
+            Arc::new(AtomicBool::new(false)),
+        );
+        worker.join().unwrap();
+        let error = result.unwrap_err();
+        assert!(error.contains("HTTP 400 Bad Request"));
+        assert!(error.contains("does not support tools"));
+    }
+
     #[test]
     fn pre_cancel_makes_no_request() {
         assert_eq!(

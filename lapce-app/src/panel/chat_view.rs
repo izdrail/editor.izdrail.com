@@ -2911,6 +2911,26 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let path = root.join(".lapce").join("plans").join(&name);
                     label(move || title.clone())
                         .on_click_stop(move |_| {
+                            // Artifact files are write-once, so a
+                            // synchronous read here is safe: if the
+                            // doc somehow has no content yet (host QA:
+                            // artifact opened as an empty buffer), seed
+                            // it instead of showing 0 bytes. The
+                            // regular async buffer load delivers the
+                            // same immutable content afterwards.
+                            if let Ok(content) =
+                                std::fs::read_to_string(&path)
+                            {
+                                let (doc, _) = open_split
+                                    .get_doc(path.clone(), None);
+                                if !doc.loaded() {
+                                    doc.init_content(
+                                        lapce_xi_rope::Rope::from(
+                                            content,
+                                        ),
+                                    );
+                                }
+                            }
                             open_split.jump_to_location(
                                 crate::editor::location::EditorLocation {
                                     path: path.clone(),
