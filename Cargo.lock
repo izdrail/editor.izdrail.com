@@ -3831,6 +3831,7 @@ dependencies = [
  "itertools 0.12.1",
  "lapce-ai",
  "lapce-core",
+ "lapce-index",
  "lapce-proxy",
  "lapce-rpc",
  "lapce-vscode-experiment",

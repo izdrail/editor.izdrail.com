@@ -43,8 +43,11 @@ Queries run over `symbol` and `body` with BM25 ranking
    it clears previous records before walking, avoiding duplicates and stale
    entries for deleted or newly ignored files. Pre-cancelled passes leave
    the existing cache intact; cancellation mid-pass leaves a partial index.
-   The lapce-app thread spawn and status display wire
-   in next.
+   Item 244 starts a named background worker from local workspace tabs.
+   Repeated progress and final status cross an mpsc channel to a UI effect.
+   A scope-owned drop guard cancels the walk on tab disposal. Opening the
+   on-disk index currently happens during tab setup; moving that work off
+   the UI thread, status-bar display and save-time updates remain pending.
 3. tree-sitter symbol extraction per saved file (delete-by-path, re-add).
 4. Completion cascade: local index -> LSP -> llm.izdrail.com.
 5. Per-framework LSP presets (PHP/Magento/WordPress/Symfony, TS/React/Angular,

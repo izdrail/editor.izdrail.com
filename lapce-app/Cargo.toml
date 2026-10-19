@@ -25,6 +25,7 @@ indexmap           = { workspace = true }
 interprocess       = { workspace = true }
 itertools          = { workspace = true }
 lapce-core         = { workspace = true }
+lapce-index        = { workspace = true }
 lapce-proxy        = { workspace = true }
 lapce-vsix        = { workspace = true }
 lapce-rpc          = { workspace = true }

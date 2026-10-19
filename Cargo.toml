@@ -80,6 +80,7 @@ lsp-types = { version = "0.95.1", features = ["proposed"] }                     
 lapce-xi-rope = { version = "0.3.2", features = ["serde"] }
 
 lapce-core  = { path = "./lapce-core" }
+lapce-index = { path = "./lapce-index" }
 lapce-rpc   = { path = "./lapce-rpc" }
 lapce-proxy = { path = "./lapce-proxy" }
 
