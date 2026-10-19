@@ -1989,6 +1989,32 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let plans_open = tab.main_split.clone();
     let mode_expanded = floem::reactive::create_rw_signal(false);
     let model_expanded = floem::reactive::create_rw_signal(false);
+    // Endpoint model list (item 206): fetched on demand when the model
+    // chip opens against the ollama backend - never at startup.
+    let endpoint_models = floem::reactive::create_rw_signal(Vec::<String>::new());
+    let endpoint_models_error =
+        floem::reactive::create_rw_signal(Option::<String>::None);
+    let endpoint_models_loading = floem::reactive::create_rw_signal(false);
+    let (models_tx, models_rx) =
+        std::sync::mpsc::channel::<Result<Vec<String>, String>>();
+    let models_result = floem::ext_event::create_signal_from_channel(models_rx);
+    {
+        create_effect(move |_| {
+            if let Some(result) = models_result.get() {
+                endpoint_models_loading.set(false);
+                match result {
+                    Ok(list) => {
+                        endpoint_models.set(list);
+                        endpoint_models_error.set(None);
+                    }
+                    Err(e) => {
+                        endpoint_models.set(Vec::new());
+                        endpoint_models_error.set(Some(e));
+                    }
+                }
+            }
+        });
+    }
     // Floating overlay dropdowns (settings.rs pattern): opening a
     // composer dropdown adds a window-level overlay positioned at its
     // trigger; closing removes it. The overlay takes keyboard focus, so
@@ -2205,23 +2231,51 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 lapce_ai::catalog::MODELS
                                     .iter()
                                     .filter(|m| m.chat)
-                                    .map(|m| m.id.to_string())
+                                    .map(|m| (m.id.to_string(), true))
                                     .collect::<Vec<_>>()
+                            } else if endpoint_models_loading.get() {
+                                vec![("Loading models...".to_string(), false)]
+                            } else if let Some(e) = endpoint_models_error.get()
+                            {
+                                vec![(format!("Could not list models: {e}"), false)]
+                            } else if endpoint_models.get().is_empty() {
+                                vec![(
+                                    "No models reported by the endpoint"
+                                        .to_string(),
+                                    false,
+                                )]
                             } else {
-                                Vec::new()
+                                endpoint_models
+                                    .get()
+                                    .into_iter()
+                                    .map(|m| (m, true))
+                                    .collect()
                             }
                             .into_iter()
                             .enumerate()
                         },
                         |(i, _)| *i,
-                        move |(_, id)| {
+                        move |(_, (id, pickable))| {
                             let id_pick = id.clone();
                             let id_active = id.clone();
                             label(move || id.clone())
                                 .on_click_stop(move |_| {
+                                    if !pickable {
+                                        return;
+                                    }
+                                    let key = if config
+                                        .get_untracked()
+                                        .ai_chat
+                                        .backend
+                                        == "local"
+                                    {
+                                        "local-model"
+                                    } else {
+                                        "model"
+                                    };
                                     LapceConfig::update_file(
                                         "ai-chat",
-                                        "local-model",
+                                        key,
                                         toml_edit::Value::from(
                                             id_pick.clone(),
                                         ),
@@ -2229,15 +2283,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     model_expanded.set(false);
                                 })
                                 .style(move |s| {
-                                    dropdown_row_style(
-                                        s,
-                                        config,
-                                        config
-                                            .get()
-                                            .ai_chat
-                                            .local_model
-                                            == id_active,
-                                    )
+                                    let c = config.get();
+                                    let active = if c.ai_chat.backend == "local"
+                                    {
+                                        c.ai_chat.local_model == id_active
+                                    } else {
+                                        c.ai_chat.model == id_active
+                                    };
+                                    dropdown_row_style(s, config, active)
                                 })
                         },
                     )
@@ -3316,13 +3369,23 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         }),
                     ))
                     .on_click_stop(move |_| {
-                        if config.get_untracked().ai_chat.backend != "local" {
-                            return;
-                        }
+                        let settings = config.get_untracked().ai_chat.clone();
                         let open = !model_expanded.get_untracked();
                         model_expanded.set(open);
                         if open {
                             mode_expanded.set(false);
+                        }
+                        // Endpoint backend (item 206): the chip opens an
+                        // on-demand model list from the configured
+                        // endpoint instead of being display-only.
+                        if open && settings.backend != "local" {
+                            endpoint_models_loading.set(true);
+                            endpoint_models_error.set(None);
+                            let tx = models_tx.clone();
+                            let endpoint = settings.endpoint.clone();
+                            std::thread::spawn(move || {
+                                let _ = tx.send(crate::chat::models(&endpoint));
+                            });
                         }
                     })
                     .on_move(move |point| {

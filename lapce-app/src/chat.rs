@@ -203,7 +203,9 @@ pub fn parse_slash(input: &str) -> Option<Result<SlashCommand, String>> {
     }))
 }
 
-pub fn completion_url(endpoint: &str) -> Result<String, String> {
+/// The validated endpoint base both URL builders share: http(s)
+/// only, a host, and no credentials, query or fragment.
+fn checked_base(endpoint: &str) -> Result<String, String> {
     let base = endpoint.trim().trim_end_matches('/');
     let url = url::Url::parse(base).map_err(|e| e.to_string())?;
     if !matches!(url.scheme(), "http" | "https")
@@ -217,6 +219,10 @@ pub fn completion_url(endpoint: &str) -> Result<String, String> {
             "Use an http(s) endpoint without credentials, query or fragment".into(),
         );
     }
+    Ok(base.to_string())
+}
+pub fn completion_url(endpoint: &str) -> Result<String, String> {
+    let base = checked_base(endpoint)?;
     Ok(if base.ends_with("/v1/chat/completions") {
         base.to_string()
     } else if base.ends_with("/v1") {
@@ -224,6 +230,83 @@ pub fn completion_url(endpoint: &str) -> Result<String, String> {
     } else {
         format!("{base}/v1/chat/completions")
     })
+}
+/// The OpenAI-style model-list URL, mirroring completion_url's path
+/// rules so both always target the same endpoint shape.
+pub fn models_url(endpoint: &str) -> Result<String, String> {
+    let base = checked_base(endpoint)?;
+    Ok(if base.ends_with("/v1") {
+        format!("{base}/models")
+    } else {
+        format!("{base}/v1/models")
+    })
+}
+/// List the chat models an endpoint offers, for the composer model
+/// chip (OpenAI GET /v1/models; the parser also accepts Ollama's
+/// native {"models":[...]} shape). On demand only - never fetched at
+/// startup, and never used to second-guess a configured model.
+pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
+    let url = models_url(endpoint)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    runtime.block_on(async {
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut response =
+            client.get(&url).send().await.map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "The model list returned HTTP {}. Check the endpoint.",
+                response.status()
+            ));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) =
+            response.chunk().await.map_err(|e| e.to_string())?
+        {
+            if bytes.len() + chunk.len() > 1024 * 1024 {
+                return Err("The model list exceeded 1 MB".into());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        parse_model_names(&bytes)
+    })
+}
+/// Parse a model-list body: OpenAI {"data":[{"id":...}]} or Ollama
+/// {"models":[{"name":...}]}. Names are trimmed, empties dropped,
+/// duplicates removed, order kept.
+pub fn parse_model_names(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let value: Value =
+        serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    let names = value
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| r.get("id").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+        })
+        .or_else(|| {
+            value.get("models").and_then(Value::as_array).map(|rows| {
+                rows.iter()
+                    .filter_map(|r| r.get("name").and_then(Value::as_str))
+                    .collect::<Vec<_>>()
+            })
+        })
+        .ok_or("The model list is not an OpenAI or Ollama model list")?;
+    let mut out: Vec<String> = Vec::new();
+    for name in names {
+        let name = name.trim();
+        if !name.is_empty() && !out.iter().any(|n| n == name) {
+            out.push(name.to_string());
+        }
+    }
+    Ok(out)
 }
 #[derive(Clone)]
 pub enum Update {
@@ -473,6 +556,42 @@ mod tests {
             "http://localhost:8000/v1/chat/completions"
         );
         assert!(completion_url("file:///tmp/key").is_err());
+    }
+
+    #[test]
+    fn models_url_mirrors_completion_path_rules() {
+        assert_eq!(
+            models_url("https://ai.izdrail.com").unwrap(),
+            "https://ai.izdrail.com/v1/models"
+        );
+        assert_eq!(
+            models_url("https://ai.izdrail.com/v1").unwrap(),
+            "https://ai.izdrail.com/v1/models"
+        );
+        assert_eq!(
+            models_url("http://localhost:11434/v1/").unwrap(),
+            "http://localhost:11434/v1/models"
+        );
+        assert!(models_url("file:///tmp/models").is_err());
+        assert!(models_url("https://user:pw@ai.izdrail.com").is_err());
+    }
+
+    #[test]
+    fn parse_model_names_reads_openai_and_ollama_shapes() {
+        let openai = br#"{"data":[{"id":"llama3.1:8b"},{"id":" qwen3 "},{"id":"llama3.1:8b"},{"id":""},{"other":1}]}"#;
+        assert_eq!(
+            parse_model_names(openai).unwrap(),
+            vec!["llama3.1:8b".to_string(), "qwen3".to_string()]
+        );
+        let ollama = br#"{"models":[{"name":"llama3.1:8b"},{"name":"qwen3"}]}"#;
+        assert_eq!(
+            parse_model_names(ollama).unwrap(),
+            vec!["llama3.1:8b".to_string(), "qwen3".to_string()]
+        );
+        // An empty list is a valid answer, but the wrong shape is not.
+        assert_eq!(parse_model_names(br#"{"data":[]}"#).unwrap(), Vec::<String>::new());
+        assert!(parse_model_names(br#"{"other":[]}"#).is_err());
+        assert!(parse_model_names(b"not json").is_err());
     }
     #[test]
     fn context_unicode_and_selection() {
