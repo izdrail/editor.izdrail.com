@@ -31,6 +31,9 @@ pub enum Event {
         error: bool,
         message: String,
     },
+    /// A human-readable note for the step card, e.g. when the host
+    /// built the proposal itself after the model failed (item 229).
+    Note(String),
     Finished(String),
 }
 pub struct Limits {
@@ -246,6 +249,54 @@ fn extract_prose_tool_calls(
     }
     calls
 }
+/// Does an extracted proposal carry a zero-length changes array?
+fn proposal_is_empty(json: &str) -> bool {
+    serde_json::from_str::<Value>(json)
+        .ok()
+        .and_then(|v| {
+            v.get("changes")
+                .and_then(Value::as_array)
+                .map(|a| a.is_empty())
+        })
+        .unwrap_or(false)
+}
+
+/// Deterministic small-edit fallback: the model failed twice, and the
+/// request is literally "change X to Y" (or "replace X with Y") with
+/// X unique in the open file's editor context - build the exact-edit
+/// proposal host-side (item 229).
+fn fallback_exact_edit(
+    prompt: &str,
+    act_target: Option<&str>,
+) -> Option<String> {
+    let target = act_target?;
+    let marker = "<editor_context>\n";
+    let start = prompt.find(marker)? + marker.len();
+    let end = prompt[start..].find("\n</editor_context>")? + start;
+    let content = &prompt[start..end];
+    let request = &prompt[..start - marker.len()];
+    let patterns = [
+        r#"(?i)\bchange\s+(?:the\s+word\s+)?"([^"\n]+)"\s+to\s+"([^"\n]+)""#,
+        r#"(?i)\bchange\s+(?:the\s+word\s+)?([\w$.-]+)\s+to\s+([\w$.-]+)"#,
+        r#"(?i)\breplace\s+"([^"\n]+)"\s+with\s+"([^"\n]+)""#,
+        r#"(?i)\breplace\s+([\w$.-]+)\s+with\s+([\w$.-]+)"#,
+    ];
+    for pattern in patterns {
+        let re = regex::Regex::new(pattern).ok()?;
+        if let Some(caps) = re.captures(request) {
+            let old = caps.get(1)?.as_str();
+            let new = caps.get(2)?.as_str();
+            if !old.is_empty() && content.matches(old).count() == 1 {
+                return Some(
+                    json!({"changes":[{"path":target,"old_text":old,"new_text":new}]})
+                        .to_string(),
+                );
+            }
+        }
+    }
+    None
+}
+
 /// The host supplies a configured provider and scoped executor. This cannot obtain keys,
 /// choose roots, grant trust, execute shell, approve plans, or apply a code patch.
 pub fn run(
@@ -326,6 +377,16 @@ pub fn run(
             mode
         ),
     };
+    // A one-shot worked example naming the actual open file: small
+    // models copy the example's shape (host QA on 4406e2b).
+    let mut contract = contract;
+    if mode == Mode::Act {
+        if let Some(target) = act_target {
+            contract.push_str(&format!(
+                " Example: if {target} contains the word \"dirty\" and the user asks to change it to \"clean\", your final answer is {{\"changes\":[{{\"path\":\"{target}\",\"old_text\":\"dirty\",\"new_text\":\"clean\"}}]}}."
+            ));
+        }
+    }
     let mut messages = vec![
         AgentMessage::System {
             content: contract,
@@ -382,40 +443,81 @@ pub fn run(
                 return Err("Empty agent answer".into());
             }
             if mode == Mode::Act && !executed_any {
-                match crate::agent_changes::extract_proposal_json(
+                let extracted = crate::agent_changes::extract_proposal_json(
                     &reply.content,
                     act_target,
-                ) {
-                    Ok(json) => {
-                        emit(Event::Finished(json.clone()));
-                        return Ok(json);
+                );
+                // An empty changes array on an edit-intent run is a
+                // failed proposal, not a proposal (host QA on 4406e2b:
+                // {"changes":[]} reached review and died there).
+                let problem: Option<String> = match &extracted {
+                    Ok(json) if proposal_is_empty(json) => {
+                        let target = act_target
+                            .map(|p| format!("\"path\":\"{p}\","))
+                            .unwrap_or_default();
+                        let clipped: String =
+                            prompt.chars().take(8_000).collect();
+                        let ellipsis =
+                            if clipped.len() < prompt.len() { "..." } else { "" };
+                        Some(format!(
+                            "You returned no changes. The user asked for an edit. Reply with exactly {{\"changes\":[{{{target}\"old_text\":\"<exact text from the file>\",\"new_text\":\"<the replacement>\"}}]}}. The request and the file content were:\n{clipped}{ellipsis}"
+                        ))
                     }
-                    Err(e) if !repaired => {
-                        repaired = true;
+                    Ok(_) => None,
+                    Err(e) => {
                         let fence_hint = match act_target {
                             Some(path) => format!(
                                 ", or with exactly one fenced code block holding the complete new content of {path}"
                             ),
                             None => String::new(),
                         };
+                        Some(format!(
+                            "That final answer was not a valid Act proposal ({e}). Reply with ONLY the proposal JSON object {{\"changes\":[{{\"path\":\"relative/project/path\",\"replacement\":\"the complete new file content\"}}]}} - no prose, no explanation{fence_hint}."
+                        ))
+                    }
+                };
+                match (extracted, problem) {
+                    (Ok(json), None) => {
+                        emit(Event::Finished(json.clone()));
+                        return Ok(json);
+                    }
+                    (_, Some(message)) if !repaired => {
+                        repaired = true;
                         messages.push(AgentMessage::Assistant {
                             content: reply.content.clone(),
                             tool_calls: Vec::new(),
                         });
                         messages.push(AgentMessage::User {
-                            content: format!(
-                                "That final answer was not a valid Act proposal ({e}). Reply with ONLY the proposal JSON object {{\"changes\":[{{\"path\":\"relative/project/path\",\"replacement\":\"the complete new file content\"}}]}} - no prose, no explanation{fence_hint}."
-                            ),
+                            content: message,
                         });
                         crate::agent_protocol::validate_conversation(
                             &messages, &allowed,
                         )?;
                         continue;
                     }
-                    Err(e) => {
-                        return Err(format!(
-                            "Act could not get a valid proposal from the model, even after one repair retry: {e}. The model may be too small for Act - pick a larger tool-capable model (for example qwen3:4b) in the model dropdown, or narrow the task to one file."
-                        ));
+                    (Err(_), None) => {
+                        unreachable!(
+                            "an extraction failure always carries a repair problem"
+                        )
+                    }
+                    (_, Some(_)) => {
+                        // A literal "change X to Y" request with X
+                        // unique in the open file does not need the
+                        // model at all (item 229).
+                        if let Some(json) =
+                            fallback_exact_edit(prompt, act_target)
+                        {
+                            emit(Event::Note(
+                                "The model could not produce a valid edit, so this proposal was built directly from your request. Review it like any other proposal."
+                                    .into(),
+                            ));
+                            emit(Event::Finished(json.clone()));
+                            return Ok(json);
+                        }
+                        return Err(
+                            "The model returned no usable edits. Try a larger model (for example qwen3:4b) in the model dropdown, or rephrase the request."
+                                .into(),
+                        );
                     }
                 }
             }
@@ -668,8 +770,125 @@ mod tests {
             None,
         );
         let error = result.unwrap_err();
-        assert!(error.contains("repair retry"));
-        assert!(error.contains("tool-capable"));
+        assert!(error.contains("no usable edits"));
+        assert!(error.contains("qwen3:4b"));
+    }
+    #[test]
+    fn act_empty_changes_gets_repair_retry() {
+        let mut turns = 0;
+        let mut saw_repair = false;
+        let result = run(
+            Mode::Act,
+            "change the word dirty to clean",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |messages, _| {
+                turns += 1;
+                if messages.iter().any(|m| {
+                    matches!(m, AgentMessage::User { content }
+                        if content.contains("You returned no changes"))
+                }) {
+                    saw_repair = true;
+                }
+                if saw_repair {
+                    Ok(Reply {
+                        content: r#"{"changes":[{"path":"a.txt","old_text":"dirty","new_text":"clean"}]}"#
+                            .into(),
+                        calls: Vec::new(),
+                    })
+                } else {
+                    Ok(Reply {
+                        content: r#"{"changes":[]}"#.into(),
+                        calls: Vec::new(),
+                    })
+                }
+            },
+            |_| Ok(String::new()),
+            |_| {},
+            &[],
+            None,
+        )
+        .unwrap();
+        assert_eq!(turns, 2);
+        assert!(saw_repair);
+        assert!(result.contains("old_text"));
+    }
+    #[test]
+    fn act_fallback_builds_change_x_to_y_edit() {
+        let prompt = "change the word dirty to clean\n\nEditor context (File: a.txt | 13 bytes)\n<editor_context>\n1\ndirty\nmore\n\n</editor_context>";
+        let result = run(
+            Mode::Act,
+            prompt,
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                Ok(Reply {
+                    content: r#"{"changes":[]}"#.into(),
+                    calls: Vec::new(),
+                })
+            },
+            |_| Ok(String::new()),
+            |_| {},
+            &[],
+            Some("a.txt"),
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["changes"][0]["path"], "a.txt");
+        assert_eq!(v["changes"][0]["old_text"], "dirty");
+        assert_eq!(v["changes"][0]["new_text"], "clean");
+    }
+    #[test]
+    fn fallback_exact_edit_needs_unique_match() {
+        let prompt = "replace on with off\n\n<editor_context>\non and on\n</editor_context>";
+        assert!(fallback_exact_edit(prompt, Some("a.txt")).is_none());
+        // "on" must occur exactly once as a substring (same rule as
+        // apply_exact_edit): "turn the flag on now" qualifies; note
+        // that "once" would count as an occurrence of "on".
+        let prompt = "replace \"on\" with \"off\"\n\n<editor_context>\nturn the flag on now\n</editor_context>";
+        let json = fallback_exact_edit(prompt, Some("a.txt")).unwrap();
+        assert!(json.contains("\"old_text\":\"on\""));
+        assert!(fallback_exact_edit(prompt, None).is_none());
+        assert!(fallback_exact_edit("no context here", Some("a.txt")).is_none());
+    }
+    #[test]
+    fn act_contract_carries_worked_example_with_open_file() {
+        let _ = run(
+            Mode::Act,
+            "edit it",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |messages, _| {
+                let system = match &messages[0] {
+                    AgentMessage::System { content } => content,
+                    _ => panic!("first message is the contract"),
+                };
+                assert!(system.contains("Example:"));
+                assert!(system.contains("src/a.php"));
+                assert!(system.contains("old_text"));
+                Ok(Reply {
+                    content: r#"{"changes":[{"path":"src/a.php","replacement":"x"}]}"#
+                        .into(),
+                    calls: Vec::new(),
+                })
+            },
+            |_| Ok(String::new()),
+            |_| {},
+            &[],
+            Some("src/a.php"),
+        )
+        .unwrap();
+    }
+    #[test]
+    fn proposal_is_empty_flags_zero_changes() {
+        assert!(proposal_is_empty(r#"{"changes":[]}"#));
+        assert!(!proposal_is_empty(
+            r#"{"changes":[{"path":"a","replacement":"b"}]}"#
+        ));
+        assert!(!proposal_is_empty("not json"));
     }
     #[test]
     fn act_single_fence_maps_to_open_file() {

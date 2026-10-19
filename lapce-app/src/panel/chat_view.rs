@@ -1307,6 +1307,13 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                 error,
                             }));
                         }
+                        crate::agent_loop::Event::Note(message) => {
+                            let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                                title: "Note".to_string(),
+                                detail: clip_step_detail(&message),
+                                error: false,
+                            }));
+                        }
                         crate::agent_loop::Event::Finished(_) => {}
                     }
                 },

@@ -71,3 +71,32 @@ whose replacement deleted two of three lines. Two hardenings:
    the minimal diff. No whole-file retyping, no JSON-escaping a whole
    file. The full-replacement form still works; mixing or partial
    forms are rejected. Both Act contract variants document the form.
+
+## Empty-changes retry, worked example, deterministic fallback (item 229, host QA on 4406e2b)
+
+A qwen3:4b run for "change the word dirty to clean" answered
+{"changes":[]} - valid JSON that passed extraction and died in the
+review lane as "Review requires 1-32 files". Four fixes:
+
+1. An Act run whose extracted proposal carries a zero-length changes
+   array now counts as a failed proposal: the one repair retry fires
+   with a "You returned no changes" message that restates the schema
+   (with the open file's path filled in) and re-includes the request
+   and file content (clipped to 8_000 chars).
+
+2. The Act contract ends with a one-shot worked example naming the
+   actual open file (dirty -> clean), so small models can copy the
+   shape instead of inventing one.
+
+3. The double-failure error is now user-readable: "The model returned
+   no usable edits. Try a larger model (for example qwen3:4b) in the
+   model dropdown, or rephrase the request." (The old
+   "pre-review validation" technical text can only appear in the
+   paste-a-proposal lane, where it is appropriate.)
+
+4. Deterministic fallback after the retry fails: when the request is
+   literally "change X to Y" / "replace X with Y" (quoted or bare
+   words) and X occurs exactly once in the open file's editor
+   context, the host builds the exact-edit proposal itself, clearly
+   labelled via a Note event on the step card. A genuinely ambiguous
+   or multi-occurrence request still errors - the host never guesses.
