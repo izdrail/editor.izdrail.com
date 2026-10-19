@@ -6,7 +6,10 @@ Client Protocol, instead of the built-in chat or the Ask/Plan loop.
 
 ## Setup
 
-Settings > AI Chat > `acp-command`: the command that starts an ACP
+The composer mode dropdown offers "Agent: opencode", "Agent: Claude Code"
+and "Agent: Codex". Picking one sets `[ai-chat].acp-command` in settings.toml,
+updates live config and selects ACP mode. See [agent picker](acp-agent-picker.md).
+For a custom command, `acp-command` is the setting that starts an ACP
 agent, for example `opencode acp` (native) or a Claude Code/Codex
 adapter binary. Empty (the default) disables ACP mode with a hint.
 Whitespace splitting only; keep the binary path space-free.
@@ -14,14 +17,14 @@ Whitespace splitting only; keep the binary path space-free.
 ## Behavior
 
 - One Send spawns a fresh agent process rooted at the current project
-  folder (canonicalized). Session continuity across sends (the spec's
-  `session/load`) is a later milestone.
+  folder (canonicalized). Session continuity across sends uses `session/load` when supported;
+  see Resuming sessions below.
 - The reply body shows setup status lines, then the streamed agent
   message chunks, plan entries, tool call titles, fs-read notices and
   usage updates, separated by blank lines.
 - Agents can read project files through the session controller
-  (workspace-confined, 1 MiB cap); writes are refused until the review
-  UI owns them. The agent's own tools still run under the agent's own
+  (workspace-confined, 1 MiB cap); file writes are staged for owner review,
+  not applied directly (see [write staging](acp-review-staging.md)). The agent's own tools still run under the agent's own
   permissions - ACP mode is for agents you already trust, same as
   running them in a terminal.
 - Stop kills the agent subprocess by pid (Linux `kill`), because the

@@ -7,8 +7,8 @@ Code and Codex CLI through their ACP adapters. It provides:
 - NDJSON stdio framing (one JSON-RPC message per line; encode asserts the
   single-line invariant, decode tolerates one trailing CRLF and rejects
   embedded newlines)
-- Client request builders: `initialize` (capabilities explicit; `fs` and
-  `terminal` must stay false until the review/permission UI owns them),
+- Client request builders: `initialize` (capabilities explicit; the session controller advertises
+  workspace-confined reads and review-staged writes, with terminal false),
   `authenticate`, `session/new`, `session/prompt`, `session/cancel`
 - Agent response/notification parsers: initialize hello (protocol version,
   agent info, auth method ids, loadSession), session id, stop reason,
@@ -29,9 +29,10 @@ stderr drains on a background thread into a 100-line ring so a chatty
 agent cannot deadlock on a full pipe; lines over 1 MiB are errors. Tests
 roundtrip a frame through a real `cat` subprocess and cover EOF (`true`)
 and spawn failure. The chat-panel session surface, context passing and
-permission-gated fs handlers are the next milestones, in that order.
+permission-gated fs handlers are implemented by the session and panel layers.
+See [session controller](agent-acp-session.md), [chat panel](agent-acp-panel.md)
+and [write staging](acp-review-staging.md) for the current behavior.
 
 Verification: unit tests cover framing roundtrips and newline rules, the
 spec-example request shapes, hello/session/stop parsing, plan/tool-call/
-usage updates and fs request parsing. No live agent was contacted; that
-integration test belongs to the stdio milestone.
+usage updates and fs request parsing. These unit tests do not prove a live authenticated run with any adapter.

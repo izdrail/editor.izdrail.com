@@ -27,12 +27,14 @@ answer to initialize/session/new). Kill the process on `Closed`.
 
 ## Capability policy
 
-- fs **read** is advertised, fs **write** is not (the initialize message
-  is patched after construction). `fs/read_text_file` is answered from
+- fs **read and write** are advertised by the session. `fs/read_text_file` is answered from
   disk, confined to the canonical workspace root, capped at 1 MiB before
   line slicing, with line/limit windows per the spec.
-- `fs/write_text_file` is refused with a JSON-RPC error until the
-  review/permission UI owns writes.
+- `fs/write_text_file` stages proposed content for review; it does not
+  change disk or buffers. Existing canonical workspace paths only,
+  2 MiB per write and 32 paths per turn, last write per path wins.
+  The panel drains proposals into the owner-review lane at turn end;
+  only Apply changes buffers. See [write staging](acp-review-staging.md).
 - terminal capability is never advertised.
 - Agents that require authentication get `NeedsAuth`; the UI picks a
   method and calls `begin_auth`. On success the controller proceeds to
@@ -58,11 +60,14 @@ the negotiated capability.
 `agent_acp_store.rs` persists ONLY the pointer per workspace
 (`.lapce/acp/sessions.json`: session id, agent command, cwd, first
 prompt line, updated stamp; 64-entry cap, temp-file + rename writes).
-The transcript itself stays with the agent - we never store
-conversations. Panel surfacing (resume picker) is the next item.
+This store contains pointers and the first prompt line, not a full transcript.
+The agent replays history on resume. This describes the ACP pointer store,
+not a privacy guarantee about other editor history or run journals.
+The panel provides a Resume control; see [chat panel](agent-acp-panel.md).
 
 ## Not here
 
-UI wiring into the chat panel, a mode/selector, process watchdogs and
-reconnect, permission prompts, write review. Those are the next
-milestones; the panel milestone consumes `TurnEvent` directly.
+This module remains a state machine, not a process or UI implementation.
+The chat panel consumes `TurnEvent` and owns subprocess lifecycle and review
+handoff. An ACP child is not sandboxed by these protocol capabilities;
+its own filesystem and execution tools remain under its own permissions.
