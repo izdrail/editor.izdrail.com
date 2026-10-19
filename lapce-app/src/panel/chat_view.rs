@@ -881,6 +881,15 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let main_split: crate::main_split::MainSplitData =
         tab.main_split.clone();
     let review_tab = tab.clone();
+    // Item 207: sha256 of every file content the agent actually
+    // received from read_file, so review can flag files that changed
+    // while the run was in flight.
+    let read_log = std::sync::Arc::new(
+        std::sync::Mutex::new(
+            std::collections::BTreeMap::<String, String>::new(),
+        ),
+    );
+    let read_log_done = read_log.clone();
     create_effect(move |_| {
         if let Some(update) = progress.get() {
             if !done.gate.accepts(run) {
@@ -925,8 +934,19 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         // autosave, platform, open-buffer, path and
                         // size rules and only stages an UNREVIEWED
                         // proposal. Nothing is applied here.
-                        match review_tab.chat.review.prepare(&review_tab, &text)
-                        {
+                        let reads = read_log_done
+                            .lock()
+                            .map(|l| l.clone())
+                            .unwrap_or_default();
+                        match review_tab.chat.review.prepare_with_reads(
+                            &review_tab,
+                            &text,
+                            if reads.is_empty() {
+                                None
+                            } else {
+                                Some(&reads)
+                            },
+                        ) {
                             Ok(()) => reply.set(
                                 "Proposal ready - nothing changed yet. Review every before/after in the review section below, then Apply or Reject."
                                     .to_string(),
@@ -1007,9 +1027,31 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     )
                 },
                 |call| match call.name.as_str() {
-                    "read_file" => reader.read(std::path::Path::new(
-                        call.arguments["path"].as_str().ok_or("Missing path")?,
-                    )),
+                    "read_file" => {
+                        let path = call
+                            .arguments["path"]
+                            .as_str()
+                            .ok_or("Missing path")?;
+                        let content =
+                            reader.read(std::path::Path::new(path))?;
+                        // What the model received, not what is on
+                        // disk: the staleness check compares this
+                        // digest with the live buffer at review time.
+                        if let Ok(mut log) = read_log.lock() {
+                            if log.len() < 64 {
+                                log.insert(
+                                    path.to_string(),
+                                    format!(
+                                        "{:x}",
+                                        <sha2::Sha256 as sha2::Digest>::digest(
+                                            content.as_bytes()
+                                        )
+                                    ),
+                                );
+                            }
+                        }
+                        Ok(content)
+                    }
                     "search" => {
                         let result = reader.search(
                             call.arguments["literal"]

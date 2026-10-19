@@ -18,6 +18,7 @@ use lapce_core::{
     buffer::rope_text::RopeText, editor::EditType, selection::Selection,
 };
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::PathBuf, rc::Rc};
 #[derive(Clone)]
 pub struct ReviewData {
@@ -26,6 +27,11 @@ pub struct ReviewData {
     pub recovered: RwSignal<bool>,
     pub error: RwSignal<String>,
     pub notice: RwSignal<String>,
+    /// Paths whose live buffer differs from the content the agent
+    /// read during its run (item 207): the model derived its
+    /// replacement from older content, so those diffs may clobber
+    /// edits the owner made while the run was in flight.
+    pub stale: RwSignal<Vec<String>>,
     directory: Option<PathBuf>,
     path: RwSignal<Option<PathBuf>>,
     owners: RwSignal<BTreeMap<String, u64>>,
@@ -60,6 +66,7 @@ impl ReviewData {
             recovered: cx.create_rw_signal(recovered),
             error: cx.create_rw_signal(error),
             notice: cx.create_rw_signal(String::new()),
+            stale: cx.create_rw_signal(Vec::new()),
             directory: path,
             path: cx.create_rw_signal(journal),
             owners: cx.create_rw_signal(BTreeMap::new()),
@@ -149,6 +156,19 @@ impl ReviewData {
             .collect()
     }
     pub fn prepare(&self, tab: &WindowTabData, json: &str) -> Result<(), String> {
+        self.prepare_with_reads(tab, json, None)
+    }
+    /// Prepare review, additionally surfacing staleness when `reads`
+    /// maps workspace-relative paths to the sha256 hex of the content
+    /// the agent actually received for them during the run (item
+    /// 207). A mismatch means the model derived its replacement from
+    /// older content than the live buffer.
+    pub fn prepare_with_reads(
+        &self,
+        tab: &WindowTabData,
+        json: &str,
+        reads: Option<&BTreeMap<String, String>>,
+    ) -> Result<(), String> {
         if tab.chat.busy.get_untracked() {
             return Err("Stop the current run before reviewing edits".into());
         }
@@ -182,6 +202,12 @@ impl ReviewData {
                 .collect(),
         };
         proposal.digest()?;
+        let stale = match reads {
+            Some(reads) => stale_against_reads(&proposal, reads),
+            None => Vec::new(),
+        };
+        let stale_count = stale.len();
+        self.stale.set(stale);
         self.owners.set(
             docs.iter()
                 .map(|(p, d)| (p.clone(), d.buffer_id.0))
@@ -189,9 +215,14 @@ impl ReviewData {
         );
         self.proposal.set(Some(proposal));
         self.error.set(String::new());
-        self.notice.set(
-            "Review every before/after file below. Nothing changed yet.".into(),
-        );
+        self.notice.set(if stale_count == 0 {
+            "Review every before/after file below. Nothing changed yet."
+                .to_string()
+        } else {
+            format!(
+                "Review every before/after file below. Nothing changed yet. {stale_count} file(s) changed since the agent read them - the proposal may clobber those edits."
+            )
+        });
         Ok(())
     }
     fn journal_path(&self) -> Result<PathBuf, String> {
@@ -444,6 +475,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     let prepare = data.clone();
     let prepare_tab = tab.clone();
     let error = data.error;
+    let stale = data.stale;
     let proposals = data.proposal;
     let checkpoints = data.checkpoint;
     let notice = data.notice;
@@ -512,7 +544,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                     let masks: Vec<Vec<bool>> = items_apply.iter().map(|(_, m)| m.get_untracked()).collect();
                     if let Err(e) = apply.apply_with(&apply_tab, &proposal, Some(masks)) { apply.error.set(e); }
                 }),
-                label(|| "Discard proposal".to_string()).on_click_stop(move |_| { discard.proposal.set(None); }),
+                label(|| "Discard proposal".to_string()).on_click_stop(move |_| { discard.proposal.set(None); discard.stale.set(Vec::new()); }),
             ))
         })).style(|s| s.max_height(260.0).width_full()),
         scroll(dyn_stack(move || checkpoints.get().into_iter(), |c: &Checkpoint| format!("{}:{:?}", c.proposal_digest, c.state), move |checkpoint: Checkpoint| {
@@ -528,6 +560,22 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 }),
             ))
         })).style(|s| s.max_height(200.0).width_full()),
+        label(move || {
+            let paths = stale.get();
+            if paths.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "Changed since the agent read them: {}",
+                    paths.join(", ")
+                )
+            }
+        })
+        .style(move |s| {
+            s.font_size(11.0)
+                .max_width_full()
+                .apply_if(stale.get().is_empty(), |s| s.hide())
+        }),
         label(move || notice.get()).style(|s| s.font_size(11.0).max_width_full()),
         label(move || error.get()).style(|s| s.font_size(11.0).max_width_full()),
     )).style(|s| s.width_full().gap(6.0)))
@@ -848,4 +896,67 @@ mod tests {
             "Proposal JSON too large"
         );
     }
+
+
+    fn proposal_of(changes: Vec<(&str, &str)>) -> Proposal {
+        Proposal {
+            run_id: "run-1".into(),
+            changes: changes
+                .into_iter()
+                .map(|(path, base)| Change {
+                    path: path.into(),
+                    base: BufferState {
+                        revision: 0,
+                        text: base.into(),
+                    },
+                    proposed: "proposed".into(),
+                })
+                .collect(),
+        }
+    }
+
+    fn digest_of(text: &str) -> String {
+        format!("{:x}", Sha256::digest(text.as_bytes()))
+    }
+
+    #[test]
+    fn stale_flags_only_paths_that_changed_since_read() {
+        let proposal =
+            proposal_of(vec![("src/a.rs", "old a"), ("src/b.rs", "same b")]);
+        let mut reads = BTreeMap::new();
+        // The agent read "old a" but the live base moved on: stale.
+        reads.insert("src/a.rs".to_string(), digest_of("older a"));
+        // Read and live agree: fresh.
+        reads.insert("src/b.rs".to_string(), digest_of("same b"));
+        assert_eq!(
+            stale_against_reads(&proposal, &reads),
+            vec!["src/a.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn stale_ignores_paths_the_agent_never_read() {
+        let proposal = proposal_of(vec![("src/a.rs", "old a")]);
+        let reads = BTreeMap::new();
+        assert!(stale_against_reads(&proposal, &reads).is_empty());
+    }
+}
+
+/// Paths whose live base differs from the content digest the agent
+/// read during the run: the model derived its replacement from older
+/// content, so the owner should review those removals as a possible
+/// clobber of edits made while the run was in flight.
+pub fn stale_against_reads(
+    proposal: &Proposal,
+    reads: &BTreeMap<String, String>,
+) -> Vec<String> {
+    proposal
+        .changes
+        .iter()
+        .filter_map(|c| {
+            let seen = reads.get(&c.path)?;
+            let live = format!("{:x}", Sha256::digest(c.base.text.as_bytes()));
+            (live != *seen).then(|| c.path.clone())
+        })
+        .collect()
 }
