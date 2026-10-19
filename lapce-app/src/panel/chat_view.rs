@@ -1293,17 +1293,25 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             id: _,
                             error,
                             message,
+                            summary,
+                            output,
                         } => {
+                            let detail = if error {
+                                // The real reason, e.g. "Tool
+                                // failed: exit 1: ..." or "Denied by
+                                // owner".
+                                clip_step_detail(&message)
+                            } else if output.is_empty() {
+                                summary
+                            } else {
+                                // e.g. "ran ls -la (exit 0)" followed
+                                // by the first lines of its output
+                                // (item 230).
+                                format!("{summary}\n{output}")
+                            };
                             let _ = tx.send(AgentUpdate::Step(AgentStepRow {
                                 title: "Result".to_string(),
-                                detail: if error {
-                                    // The real reason, e.g. "Tool
-                                    // failed: Command approval timed
-                                    // out" vs "Denied by owner".
-                                    clip_step_detail(&message)
-                                } else {
-                                    "read completed".to_string()
-                                },
+                                detail,
                                 error,
                             }));
                         }
@@ -1439,6 +1447,31 @@ fn pending_command_card(tab: Rc<WindowTabData>) -> impl View {
         },
     )
     .style(|s| s.flex_col().width_full())
+}
+
+/// "8s", "2m 05s", "1h 03m" - elapsed time for the Running row.
+pub fn elapsed_label(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m {:02}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {:02}m", secs / 3600, (secs % 3600) / 60)
+    }
+}
+
+/// Re-arm every second; bump the tick only while runs are live so
+/// the Running rows' elapsed labels advance without idle repaints.
+fn start_runs_tick(
+    registry: crate::agent_runs::RunRegistry,
+    tick: RwSignal<u64>,
+) {
+    floem::action::exec_after(std::time::Duration::from_secs(1), move |_| {
+        if !registry.entries().is_empty() {
+            tick.update(|t| *t += 1);
+        }
+        start_runs_tick(registry, tick);
+    });
 }
 
 /// Clip a tool target or id for display: 120 chars, ellipsis after.
@@ -2121,6 +2154,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     );
     let runs_registry = tab.common.window_common.agent_runs.clone();
     let runs_list = runs_registry.clone();
+    // One-second tick advancing the Running rows' elapsed labels
+    // while any run is live (item 230).
+    let runs_tick = floem::reactive::create_rw_signal(0u64);
+    start_runs_tick(runs_registry.clone(), runs_tick);
     {
         let plans_tab = tab.clone();
         let plans_data = data.clone();
@@ -3039,9 +3076,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let stop = entry.cancellation.clone();
                     h_stack((
                         label(move || {
+                            runs_tick.get();
                             format!(
-                                "{} · {} - {}",
-                                entry.mode, entry.started, entry.title
+                                "{} · {} +{} - {}",
+                                entry.mode,
+                                entry.started,
+                                elapsed_label(
+                                    entry.started_at.elapsed().as_secs()
+                                ),
+                                entry.title
                             )
                         })
                         .style(move |s| {
@@ -3887,8 +3930,8 @@ fn symbol_rows_json(
 #[cfg(test)]
 mod tests {
     use super::{
-        clip_step_detail, mention_candidates, resolve_mentions,
-        symbol_rows_json, trailing_mention,
+        clip_step_detail, elapsed_label, mention_candidates,
+        resolve_mentions, symbol_rows_json, trailing_mention,
     };
 
     #[test]
@@ -4024,6 +4067,12 @@ mod tests {
         assert_eq!(empty["symbols"].as_array().unwrap().len(), 0);
     }
 
+    #[test]
+    fn elapsed_label_formats_units() {
+        assert_eq!(elapsed_label(8), "8s");
+        assert_eq!(elapsed_label(125), "2m 05s");
+        assert_eq!(elapsed_label(3720), "1h 02m");
+    }
     #[test]
     fn clip_step_detail_bounds_and_ellipsis() {
         assert_eq!(clip_step_detail("short.rs"), "short.rs");

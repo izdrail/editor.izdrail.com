@@ -30,6 +30,12 @@ pub enum Event {
         id: String,
         error: bool,
         message: String,
+        /// Display label, e.g. "ran ls -la (exit 0)" or
+        /// "read src/a.php" - the fixed "read completed" text told
+        /// the owner nothing about a shell run (item 230).
+        summary: String,
+        /// First lines of a successful result for the step card.
+        output: String,
     },
     /// A human-readable note for the step card, e.g. when the host
     /// built the proposal itself after the model failed (item 229).
@@ -297,6 +303,64 @@ fn fallback_exact_edit(
     None
 }
 
+/// The display target of a tool call: path, search text, command or
+/// URL, clipped for a row label.
+fn call_target(call: &ToolCall) -> String {
+    ["path", "literal", "pattern", "query", "command", "url"]
+        .iter()
+        .find_map(|k| call.arguments.get(*k).and_then(Value::as_str))
+        .unwrap_or("")
+        .chars()
+        .take(80)
+        .collect()
+}
+
+/// Row label for a finished tool call, e.g. "ran ls -la (exit 0)".
+/// On failure the reason (including a non-zero exit code) rides in
+/// the event's message instead.
+fn result_summary(call: &ToolCall, error: bool) -> String {
+    let target = call_target(call);
+    match (call.name.as_str(), error) {
+        ("run_command", false) => format!("ran {target} (exit 0)"),
+        ("run_command", true) => format!("ran {target}"),
+        ("read_file", _) => format!("read {target}"),
+        ("search", _) | ("regex_search", _) => {
+            format!("searched {target}")
+        }
+        ("symbol_search", _) => format!("symbols for {target}"),
+        ("web_fetch", _) => format!("fetched {target}"),
+        (name, _) => format!("{name} {target}"),
+    }
+}
+
+/// A tool result for the step card: first 40 lines, each clipped to
+/// 60 chars (long lines would grow the chat scroll's horizontal
+/// bar), with a count of what was left out (item 230).
+fn clip_output_lines(text: &str) -> String {
+    const MAX_LINES: usize = 40;
+    const LINE_CAP: usize = 60;
+    let lines: Vec<&str> = text.lines().collect();
+    let shown = lines.len().min(MAX_LINES);
+    let mut out = String::new();
+    for line in &lines[..shown] {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        let clipped: String = line.chars().take(LINE_CAP).collect();
+        out.push_str(&clipped);
+        if line.chars().count() > LINE_CAP {
+            out.push('\u{2026}');
+        }
+    }
+    if lines.len() > MAX_LINES {
+        out.push_str(&format!(
+            "\n[{} more lines not shown]",
+            lines.len() - MAX_LINES
+        ));
+    }
+    out
+}
+
 /// The host supplies a configured provider and scoped executor. This cannot obtain keys,
 /// choose roots, grant trust, execute shell, approve plans, or apply a code patch.
 pub fn run(
@@ -440,7 +504,15 @@ pub fn run(
         }
         if reply.calls.is_empty() {
             if reply.content.trim().is_empty() {
-                return Err("Empty agent answer".into());
+                if !executed_any {
+                    return Err("Empty agent answer".into());
+                }
+                // The tools ran but the model closed with silence:
+                // the owner still got what they asked for - point at
+                // it instead of failing the run (item 230).
+                reply.content =
+                    "Done - the command output is in the progress steps above."
+                        .to_string();
             }
             if mode == Mode::Act && !executed_any {
                 let extracted = crate::agent_changes::extract_proposal_json(
@@ -552,6 +624,12 @@ pub fn run(
                     content.chars().take(160).collect()
                 } else {
                     String::new()
+                },
+                summary: result_summary(&call, error),
+                output: if error {
+                    String::new()
+                } else {
+                    clip_output_lines(&content)
                 },
             });
             messages.push(AgentMessage::Tool {
@@ -889,6 +967,117 @@ mod tests {
             r#"{"changes":[{"path":"a","replacement":"b"}]}"#
         ));
         assert!(!proposal_is_empty("not json"));
+    }
+    #[test]
+    fn result_summary_labels_ran_command_with_exit() {
+        let call = ToolCall {
+            id: "c".into(),
+            name: "run_command".into(),
+            arguments: json!({"command": "ls -la"}),
+        };
+        assert_eq!(result_summary(&call, false), "ran ls -la (exit 0)");
+        assert_eq!(result_summary(&call, true), "ran ls -la");
+        let read = ToolCall {
+            id: "c".into(),
+            name: "read_file".into(),
+            arguments: json!({"path": "src/a.php"}),
+        };
+        assert_eq!(result_summary(&read, false), "read src/a.php");
+    }
+    #[test]
+    fn clip_output_lines_caps_lines_and_width() {
+        let many: String =
+            (0..45).map(|i| format!("line{i}\n")).collect();
+        let out = clip_output_lines(&many);
+        assert!(out.contains("[5 more lines not shown]"));
+        assert!(out.contains("line0"));
+        assert!(!out.contains("line44"));
+        let long = "x".repeat(200);
+        let out = clip_output_lines(&long);
+        assert_eq!(out.chars().count(), 61);
+    }
+    #[test]
+    fn run_command_result_event_carries_summary_and_output() {
+        let mut turns = 0;
+        let events = std::cell::RefCell::new(Vec::new());
+        let result = run(
+            Mode::Act,
+            "run ls -la",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                turns += 1;
+                if turns == 1 {
+                    Ok(Reply {
+                        content: String::new(),
+                        calls: vec![ToolCall {
+                            id: "c".into(),
+                            name: "run_command".into(),
+                            arguments: json!({"command": "ls -la"}),
+                        }],
+                    })
+                } else {
+                    Ok(Reply {
+                        content: "Listed the files.".into(),
+                        calls: Vec::new(),
+                    })
+                }
+            },
+            |_| Ok("file-a\nfile-b".to_string()),
+            |event| {
+                if let Event::ToolResult {
+                    summary, output, error, ..
+                } = event
+                {
+                    events.borrow_mut().push((summary, output, error));
+                }
+            },
+            &[],
+            None,
+        )
+        .unwrap();
+        assert_eq!(result, "Listed the files.");
+        let events = events.borrow();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, "ran ls -la (exit 0)");
+        assert!(events[0].1.contains("file-a"));
+        assert!(!events[0].2);
+    }
+    #[test]
+    fn empty_final_answer_after_tool_becomes_pointer() {
+        let mut turns = 0;
+        let result = run(
+            Mode::Act,
+            "run ls -la",
+            Limits::default(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                turns += 1;
+                if turns == 1 {
+                    Ok(Reply {
+                        content: String::new(),
+                        calls: vec![ToolCall {
+                            id: "c".into(),
+                            name: "run_command".into(),
+                            arguments: json!({"command": "ls -la"}),
+                        }],
+                    })
+                } else {
+                    Ok(Reply {
+                        content: String::new(),
+                        calls: Vec::new(),
+                    })
+                }
+            },
+            |_| Ok("file-a".to_string()),
+            |_| {},
+            &[],
+            None,
+        )
+        .unwrap();
+        assert!(result.contains("progress steps"));
     }
     #[test]
     fn act_single_fence_maps_to_open_file() {

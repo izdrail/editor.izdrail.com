@@ -27,6 +27,9 @@ pub struct RunEntry {
     pub mode: &'static str,
     /// Local HH:MM start label.
     pub started: String,
+    /// When the run registered: drives the live elapsed label on the
+    /// Running row (item 230).
+    pub started_at: std::time::Instant,
     /// The run's own cancellation flag: Stop stores true and the
     /// run's worker observes it exactly like the panel's Stop button.
     pub cancellation: Arc<AtomicBool>,
@@ -61,6 +64,7 @@ impl RunRegistry {
             title: run_title(title),
             mode,
             started: chrono::Local::now().format("%H:%M").to_string(),
+            started_at: std::time::Instant::now(),
             cancellation,
         };
         self.runs.update(|runs| {

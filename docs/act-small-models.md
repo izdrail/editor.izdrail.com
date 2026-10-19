@@ -100,3 +100,25 @@ review lane as "Review requires 1-32 files". Four fixes:
    context, the host builds the exact-edit proposal itself, clearly
    labelled via a Note event on the step card. A genuinely ambiguous
    or multi-occurrence request still errors - the host never guesses.
+
+## run_command result rows, empty final answers, elapsed runs (item 230, host QA on 4406e2b)
+
+An approved "run ls -la" worked end to end, but the step card said
+"Result - read completed", an empty final model answer failed the
+run as "Empty agent answer", and the Running row never showed
+elapsed time. Fixes:
+
+1. ToolResult events now carry a summary label ("ran ls -la (exit
+   0)", "read src/a.php") plus the first 40 lines of a successful
+   result (each clipped to 60 chars, with a "[N more lines not
+   shown]" note), so the owner sees the actual command output.
+   Failures keep the reason text, which includes non-zero exits
+   ("exit 1: ...").
+
+2. An empty final answer after tools actually ran is replaced with
+   "Done - the command output is in the progress steps above."
+   instead of erroring; a silent FIRST answer still errors.
+
+3. Running rows show live elapsed time ("Act · 07:06 +2m 05s - run
+   ls -la"): RunEntry carries started_at, and a one-second re-arming
+   timer bumps a tick signal only while runs are live.
