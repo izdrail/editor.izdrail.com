@@ -80,3 +80,19 @@ with an error-line hint. Chat/Ask/Plan stay selectable; unknown is
 unchanged. One caveat: the in-flight set keys by model name only,
 so a same-named model on a freshly switched endpoint probes on the
 next open instead of mid-flight.
+
+## /v1-native fallback probe (item 238)
+
+llm.izdrail.com (the default lane) disables Ollama emulation, so
+/api/show 404s there. When the native probe is not successful, the
+probe falls back to a minimal /v1/chat/completions carrying a
+trivial probe_noop tool and max_tokens 1: a normal response proves
+the model accepts tools; a 400/404/422 whose body names tool
+support ("not support tools" and friends, matched case-
+insensitively) proves it does not; anything else - auth, unknown
+model, rate limit, server error - stays unknown and the offer
+stands. The fallback is best effort end to end: a send or read
+failure classifies as unknown, never a panel error. LAPCE_LLM_API_KEY
+rides both probes via with_auth. Cost is one tiny completion per
+model, on demand only, cached per (endpoint, model) like the
+native probe.

@@ -387,6 +387,32 @@ fn capability_cache()
 /// (an OpenAI-compatible endpoint has no /api/show) is
 /// capability-unknown, NOT an error; Err is reserved for transport
 /// failures, which callers also fold to None (item 223 spec).
+/// Read a /v1-native capability probe verdict (item 238): a
+/// /v1-only server (llm.izdrail.com disables Ollama emulation, so
+/// /api/show 404s) is asked for a minimal completion carrying a
+/// trivial tool. A normal response proves the model accepts
+/// tools; a client error naming tool support proves it does not;
+/// anything else - auth, unknown model, rate limit, server
+/// error - is unknown, and the offer stands.
+pub fn classify_v1_probe(status: u16, body: &str) -> Option<bool> {
+    if (200..300).contains(&status) {
+        return Some(true);
+    }
+    let body = body.to_lowercase();
+    const UNSUPPORTED: [&str; 4] = [
+        "not support tools",
+        "tools are not supported",
+        "tools is not supported",
+        "not support function calling",
+    ];
+    if [400, 404, 422].contains(&status)
+        && UNSUPPORTED.iter().any(|m| body.contains(m))
+    {
+        return Some(false);
+    }
+    None
+}
+
 pub fn model_capabilities(
     endpoint: &str,
     model: &str,
@@ -401,6 +427,7 @@ pub fn model_capabilities(
         return Ok(hit);
     }
     let url = show_url(endpoint)?;
+    let chat = completion_url(endpoint)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -418,7 +445,40 @@ pub fn model_capabilities(
         .await
         .map_err(|e| e.to_string())?;
         if !response.status().is_success() {
-            return Ok::<Option<bool>, String>(None);
+            // /v1-only servers (llm.izdrail.com disables Ollama
+            // emulation): ask for a minimal completion carrying a
+            // trivial tool and read the verdict (item 238). Best
+            // effort: a probe transport failure is "unknown",
+            // never a panel error.
+            let tools =
+                json!([{"type":"function","function":{"name":"probe_noop","description":"Capability probe: no arguments, no effect.","parameters":{"type":"object","properties":{},"required":[]}}}]);
+            let probe = json!({"model": model, "messages": [{"role":"user","content":"hi"}], "max_tokens": 1, "tools": tools});
+            let mut response = match with_auth(client.post(&chat).json(&probe))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok::<Option<bool>, String>(None),
+            };
+            let status = response.status();
+            let mut bytes = Vec::new();
+            loop {
+                match response.chunk().await {
+                    Ok(Some(chunk)) => {
+                        if bytes.len() + chunk.len() > 4 * 1024 {
+                            break;
+                        }
+                        bytes.extend_from_slice(&chunk);
+                    }
+                    // Best effort: a truncated error body still
+                    // classifies; a dead connection is "unknown".
+                    Ok(None) | Err(_) => break,
+                }
+            }
+            return Ok(classify_v1_probe(
+                status.as_u16(),
+                &String::from_utf8_lossy(&bytes),
+            ));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) =
@@ -902,6 +962,89 @@ mod capability_tests {
         let _ = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         let (endpoint, rx) = serve_once(r#"{"error":"not found"}"#, "404 Not Found");
         assert_eq!(model_capabilities(&endpoint, "cap-404-a").unwrap(), None);
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+    }
+    fn serve_twice(
+        first: (&'static str, &'static str),
+        second: (&'static str, &'static str),
+    ) -> (String, std::sync::mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for (body, status) in [first, second] {
+                if let Ok((mut socket, _)) = listener.accept() {
+                    let _ = socket.set_read_timeout(Some(
+                        std::time::Duration::from_secs(2),
+                    ));
+                    let request = read_request(&mut socket);
+                    let _ = tx.send(request);
+                    let response = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes());
+                }
+            }
+        });
+        (endpoint, rx)
+    }
+    #[test]
+    fn classify_v1_probe_reads_the_verdict() {
+        assert_eq!(classify_v1_probe(200, "{}"), Some(true));
+        assert_eq!(
+            classify_v1_probe(
+                400,
+                r#"{"error":{"message":"model foo does not support tools"}}"#
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            classify_v1_probe(
+                422,
+                r#"{"detail":"Tools are not supported for this model"}"#
+            ),
+            Some(false)
+        );
+        // Unknown model, auth, rate limit and server errors are
+        // unknown, not "no tools".
+        assert_eq!(
+            classify_v1_probe(404, r#"{"error":"model not found"}"#),
+            None
+        );
+        assert_eq!(classify_v1_probe(401, "{}"), None);
+        assert_eq!(classify_v1_probe(429, "{}"), None);
+        assert_eq!(classify_v1_probe(500, "boom"), None);
+    }
+    #[test]
+    fn model_capabilities_falls_back_to_a_v1_tool_probe() {
+        let (endpoint, rx) = serve_twice(
+            (r#"{"error":"Ollama emulation is disabled"}"#, "404 Not Found"),
+            (r#"{"choices":[{"message":{"content":"hi"}}]}"#, "200 OK"),
+        );
+        let probed = model_capabilities(&endpoint, "cap-v1-a").unwrap();
+        assert_eq!(probed, Some(true));
+        let first =
+            rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(first.starts_with("POST /api/show "));
+        let second =
+            rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(second.starts_with("POST /v1/chat/completions "));
+        assert!(second.contains("probe_noop"));
+        assert!(second.contains(r#""model":"cap-v1-a""#));
+    }
+    #[test]
+    fn model_capabilities_v1_probe_reads_tools_unsupported() {
+        let (endpoint, rx) = serve_twice(
+            (r#"{"error":"Ollama emulation is disabled"}"#, "404 Not Found"),
+            (
+                r#"{"error":{"message":"model foo does not support tools"}}"#,
+                "400 Bad Request",
+            ),
+        );
+        let probed = model_capabilities(&endpoint, "cap-v1-b").unwrap();
+        assert_eq!(probed, Some(false));
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         let _ = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
     }
     #[test]
