@@ -1449,6 +1449,21 @@ fn pending_command_card(tab: Rc<WindowTabData>) -> impl View {
     .style(|s| s.flex_col().width_full())
 }
 
+/// The dropdown label and pickability for one endpoint model row
+/// (item 232 patch B): a model KNOWN to lack tool support is
+/// suffixed " (no tools)" and, in Act mode, not pickable. Unknown
+/// capability never hides or blocks (item 223 spec).
+pub fn model_row_pick(
+    model: &str,
+    capability: Option<bool>,
+    act: bool,
+) -> (String, bool) {
+    match capability {
+        Some(false) => (format!("{model} (no tools)"), !act),
+        _ => (model.to_string(), true),
+    }
+}
+
 /// "8s", "2m 05s", "1h 03m" - elapsed time for the Running row.
 pub fn elapsed_label(secs: u64) -> String {
     if secs < 60 {
@@ -2199,15 +2214,74 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let endpoint_models_error =
         floem::reactive::create_rw_signal(Option::<String>::None);
     let endpoint_models_loading = floem::reactive::create_rw_signal(false);
-    let (models_tx, models_rx) =
-        std::sync::mpsc::channel::<Result<Vec<String>, String>>();
+    let (models_tx, models_rx) = std::sync::mpsc::channel::<(
+        String,
+        Result<Vec<String>, String>,
+    )>();
+    // Capability probes (item 232 patch B): when the endpoint model
+    // list arrives, each model's tool support is probed once in the
+    // background; results land in capability_map for the dropdown
+    // rows. UNKNOWN NEVER HIDES OR BLOCKS (item 223 spec).
+    let capability_map = floem::reactive::create_rw_signal(
+        std::collections::HashMap::<(String, String), Option<bool>>::new(),
+    );
+    let (cap_tx, cap_rx) = std::sync::mpsc::channel::<(
+        String,
+        String,
+        Option<bool>,
+    )>();
+    let cap_result =
+        floem::ext_event::create_signal_from_channel(cap_rx);
+    let cap_inflight = std::sync::Arc::new(std::sync::Mutex::new(
+        std::collections::HashSet::<String>::new(),
+    ));
+    {
+        create_effect(move |_| {
+            if let Some((endpoint, model, cap)) = cap_result.get() {
+                capability_map
+                    .update(|m| {
+                        m.insert((endpoint, model), cap);
+                    });
+            }
+        });
+    }
     let models_result = floem::ext_event::create_signal_from_channel(models_rx);
     {
         create_effect(move |_| {
-            if let Some(result) = models_result.get() {
+            if let Some((endpoint, result)) = models_result.get() {
                 endpoint_models_loading.set(false);
                 match result {
                     Ok(list) => {
+                        // Probe tool support once per (endpoint,
+                        // model): chat.rs caches completed probes and
+                        // the in-flight set keeps concurrent opens
+                        // from doubling requests (item 232 patch B).
+                        for model in &list {
+                            {
+                                let mut inflight =
+                                    cap_inflight.lock().unwrap();
+                                if !inflight.insert(model.clone()) {
+                                    continue;
+                                }
+                            }
+                            let tx = cap_tx.clone();
+                            let endpoint = endpoint.clone();
+                            let model = model.clone();
+                            let inflight = cap_inflight.clone();
+                            std::thread::spawn(move || {
+                                let cap =
+                                    crate::chat::model_capabilities(
+                                        &endpoint, &model,
+                                    )
+                                    .unwrap_or(None);
+                                let _ = tx.send((
+                                    endpoint,
+                                    model.clone(),
+                                    cap,
+                                ));
+                                inflight.lock().unwrap().remove(&model);
+                            });
+                        }
                         endpoint_models.set(list);
                         endpoint_models_error.set(None);
                     }
@@ -2425,9 +2499,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         });
     }
     {
+        let model_rows_data = data.clone();
         create_effect(move |_| {
             if model_expanded.get() {
+                let overlay_data = model_rows_data.clone();
                 let id = add_overlay(Point::ZERO, move |_| {
+                    let items_data = overlay_data.clone();
+                    let view_data = overlay_data.clone();
+                    // Rows: (label text, bare model id, pickable,
+                    // capability). The label may carry a "(no
+                    // tools)" suffix; the config always stores the
+                    // bare id (item 232 patch B).
                     let rows = dyn_stack(
                         move || {
                             let c = config.get();
@@ -2435,34 +2517,76 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 lapce_ai::catalog::MODELS
                                     .iter()
                                     .filter(|m| m.chat)
-                                    .map(|m| (m.id.to_string(), true))
+                                    .map(|m| {
+                                        (m.id.to_string(), m.id.to_string(), true, None)
+                                    })
                                     .collect::<Vec<_>>()
                             } else if endpoint_models_loading.get() {
-                                vec![("Loading models...".to_string(), false)]
+                                vec![(
+                                    "Loading models...".to_string(),
+                                    String::new(),
+                                    false,
+                                    None,
+                                )]
                             } else if let Some(e) = endpoint_models_error.get()
                             {
-                                vec![(format!("Could not list models: {e}"), false)]
+                                vec![(
+                                    format!("Could not list models: {e}"),
+                                    String::new(),
+                                    false,
+                                    None,
+                                )]
                             } else if endpoint_models.get().is_empty() {
                                 vec![(
                                     "No models reported by the endpoint"
                                         .to_string(),
+                                    String::new(),
                                     false,
+                                    None,
                                 )]
                             } else {
+                                let caps = capability_map.get();
+                                let endpoint =
+                                    c.ai_chat.endpoint.clone();
+                                let act = items_data.mode.get()
+                                    == Some(crate::agent_loop::Mode::Act);
                                 endpoint_models
                                     .get()
                                     .into_iter()
-                                    .map(|m| (m, true))
+                                    .map(|m| {
+                                        let cap = caps
+                                            .get(&(
+                                                endpoint.clone(),
+                                                m.clone(),
+                                            ))
+                                            .copied()
+                                            .flatten();
+                                        let (text, pickable) =
+                                            model_row_pick(&m, cap, act);
+                                        (text, m, pickable, cap)
+                                    })
                                     .collect()
                             }
                         },
-                        |(id, _): &(String, bool)| id.clone(),
-                        move |(id, pickable)| {
+                        |(text, _, _, _): &(String, String, bool, Option<bool>)| {
+                            text.clone()
+                        },
+                        move |(text, id, pickable, cap)| {
                             let id_pick = id.clone();
                             let id_active = id.clone();
-                            label(move || id.clone())
+                            let block_data = view_data.clone();
+                            label(move || text.clone())
                                 .on_click_stop(move |_| {
                                     if !pickable {
+                                        // A known no-tools model in
+                                        // Act: explain, don't select
+                                        // (item 232 patch B).
+                                        if cap == Some(false) {
+                                            block_data.error.set(
+                                                "That model does not report tool support and Act needs tools - pick a tool-capable model (for example qwen3:4b)."
+                                                    .to_string(),
+                                            );
+                                        }
                                         return;
                                     }
                                     let key = if config
@@ -2492,7 +2616,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     } else {
                                         c.ai_chat.model == id_active
                                     };
-                                    dropdown_row_style(s, config, active)
+                                    let s = dropdown_row_style(s, config, active);
+                                    // Known no-tools rows read dim;
+                                    // unknown rows are unchanged
+                                    // (item 232 patch B).
+                                    if cap == Some(false) {
+                                        s.color(c.color(LapceColor::EDITOR_DIM))
+                                    } else {
+                                        s
+                                    }
                                 })
                         },
                     )
@@ -3641,7 +3773,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             let tx = models_tx.clone();
                             let endpoint = settings.endpoint.clone();
                             std::thread::spawn(move || {
-                                let _ = tx.send(crate::chat::models(&endpoint));
+                                let result =
+                                    crate::chat::models(&endpoint);
+                                let _ = tx.send((endpoint, result));
                             });
                         }
                     })
@@ -3960,7 +4094,8 @@ fn symbol_rows_json(
 mod tests {
     use super::{
         clip_step_detail, elapsed_label, mention_candidates,
-        resolve_mentions, symbol_rows_json, trailing_mention,
+        model_row_pick, resolve_mentions, symbol_rows_json,
+        trailing_mention,
     };
 
     #[test]
@@ -4096,6 +4231,25 @@ mod tests {
         assert_eq!(empty["symbols"].as_array().unwrap().len(), 0);
     }
 
+    #[test]
+    fn model_row_pick_blocks_only_known_no_tools_in_act() {
+        assert_eq!(
+            model_row_pick("gemma3:4b", Some(false), true),
+            ("gemma3:4b (no tools)".to_string(), false)
+        );
+        assert_eq!(
+            model_row_pick("gemma3:4b", Some(false), false),
+            ("gemma3:4b (no tools)".to_string(), true)
+        );
+        assert_eq!(
+            model_row_pick("qwen3:4b", Some(true), true),
+            ("qwen3:4b".to_string(), true)
+        );
+        assert_eq!(
+            model_row_pick("qwen3:4b", None, true),
+            ("qwen3:4b".to_string(), true)
+        );
+    }
     #[test]
     fn elapsed_label_formats_units() {
         assert_eq!(elapsed_label(8), "8s");

@@ -72,4 +72,11 @@ the endpoint ORIGIN (scheme + host + port) via url::Url::origin
 and appends /api/show, instead of appending to checked_base - the
 native API does not live under /v1, and string-splitting on "/v1"
 breaks hosts like "v1host".
-Patch B: dropdown dimming + Act-mode selection block.
+Patch B: dropdown dimming + Act-mode selection block. DONE (item
+233): opening the model chip probes each listed model once
+(in-flight set + the patch-A cache); rows known to lack tools are
+dimmed, suffixed " (no tools)", and in Act mode reject the click
+with an error-line hint. Chat/Ask/Plan stay selectable; unknown is
+unchanged. One caveat: the in-flight set keys by model name only,
+so a same-named model on a freshly switched endpoint probes on the
+next open instead of mid-flight.
