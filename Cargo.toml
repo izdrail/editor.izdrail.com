@@ -25,7 +25,7 @@ name = "lapce-ai"
 path = "lapce-ai/src/main.rs"
 
 [workspace]
-members = ["lapce-ai", "lapce-vscode-experiment", "lapce-app", "lapce-proxy", "lapce-rpc", "lapce-core", "lapce-vsix"]
+members = ["lapce-ai", "lapce-index", "lapce-vscode-experiment", "lapce-app", "lapce-proxy", "lapce-rpc", "lapce-core", "lapce-vsix"]
 exclude = ["lexilla-rs", "vendor"]
 
 [workspace.package]

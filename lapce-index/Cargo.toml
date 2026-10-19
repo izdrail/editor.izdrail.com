@@ -1,0 +1,11 @@
+[package]
+name         = "lapce-index"
+license      = { workspace = true }
+version      = { workspace = true }
+authors      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+thiserror = { workspace = true }
+tantivy   = "0.27"
