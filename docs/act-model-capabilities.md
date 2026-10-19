@@ -67,4 +67,9 @@ opens free. Nothing is probed at startup, nothing is probed for the
 ## Rollout
 
 Patch A: chat.rs transport + parser + cache + tests, no UI.
+DONE (item 232). Deviation from the spec text: show_url rebuilds
+the endpoint ORIGIN (scheme + host + port) via url::Url::origin
+and appends /api/show, instead of appending to checked_base - the
+native API does not live under /v1, and string-splitting on "/v1"
+breaks hosts like "v1host".
 Patch B: dropdown dimming + Act-mode selection block.

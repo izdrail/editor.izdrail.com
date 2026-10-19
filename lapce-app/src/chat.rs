@@ -308,6 +308,93 @@ pub fn parse_model_names(bytes: &[u8]) -> Result<Vec<String>, String> {
     }
     Ok(out)
 }
+/// The Ollama native show URL: the endpoint ORIGIN plus /api/show.
+/// The native API does not live under the OpenAI-compatible /v1
+/// path, so the origin (scheme + host + port) is rebuilt instead of
+/// string-appending (item 223).
+pub fn show_url(endpoint: &str) -> Result<String, String> {
+    let base = checked_base(endpoint)?;
+    let url = url::Url::parse(&base).map_err(|e| e.to_string())?;
+    Ok(format!("{}/api/show", url.origin().ascii_serialization()))
+}
+/// Ollama /api/show body -> tool support: Some(true/false) when a
+/// "capabilities" array is present, None when the field is missing
+/// (older Ollama) or the body is not JSON. None never blocks.
+pub fn parse_show_capabilities(bytes: &[u8]) -> Option<bool> {
+    let value: Value = serde_json::from_slice(bytes).ok()?;
+    let caps = value.get("capabilities")?.as_array()?;
+    Some(caps.iter().any(|c| c.as_str() == Some("tools")))
+}
+/// Session cache for capability probes, keyed by (endpoint, model).
+/// No TTL: capabilities change only when a model is re-pulled, and
+/// the key changes with the endpoint. In-memory only.
+fn capability_cache()
+-> &'static std::sync::Mutex<std::collections::HashMap<(String, String), Option<bool>>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<(String, String), Option<bool>>,
+        >,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        std::sync::Mutex::new(std::collections::HashMap::new())
+    })
+}
+/// Probe one model's tool capability on an Ollama endpoint
+/// (POST /api/show). Tri-state: Some(true/false) when the endpoint
+/// reports capabilities, None when unknown - a non-success status
+/// (an OpenAI-compatible endpoint has no /api/show) is
+/// capability-unknown, NOT an error; Err is reserved for transport
+/// failures, which callers also fold to None (item 223 spec).
+pub fn model_capabilities(
+    endpoint: &str,
+    model: &str,
+) -> Result<Option<bool>, String> {
+    let key = (endpoint.to_string(), model.to_string());
+    if let Some(hit) = capability_cache()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&key)
+        .copied()
+    {
+        return Ok(hit);
+    }
+    let url = show_url(endpoint)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let probed = runtime.block_on(async {
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut response = client
+            .post(&url)
+            .json(&json!({"model": model}))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            return Ok::<Option<bool>, String>(None);
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) =
+            response.chunk().await.map_err(|e| e.to_string())?
+        {
+            if bytes.len() + chunk.len() > 256 * 1024 {
+                return Err("The /api/show response exceeded 256 KB".into());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(parse_show_capabilities(&bytes))
+    })?;
+    capability_cache()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(key, probed);
+    Ok(probed)
+}
 #[derive(Clone)]
 pub enum Update {
     Delta(String),
@@ -646,6 +733,145 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
+    /// Read one small HTTP request fully (headers + content-length
+    /// body) so assertions can check the path and the posted model.
+    fn read_request(socket: &mut std::net::TcpStream) -> String {
+        let mut buf = Vec::new();
+        let mut chunk = [0; 4096];
+        loop {
+            let n = socket.read(&mut chunk).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(head_end) = find_subslice(&buf, b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&buf[..head_end]);
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                if buf.len() >= head_end + 4 + len {
+                    break;
+                }
+            }
+            if buf.len() > 64 * 1024 {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+    fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
+        hay.windows(needle.len()).position(|w| w == needle)
+    }
+    fn serve_once(
+        body: &'static str,
+        status: &'static str,
+    ) -> (String, std::sync::mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok((mut socket, _)) = listener.accept() {
+                let _ = socket.set_read_timeout(Some(
+                    std::time::Duration::from_secs(2),
+                ));
+                let request = read_request(&mut socket);
+                let _ = tx.send(request);
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes());
+            }
+        });
+        (endpoint, rx)
+    }
+    #[test]
+    fn parse_show_capabilities_tri_state() {
+        assert_eq!(
+            parse_show_capabilities(br#"{"capabilities":["tools","vision"]}"#),
+            Some(true)
+        );
+        assert_eq!(
+            parse_show_capabilities(br#"{"capabilities":["completion"]}"#),
+            Some(false)
+        );
+        assert_eq!(
+            parse_show_capabilities(br#"{"capabilities":[]}"#),
+            Some(false)
+        );
+        assert_eq!(parse_show_capabilities(br#"{"other":true}"#), None);
+        assert_eq!(parse_show_capabilities(b"not json"), None);
+    }
+    #[test]
+    fn show_url_targets_the_native_origin() {
+        assert_eq!(
+            show_url("http://ai.example:11434/v1").unwrap(),
+            "http://ai.example:11434/api/show"
+        );
+        assert_eq!(
+            show_url("http://ai.example:11434/v1/chat/completions").unwrap(),
+            "http://ai.example:11434/api/show"
+        );
+        assert_eq!(
+            show_url("http://v1host:11434").unwrap(),
+            "http://v1host:11434/api/show"
+        );
+        assert!(show_url("ftp://ai.example").is_err());
+    }
+    #[test]
+    fn model_capabilities_reads_tools_and_posts_model_name() {
+        let (endpoint, rx) = serve_once(
+            r#"{"capabilities":["tools"]}"#,
+            "200 OK",
+        );
+        let probed = model_capabilities(&endpoint, "cap-tools-a").unwrap();
+        assert_eq!(probed, Some(true));
+        let request = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(request.starts_with("POST /api/show "));
+        assert!(request.contains(r#""model":"cap-tools-a""#));
+    }
+    #[test]
+    fn model_capabilities_unknown_when_field_or_route_missing() {
+        let (endpoint, rx) = serve_once(r#"{"details":"old ollama"}"#, "200 OK");
+        assert_eq!(model_capabilities(&endpoint, "cap-old-a").unwrap(), None);
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        let (endpoint, rx) = serve_once(r#"{"error":"not found"}"#, "404 Not Found");
+        assert_eq!(model_capabilities(&endpoint, "cap-404-a").unwrap(), None);
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+    }
+    #[test]
+    fn model_capabilities_caches_one_hit_per_key() {
+        let (endpoint, rx) = serve_once(
+            r#"{"capabilities":["tools"]}"#,
+            "200 OK",
+        );
+        assert_eq!(
+            model_capabilities(&endpoint, "cap-cache-a").unwrap(),
+            Some(true)
+        );
+        // Second call: served from the cache; the server is gone, so
+        // a real second request would fail the transport instead.
+        assert_eq!(
+            model_capabilities(&endpoint, "cap-cache-a").unwrap(),
+            Some(true)
+        );
+        let request = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(request.starts_with("POST /api/show "));
+        assert!(rx.recv_timeout(std::time::Duration::from_millis(300)).is_err());
+    }
+}
 #[cfg(test)]
 mod cancellation_tests {
     use super::*;
