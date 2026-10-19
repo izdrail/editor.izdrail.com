@@ -17,6 +17,7 @@
 //! never the registry. Journal/reattach are the next slices (see
 //! docs/background-runs.md).
 use floem::reactive::{RwSignal, Scope, SignalGet, SignalUpdate};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -56,6 +57,80 @@ pub struct FinishGuard {
 impl Drop for FinishGuard {
     fn drop(&mut self) {
         self.done.store(true, Ordering::SeqCst);
+    }
+}
+
+/// One journaled step row: the replayable record of a run's
+/// progress (item 238 / parity 7 slice 2). Plain owned data - the
+/// worker thread writes it without touching the panel's types or
+/// any floem signal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JournalStep {
+    pub title: String,
+    pub detail: String,
+    pub error: bool,
+}
+
+/// How a run ended, replayed by a panel that (re)attaches after
+/// the fact.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum JournalOutcome {
+    /// Final reply or proposal text.
+    Done(String),
+    Error(String),
+    Cancelled,
+}
+
+/// Journal bounds (docs/background-runs.md): overflow drops the
+/// oldest steps and counts them, never blocks the run.
+pub const JOURNAL_MAX_STEPS: usize = 200;
+pub const JOURNAL_MAX_BYTES: usize = 256 * 1024;
+
+/// The bounded, thread-safe record of what a run did. The worker
+/// appends every step and, at the end, the outcome; a panel
+/// attaching later replays from here (slice 3).
+#[derive(Clone, Debug, Default)]
+pub struct RunJournal {
+    steps: VecDeque<JournalStep>,
+    bytes: usize,
+    dropped: usize,
+    outcome: Option<JournalOutcome>,
+}
+impl RunJournal {
+    pub fn push_step(&mut self, step: JournalStep) {
+        self.bytes += step.title.len() + step.detail.len();
+        self.steps.push_back(step);
+        while self.steps.len() > JOURNAL_MAX_STEPS
+            || (self.bytes > JOURNAL_MAX_BYTES && self.steps.len() > 1)
+        {
+            // The `len > 1` guard keeps the newest step even when
+            // it alone exceeds the byte cap: a run always shows
+            // its latest state.
+            if let Some(old) = self.steps.pop_front() {
+                self.bytes -= old.title.len() + old.detail.len();
+                self.dropped += 1;
+            }
+        }
+    }
+    /// The first terminal state wins; a run ends once.
+    pub fn finish(&mut self, outcome: JournalOutcome) {
+        if self.outcome.is_none() {
+            self.outcome = Some(outcome);
+        }
+    }
+    pub fn steps(&self) -> impl Iterator<Item = &JournalStep> {
+        self.steps.iter()
+    }
+    pub fn step_count(&self) -> usize {
+        self.steps.len()
+    }
+    /// Steps dropped to stay inside the caps; the reattach view
+    /// renders this as a marker row.
+    pub fn dropped(&self) -> usize {
+        self.dropped
+    }
+    pub fn outcome(&self) -> Option<&JournalOutcome> {
+        self.outcome.as_ref()
     }
 }
 
@@ -241,6 +316,54 @@ mod tests {
         assert!(worker.join().is_err());
         assert_eq!(registry.sweep_finished_workers(), 1);
         assert!(registry.entries().is_empty());
+    }
+    #[test]
+    fn journal_caps_steps_and_counts_dropped() {
+        let mut journal = RunJournal::default();
+        for i in 0..205 {
+            journal.push_step(JournalStep {
+                title: format!("step {i}"),
+                detail: String::new(),
+                error: false,
+            });
+        }
+        assert_eq!(journal.step_count(), JOURNAL_MAX_STEPS);
+        assert_eq!(journal.dropped(), 5);
+        // Oldest dropped: the first kept step is step 5.
+        assert_eq!(journal.steps().next().unwrap().title, "step 5");
+        assert_eq!(
+            journal.steps().last().unwrap().title,
+            "step 204"
+        );
+    }
+    #[test]
+    fn journal_byte_cap_keeps_the_newest_step() {
+        let mut journal = RunJournal::default();
+        let big = "x".repeat(JOURNAL_MAX_BYTES);
+        journal.push_step(JournalStep {
+            title: "old".into(),
+            detail: big.clone(),
+            error: false,
+        });
+        // One oversized-but-newest step stays.
+        journal.push_step(JournalStep {
+            title: "new".into(),
+            detail: big,
+            error: false,
+        });
+        assert_eq!(journal.step_count(), 1);
+        assert_eq!(journal.dropped(), 1);
+        assert_eq!(journal.steps().next().unwrap().title, "new");
+    }
+    #[test]
+    fn journal_finish_keeps_the_first_outcome() {
+        let mut journal = RunJournal::default();
+        journal.finish(JournalOutcome::Done("reply".into()));
+        journal.finish(JournalOutcome::Error("late".into()));
+        assert_eq!(
+            journal.outcome(),
+            Some(&JournalOutcome::Done("reply".into()))
+        );
     }
     #[test]
     fn run_title_uses_first_line_capped() {
