@@ -45,6 +45,14 @@ pub fn ollama(
                 // the message so a 400 is debuggable from the panel.
                 let body = response.text().await.unwrap_or_default();
                 let detail: String = body.chars().take(500).collect();
+                // Ollama names the model in a 400 when the model has
+                // no tool support; lead with the actionable fix
+                // (host QA: gemma3:4b Act runs died this way).
+                if body.contains("does not support tools") {
+                    return Err(format!(
+                        "The model '{model}' does not support tools, so Act can't use it. Pick a tool-capable model (for example qwen3:4b) in the model dropdown. (Agent provider returned HTTP {status}: {detail})"
+                    ));
+                }
                 return Err(format!(
                     "Agent provider returned HTTP {status}: {detail}"
                 ));
@@ -127,6 +135,33 @@ mod tests {
         let error = result.unwrap_err();
         assert!(error.contains("HTTP 400 Bad Request"));
         assert!(error.contains("does not support tools"));
+    }
+
+    #[test]
+    fn no_tools_model_gets_actionable_error() {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", server.local_addr().unwrap());
+        let worker = std::thread::spawn(move || {
+            let (mut s, _) = server.accept().unwrap();
+            let mut buf = [0; 8192];
+            let _ = s.read(&mut buf).unwrap();
+            let body = r#"{"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}"#;
+            write!(s,"HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+        });
+        let result = ollama(
+            &endpoint,
+            "gemma3:4b",
+            &[AgentMessage::User {
+                content: "hi".into(),
+            }],
+            &[],
+            64,
+            Arc::new(AtomicBool::new(false)),
+        );
+        worker.join().unwrap();
+        let error = result.unwrap_err();
+        assert!(error.contains("'gemma3:4b' does not support tools"));
+        assert!(error.contains("tool-capable"));
     }
 
     #[test]
