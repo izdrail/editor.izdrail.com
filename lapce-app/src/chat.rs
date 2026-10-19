@@ -504,6 +504,28 @@ mod mention_tests {
 mod tests {
     use super::*;
     #[test]
+    fn parse_model_names_shapes_and_cleanups() {
+        // OpenAI shape.
+        assert_eq!(
+            parse_model_names(
+                br#"{"data":[{"id":" qwen3:4b "},{"id":""},{"id":"qwen3:4b"},{"id":"gemma3:4b"}]}"#
+            )
+            .unwrap(),
+            vec!["qwen3:4b".to_string(), "gemma3:4b".to_string()]
+        );
+        // Ollama native shape.
+        assert_eq!(
+            parse_model_names(
+                br#"{"models":[{"name":"a"},{"name":"b"}]}"#
+            )
+            .unwrap(),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        // Neither shape and invalid JSON both error.
+        assert!(parse_model_names(br#"{"other":[]}"#).is_err());
+        assert!(parse_model_names(b"not json").is_err());
+    }
+    #[test]
     fn slash_learn_and_unknown() {
         assert_eq!(
             parse_slash("/learn prefer pint over php-cs-fixer"),
