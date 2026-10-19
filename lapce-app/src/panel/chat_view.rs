@@ -1041,6 +1041,14 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let proxy = tab.common.proxy.clone();
     // Worker-owned end of the registry entry (item 236).
     let finish_guard = data.agent_runs.finish_guard(run_id);
+    // The worker dual-writes every update into the run's journal
+    // (item 240); a missing entry falls back to a detached journal
+    // so the worker never branches on registry state.
+    let journal = data.agent_runs.journal(run_id).unwrap_or_else(|| {
+        std::sync::Arc::new(std::sync::Mutex::new(
+            crate::agent_runs::RunJournal::default(),
+        ))
+    });
     std::thread::spawn(move || {
         let _finish_guard = finish_guard;
         let result = (|| {
@@ -1049,14 +1057,14 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
             let (web_extra, web_attached, web_failed) =
                 resolve_web_mentions(&prompt);
             for url in web_attached {
-                let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                     title: "web".to_string(),
                     detail: format!("attached @{url}"),
                     error: false,
                 }));
             }
             for failure in web_failed {
-                let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                     title: "web".to_string(),
                     detail: failure,
                     error: true,
@@ -1071,7 +1079,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 (crate::agent_mcp::McpPool::empty(), Vec::new())
             };
             for note in &mcp_notes {
-                let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                     title: "MCP".to_string(),
                     detail: note.clone(),
                     error: false,
@@ -1205,7 +1213,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             .ok_or("Missing command")?;
                         let (respond_tx, respond_rx) =
                             std::sync::mpsc::channel();
-                        let _ = tx.send(AgentUpdate::Approval {
+                        journal_and_send(&journal, &tx, AgentUpdate::Approval {
                             id: call.id.clone(),
                             command: command.to_string(),
                             respond: respond_tx,
@@ -1243,7 +1251,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     name if crate::agent_loop::is_mcp_tool(name) => {
                         let (respond_tx, respond_rx) =
                             std::sync::mpsc::channel();
-                        let _ = tx.send(AgentUpdate::Approval {
+                        journal_and_send(&journal, &tx, AgentUpdate::Approval {
                             id: call.id.clone(),
                             command: crate::agent_mcp::McpPool::summary(
                                 name,
@@ -1278,7 +1286,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 |event| {
                     match event {
                         crate::agent_loop::Event::Step(n) => {
-                            let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                            journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                                 title: format!("Step {n}"),
                                 detail: "Reading and reasoning - no files are changed."
                                     .to_string(),
@@ -1297,7 +1305,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                     .or_else(|| call.arguments.get("url"))
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
-                                let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                                journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                                     title: call.name.clone(),
                                     detail: clip_step_detail(target),
                                     error: false,
@@ -1326,14 +1334,14 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                 // (item 230).
                                 format!("{summary}\n{output}")
                             };
-                            let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                            journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                                 title: "Result".to_string(),
                                 detail,
                                 error,
                             }));
                         }
                         crate::agent_loop::Event::Note(message) => {
-                            let _ = tx.send(AgentUpdate::Step(AgentStepRow {
+                            journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                                 title: "Note".to_string(),
                                 detail: clip_step_detail(&message),
                                 error: false,
@@ -1346,7 +1354,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 act_target.as_deref(),
             )
         })();
-        let _ = tx.send(match result {
+        journal_and_send(&journal, &tx, match result {
             Ok(text) => AgentUpdate::Done(text),
             Err(error) => AgentUpdate::Error(error),
         });
@@ -1364,6 +1372,48 @@ enum AgentUpdate {
     },
     Done(String),
     Error(String),
+}
+/// Dual-write an agent update (item 240 / parity 7 slice 2): the
+/// run's journal first - the replayable record a panel attaching
+/// later reads - then the panel channel. A poisoned journal lock
+/// recovers; the send itself stays best effort as before.
+fn journal_and_send(
+    journal: &std::sync::Arc<
+        std::sync::Mutex<crate::agent_runs::RunJournal>,
+    >,
+    tx: &std::sync::mpsc::Sender<AgentUpdate>,
+    update: AgentUpdate,
+) {
+    {
+        let mut j = journal.lock().unwrap_or_else(|p| p.into_inner());
+        match &update {
+            AgentUpdate::Step(row) => {
+                j.push_step(crate::agent_runs::JournalStep {
+                    title: row.title.clone(),
+                    detail: row.detail.clone(),
+                    error: row.error,
+                })
+            }
+            AgentUpdate::Approval { command, .. } => {
+                j.push_step(crate::agent_runs::JournalStep {
+                    title: "awaiting approval".into(),
+                    detail: command.clone(),
+                    error: false,
+                })
+            }
+            AgentUpdate::Done(text) => {
+                j.finish(crate::agent_runs::JournalOutcome::Done(
+                    text.clone(),
+                ))
+            }
+            AgentUpdate::Error(text) => {
+                j.finish(crate::agent_runs::JournalOutcome::Error(
+                    text.clone(),
+                ))
+            }
+        }
+    }
+    let _ = tx.send(update);
 }
 /// Approval card for Act's run_command tool: the exact command plus
 /// Allow once / Deny. Each decision is one-shot - nothing is
@@ -4118,10 +4168,57 @@ fn symbol_rows_json(
 #[cfg(test)]
 mod tests {
     use super::{
-        clip_step_detail, elapsed_label, mention_candidates,
-        model_row_pick, resolve_mentions, symbol_rows_json,
-        trailing_mention,
+        clip_step_detail, elapsed_label, journal_and_send,
+        mention_candidates, model_row_pick, resolve_mentions,
+        symbol_rows_json, trailing_mention, AgentStepRow, AgentUpdate,
     };
+
+    #[test]
+    fn journal_and_send_writes_then_forwards() {
+        let journal = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::agent_runs::RunJournal::default(),
+        ));
+        let (tx, rx) = std::sync::mpsc::channel();
+        journal_and_send(
+            &journal,
+            &tx,
+            AgentUpdate::Step(AgentStepRow {
+                title: "run_command".into(),
+                detail: "ls -la".into(),
+                error: false,
+            }),
+        );
+        journal_and_send(&journal, &tx, AgentUpdate::Done("reply".into()));
+        // A second terminal write is ignored by the journal.
+        journal_and_send(
+            &journal,
+            &tx,
+            AgentUpdate::Error("late".into()),
+        );
+        let j = journal.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(j.step_count(), 1);
+        assert_eq!(j.steps().next().unwrap().detail, "ls -la");
+        assert_eq!(
+            j.outcome(),
+            Some(&crate::agent_runs::JournalOutcome::Done(
+                "reply".into()
+            ))
+        );
+        drop(j);
+        // Every update still reached the panel channel.
+        assert!(matches!(
+            rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap(),
+            AgentUpdate::Step(_)
+        ));
+        assert!(matches!(
+            rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap(),
+            AgentUpdate::Done(_)
+        ));
+        assert!(matches!(
+            rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap(),
+            AgentUpdate::Error(_)
+        ));
+    }
 
     #[test]
     fn trailing_mention_reads_only_an_active_tail_token() {

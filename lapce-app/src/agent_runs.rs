@@ -19,7 +19,7 @@
 use floem::reactive::{RwSignal, Scope, SignalGet, SignalUpdate};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// One live agent run anywhere in the window's workspace tabs.
 #[derive(Clone)]
@@ -43,6 +43,11 @@ pub struct RunEntry {
     /// stay on the UI thread everywhere in this codebase, so the
     /// guard carries only this plain flag, never the registry.
     pub worker_done: Arc<AtomicBool>,
+    /// The replayable record of the run's progress and outcome
+    /// (item 240 / parity 7 slice 2): the worker dual-writes every
+    /// step here as it emits; a panel attaching later replays from
+    /// here. Plain data behind a Mutex - never a signal.
+    pub journal: Arc<Mutex<RunJournal>>,
 }
 
 /// Worker-side finish guarantee (item 236 / parity 7 slice 1): the
@@ -166,6 +171,7 @@ impl RunRegistry {
             started_at: std::time::Instant::now(),
             cancellation,
             worker_done: Arc::new(AtomicBool::new(false)),
+            journal: Arc::new(Mutex::new(RunJournal::default())),
         };
         self.runs.update(|runs| {
             runs.insert(0, entry);
@@ -190,6 +196,15 @@ impl RunRegistry {
             .map(|e| e.worker_done.clone())
             .unwrap_or_else(|| Arc::new(AtomicBool::new(true)));
         FinishGuard { done }
+    }
+    /// The run's journal for the worker's dual-writes (item 240).
+    /// An unknown id yields None; the worker then skips journaling.
+    pub fn journal(&self, id: u64) -> Option<Arc<Mutex<RunJournal>>> {
+        self.runs
+            .get_untracked()
+            .into_iter()
+            .find(|e| e.id == id)
+            .map(|e| e.journal.clone())
     }
     /// Remove entries whose worker thread has ended without a
     /// panel-side finish (closed tab). Returns the removed count.
@@ -316,6 +331,28 @@ mod tests {
         assert!(worker.join().is_err());
         assert_eq!(registry.sweep_finished_workers(), 1);
         assert!(registry.entries().is_empty());
+    }
+    #[test]
+    fn journal_handle_is_shared_with_the_entry() {
+        let cx = Scope::new();
+        let registry = RunRegistry::new(cx);
+        let flag = Arc::new(AtomicBool::new(false));
+        let id = registry.start("task", "Act", flag);
+        let journal = registry.journal(id).unwrap();
+        journal
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push_step(JournalStep {
+                title: "run_command".into(),
+                detail: "ls -la".into(),
+                error: false,
+            });
+        // The entry's own handle sees the same record.
+        let again = registry.journal(id).unwrap();
+        let j = again.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(j.step_count(), 1);
+        assert_eq!(j.steps().next().unwrap().title, "run_command");
+        assert!(registry.journal(9_999).is_none());
     }
     #[test]
     fn journal_caps_steps_and_counts_dropped() {
