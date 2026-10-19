@@ -52,7 +52,7 @@ impl Default for Limits {
         Self {
             steps: 8,
             calls: 16,
-            elapsed: Duration::from_secs(180),
+            elapsed: elapsed_limit_from_env(),
         }
     }
 }
@@ -361,6 +361,43 @@ fn clip_output_lines(text: &str) -> String {
     out
 }
 
+/// Wall-clock budget for one run: 10 minutes by default (small
+/// local models are slow - 180s killed real one-command runs, host
+/// QA on 3562d6a), overridable with LAPCE_AGENT_ELAPSED_SECS.
+fn elapsed_limit_from_env() -> Duration {
+    elapsed_limit_from_str(
+        std::env::var("LAPCE_AGENT_ELAPSED_SECS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// Parse the LAPCE_AGENT_ELAPSED_SECS override: a valid u64 of at
+/// least 30 wins; anything else falls back to 600s. Pure so the
+/// tests never mutate the process environment (edition 2024 makes
+/// set_var unsafe, gate 509).
+fn elapsed_limit_from_str(raw: Option<&str>) -> Duration {
+    raw.and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| (30..=3600).contains(v))
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(600))
+}
+
+/// Final text when the wall clock stops a run that already produced
+/// tool output: the owner keeps the results, not an error (item 231).
+const TIME_LIMIT_NOTE: &str =
+    "Stopped at the time limit - the command output is in the progress steps above.";
+
+/// What an overtime check does: finish with the pointer when tools
+/// already produced output, else error.
+fn overtime_outcome(executed_any: bool) -> Result<String, String> {
+    if executed_any {
+        Ok(TIME_LIMIT_NOTE.to_string())
+    } else {
+        Err("Agent time limit reached".into())
+    }
+}
+
 /// The host supplies a configured provider and scoped executor. This cannot obtain keys,
 /// choose roots, grant trust, execute shell, approve plans, or apply a code patch.
 pub fn run(
@@ -390,7 +427,10 @@ pub fn run(
         || limits.steps == 0
         || limits.steps > 16
         || limits.calls > 32
-        || limits.elapsed > Duration::from_secs(300)
+        // One hour: the default alone is 600s for slow local models
+        // (gate 510: a 300s cap rejected the new default for every
+        // run).
+        || limits.elapsed > Duration::from_secs(3600)
     {
         return Err("Invalid agent prompt or limits".into());
     }
@@ -464,7 +504,13 @@ pub fn run(
             return Err("Cancelled".into());
         }
         if overtime(&approval_wait) {
-            return Err("Agent time limit reached".into());
+            match overtime_outcome(executed_any) {
+                Ok(note) => {
+                    emit(Event::Finished(note.clone()));
+                    return Ok(note);
+                }
+                Err(e) => return Err(e),
+            }
         }
         emit(Event::Step(step + 1));
         let mut reply = model(&messages, &tools)?;
@@ -472,7 +518,13 @@ pub fn run(
             return Err("Cancelled".into());
         }
         if overtime(&approval_wait) {
-            return Err("Agent time limit reached".into());
+            match overtime_outcome(executed_any) {
+                Ok(note) => {
+                    emit(Event::Finished(note.clone()));
+                    return Ok(note);
+                }
+                Err(e) => return Err(e),
+            }
         }
         // Small local models answer with tool-call JSON written as
         // prose instead of native tool calls; recover registered calls
@@ -606,7 +658,13 @@ pub fn run(
                 return Err("Cancelled".into());
             }
             if overtime(&approval_wait) {
-                return Err("Agent time limit reached".into());
+                match overtime_outcome(executed_any) {
+                    Ok(note) => {
+                        emit(Event::Finished(note.clone()));
+                        return Ok(note);
+                    }
+                    Err(e) => return Err(e),
+                }
             }
             validate_arguments(&call)?;
             let (content, error) = match execute(&call) {
@@ -1078,6 +1136,74 @@ mod tests {
         )
         .unwrap();
         assert!(result.contains("progress steps"));
+    }
+    #[test]
+    fn overtime_outcome_keeps_tool_output() {
+        assert_eq!(
+            overtime_outcome(true).unwrap(),
+            TIME_LIMIT_NOTE
+        );
+        assert_eq!(
+            overtime_outcome(false).unwrap_err(),
+            "Agent time limit reached"
+        );
+    }
+    #[test]
+    fn elapsed_limit_parsing_override_floor_default() {
+        assert_eq!(
+            elapsed_limit_from_str(Some("900")),
+            Duration::from_secs(900)
+        );
+        assert_eq!(
+            elapsed_limit_from_str(Some("5")),
+            Duration::from_secs(600)
+        );
+        assert_eq!(
+            elapsed_limit_from_str(Some("abc")),
+            Duration::from_secs(600)
+        );
+        assert_eq!(
+            elapsed_limit_from_str(Some("7200")),
+            Duration::from_secs(600)
+        );
+        assert_eq!(elapsed_limit_from_str(None), Duration::from_secs(600));
+    }
+    #[test]
+    fn timeout_after_tool_returns_pointer_not_error() {
+        let mut turns = 0;
+        let limits = Limits {
+            steps: 8,
+            calls: 16,
+            elapsed: Duration::from_millis(50),
+        };
+        let result = run(
+            Mode::Act,
+            "run ls -la",
+            limits,
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                turns += 1;
+                Ok(Reply {
+                    content: String::new(),
+                    calls: vec![ToolCall {
+                        id: "c".into(),
+                        name: "run_command".into(),
+                        arguments: json!({"command": "ls -la"}),
+                    }],
+                })
+            },
+            |_| {
+                std::thread::sleep(Duration::from_millis(100));
+                Ok("file-a".to_string())
+            },
+            |_| {},
+            &[],
+            None,
+        )
+        .unwrap();
+        assert_eq!(turns, 1);
+        assert_eq!(result, TIME_LIMIT_NOTE);
     }
     #[test]
     fn act_single_fence_maps_to_open_file() {

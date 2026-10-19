@@ -122,3 +122,34 @@ elapsed time. Fixes:
 3. Running rows show live elapsed time ("Act · 07:06 +2m 05s - run
    ls -la"): RunEntry carries started_at, and a one-second re-arming
    timer bumps a tick signal only while runs are live.
+
+## Visible command output, transcript floor, timeout keeps output (item 231, host QA on 3562d6a)
+
+The 0230 render showed the label but not the listing, a squeezed
+transcript, and a time-limit error discarding the run's output:
+
+1. A step row's multi-line detail collapsed to its first line plus
+   "..." (the detail label used text_ellipsis) and the "Result"
+   title centered against the tall row. Details now render one
+   label per line inside the row, with the title aligned to the
+   first line (items_start).
+
+2. The transcript container grew from flex_basis(0) with
+   min_height(0) - the review section and a stale checkpoint card
+   could squeeze it to nothing. It now has min_height(160), and the
+   checkpoint card starts collapsed to a single
+   "Checkpoint Applied: N file(s). > details" toggle line.
+
+3. The 180s wall-clock limit (model time, approval waits excluded)
+   killed real one-command runs on qwen3:4b. Default is now 600s,
+   overridable with LAPCE_AGENT_ELAPSED_SECS (30s..=3600s). An
+   overtime stop AFTER tool results no longer errors: the run
+   finishes with "Stopped at the time limit - the command output is
+   in the progress steps above." (overtime_outcome), so the owner
+   keeps the output they approved.
+
+4. The "+2m 05s" elapsed on Running rows only shows while a run is
+   live - the section hides when nothing runs, so a post-mortem
+   screenshot cannot show it. Verified by re-reading the reactive
+   path: the label closure reads runs_tick, which the one-second
+   re-arm bumps only while entries exist.

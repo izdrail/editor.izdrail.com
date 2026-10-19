@@ -3253,8 +3253,20 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                     let row_error = row.error;
                                                     let row_title =
                                                         row.title.clone();
-                                                    let row_detail =
-                                                        row.detail.clone();
+                                                    // One label per
+                                                    // detail line: a
+                                                    // single ellipsized
+                                                    // label collapsed
+                                                    // multi-line tool
+                                                    // output to its
+                                                    // first line plus
+                                                    // "..." (host QA on
+                                                    // 3562d6a).
+                                                    let lines: Vec<String> = row
+                                                        .detail
+                                                        .lines()
+                                                        .map(str::to_string)
+                                                        .collect();
                                                     h_stack((
                                                         label(move || {
                                                             row_title.clone()
@@ -3272,22 +3284,36 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                                     ),
                                                                 )
                                                         }),
-                                                        label(move || {
-                                                            row_detail.clone()
-                                                        })
-                                                        .style(move |s| {
-                                                            s.font_size(11.0)
-                                                                .min_width(0.0)
-                                                                .text_ellipsis()
-                                                                .color(
-                                                                    config.get().color(
-                                                                        LapceColor::EDITOR_DIM,
-                                                                    ),
-                                                                )
+                                                        dyn_stack(
+                                                            move || {
+                                                                lines
+                                                                    .clone()
+                                                                    .into_iter()
+                                                                    .enumerate()
+                                                            },
+                                                            |(i, _)| *i,
+                                                            move |(_, line)| {
+                                                                label(move || {
+                                                                    line.clone()
+                                                                })
+                                                                .style(move |s| {
+                                                                    s.font_size(11.0)
+                                                                        .min_width(0.0)
+                                                                        .text_ellipsis()
+                                                                        .color(
+                                                                            config.get().color(
+                                                                                LapceColor::EDITOR_DIM,
+                                                                            ),
+                                                                        )
+                                                                })
+                                                            },
+                                                        )
+                                                        .style(|s| {
+                                                            s.flex_col().min_width(0.0)
                                                         }),
                                                     ))
                                                     .style(|s| {
-                                                        s.items_center()
+                                                        s.items_start()
                                                             .gap(6.0)
                                                             .width_full()
                                                     })
@@ -3396,10 +3422,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .style(|s| s.absolute().size_full()),
         )
         .style(|s| {
+            // A floor under the transcript: the review section and a
+            // stale checkpoint card used to squeeze it to nothing
+            // (host QA on 3562d6a).
             s.width_full()
                 .flex_grow(1.0)
                 .flex_basis(0.0)
-                .min_height(0.0)
+                .min_height(160.0)
         }),
         pending_command_card(tab.clone()),
         crate::agent_review_ui::panel(tab.clone()),

@@ -630,47 +630,40 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             }).collect();
             let expanded = create_rw_signal(false);
             let change_count = changes.len();
+            // The whole card starts collapsed: a stale
+            // checkpoint kept eating the transcript's space
+            // after the run ended (host QA on 3562d6a). One
+            // click reveals restore/dismiss and the diff
+            // toggle.
+            let details = create_rw_signal(false);
             v_stack((
                 // Keep every row narrow enough for the panel: one long
                 // line or one wide row makes the surrounding scroll
                 // grow a horizontal bar whose thumb paints over the
                 // buttons (host QA on c59c3e9).
-                label(move || format!("Checkpoint {:?}: {} file(s).", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
-                label(|| "Restart is review-only.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
-                label(|| "Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
-                // Diffs start collapsed: an old checkpoint's full
-                // before/after used to shove the whole review section
-                // down the panel (host QA on 253cd71).
                 label(move || {
-                    if expanded.get() {
-                        "Hide before/after".to_string()
+                    if details.get() {
+                        format!("Checkpoint {:?}: {} file(s). \u{25be} details", summary.state, summary.snapshot.applied.len())
                     } else {
-                        format!("Show before/after ({change_count} file(s))")
+                        format!("Checkpoint {:?}: {} file(s). \u{25b8} details", summary.state, summary.snapshot.applied.len())
                     }
                 })
-                .on_click_stop(move |_| expanded.update(|v| *v = !*v))
-                .style(|s| {
-                    s.font_size(11.0)
-                        .max_width_full()
-                        .padding_vert(2.0)
-                        .cursor(CursorStyle::Pointer)
-                        .selectable(false)
-                }),
-                dyn_stack(
-                    move || {
+                .on_click_stop(move |_| details.update(|v| *v = !*v))
+                .style(|s| s.font_size(11.0).max_width_full().cursor(CursorStyle::Pointer).selectable(false)),
+                container(v_stack((
+                    label(|| "Restart is review-only.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+                    label(|| "Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+                    // Diffs start collapsed: an old checkpoint's full
+                    // before/after used to shove the whole review section
+                    // down the panel (host QA on 253cd71).
+                    label(move || {
                         if expanded.get() {
-                            changes.clone()
+                            "Hide before/after".to_string()
                         } else {
-                            Vec::new()
+                            format!("Show before/after ({change_count} file(s))")
                         }
-                    },
-                    |c: &Change| c.path.clone(),
-                    |change| change_view(change, None),
-                ),
-                v_stack((
-                    label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
-                        if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
                     })
+                    .on_click_stop(move |_| expanded.update(|v| *v = !*v))
                     .style(|s| {
                         s.font_size(11.0)
                             .max_width_full()
@@ -678,20 +671,43 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                             .cursor(CursorStyle::Pointer)
                             .selectable(false)
                     }),
-                    label(|| "Dismiss".to_string()).on_click_stop(move |_| {
-                        if let Err(e) = dismiss.dismiss_checkpoint() { dismiss.error.set(e); }
-                    })
-                    .style(|s| {
-                        s.font_size(11.0)
-                            .padding_vert(2.0)
-                            .cursor(CursorStyle::Pointer)
-                            .selectable(false)
-                    }),
-                ))
-                // Bottom padding keeps Dismiss above any residual
-                // horizontal scrollbar thumb (host QA on f68f497:
-                // the bar painted over the Dismiss hit area).
-                .style(|s| s.gap(4.0).padding_bottom(14.0)),
+                    dyn_stack(
+                        move || {
+                            if expanded.get() {
+                                changes.clone()
+                            } else {
+                                Vec::new()
+                            }
+                        },
+                        |c: &Change| c.path.clone(),
+                        |change| change_view(change, None),
+                    ),
+                    v_stack((
+                        label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
+                            if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
+                        })
+                        .style(|s| {
+                            s.font_size(11.0)
+                                .max_width_full()
+                                .padding_vert(2.0)
+                                .cursor(CursorStyle::Pointer)
+                                .selectable(false)
+                        }),
+                        label(|| "Dismiss".to_string()).on_click_stop(move |_| {
+                            if let Err(e) = dismiss.dismiss_checkpoint() { dismiss.error.set(e); }
+                        })
+                        .style(|s| {
+                            s.font_size(11.0)
+                                .padding_vert(2.0)
+                                .cursor(CursorStyle::Pointer)
+                                .selectable(false)
+                        }),
+                    ))
+                    // Bottom padding keeps Dismiss above any residual
+                    // horizontal scrollbar thumb (host QA on f68f497:
+                    // the bar painted over the Dismiss hit area).
+                    .style(|s| s.gap(4.0).padding_bottom(14.0)),
+                ))).style(move |s| if details.get() { s } else { s.hide() }),
             )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || {
