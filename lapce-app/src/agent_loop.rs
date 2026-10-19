@@ -461,6 +461,7 @@ pub fn command_writes_files(command: &str) -> bool {
 /// run changed). `applied` is (path, accepted hunk count) per change.
 pub fn walkthrough_artifact(
     run_id: &str,
+    run_label: &str,
     digest: &str,
     applied: &[(String, usize)],
 ) -> String {
@@ -472,8 +473,15 @@ pub fn walkthrough_artifact(
     if applied.is_empty() {
         changes.push_str("- (no file changes)\n");
     }
+    // The raw run id is protocol identity, not a summary: lead with a
+    // human-readable label (mode + request) when the caller has one.
+    let run = if run_label.is_empty() {
+        run_id.to_string()
+    } else {
+        format!("{run_label}\nid: {run_id}")
+    };
     format!(
-        "# Walkthrough\n\n## Run\n\n{run_id}\n\n## Proposal\n\n{digest}\n\n## Applied changes\n\n{changes}\n## Next\n\nThe changes are in open buffers only; nothing was saved. The review surface's Restore checkpoint reverts every owned buffer while it is unchanged.\n"
+        "# Walkthrough\n\n## Run\n\n{run}\n\n## Proposal\n\n{digest}\n\n## Applied changes\n\n{changes}\n## Next\n\nThe changes are in open buffers only; nothing was saved. The review surface's Restore checkpoint reverts every owned buffer while it is unchanged.\n"
     )
 }
 
@@ -861,6 +869,7 @@ mod tests {
     fn walkthrough_artifact_lists_run_proposal_and_changes() {
         let doc = walkthrough_artifact(
             "run-7",
+            "Act: update the greeting",
             "abc123",
             &[
                 ("src/main.rs".to_string(), 1),
@@ -868,14 +877,18 @@ mod tests {
             ],
         );
         assert!(doc.starts_with("# Walkthrough\n"));
-        assert!(doc.contains("## Run\n\nrun-7\n"));
+        // A human-readable label leads; the raw id stays for tracing.
+        assert!(doc.contains(
+            "## Run\n\nAct: update the greeting\nid: run-7\n"
+        ));
         assert!(doc.contains("## Proposal\n\nabc123\n"));
         assert!(doc.contains("- `src/main.rs` (1 hunk)\n"));
         assert!(doc.contains("- `src/lib.rs` (3 hunks)\n"));
         assert!(doc.contains("## Next"));
         assert!(doc.ends_with("\n"));
-        // A change-free apply still records a readable artifact.
-        let doc = walkthrough_artifact("run-8", "def456", &[]);
+        // Without a label the Run section is the id alone.
+        let doc = walkthrough_artifact("run-8", "", "def456", &[]);
+        assert!(doc.contains("## Run\n\nrun-8\n"));
         assert!(doc.contains("- (no file changes)\n"));
     }
 

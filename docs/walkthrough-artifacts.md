@@ -1,7 +1,9 @@
 # Walkthrough artifacts (item 204, Antigravity parity: walkthrough after a completed change)
 
 Applying a reviewed proposal now records what landed as
-`.lapce/plans/walkthrough-<epoch>.md`: the run id, the applied
+`.lapce/plans/walkthrough-<epoch>.md`: the run (a human-readable
+"Act: <request>" label when the proposal came from an Act run, with
+the raw run id on a second line; id alone for pasted JSON), the applied
 proposal's digest, and one row per changed file with the number of
 accepted hunks (taken from the owner's per-hunk toggles when they
 reviewed hunk by hunk, so the walkthrough reflects what actually

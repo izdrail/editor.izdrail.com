@@ -36,6 +36,11 @@ pub struct ReviewData {
     /// replacement from older content, so those diffs may clobber
     /// edits the owner made while the run was in flight.
     pub stale: RwSignal<Vec<String>>,
+    /// Human-readable label for the run behind the current proposal
+    /// (mode + request), shown in the walkthrough artifact instead of
+    /// the raw run id (item 214). Empty for pasted JSON: no run
+    /// context exists.
+    pub run_label: RwSignal<String>,
     directory: Option<PathBuf>,
     path: RwSignal<Option<PathBuf>>,
     owners: RwSignal<BTreeMap<String, u64>>,
@@ -71,6 +76,7 @@ impl ReviewData {
             error: cx.create_rw_signal(error),
             notice: cx.create_rw_signal(String::new()),
             stale: cx.create_rw_signal(Vec::new()),
+            run_label: cx.create_rw_signal(String::new()),
             directory: path,
             path: cx.create_rw_signal(journal),
             owners: cx.create_rw_signal(BTreeMap::new()),
@@ -218,6 +224,7 @@ impl ReviewData {
                 .collect(),
         );
         self.proposal.set(Some(proposal));
+        self.run_label.set(String::new());
         self.error.set(String::new());
         self.notice.set(if stale_count == 0 {
             "Review every before/after file below. Nothing changed yet."
@@ -351,6 +358,7 @@ impl ReviewData {
         match write_walkthrough_artifact(
             tab,
             &current.run_id,
+            &self.run_label.get_untracked(),
             &checkpoint.proposal_digest,
             &applied_summary,
         ) {
@@ -544,12 +552,26 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             v_stack((
                 label(move || format!("Proposal {digest}")).style(|s| s.font_size(10.0).max_width_full()),
                 dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), |(change, mask)| change_view(change, Some(mask))),
-                label(|| "Apply the accepted hunks of this reviewed proposal to buffers".to_string()).on_click_stop(move |_| {
+                label(|| "Apply accepted hunks".to_string()).on_click_stop(move |_| {
                     let masks: Vec<Vec<bool>> = items_apply.iter().map(|(_, m)| m.get_untracked()).collect();
                     if let Err(e) = apply.apply_with(&apply_tab, &proposal, Some(masks)) { apply.error.set(e); }
+                })
+                .style(|s| {
+                    s.font_size(11.0)
+                        .max_width_full()
+                        .padding_vert(2.0)
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
                 }),
-                label(|| "Discard proposal".to_string()).on_click_stop(move |_| { discard.proposal.set(None); discard.stale.set(Vec::new()); }),
-            ))
+                label(|| "Discard proposal".to_string()).on_click_stop(move |_| { discard.proposal.set(None); discard.stale.set(Vec::new()); })
+                .style(|s| {
+                    s.font_size(11.0)
+                        .max_width_full()
+                        .padding_vert(2.0)
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
+                }),
+            )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(260.0).width_full()),
         scroll(dyn_stack(move || checkpoints.get().into_iter(), |c: &Checkpoint| format!("{}:{:?}", c.proposal_digest, c.state), move |checkpoint: Checkpoint| {
             let restore = cp_data.clone(); let restore_tab = cp_tab.clone(); let summary = checkpoint.clone();
@@ -559,10 +581,17 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             v_stack((
                 label(move || format!("Checkpoint {:?}: {} file(s). Restart is review-only. Restore fails on later changes.", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
                 dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), |change| change_view(change, None)),
-                label(|| "Restore this checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
+                label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
                     if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
+                })
+                .style(|s| {
+                    s.font_size(11.0)
+                        .max_width_full()
+                        .padding_vert(2.0)
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
                 }),
-            ))
+            )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || {
             let paths = stale.get();
@@ -598,6 +627,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
 fn write_walkthrough_artifact(
     tab: &WindowTabData,
     run_id: &str,
+    run_label: &str,
     digest: &str,
     applied: &[(String, usize)],
 ) -> Result<Option<String>, String> {
@@ -614,7 +644,9 @@ fn write_walkthrough_artifact(
     let name = format!("walkthrough-{stamp}.md");
     std::fs::write(
         dir.join(&name),
-        crate::agent_loop::walkthrough_artifact(run_id, digest, applied),
+        crate::agent_loop::walkthrough_artifact(
+            run_id, run_label, digest, applied,
+        ),
     )
     .map_err(|e| format!("Could not write the walkthrough artifact: {e}"))?;
     Ok(Some(name))

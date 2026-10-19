@@ -947,10 +947,23 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                 Some(&reads)
                             },
                         ) {
-                            Ok(()) => reply.set(
+                            Ok(()) => {
+                                // Human-readable run identity for the
+                                // walkthrough artifact (item 214):
+                                // mode + request, not the raw run id.
+                                review_tab.chat.review.run_label.set(
+                                    format!(
+                                        "Act: {}",
+                                        crate::agent_runs::run_title(
+                                            &artifact_prompt
+                                        )
+                                    ),
+                                );
+                                reply.set(
                                 "Proposal ready - nothing changed yet. Review every before/after in the review section below, then Apply or Reject."
                                     .to_string(),
-                            ),
+                                );
+                            }
                             Err(error) => {
                                 reply.set(text);
                                 done.error.set(format!(
