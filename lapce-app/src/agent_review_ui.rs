@@ -605,9 +605,14 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 path: path.clone(), base: checkpoint.snapshot.applied[path].clone(), proposed: base.text.clone(),
             }).collect();
             v_stack((
-                label(move || format!("Checkpoint {:?}: {} file(s). Restart is review-only. Restore fails on later changes.", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
+                // Keep every row narrow enough for the panel: one long
+                // line or one wide row makes the surrounding scroll
+                // grow a horizontal bar whose thumb paints over the
+                // buttons (host QA on c59c3e9).
+                label(move || format!("Checkpoint {:?}: {} file(s).", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
+                label(|| "Restart is review-only. Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
                 dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), |change| change_view(change, None)),
-                h_stack((
+                v_stack((
                     label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
                         if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
                     })
@@ -628,7 +633,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                             .selectable(false)
                     }),
                 ))
-                .style(|s| s.gap(12.0)),
+                .style(|s| s.gap(4.0)),
             )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || {
