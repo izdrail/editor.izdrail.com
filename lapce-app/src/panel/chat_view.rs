@@ -1907,6 +1907,10 @@ fn composer_dropdown_overlay<V: View + 'static>(
         } else {
             origin.y + trigger.height - 1.0
         };
+        // Never render past the window edges: a stale measurement or a
+        // click at the very bottom must not clip the overlay.
+        let x = x.clamp(5.0, (window.width - list.width - 5.0).max(5.0));
+        let y = y.clamp(5.0, (window.height - list.height - 5.0).max(5.0));
         s.width(240.0)
             .font_size(config.ui.font_size() as f32)
             .font_family(config.ui.font_family.clone())
@@ -2293,11 +2297,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     .map(|m| (m, true))
                                     .collect()
                             }
-                            .into_iter()
-                            .enumerate()
                         },
-                        |(i, _)| *i,
-                        move |(_, (id, pickable))| {
+                        |(id, _): &(String, bool)| id.clone(),
+                        move |(id, pickable)| {
                             let id_pick = id.clone();
                             let id_active = id.clone();
                             label(move || id.clone())
