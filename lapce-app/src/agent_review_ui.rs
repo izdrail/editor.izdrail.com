@@ -241,6 +241,26 @@ impl ReviewData {
         }
         let states = Self::states(&docs);
         let reviewed = current.reviewed(&digest)?;
+        // Walkthrough summary: accepted hunk count per change, from the
+        // owner's masks when they reviewed hunk by hunk.
+        let applied_summary: Vec<(String, usize)> = current
+            .changes
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let total =
+                    crate::agent_changes::hunks(&c.base.text, &c.proposed)
+                        .len();
+                let accepted = match &masks {
+                    Some(m) => m
+                        .get(i)
+                        .map(|row| row.iter().filter(|b| **b).count())
+                        .unwrap_or(total),
+                    None => total,
+                };
+                (c.path.clone(), accepted)
+            })
+            .collect();
         let mut snapshot = match &masks {
             Some(masks) => current.stage_with_selection(&reviewed, &states, masks)?,
             None => current.stage(&reviewed, &states)?,
@@ -292,7 +312,27 @@ impl ReviewData {
             self.notice.set("Buffers changed but applied journal update failed. Keep window open; checkpoint is retained for review.".into());
             return Err(e);
         }
-        self.notice.set("Applied to open buffers only, not saved. One undo per document; Restore checkpoint reverts all owned buffers if unchanged.".into());
+        let mut notice = "Applied to open buffers only, not saved. One undo per document; Restore checkpoint reverts all owned buffers if unchanged.".to_string();
+        match write_walkthrough_artifact(
+            tab,
+            &current.run_id,
+            &checkpoint.proposal_digest,
+            &applied_summary,
+        ) {
+            Ok(Some(name)) => {
+                tab.chat.plans_version.update(|v| *v += 1);
+                notice.push_str(&format!(
+                    " Walkthrough saved to .lapce/plans/{name}."
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                notice.push_str(&format!(
+                    " The walkthrough artifact could not be written: {e}"
+                ));
+            }
+        }
+        self.notice.set(notice);
         Ok(())
     }
     pub fn restore(
@@ -497,6 +537,37 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     ))
     .style(|s| s.width_full())
 }
+/// After a reviewed proposal is applied, record what landed as a
+/// `.lapce/plans/walkthrough-<epoch>.md` artifact (Antigravity parity:
+/// the walkthrough summarizing a completed change). Returns the new
+/// file's name; Ok(None) when the window has no workspace root to
+/// write into. Errors never fail the apply itself - the buffers and
+/// the journal already landed.
+fn write_walkthrough_artifact(
+    tab: &WindowTabData,
+    run_id: &str,
+    digest: &str,
+    applied: &[(String, usize)],
+) -> Result<Option<String>, String> {
+    let Some(root) = tab.workspace.path.clone() else {
+        return Ok(None);
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dir = root.join(".lapce").join("plans");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Could not create the plans directory: {e}"))?;
+    let name = format!("walkthrough-{stamp}.md");
+    std::fs::write(
+        dir.join(&name),
+        crate::agent_loop::walkthrough_artifact(run_id, digest, applied),
+    )
+    .map_err(|e| format!("Could not write the walkthrough artifact: {e}"))?;
+    Ok(Some(name))
+}
+
 fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
     let before = change.base.text;
     let after = change.proposed;

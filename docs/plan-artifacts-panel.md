@@ -21,5 +21,7 @@ extraction and the 50-entry cap can never drift apart.
 Coverage: plan_entries is behavior-tested with a real tempdir
 (newest-first ordering, file name and title rows, the untitled
 fallback, non-plan files skipped, missing directory yields an empty
-list); the existing plan_index test keeps the markdown output pinned
+list). Item 204 extended the shared lister to also accept
+`walkthrough-<epoch>.md` artifacts, so applied-change walkthroughs
+appear in this section and the index alongside plans; the existing plan_index test keeps the markdown output pinned
 through the refactor.

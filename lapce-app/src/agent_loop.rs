@@ -41,12 +41,14 @@ impl Default for Limits {
     }
 }
 /// Markdown index of the workspace's `.lapce/plans` artifacts,
-/// newest first, capped at 50 entries. Each row shows the plan time,
-/// its first heading, and its relative path so the owner can reopen
-/// it. Rendered by the OpenPlanArtifacts command into
+/// newest first, capped at 50 entries. Each row shows the artifact's
+/// time, its first heading, and its relative path so the owner can
+/// reopen it. Rendered by the OpenPlanArtifacts command into
 /// `.lapce/plans/index.md`.
-/// The newest plan artifacts for one workspace root, newest first,
-/// capped at 50: (unix stamp, file name, title). Shared by the
+/// The newest plan and walkthrough artifacts for one workspace root,
+/// newest first, capped at 50: (unix stamp, file name, title).
+/// `plan-<epoch>.md` comes from Plan mode; `walkthrough-<epoch>.md`
+/// is recorded when a reviewed proposal is applied. Shared by the
 /// markdown index and the chat panel's Plans section.
 pub fn plan_entries(root: &std::path::Path) -> Vec<(u64, String, String)> {
     let mut entries: Vec<(u64, String, String)> = Vec::new();
@@ -55,6 +57,7 @@ pub fn plan_entries(root: &std::path::Path) -> Vec<(u64, String, String)> {
             let name = entry.file_name().to_string_lossy().to_string();
             let Some(stamp) = name
                 .strip_prefix("plan-")
+                .or_else(|| name.strip_prefix("walkthrough-"))
                 .and_then(|n| n.strip_suffix(".md"))
                 .and_then(|n| n.parse::<u64>().ok())
             else {
@@ -85,14 +88,14 @@ pub fn plan_entries(root: &std::path::Path) -> Vec<(u64, String, String)> {
 pub fn plan_index(root: &std::path::Path) -> String {
     let entries = plan_entries(root);
     let mut out = String::from(
-        "# Plan artifacts
+        "# Plan and walkthrough artifacts
 
-Newest first; open a path to review the plan.
+Newest first; open a path to review the artifact.
 
 ",
     );
     if entries.is_empty() {
-        out.push_str("No plan artifacts yet. Plan-mode answers are saved here.
+        out.push_str("No plan or walkthrough artifacts yet. Plan-mode answers and applied-change walkthroughs are saved here.
 ");
         return out;
     }
@@ -390,6 +393,27 @@ pub fn plan_artifact(prompt: &str, plan: &str) -> String {
     )
 }
 
+/// Markdown walkthrough recorded after a reviewed proposal is applied
+/// (Antigravity parity: the walkthrough summarizes what a completed
+/// run changed). `applied` is (path, accepted hunk count) per change.
+pub fn walkthrough_artifact(
+    run_id: &str,
+    digest: &str,
+    applied: &[(String, usize)],
+) -> String {
+    let mut changes = String::new();
+    for (path, hunks) in applied {
+        let unit = if *hunks == 1 { "hunk" } else { "hunks" };
+        changes.push_str(&format!("- `{path}` ({hunks} {unit})\n"));
+    }
+    if applied.is_empty() {
+        changes.push_str("- (no file changes)\n");
+    }
+    format!(
+        "# Walkthrough\n\n## Run\n\n{run_id}\n\n## Proposal\n\n{digest}\n\n## Applied changes\n\n{changes}\n## Next\n\nThe changes are in open buffers only; nothing was saved. The review surface's Restore checkpoint reverts every owned buffer while it is unchanged.\n"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -612,17 +636,20 @@ mod tests {
         std::fs::write(plans.join("plan-200.md"), "no heading here\n").unwrap();
         std::fs::write(plans.join("notes.txt"), "not a plan").unwrap();
         std::fs::write(plans.join("plan-abc.md"), "# bad stamp").unwrap();
+        std::fs::write(plans.join("walkthrough-150.md"), "# Walkthrough\n\n## Run").unwrap();
         let index = plan_index(dir.path());
         let first = index.find("plan-200.md").unwrap();
-        let second = index.find("plan-100.md").unwrap();
-        assert!(first < second, "newest first: {index}");
+        let second = index.find("walkthrough-150.md").unwrap();
+        let third = index.find("plan-100.md").unwrap();
+        assert!(first < second && second < third, "newest first: {index}");
         assert!(index.contains("- (untitled plan) (`.lapce/plans/plan-200.md`)"));
         assert!(index.contains("Add a health route"));
+        assert!(index.contains("Walkthrough (`.lapce/plans/walkthrough-150.md`)"));
         assert!(!index.contains("notes.txt") && !index.contains("plan-abc"));
         // Empty workspace: friendly index, no panic.
         let empty = tempfile::tempdir().unwrap();
         let index = plan_index(empty.path());
-        assert!(index.contains("No plan artifacts yet"));
+        assert!(index.contains("No plan or walkthrough artifacts yet"));
     }
 
     #[test]
@@ -633,16 +660,42 @@ mod tests {
         std::fs::write(plans.join("plan-100.md"), "# First plan\n\nbody").unwrap();
         std::fs::write(plans.join("plan-300.md"), "no heading\n").unwrap();
         std::fs::write(plans.join("plan-200.md"), "# Middle plan\n").unwrap();
+        std::fs::write(plans.join("walkthrough-250.md"), "# Walkthrough\n").unwrap();
+        std::fs::write(plans.join("walkthrough-bad.md"), "# bad stamp").unwrap();
         std::fs::write(plans.join("skip.md"), "# wrong prefix").unwrap();
         let entries = plan_entries(dir.path());
         let stamps: Vec<u64> = entries.iter().map(|(s, _, _)| *s).collect();
-        assert_eq!(stamps, vec![300, 200, 100]);
-        assert_eq!(entries[2].1, "plan-100.md");
-        assert_eq!(entries[2].2, "First plan");
+        assert_eq!(stamps, vec![300, 250, 200, 100]);
+        assert_eq!(entries[3].1, "plan-100.md");
+        assert_eq!(entries[3].2, "First plan");
+        assert_eq!(entries[1].1, "walkthrough-250.md");
+        assert_eq!(entries[1].2, "Walkthrough");
         assert_eq!(entries[0].2, "(untitled plan)");
         // A missing plans directory is an empty list, not an error.
         let empty = tempfile::tempdir().unwrap();
         assert!(plan_entries(empty.path()).is_empty());
+    }
+
+    #[test]
+    fn walkthrough_artifact_lists_run_proposal_and_changes() {
+        let doc = walkthrough_artifact(
+            "run-7",
+            "abc123",
+            &[
+                ("src/main.rs".to_string(), 1),
+                ("src/lib.rs".to_string(), 3),
+            ],
+        );
+        assert!(doc.starts_with("# Walkthrough\n"));
+        assert!(doc.contains("## Run\n\nrun-7\n"));
+        assert!(doc.contains("## Proposal\n\nabc123\n"));
+        assert!(doc.contains("- `src/main.rs` (1 hunk)\n"));
+        assert!(doc.contains("- `src/lib.rs` (3 hunks)\n"));
+        assert!(doc.contains("## Next"));
+        assert!(doc.ends_with("\n"));
+        // A change-free apply still records a readable artifact.
+        let doc = walkthrough_artifact("run-8", "def456", &[]);
+        assert!(doc.contains("- (no file changes)\n"));
     }
 
     #[test]
