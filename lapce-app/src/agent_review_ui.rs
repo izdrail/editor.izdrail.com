@@ -378,6 +378,32 @@ impl ReviewData {
         self.notice.set(notice);
         Ok(())
     }
+    /// Drop the current checkpoint and delete its journal file.
+    /// Buffers are untouched: the owner gives up the one-click
+    /// restore for them. This is how a stale checkpoint from an
+    /// older task stops stacking under unrelated proposals (item
+    /// 215); the journal is deliberately NOT auto-cleared on
+    /// restart, since it is the only recovery path for buffers that
+    /// were never saved.
+    pub fn dismiss_checkpoint(&self) -> Result<(), String> {
+        if let Some(path) = self.path.get_untracked() {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(format!(
+                        "Could not remove the checkpoint journal: {e}"
+                    ))
+                }
+            }
+        }
+        self.path.set(None);
+        self.checkpoint.set(None);
+        self.checkpoint_owners.set(BTreeMap::new());
+        self.recovered.set(false);
+        Ok(())
+    }
+
     pub fn restore(
         &self,
         tab: &WindowTabData,
@@ -543,7 +569,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         label(|| "Paste changes JSON in the composer, then Prepare review. Existing files or new paths, all under owner review. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
-            let digest = proposal.digest().unwrap_or_default();
+            let digest = short_digest(&proposal.digest().unwrap_or_default());
             let items: Vec<(Change, RwSignal<Vec<bool>>)> = proposal.changes.iter().map(|c| {
                 let count = crate::agent_changes::hunks(&c.base.text, &c.proposed).len();
                 (c.clone(), create_rw_signal(vec![true; count]))
@@ -574,23 +600,35 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(260.0).width_full()),
         scroll(dyn_stack(move || checkpoints.get().into_iter(), |c: &Checkpoint| format!("{}:{:?}", c.proposal_digest, c.state), move |checkpoint: Checkpoint| {
-            let restore = cp_data.clone(); let restore_tab = cp_tab.clone(); let summary = checkpoint.clone();
+            let restore = cp_data.clone(); let restore_tab = cp_tab.clone(); let summary = checkpoint.clone(); let dismiss = cp_data.clone();
             let changes: Vec<Change> = checkpoint.snapshot.before.iter().map(|(path, base)| Change {
                 path: path.clone(), base: checkpoint.snapshot.applied[path].clone(), proposed: base.text.clone(),
             }).collect();
             v_stack((
                 label(move || format!("Checkpoint {:?}: {} file(s). Restart is review-only. Restore fails on later changes.", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
                 dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), |change| change_view(change, None)),
-                label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
-                    if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
-                })
-                .style(|s| {
-                    s.font_size(11.0)
-                        .max_width_full()
-                        .padding_vert(2.0)
-                        .cursor(CursorStyle::Pointer)
-                        .selectable(false)
-                }),
+                h_stack((
+                    label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
+                        if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }
+                    })
+                    .style(|s| {
+                        s.font_size(11.0)
+                            .max_width_full()
+                            .padding_vert(2.0)
+                            .cursor(CursorStyle::Pointer)
+                            .selectable(false)
+                    }),
+                    label(|| "Dismiss".to_string()).on_click_stop(move |_| {
+                        if let Err(e) = dismiss.dismiss_checkpoint() { dismiss.error.set(e); }
+                    })
+                    .style(|s| {
+                        s.font_size(11.0)
+                            .padding_vert(2.0)
+                            .cursor(CursorStyle::Pointer)
+                            .selectable(false)
+                    }),
+                ))
+                .style(|s| s.gap(12.0)),
             )).style(|s| s.width_full().gap(6.0))
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || {
@@ -652,6 +690,19 @@ fn write_walkthrough_artifact(
     Ok(Some(name))
 }
 
+/// Display form of a proposal digest. The full 64-char hex is
+/// unbreakable text: in a narrow panel it overflows its scroll
+/// viewport, and the resulting horizontal scrollbar thumb paints
+/// over the card's buttons (host QA, item 215). Internal pinning
+/// always uses the full digest; only the label is clipped.
+pub fn short_digest(digest: &str) -> String {
+    let mut short: String = digest.chars().take(16).collect();
+    if digest.chars().count() > 16 {
+        short.push('\u{2026}');
+    }
+    short
+}
+
 fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
     let before = change.base.text;
     let after = change.proposed;
@@ -710,29 +761,33 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
                             }
                         })
                     }),
-                    label(move || text.clone()).style(|s| s.font_size(11.0)),
+                    label(move || text.clone())
+                        .style(|s| s.font_size(11.0).max_width_full()),
                 ))
                 .style(|s| s.gap(4.0))
             },
         ))
         .style(|s| s.max_height(140.0).width_full())
         .into_any(),
-        None => scroll(label(move || diff.clone()).style(|s| s.font_size(11.0)))
+        None => scroll(
+            label(move || diff.clone())
+                .style(|s| s.font_size(11.0).max_width_full()),
+        )
             .style(|s| s.max_height(140.0).width_full())
             .into_any(),
     };
     v_stack((
-        label(move || path.clone()),
+        label(move || path.clone()).style(|s| s.max_width_full()),
         body_view,
         h_stack((
             scroll(
                 label(move || format!("BEFORE\n{before}"))
-                    .style(|s| s.font_size(11.0)),
+                    .style(|s| s.font_size(11.0).max_width_full()),
             )
             .style(|s| s.width_pct(50.0).max_height(180.0)),
             scroll(
                 label(move || format!("AFTER\n{after}"))
-                    .style(|s| s.font_size(11.0)),
+                    .style(|s| s.font_size(11.0).max_width_full()),
             )
             .style(|s| s.width_pct(50.0).max_height(180.0)),
         ))
@@ -876,6 +931,15 @@ mod creation_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_digest_clips_long_hex_for_narrow_panels() {
+        assert_eq!(short_digest("abc123"), "abc123");
+        let long = "a".repeat(64);
+        assert_eq!(short_digest(&long), format!("{}\u{2026}", "a".repeat(16)));
+        // Non-ASCII never panics on a char boundary.
+        assert_eq!(short_digest("\u{1f980}\u{1f980}\u{1f980}"), "\u{1f980}\u{1f980}\u{1f980}");
+    }
 
     #[test]
     fn agent_touched_files_reads_walkthrough_artifacts() {
