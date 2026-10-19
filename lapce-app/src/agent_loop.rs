@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -246,6 +246,10 @@ pub fn run(
     prompt: &str,
     limits: Limits,
     cancelled: Arc<AtomicBool>,
+    // Milliseconds spent waiting on owner approval clicks; the
+    // executor accumulates them and the deadline below never counts
+    // human think time against the agent.
+    approval_wait: Arc<AtomicU64>,
     mut model: impl FnMut(&[AgentMessage], &[Value]) -> Result<Reply, String>,
     mut execute: impl FnMut(&ToolCall) -> Result<String, String>,
     mut emit: impl FnMut(Event),
@@ -261,6 +265,13 @@ pub fn run(
         return Err("Invalid agent prompt or limits".into());
     }
     let start = Instant::now();
+    // The wall-clock deadline excludes time the run spent parked on an
+    // owner approval card: human think time is not agent runaway.
+    let overtime = |approval_wait: &Arc<AtomicU64>| {
+        let waited =
+            Duration::from_millis(approval_wait.load(Ordering::Acquire));
+        start.elapsed().saturating_sub(waited) > limits.elapsed
+    };
     if !extra_tools.is_empty() && mode != Mode::Act {
         return Err("Workspace MCP tools require Act mode".into());
     }
@@ -304,7 +315,7 @@ pub fn run(
         if cancelled.load(Ordering::Acquire) {
             return Err("Cancelled".into());
         }
-        if start.elapsed() > limits.elapsed {
+        if overtime(&approval_wait) {
             return Err("Agent time limit reached".into());
         }
         emit(Event::Step(step + 1));
@@ -312,7 +323,7 @@ pub fn run(
         if cancelled.load(Ordering::Acquire) {
             return Err("Cancelled".into());
         }
-        if start.elapsed() > limits.elapsed {
+        if overtime(&approval_wait) {
             return Err("Agent time limit reached".into());
         }
         // Small local models answer with tool-call JSON written as
@@ -359,7 +370,7 @@ pub fn run(
             if cancelled.load(Ordering::Acquire) {
                 return Err("Cancelled".into());
             }
-            if start.elapsed() > limits.elapsed {
+            if overtime(&approval_wait) {
                 return Err("Agent time limit reached".into());
             }
             validate_arguments(&call)?;
@@ -426,6 +437,7 @@ mod tests {
             "inspect",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |messages, _| {
                 turns += 1;
                 if turns == 1 {
@@ -467,6 +479,7 @@ mod tests {
             "update the greeting",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |messages, _| {
                 act_turns += 1;
                 if act_turns == 1 {
@@ -510,6 +523,7 @@ mod tests {
             "inspect",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 Ok(Reply {
                     content: String::new(),
@@ -538,6 +552,7 @@ mod tests {
                 "x",
                 Limits::default(),
                 Arc::new(AtomicBool::new(true)),
+                Arc::new(AtomicU64::new(0)),
                 |_, _| panic!(),
                 |_| panic!(),
                 |_| {},
@@ -554,6 +569,7 @@ mod tests {
                 ..Limits::default()
             },
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 Ok(Reply {
                     content: String::new(),
@@ -578,6 +594,7 @@ mod tests {
             "x",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |messages, _| {
                 turns += 1;
                 if turns == 1 {
@@ -610,6 +627,7 @@ mod tests {
             "x",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 Ok(Reply {
                     content: String::new(),
@@ -677,6 +695,57 @@ mod tests {
     }
 
     #[test]
+    fn deadline_excludes_owner_approval_wait() {
+        // Limits: one second of agent time. The recorded owner wait is
+        // five seconds: without the exclusion the run dies with the
+        // time-limit error before the first model reply is read.
+        let approval_wait = Arc::new(AtomicU64::new(5_000));
+        let result = run(
+            Mode::Ask,
+            "inspect",
+            Limits {
+                steps: 2,
+                calls: 2,
+                elapsed: Duration::from_secs(1),
+            },
+            Arc::new(AtomicBool::new(false)),
+            approval_wait,
+            |_, _| {
+                Ok(Reply {
+                    content: "done".into(),
+                    calls: vec![],
+                })
+            },
+            |_| Ok("unused".into()),
+            |_| {},
+            &[],
+        );
+        assert!(result.is_ok());
+        // Sanity: over the limit with no recorded wait still fails.
+        let result = run(
+            Mode::Ask,
+            "inspect",
+            Limits {
+                steps: 2,
+                calls: 2,
+                elapsed: Duration::ZERO,
+            },
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |_, _| {
+                Ok(Reply {
+                    content: "done".into(),
+                    calls: vec![],
+                })
+            },
+            |_| Ok("unused".into()),
+            |_| {},
+            &[],
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn walkthrough_artifact_lists_run_proposal_and_changes() {
         let doc = walkthrough_artifact(
             "run-7",
@@ -722,6 +791,7 @@ mod act_command_tests {
             "count the lines",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 turns += 1;
                 if turns == 1 {
@@ -760,6 +830,7 @@ mod act_command_tests {
             "run something",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 Ok(Reply {
                     content: String::new(),
@@ -787,6 +858,7 @@ mod act_command_tests {
             "use the echo tool",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 turns += 1;
                 if turns == 1 {
@@ -823,6 +895,7 @@ mod act_command_tests {
             "x",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| panic!(),
             |_| panic!(),
             |_| {},
@@ -836,6 +909,7 @@ mod act_command_tests {
             "x",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| panic!(),
             |_| panic!(),
             |_| {},
@@ -848,6 +922,7 @@ mod act_command_tests {
             "x",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 Ok(Reply {
                     content: String::new(),
@@ -918,6 +993,7 @@ mod prose_call_tests {
             "list the files",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 turns += 1;
                 if turns == 1 {
@@ -954,6 +1030,7 @@ mod prose_call_tests {
             "what is here",
             Limits::default(),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
             |_, _| {
                 Ok(Reply {
                     content: "answer {\"name\":\"run_command\",\"arguments\":{\"command\":\"ls\"}}"

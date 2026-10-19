@@ -1011,11 +1011,17 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 }));
             }
             let mcp_tools = mcp_pool.schemas();
+            // Owner think time on approval cards is accumulated here
+            // and excluded from the agent deadline by the loop.
+            let approval_wait = std::sync::Arc::new(
+                std::sync::atomic::AtomicU64::new(0),
+            );
             crate::agent_loop::run(
                 mode,
                 &prompt,
                 crate::agent_loop::Limits::default(),
                 cancelled.clone(),
+                approval_wait.clone(),
                 |messages, tools| {
                     crate::agent_transport::ollama(
                         &settings.endpoint,
@@ -1129,11 +1135,16 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             command: command.to_string(),
                             respond: respond_tx,
                         });
+                        let wait_start = std::time::Instant::now();
                         let approved = crate::agent_exec::await_approval(
                             &respond_rx,
                             &cancelled,
                             std::time::Duration::from_secs(300),
                         )?;
+                        approval_wait.fetch_add(
+                            wait_start.elapsed().as_millis() as u64,
+                            std::sync::atomic::Ordering::Release,
+                        );
                         if !approved {
                             return Err("Denied by owner".into());
                         }
@@ -1158,11 +1169,16 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             ),
                             respond: respond_tx,
                         });
+                        let wait_start = std::time::Instant::now();
                         let approved = crate::agent_exec::await_approval(
                             &respond_rx,
                             &cancelled,
                             std::time::Duration::from_secs(300),
                         )?;
+                        approval_wait.fetch_add(
+                            wait_start.elapsed().as_millis() as u64,
+                            std::sync::atomic::Ordering::Release,
+                        );
                         if !approved {
                             return Err("Denied by owner".into());
                         }
