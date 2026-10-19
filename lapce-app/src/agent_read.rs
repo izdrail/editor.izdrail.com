@@ -1,5 +1,21 @@
 //! Linux-only bounded reads/search. Roots are pinned handles; paths never become authority.
 //! Honors repository .gitignore only, not user global Git excludes. No execution side effects.
+use std::path::Path;
+
+/// Map a model-supplied path to a workspace-relative one: models
+/// repeat the absolute path they saw in the editor context, and
+/// ReadRoot only accepts relative paths (host QA on 253cd71:
+/// read_file /shots/abws/a.txt rejected). Absolute paths outside the
+/// root come back unchanged so the caller's validation still rejects
+/// them.
+pub fn workspace_relative<'a>(root: &Path, path: &'a Path) -> &'a Path {
+    if path.is_absolute() {
+        path.strip_prefix(root).unwrap_or(path)
+    } else {
+        path
+    }
+}
+
 #[cfg(target_os = "linux")]
 mod linux {
     use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -320,6 +336,23 @@ pub use linux::*;
 mod tests {
     use super::*;
     use std::{fs, path::Path};
+    #[test]
+    fn workspace_relative_maps_absolute_paths_under_the_root() {
+        let root = Path::new("/shots/abws");
+        assert_eq!(
+            workspace_relative(root, Path::new("/shots/abws/a.txt")),
+            Path::new("a.txt")
+        );
+        assert_eq!(
+            workspace_relative(root, Path::new("b/c.txt")),
+            Path::new("b/c.txt")
+        );
+        // Outside-root absolutes stay absolute: validation rejects them.
+        assert_eq!(
+            workspace_relative(root, Path::new("/etc/passwd")),
+            Path::new("/etc/passwd")
+        );
+    }
     #[test]
     fn read_and_literal_search_respect_ignores() {
         let d = tempfile::tempdir().unwrap();

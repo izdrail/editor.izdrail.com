@@ -831,9 +831,20 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     let editor_ctx = context(tab);
     let mut wire = wire;
     if let Some(ctx) = &editor_ctx {
+        // Name the file workspace-relative: models copy the path they
+        // see, and read_file only accepts relative paths (host QA on
+        // 253cd71: the absolute path from this line was rejected).
+        let display = crate::agent_read::workspace_relative(
+            &root,
+            std::path::Path::new(&ctx.name),
+        )
+        .to_string_lossy()
+        .into_owned();
+        let kind = if ctx.selection { "Selection" } else { "File" };
         wire.push_str(&format!(
-            "\n\nEditor context ({})\n<editor_context>\n{}\n</editor_context>",
-            ctx.indicator(),
+            "\n\nEditor context ({kind}: {display} | {} bytes{})\n<editor_context>\n{}\n</editor_context>",
+            ctx.text.len(),
+            if ctx.truncated { " (truncated)" } else { "" },
             ctx.text
         ));
     }
@@ -1080,8 +1091,13 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                             .arguments["path"]
                             .as_str()
                             .ok_or("Missing path")?;
+                        // Models repeat the absolute path they saw
+                        // in earlier context (host QA on 253cd71).
                         let content =
-                            reader.read(std::path::Path::new(path))?;
+                            reader.read(crate::agent_read::workspace_relative(
+                                &root,
+                                std::path::Path::new(path),
+                            ))?;
                         // What the model received, not what is on
                         // disk: the staleness check compares this
                         // digest with the live buffer at review time.

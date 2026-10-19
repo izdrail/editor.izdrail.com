@@ -604,6 +604,8 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             let changes: Vec<Change> = checkpoint.snapshot.before.iter().map(|(path, base)| Change {
                 path: path.clone(), base: checkpoint.snapshot.applied[path].clone(), proposed: base.text.clone(),
             }).collect();
+            let expanded = create_rw_signal(false);
+            let change_count = changes.len();
             v_stack((
                 // Keep every row narrow enough for the panel: one long
                 // line or one wide row makes the surrounding scroll
@@ -612,7 +614,35 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 label(move || format!("Checkpoint {:?}: {} file(s).", summary.state, summary.snapshot.applied.len())).style(|s| s.font_size(11.0).max_width_full()),
                 label(|| "Restart is review-only.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
                 label(|| "Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
-                dyn_stack(move || changes.clone(), |c: &Change| c.path.clone(), |change| change_view(change, None)),
+                // Diffs start collapsed: an old checkpoint's full
+                // before/after used to shove the whole review section
+                // down the panel (host QA on 253cd71).
+                label(move || {
+                    if expanded.get() {
+                        "Hide before/after".to_string()
+                    } else {
+                        format!("Show before/after ({change_count} file(s))")
+                    }
+                })
+                .on_click_stop(move |_| expanded.update(|v| *v = !*v))
+                .style(|s| {
+                    s.font_size(11.0)
+                        .max_width_full()
+                        .padding_vert(2.0)
+                        .cursor(CursorStyle::Pointer)
+                        .selectable(false)
+                }),
+                dyn_stack(
+                    move || {
+                        if expanded.get() {
+                            changes.clone()
+                        } else {
+                            Vec::new()
+                        }
+                    },
+                    |c: &Change| c.path.clone(),
+                    |change| change_view(change, None),
+                ),
                 v_stack((
                     label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
                         if let Err(e) = restore.restore(&restore_tab, &checkpoint) { restore.error.set(e); }

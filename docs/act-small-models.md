@@ -34,3 +34,21 @@ Act to inspect and report ("run ls -la and tell me the output; do not
 propose edits"). Only runs where the model never engaged the tools
 are gated; tool-using runs pass their final answer through, and the
 review lane's extraction still guards anything handed to Prepare.
+
+## Path forms and checkpoint cards (item 227, host QA on 253cd71)
+
+qwen3:4b's first Act step was read_file with the ABSOLUTE path copied
+from the editor-context line, which ReadRoot rejects. Fixes:
+
+- The editor-context line names the open file workspace-relative.
+- read_file maps absolute paths under the workspace to relative
+  (agent_read::workspace_relative); paths outside the root stay
+  absolute and are still rejected.
+- Both Act contract variants now say: an attached <editor_context>
+  already holds the open file's full content - do not read_file it
+  again - and always use workspace-relative paths.
+
+Also: checkpoint before/after diffs start collapsed behind a "Show
+before/after (N file(s))" toggle, so a stale checkpoint card no
+longer pushes the review section down the panel; Restore and Dismiss
+stay visible.
