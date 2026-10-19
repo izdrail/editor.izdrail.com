@@ -63,6 +63,9 @@ pub fn reply(value: &Value, allowed: &[&str]) -> Result<Reply, String> {
         .get("finish_reason")
         .and_then(Value::as_str)
         .ok_or("Provider response not final")?;
+    if reason == "length" {
+        return Err("The provider hit the reply token limit before the model finished (finish_reason: length), so the partial reply was discarded. Try a narrower task - one file or one change per run.".into());
+    }
     if !matches!(reason, "stop" | "tool_calls") {
         return Err(format!("Incomplete or rejected agent response: {reason}"));
     }

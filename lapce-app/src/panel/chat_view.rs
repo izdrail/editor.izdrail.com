@@ -1041,7 +1041,10 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         &settings.model,
                         messages,
                         tools,
-                        1024,
+                        // Act proposals carry full-file replacements:
+                        // 1024 tokens truncated real files and ended
+                        // runs with finish_reason "length" (host QA).
+                        4096,
                         cancelled.clone(),
                     )
                 },
