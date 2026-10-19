@@ -1266,12 +1266,18 @@ fn pending_command_card(tab: Rc<WindowTabData>) -> impl View {
         move |pending| {
             let allow = pending.respond.clone();
             let deny = pending.respond.clone();
+            // Advisory (item 211): flag commands that look like they
+            // write files, so the owner sees edits that would bypass
+            // the reviewed proposal.
+            let writes_files =
+                crate::agent_loop::command_writes_files(&pending.command);
+            let command_text = pending.command.clone();
             let allow_data = tab.chat.clone();
             let deny_data = tab.chat.clone();
             v_stack((
                 label(|| "Act wants to run this command:".to_string())
                     .style(|s| s.selectable(false)),
-                label(move || pending.command.clone()).style(move |s| {
+                label(move || command_text.clone()).style(move |s| {
                     s.width_full()
                         .padding(6.0)
                         .border(1.0)
@@ -1279,6 +1285,16 @@ fn pending_command_card(tab: Rc<WindowTabData>) -> impl View {
                         .border_color(
                             config.get().color(LapceColor::LAPCE_BORDER),
                         )
+                }),
+                label(|| {
+                    "This command looks like it changes files - those edits bypass owner review. Act file changes belong in the reviewed proposal.".to_string()
+                })
+                .style(move |s| {
+                    s.font_size(11.0)
+                        .max_width_full()
+                        .selectable(false)
+                        .color(config.get().color(LapceColor::LAPCE_ERROR))
+                        .apply_if(!writes_files, |s| s.hide())
                 }),
                 h_stack((
                     label(|| "Allow once".to_string())
