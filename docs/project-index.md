@@ -29,7 +29,7 @@ Queries run over `symbol` and `body` with BM25 ranking
 - `ProjectIndex::open_or_create(dir)` opens or creates the on-disk index.
   An existing metadata file must open successfully with the exact expected
   schema. Corrupt metadata or a different schema returns an error without
-  overwriting the cache. The app logs the failure and disables indexing for
+  overwriting the cache. The worker publishes a Failed status and leaves the index unavailable for
   that tab. Automatic cache migration/rebuild is not implemented yet.
 - `add_entry` queues a record; `remove_path` queues deletion of every record
   for one path (used on save: delete, then re-add that file's records);
@@ -49,9 +49,12 @@ Queries run over `symbol` and `body` with BM25 ranking
    the existing cache intact; cancellation mid-pass leaves a partial index.
    Item 244 starts a named background worker from local workspace tabs.
    Repeated progress and final status cross an mpsc channel to a UI effect.
-   A scope-owned drop guard cancels the walk on tab disposal. Opening the
-   on-disk index currently happens during tab setup; moving that work off
-   the UI thread, status-bar display and save-time updates remain pending.
+   A scope-owned drop guard cancels the walk on tab disposal. Item 248 moves directory access, index opening, schema validation and writer
+   construction off the UI thread as well. The handle starts at Opening;
+   index() returns None until the worker publishes it, then returns an Arc
+   without blocking. Worker open errors become Failed. Cancellation is checked
+   before opening and again before publication. Status-bar display and
+   save-time updates remain pending.
 3. tree-sitter symbol extraction per saved file (delete-by-path, re-add).
 4. Completion cascade: local index -> LSP -> llm.izdrail.com.
 5. Per-framework LSP presets (PHP/Magento/WordPress/Symfony, TS/React/Angular,
