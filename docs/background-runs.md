@@ -46,12 +46,20 @@ RunEntry gains:
   to the journal first, then attempts the panel channel.
 - listeners: Arc<AtomicUsize> - panels holding a live subscription.
 
-Worker lifecycle (slice 1): the worker owns finish. A drop guard on
-the worker thread calls registry.finish(id) exactly once on every
-exit path - normal, error, cancel, panic - instead of relying on
-the panel effect. finish() stays idempotent (retain on unknown id
-is already a no-op), so the panel's end_active_run keeps its
-busy-state bookkeeping harmlessly.
+Worker lifecycle (slice 1, as built): the worker owns the END of
+its entry, not the registry itself - floem signals stay on the UI
+thread everywhere in this codebase (every worker reports over
+channels or the proxy; no signal crosses a thread boundary), so
+RunRegistry::finish_guard(id) hands the worker a FinishGuard
+holding only the entry's plain Arc<AtomicBool>. The guard's Drop
+marks the entry worker-done on every exit path - normal, error,
+cancel, even panic - and the existing one-second runs tick sweeps
+flagged entries. The panel's end_active_run keeps finishing
+through the normal path; finish() is idempotent (retain on an
+unknown id is a no-op), so whichever side ends the run first
+wins and the other's cleanup is a harmless no-op. The local-model
+chat lane has no spawn of its own: its guard lives inside the AI
+worker's completion callback, dropped when the worker drops it.
 
 Detached completion (slice 2): when the run ends with
 listeners == 0, the worker appends the completed turn (the owner's

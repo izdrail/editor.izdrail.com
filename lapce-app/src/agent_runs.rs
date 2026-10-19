@@ -7,12 +7,15 @@
 //! parallel; this registry is what makes them visible and stoppable
 //! from one place.
 //!
-//! Removal is explicit: every run-termination path in the chat panel
-//! routes through ChatData::end_active_run, which finishes the
-//! registry entry and clears busy together, so the section cannot
-//! list a finished run. A workspace tab closed mid-run leaves its
-//! entry until the window closes (its Stop flag simply has no
-//! listener left); per-session background runs are the next slice.
+//! Removal is doubly owned: the panel routes its terminations
+//! through ChatData::end_active_run, and the worker thread's
+//! FinishGuard marks its entry worker-done on every exit - normal,
+//! error, cancel or panic - so a workspace tab closed mid-run no
+//! longer strands a "Running" row: the one-second runs tick sweeps
+//! it. Floem signals stay on the UI thread everywhere in this
+//! codebase, so the guard carries only a plain Arc<AtomicBool>,
+//! never the registry. Journal/reattach are the next slices (see
+//! docs/background-runs.md).
 use floem::reactive::{RwSignal, Scope, SignalGet, SignalUpdate};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -33,6 +36,27 @@ pub struct RunEntry {
     /// The run's own cancellation flag: Stop stores true and the
     /// run's worker observes it exactly like the panel's Stop button.
     pub cancellation: Arc<AtomicBool>,
+    /// Set by the worker's FinishGuard when the run's thread ends,
+    /// however it ends (item 236 / parity 7 slice 1). The UI sweeps
+    /// flagged entries on the one-second runs tick - floem signals
+    /// stay on the UI thread everywhere in this codebase, so the
+    /// guard carries only this plain flag, never the registry.
+    pub worker_done: Arc<AtomicBool>,
+}
+
+/// Worker-side finish guarantee (item 236 / parity 7 slice 1): the
+/// worker thread owns the end of its registry entry - normal,
+/// error, cancel, even panic - instead of relying on a panel
+/// effect that may already be gone (a closed tab). Drop marks the
+/// entry worker-done; the UI sweep removes it. A panel that
+/// finishes the entry first makes the later drop a no-op.
+pub struct FinishGuard {
+    done: Arc<AtomicBool>,
+}
+impl Drop for FinishGuard {
+    fn drop(&mut self) {
+        self.done.store(true, Ordering::SeqCst);
+    }
 }
 
 /// The window's live runs, newest first. Clone-cheap: the entries
@@ -66,6 +90,7 @@ impl RunRegistry {
             started: chrono::Local::now().format("%H:%M").to_string(),
             started_at: std::time::Instant::now(),
             cancellation,
+            worker_done: Arc::new(AtomicBool::new(false)),
         };
         self.runs.update(|runs| {
             runs.insert(0, entry);
@@ -77,6 +102,36 @@ impl RunRegistry {
     /// a double-finish (Stop racing Error, for example) is harmless.
     pub fn finish(&self, id: u64) {
         self.runs.update(|runs| runs.retain(|e| e.id != id));
+    }
+    /// The worker-side end-of-run guarantee for this entry: drop
+    /// marks it worker-done for the UI sweep. An unknown id yields
+    /// a guard on a detached flag (a harmless no-op).
+    pub fn finish_guard(&self, id: u64) -> FinishGuard {
+        let done = self
+            .runs
+            .get_untracked()
+            .into_iter()
+            .find(|e| e.id == id)
+            .map(|e| e.worker_done.clone())
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(true)));
+        FinishGuard { done }
+    }
+    /// Remove entries whose worker thread has ended without a
+    /// panel-side finish (closed tab). Returns the removed count.
+    /// Idempotent; runs on the UI thread from the runs tick.
+    pub fn sweep_finished_workers(&self) -> usize {
+        let done = self
+            .runs
+            .get_untracked()
+            .iter()
+            .filter(|e| e.worker_done.load(Ordering::SeqCst))
+            .count();
+        if done > 0 {
+            self.runs.update(|v| {
+                v.retain(|e| !e.worker_done.load(Ordering::SeqCst))
+            });
+        }
+        done
     }
     /// The live entries, newest first, for the Runs section.
     pub fn entries(&self) -> Vec<RunEntry> {
@@ -124,6 +179,69 @@ mod tests {
         assert_eq!(registry.entries().len(), 1);
     }
 
+    #[test]
+    fn finish_guard_marks_done_and_sweep_removes() {
+        let cx = Scope::new();
+        let registry = RunRegistry::new(cx);
+        let flag = Arc::new(AtomicBool::new(false));
+        let first = registry.start("one", "Ask", flag.clone());
+        let second = registry.start("two", "Act", flag);
+        let guard = registry.finish_guard(first);
+        // Still listed while the worker runs.
+        assert_eq!(registry.sweep_finished_workers(), 0);
+        assert_eq!(registry.entries().len(), 2);
+        drop(guard);
+        // Marked, not yet swept: the sweep is the UI's one-second
+        // tick, not the drop itself.
+        assert_eq!(registry.entries().len(), 2);
+        assert_eq!(registry.sweep_finished_workers(), 1);
+        let entries = registry.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, second);
+        // Idempotent: nothing left to sweep.
+        assert_eq!(registry.sweep_finished_workers(), 0);
+    }
+    #[test]
+    fn panel_finish_then_guard_drop_sweeps_nothing() {
+        // The panel finishing first (normal path) makes the
+        // worker's later guard drop a no-op.
+        let cx = Scope::new();
+        let registry = RunRegistry::new(cx);
+        let flag = Arc::new(AtomicBool::new(false));
+        let id = registry.start("task", "Chat", flag);
+        let guard = registry.finish_guard(id);
+        registry.finish(id);
+        assert!(registry.entries().is_empty());
+        drop(guard);
+        assert_eq!(registry.sweep_finished_workers(), 0);
+        assert!(registry.entries().is_empty());
+    }
+    #[test]
+    fn finish_guard_unknown_id_is_a_noop() {
+        let cx = Scope::new();
+        let registry = RunRegistry::new(cx);
+        let guard = registry.finish_guard(9_999);
+        drop(guard);
+        assert_eq!(registry.sweep_finished_workers(), 0);
+        assert!(registry.entries().is_empty());
+    }
+    #[test]
+    fn finish_guard_marks_done_even_on_panic() {
+        let cx = Scope::new();
+        let registry = RunRegistry::new(cx);
+        let flag = Arc::new(AtomicBool::new(false));
+        let id = registry.start("task", "Chat", flag);
+        // Only the guard crosses the thread boundary: the registry
+        // holds floem signals, which are not Send.
+        let guard = registry.finish_guard(id);
+        let worker = std::thread::spawn(move || {
+            let _guard = guard;
+            panic!("simulated worker failure");
+        });
+        assert!(worker.join().is_err());
+        assert_eq!(registry.sweep_finished_workers(), 1);
+        assert!(registry.entries().is_empty());
+    }
     #[test]
     fn run_title_uses_first_line_capped() {
         assert_eq!(run_title("hello world"), "hello world");

@@ -483,11 +483,12 @@ fn send(tab: &WindowTabData) {
     });
     data.input.set(String::new());
     data.busy.set(true);
-    data.active_run.set(Some(tab.common.window_common.agent_runs.start(
+    let run_id = tab.common.window_common.agent_runs.start(
         &run_title,
         "Chat",
         cancelled.clone(),
-    )));
+    );
+    data.active_run.set(Some(run_id));
     data.error.set(if mention_failed.is_empty() {
         String::new()
     } else {
@@ -557,18 +558,26 @@ fn send(tab: &WindowTabData) {
         })();
         match run {
             Ok(request) => {
+                // The guard lives in the worker's callback: when the
+                // worker drops it, the run is marked worker-done even
+                // if this panel is already gone (item 236).
+                let finish_guard = data.agent_runs.finish_guard(run_id);
                 data.worker
                     .local
-                    .complete(request, move |result| match result {
-                        Ok(c) if c.cancelled => {
-                            let _ = tx.send(Update::Error("Cancelled".into()));
-                        }
-                        Ok(c) => {
-                            let _ = tx.send(Update::Delta(c.text.clone()));
-                            let _ = tx.send(Update::Done(c.text.clone()));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Update::Error(e));
+                    .complete(request, move |result| {
+                        let _finish_guard = &finish_guard;
+                        match result {
+                            Ok(c) if c.cancelled => {
+                                let _ = tx
+                                    .send(Update::Error("Cancelled".into()));
+                            }
+                            Ok(c) => {
+                                let _ = tx.send(Update::Delta(c.text.clone()));
+                                let _ = tx.send(Update::Done(c.text.clone()));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Update::Error(e));
+                            }
                         }
                     })
             }
@@ -577,7 +586,11 @@ fn send(tab: &WindowTabData) {
             }
         }
     } else if settings.backend == "ollama" {
+        // Worker-owned end of the registry entry (item 236): even a
+        // closed panel cannot strand this run's Runs-section row.
+        let finish_guard = data.agent_runs.finish_guard(run_id);
         std::thread::spawn(move || {
+            let _finish_guard = finish_guard;
             let accumulated = std::cell::RefCell::new(String::new());
             if let Err(e) = chat::ollama(
                 &settings.endpoint,
@@ -872,11 +885,12 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
         crate::agent_loop::Mode::Plan => "Plan",
         crate::agent_loop::Mode::Act => "Act",
     };
-    data.active_run.set(Some(tab.common.window_common.agent_runs.start(
+    let run_id = tab.common.window_common.agent_runs.start(
         &crate::agent_runs::run_title(prompt),
         mode_label,
         cancelled.clone(),
-    )));
+    );
+    data.active_run.set(Some(run_id));
     data.error.set(if failed.is_empty() {
         String::new()
     } else {
@@ -1025,7 +1039,10 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     });
     let prompt = wire;
     let proxy = tab.common.proxy.clone();
+    // Worker-owned end of the registry entry (item 236).
+    let finish_guard = data.agent_runs.finish_guard(run_id);
     std::thread::spawn(move || {
+        let _finish_guard = finish_guard;
         let result = (|| {
             // Web mentions fetch over the network (blocking): they
             // run here on the worker thread, never on the UI thread.
@@ -1483,6 +1500,10 @@ fn start_runs_tick(
 ) {
     floem::action::exec_after(std::time::Duration::from_secs(1), move |_| {
         if !registry.entries().is_empty() {
+            // Runs whose worker ended without a panel-side finish
+            // (a closed tab) leave via their FinishGuard flag here
+            // (item 236 / parity 7 slice 1).
+            registry.sweep_finished_workers();
             tick.update(|t| *t += 1);
         }
         start_runs_tick(registry, tick);
@@ -1698,11 +1719,12 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     *data.worker.network.borrow_mut() = cancelled.clone();
     data.state.set(RunState::Running);
     data.busy.set(true);
-    data.active_run.set(Some(tab.common.window_common.agent_runs.start(
+    let run_id = tab.common.window_common.agent_runs.start(
         &crate::agent_runs::run_title(prompt),
         "ACP",
         cancelled.clone(),
-    )));
+    );
+    data.active_run.set(Some(run_id));
     data.error.set(if failed.is_empty() {
         String::new()
     } else {
@@ -1791,7 +1813,10 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     });
     let acp_pid = data.acp_pid.clone();
     let title: String = prompt.lines().next().unwrap_or("").chars().take(80).collect();
+    // Worker-owned end of the registry entry (item 236).
+    let finish_guard = data.agent_runs.finish_guard(run_id);
     std::thread::spawn(move || {
+        let _finish_guard = finish_guard;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let result = run_acp_turn(
             &program, &arg_refs, &root, &composed, resume, &cancelled, &acp_pid, &tx,
