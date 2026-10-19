@@ -1215,9 +1215,11 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                                 }));
                             }
                         }
-                        crate::agent_loop::Event::ToolResult { id, error } => {
+                        // The call id is protocol plumbing, not UI:
+                        // the row shows the outcome, never the token.
+                        crate::agent_loop::Event::ToolResult { id: _, error } => {
                             let _ = tx.send(AgentUpdate::Step(AgentStepRow {
-                                title: clip_step_detail(&id),
+                                title: "Result".to_string(),
                                 detail: if error {
                                     "denied or failed".to_string()
                                 } else {
