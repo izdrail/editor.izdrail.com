@@ -115,3 +115,16 @@ no direction reversal was found in source. Host must distinguish an actual
 focus error from stale pixels by typing a dummy character after handoff, not
 only by inspecting the ring. Deferred redraw is a hypothesis-driven fix until
 the no-extra-event capture and actual destination agree.
+
+## Native focus selectors (item 275)
+
+Save/key/Model borders now use Floem's native focus selector. The focus manager
+explicitly invalidates selector styles when focus changes, avoiding a second
+reactive signal pass after FocusGained. The failed delayed repaint workaround
+is removed. Key-focused signal remains only for placeholder text. Save Shift-Tab
+explicitly returns to key entry; key Shift-Tab still targets Model.
+
+Host: no extra input after Tab, require Save ring in captured frame. Space with
+dummy values confirms destination independently. Shift-Tab from Save must show
+key ring; Shift-Tab from key must show Model ring and typing must edit Model.
+The stale-frame cause remains a hypothesis until these checks pass.

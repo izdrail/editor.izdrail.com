@@ -1632,11 +1632,11 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     };
     let key = create_rw_signal(fixture_key);
     let key_focused = create_rw_signal(false);
-    let save_focused = create_rw_signal(false);
     let model_input = floem::views::text_input(model).style(move |s| {
         s.width_pct(100.0).min_width(0.0).flex_shrink(0.0)
             .padding(8.0).border(1.0).border_radius(6.0)
             .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .focus(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
     });
     let model_id = model_input.id();
     let state = create_rw_signal("Type or paste a key in the masked field above. An empty entry preserves any saved key.".to_string());
@@ -1664,9 +1664,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                 key.set(String::new());
                 state.set("Connection saved. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
             }).keyboard_navigable()
-            .on_event_stop(EventListener::FocusGained, move |_| save_focused.set(true))
-            .on_event_stop(EventListener::FocusLost, move |_| save_focused.set(false))
-            .style(move |s| ai_button_style(s, config).apply_if(save_focused.get(), |s|
+            .style(move |s| ai_button_style(s, config).focus(|s|
                 s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))));
     let save_id = save_button.id();
     let common_focus = common.focus;
@@ -1679,6 +1677,19 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         else { "•••••••• (new key, not yet saved)".to_string() }
     }).keyboard_navigable();
     let field_id = field.id();
+    let save_button = save_button.on_event(EventListener::KeyDown, move |event| {
+        if let Event::KeyDown(event) = event {
+            if matches!(event.key.physical_key, PhysicalKey::Code(KeyCode::Tab))
+                || matches!(&event.key.logical_key, Key::Named(NamedKey::Tab)) {
+                if event.modifiers.contains(Modifiers::SHIFT) {
+                    save_id.clear_focus();
+                    field_id.request_focus();
+                    return EventPropagation::Stop;
+                }
+            }
+        }
+        EventPropagation::Continue
+    });
     let field = field.on_event_stop(EventListener::PointerDown, move |_| {
             common_focus.set(crate::window_tab::Focus::Workbench);
             keyboard_focus.set(Some(field_id));
@@ -1710,18 +1721,6 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                         save_id
                     };
                     target.request_focus();
-                    field_id.request_style();
-                    field_id.request_paint();
-                    target.request_style();
-                    target.request_paint();
-                    // Run after queued focus updates so the host need not
-                    // generate another input event to see the new ring.
-                    exec_after(Duration::from_millis(16), move |_| {
-                        field_id.request_style();
-                        field_id.request_paint();
-                        target.request_style();
-                        target.request_paint();
-                    });
                     return EventPropagation::Stop;
                 }
                 // Workbench shortcuts must reach the window dispatcher.
@@ -1749,11 +1748,8 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         }).style(move |s| s.padding(8.0).border(1.0).border_radius(6.0)
             .max_width_pct(100.0).flex_shrink(0.0)
             .text_overflow(floem::style::TextOverflow::Wrap)
-            .border_color(config.get().color(if key_focused.get() {
-                LapceColor::EDITOR_FOCUS
-            } else {
-                LapceColor::LAPCE_BORDER
-            })));
+            .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .focus(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))));
     let (tx, rx) = std::sync::mpsc::channel::<(String, String, u64, String)>();
     let result = floem::ext_event::create_signal_from_channel(rx);
     create_effect(move |_| {
