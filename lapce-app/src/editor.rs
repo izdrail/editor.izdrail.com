@@ -2320,7 +2320,7 @@ impl EditorData {
         });
         if has_relevant {
             let config = self.common.config.get_untracked();
-            inline_completion.update(|completion| {
+            crate::inline_completion::update_batched(inline_completion, |completion| {
                 completion.update_inline_completion(&config, &doc, offset);
             });
         }
@@ -2467,7 +2467,7 @@ impl EditorData {
                         .map(|item| InlineCompletionItem::from_lsp(buffer, item))
                         .collect()
                 });
-                inline_completion.update(|c| {
+                crate::inline_completion::update_batched(inline_completion, |c| {
                     c.set_items(items, offset, path2);
                     c.update_doc(&doc, offset);
                 });
@@ -2670,7 +2670,7 @@ impl EditorData {
             let Some(item) = item else {
                 return;
             };
-            inline_completion.update(|c| {
+            crate::inline_completion::update_batched(inline_completion, |c| {
                 c.set_items(im::vector![item], offset, path_for_items);
                 c.update_doc(&doc, offset);
             });

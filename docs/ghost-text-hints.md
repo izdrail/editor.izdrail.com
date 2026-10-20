@@ -19,3 +19,7 @@ must follow the actual displayed binding. Pixel capture latency already observed
 on the host is not treated as proof of an editor focus defect.
 
 Edge case: the hint also requires that ghost text is currently drawn in the document. A session can stay Active after typing or a cursor move hides its text; the hint then hides instead of advertising keys for nothing.
+
+## Borrow panic fix (item 302)
+
+0301 made the hint effect depend on the doc's ghost text. `InlineCompletionData::update_doc` sets that text while the data signal is mutably borrowed, so the hint effect ran inside the borrow, read the data signal, and panicked ("RefCell already mutably borrowed"). The three call sites that update the data and draw the doc together (request results, next-edit, refresh on cursor move) now go through `inline_completion::update_batched`, which batches the update so effects run after the borrow ends.

@@ -237,6 +237,18 @@ impl InlineCompletionData {
     }
 }
 
+/// Update the inline-completion data and draw its ghost text in one batch.
+/// `update_doc` sets doc signals while the data signal is mutably borrowed.
+/// Unbatched, effects that read the data signal (the status-bar ghost hint,
+/// keymap conditions) ran inside that borrow and panicked with
+/// "RefCell already mutably borrowed". Batched, they run after it ends.
+pub fn update_batched(
+    signal: RwSignal<InlineCompletionData>,
+    f: impl FnOnce(&mut InlineCompletionData),
+) {
+    batch(|| signal.update(f));
+}
+
 enum ICompletionRes {
     Hide,
     Unchanged,
@@ -488,6 +500,29 @@ replacement \
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn effects_reading_the_data_run_after_the_borrow_ends() {
+        let cx = Scope::new();
+        let data = cx.create_rw_signal(InlineCompletionData::new(cx));
+        let drawn = cx.create_rw_signal(None::<String>);
+        let seen = cx.create_rw_signal(0usize);
+        cx.create_effect(move |_| {
+            // Like the status hint: reads the doc text and the data.
+            let _ = drawn.get();
+            data.with(|d| seen.set(d.items.len()));
+        });
+        update_batched(data, |d| {
+            d.items.push_back(InlineCompletionItem {
+                insert_text: "x".into(), filter_text: None, range: None,
+                command: None, insert_text_format: None,
+            });
+            drawn.set(Some("x".into()));
+        });
+        assert_eq!(seen.get_untracked(), 1);
+    }
+
     use super::*;
 
     #[test]
