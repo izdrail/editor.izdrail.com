@@ -625,7 +625,7 @@ fn settings_item_view(
                     .text_overflow(floem::style::TextOverflow::Wrap).padding_vert(12.0)),
             label(move || {
                 let c = config.get();
-                format!("Current routing: Chat = {}; ghost text = {}. {}", c.ai_chat.backend, c.effective_ai_autocomplete().backend, if c.ai_chat.shared_connection { "Shared connection applied." } else { "Legacy choices preserved until Apply shared connection." })
+                format!("Current routing: Chat = {}; ghost text = {}. {}", backend_wording(&c.ai_chat.backend), backend_wording(&c.effective_ai_autocomplete().backend), if c.ai_chat.shared_connection { "Shared connection applied." } else { "Legacy choices preserved until Apply shared connection." })
             }).style(|s| s.max_width_pct(100.0).margin_bottom(AI_PANEL_GAP)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
             label(move || if ai_advanced.get() {
@@ -1527,6 +1527,20 @@ const AI_PANEL_GAP: f32 = 12.0;
 const AI_CARD_GAP: f32 = 14.0;
 const AI_FIELD_GAP: f32 = 8.0;
 
+/// User wording for a stored backend id. Any non-local id is a remote lane.
+fn backend_wording(backend: &str) -> &'static str {
+    if backend == "local" { "Local" } else { "Remote" }
+}
+
+/// Connection card status: pending until the saved shared choice matches it.
+fn backend_status_label(pending: &str, applied: &str, shared_applied: bool) -> String {
+    if shared_applied && backend_wording(pending) == backend_wording(applied) {
+        format!("Applied: {}.", backend_wording(pending))
+    } else {
+        pending_backend_label(pending)
+    }
+}
+
 fn pending_backend_label(backend: &str) -> String {
     let name = if backend == "local" { "Local" } else { "Remote" };
     format!("Pending backend: {name}. Changes activate only on Apply.")
@@ -1556,6 +1570,15 @@ mod model_selection_ui_tests {
         assert!(super::AI_PANEL_GAP >= 8.0);
         assert!(super::AI_FIELD_GAP < super::AI_PANEL_GAP);
         assert!(super::AI_PANEL_GAP <= super::AI_CARD_GAP);
+    }
+
+    #[test]
+    fn status_label_clears_once_applied() {
+        assert_eq!(super::backend_status_label("ollama", "ollama", true), "Applied: Remote.");
+        assert!(super::backend_status_label("ollama", "local", true).starts_with("Pending backend: Remote"));
+        assert!(super::backend_status_label("ollama", "ollama", false).starts_with("Pending"));
+        assert_eq!(super::backend_wording("openai"), "Remote");
+        assert_eq!(super::backend_wording("local"), "Local");
     }
 
     #[test]
@@ -1852,7 +1875,10 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         label(|| "Shared AI connection".to_string())
             .style(|s| s.font_bold().max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
-        label(move || pending_backend_label(&backend.get()))
+        label(move || {
+            let c = config.get();
+            backend_status_label(&backend.get(), &c.ai_chat.backend, c.ai_chat.shared_connection)
+        })
             .style(|s| s.max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
         label(move || if backend.get() == "local" {
