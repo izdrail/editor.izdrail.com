@@ -502,6 +502,36 @@ replacement \
 mod tests {
     use super::*;
 
+    fn plain(text: &str) -> InlineCompletionItem {
+        InlineCompletionItem {
+            insert_text: text.into(), filter_text: None, range: None,
+            command: None, insert_text_format: None,
+        }
+    }
+
+    #[test]
+    fn typing_a_non_matching_char_hides_the_ghost() {
+        // "if" + Alt+\ -> ghost "fixtureCompletion()" at offset 2; then "z".
+        let buffer = lapce_core::buffer::Buffer::new("ifz");
+        let text = buffer.text().clone();
+        let result = inline_completion_text(
+            RopeTextRef::new(&text), 2, 3, &plain("fixtureCompletion()"), Some("fixtureCompletion()"),
+        );
+        assert!(matches!(result, ICompletionRes::Hide));
+    }
+
+    #[test]
+    fn typing_a_matching_char_shrinks_the_ghost() {
+        let buffer = lapce_core::buffer::Buffer::new("if");
+        let text = buffer.text().clone();
+        // start_offset 1 ("i" typed, then "f"): remaining ghost drops the typed "f".
+        let result = inline_completion_text(
+            RopeTextRef::new(&text), 1, 2, &plain("fixture()"), None,
+        );
+        assert!(matches!(result, ICompletionRes::Set(ref t, 1) if t == "ixture()"));
+    }
+
+
     #[test]
     fn effects_reading_the_data_run_after_the_borrow_ends() {
         let cx = Scope::new();

@@ -23,3 +23,7 @@ Edge case: the hint also requires that ghost text is currently drawn in the docu
 ## Borrow panic fix (item 302)
 
 0301 made the hint effect depend on the doc's ghost text. `InlineCompletionData::update_doc` sets that text while the data signal is mutably borrowed, so the hint effect ran inside the borrow, read the data signal, and panicked ("RefCell already mutably borrowed"). The three call sites that update the data and draw the doc together (request results, next-edit, refresh on cursor move) now go through `inline_completion::update_batched`, which batches the update so effects run after the borrow ends.
+
+## Stale ghost text with auto-trigger off (item 303)
+
+With `[ai-autocomplete] auto-trigger` off (the default) a ghost suggestion comes only from Alt+Backslash. The edit handler for typing returned early for that case, before the code that re-checks the visible suggestion, so a mismatching character never hid it (the typed character then appeared after the ghost text, because the ghost is drawn at the position where it was requested). The early return now calls `refresh_visible_inline_completion`: no request is made, but the visible suggestion is hidden on mismatch or shortened on a matching prefix, and cancelled when it belongs to another line or file.

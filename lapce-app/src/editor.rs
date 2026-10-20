@@ -2268,6 +2268,43 @@ impl EditorData {
         self.request_inline_completion(InlineCompletionTriggerKind::Automatic);
     }
 
+    /// Re-evaluate the ghost text already on screen against the buffer after
+    /// an edit or cursor move, without requesting anything. A mismatch hides
+    /// it; a matching typed prefix shrinks it.
+    fn refresh_visible_inline_completion(&self) {
+        if self.get_mode() != Mode::Insert {
+            self.cancel_inline_completion();
+            return;
+        }
+        let doc = self.doc();
+        if !doc.loaded() {
+            return;
+        }
+        let Some(path) = doc.content.with_untracked(|c| c.path().cloned()) else {
+            return;
+        };
+        let offset = self.cursor().with_untracked(|c| c.offset());
+        let line = doc.buffer.with_untracked(|b| b.line_of_offset(offset));
+        let inline_completion = self.common.inline_completion;
+        let relevant = inline_completion.with_untracked(|completion| {
+            let c_line = doc
+                .buffer
+                .with_untracked(|b| b.line_of_offset(completion.start_offset));
+            completion.status != InlineCompletionStatus::Inactive
+                && line == c_line
+                && completion.path == path
+        });
+        if relevant {
+            let config = self.common.config.get_untracked();
+            crate::inline_completion::update_batched(inline_completion, |completion| {
+                completion.update_inline_completion(&config, &doc, offset);
+            });
+        } else {
+            // A suggestion on another line or file no longer applies.
+            self.cancel_inline_completion();
+        }
+    }
+
     /// Request local AI ghost text for the current cursor position. Automatic
     /// requests fail silently (they are speculative); manual ones cancel the
     /// visible completion on guard failures.
@@ -2280,6 +2317,10 @@ impl EditorData {
             return;
         }
         if automatic && !ai.auto_trigger {
+            // No new request, but a manual (Alt+\) suggestion may be on
+            // screen: refresh or hide it for this edit instead of leaving
+            // stale ghost text behind.
+            self.refresh_visible_inline_completion();
             return;
         }
 
