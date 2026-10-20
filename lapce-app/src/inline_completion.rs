@@ -387,6 +387,17 @@ impl EditHistory {
     }
 }
 
+/// Reject cancelled/replaced predictions and responses for a moved cursor.
+/// The caller additionally verifies document identity/revision and config.
+pub(crate) fn prediction_is_current(
+    expected_generation: u64,
+    current_generation: u64,
+    expected_offset: usize,
+    current_offset: usize,
+) -> bool {
+    expected_generation == current_generation && expected_offset == current_offset
+}
+
 /// A parsed next-edit prediction. `old` is the exact snippet to replace;
 /// empty means insert at the cursor position.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -478,6 +489,15 @@ replacement \
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_edit_prediction_rejects_cancel_replacement_and_cursor_move() {
+        assert!(prediction_is_current(7, 7, 12, 12));
+        assert!(!prediction_is_current(7, 8, 12, 12));
+        assert!(!prediction_is_current(7, 7, 12, 13));
+        assert!(!prediction_is_current(7, 8, 12, 13));
+    }
+
     fn allowed() -> AutoTriggerContext {
         AutoTriggerContext {
             ai_enabled: true,

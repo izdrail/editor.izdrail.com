@@ -2614,6 +2614,8 @@ impl EditorData {
             Ok(s) => s,
             Err(_) => return,
         };
+        self.ai_generation.update(|g| *g = g.wrapping_add(1));
+        let generation = self.ai_generation.get_untracked();
         let rev = doc.rev();
         let buffer_id = doc.buffer_id;
         let editor = self.clone();
@@ -2630,7 +2632,11 @@ impl EditorData {
             let doc = editor.doc();
             // Anchor offsets are only valid against the exact buffer the
             // model saw; any edit since discards the prediction.
-            if editor.common.config.get_untracked().id != request_config_id
+            if !crate::inline_completion::prediction_is_current(
+                generation, editor.ai_generation.get_untracked(),
+                offset, editor.cursor().with_untracked(|c| c.offset()),
+            ) || editor.get_mode() != Mode::Insert
+                || editor.common.config.get_untracked().id != request_config_id
                 || doc.buffer_id != buffer_id || doc.rev() != rev {
                 return;
             }

@@ -21,3 +21,18 @@ must be inspected with ghost acceptance/rejection in a running editor.
 Item 289 wires this transport only after explicit shared Apply. It uses short
 instruct completion, not native raw FIM tokens; model quality must be evaluated
 for the user's selected ghost model, independently from Chat quality.
+
+## Next-edit stale-response guard (item 291)
+
+Each next-edit request advances the same generation used by cancellation and
+ordinary ghost requests. Its callback rejects a changed generation, moved
+cursor, non-insert mode, changed config or changed document/revision. An Escape
+or newer prediction cannot resurrect a suggestion merely because file text did
+not change. This applies to native Ollama and shared gateway next-edit.
+
+Host: next_edit_prediction_rejects_cancel_replacement_and_cursor_move, compile/
+test/clippy. With delayed dummy next-edit reply: cancel before completion, move
+cursor, leave insert mode, then replace with a newer request. Each must suppress
+the old reply; unchanged current request must still show and accept normally.
+Capture resulting editor state for each interaction; source guards are not
+visual acceptance.
