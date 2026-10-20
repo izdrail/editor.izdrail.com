@@ -558,6 +558,9 @@ pub enum Update {
 }
 /// OpenAI-compatible wire format, always directed at the configured self-hosted endpoint.
 /// Do not retry a broken partial stream: that could duplicate a turn.
+/// Upper bound on one chat reply. 512 cut long answers off silently.
+pub(crate) const CHAT_MAX_TOKENS: u32 = 4096;
+
 pub fn ollama(
     endpoint: &str,
     model: &str,
@@ -577,7 +580,7 @@ pub fn ollama(
     runtime.block_on(async {
         let request = async {
             let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
-            let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})), endpoint).send();
+            let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": CHAT_MAX_TOKENS})), endpoint).send();
             let mut response = make(true).await.map_err(|e| e.to_string())?;
             if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
             if !response.status().is_success() { let status = response.status(); let body = response.text().await.unwrap_or_default(); return Err(http_failure("The chat server", status.as_u16(), &body, &format!("Check endpoint and model.{}", auth_hint(status)))); }
@@ -750,6 +753,11 @@ mod mention_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn chat_reply_limit_fits_long_answers() {
+        assert_eq!(super::CHAT_MAX_TOKENS, 4096);
+    }
+
     #[test]
     fn http_failures_carry_the_provider_reason() {
         assert_eq!(
