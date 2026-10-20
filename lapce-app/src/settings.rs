@@ -1607,7 +1607,7 @@ fn curated_models_view(common: Rc<CommonData>) -> impl View {
 /// Dedicated secret input: actual key text never enters an editor document,
 /// layout, clipboard-copy action, settings search map or Debug config.
 fn llm_connection_view(common: Rc<CommonData>) -> impl View {
-    use floem::{event::Event, keyboard::{Key, NamedKey}, Clipboard};
+    use floem::{event::{Event, EventPropagation}, keyboard::{Key, NamedKey}, Clipboard};
     let config = common.config;
     let initial = config.get_untracked();
     let endpoint = create_rw_signal(initial.ai_chat.endpoint.clone());
@@ -1622,6 +1622,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         String::new()
     };
     let key = create_rw_signal(fixture_key);
+    let key_focused = create_rw_signal(false);
     let state = create_rw_signal("Type or paste a key in the masked field above. An empty entry preserves any saved key.".to_string());
     let busy = create_rw_signal(false);
     let credentials_version = create_rw_signal(0u64);
@@ -1632,8 +1633,14 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     }).keyboard_navigable();
     let field_id = field.id();
     let field = field.on_click_stop(move |_| { field_id.request_focus(); })
-        .on_event_stop(EventListener::KeyDown, move |event| {
+        .on_event_stop(EventListener::FocusGained, move |_| key_focused.set(true))
+        .on_event_stop(EventListener::FocusLost, move |_| key_focused.set(false))
+        .on_event(EventListener::KeyDown, move |event| {
             if let Event::KeyDown(event) = event {
+                // Let the framework move focus out of this custom input.
+                if matches!(&event.key.logical_key, Key::Named(NamedKey::Tab)) {
+                    return EventPropagation::Continue;
+                }
                 match &event.key.logical_key {
                     Key::Named(NamedKey::Backspace) => key.update(|value| { value.pop(); }),
                     Key::Named(NamedKey::Escape) => key.set(String::new()),
@@ -1648,8 +1655,15 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     _ => {}
                 }
             }
+            EventPropagation::Stop
         }).style(move |s| s.padding(8.0).border(1.0).border_radius(6.0)
-            .border_color(config.get().color(LapceColor::LAPCE_BORDER)));
+            .max_width_pct(100.0).flex_shrink(0.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)
+            .border_color(config.get().color(if key_focused.get() {
+                LapceColor::EDITOR_FOCUS
+            } else {
+                LapceColor::LAPCE_BORDER
+            })));
     let (tx, rx) = std::sync::mpsc::channel::<(String, String, u64, String)>();
     let result = floem::ext_event::create_signal_from_channel(rx);
     create_effect(move |_| {

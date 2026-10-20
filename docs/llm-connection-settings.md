@@ -62,3 +62,18 @@ change model while in flight, and require the stale-result message. Test again
 without edits and require the result for the current fields. Check 401 and
 20-second failure feedback, wrapping and vertical scrolling with Terminal open.
 Do not send a real provider request merely to validate screenshots.
+
+## Masked field focus (item 267)
+
+The custom masked key field now paints a focus-colored border while focused.
+Its key listener lets Tab/Shift-Tab continue to framework focus navigation
+instead of unconditionally swallowing them. Secret-entry keys keep the prior
+append/backspace/paste/Escape behavior; no actual key text is painted. Placeholder
+and masked-entry labels wrap at narrow widths without shrinking the field.
+
+Host checks: click focus, type dummy text, confirm only fixed dots and the
+unsaved label; Tab and Shift-Tab must leave the field, border must reset, and
+subsequent typing must not append to its key. Return and check Backspace,
+paste and Escape. Repeat at 900px with Terminal open. A debug prefill screenshot
+checks masking only and cannot replace these keyboard tests. No claim is made
+that arbitrary cursor editing/selection is supported by this append-only field.
