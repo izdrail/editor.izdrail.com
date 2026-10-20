@@ -512,3 +512,27 @@ mod blend_tests {
         assert_eq!(labels, ["e", "d", "c", "b", "a"]);
     }
 }
+
+/// Keep a measured completion popup within its owning tab after above/below
+/// placement. Size constraints are applied by the view separately.
+pub fn clamp_popup_origin(
+    x: f64, y: f64, width: f64, height: f64, tab_width: f64, tab_height: f64,
+) -> (f64, f64) {
+    (
+        x.max(0.0).min((tab_width - width - 1.0).max(0.0)),
+        y.max(0.0).min((tab_height - height).max(0.0)),
+    )
+}
+
+#[cfg(test)]
+mod popup_geometry_tests {
+    #[test]
+    fn popup_origin_stays_in_tab_at_edges_and_tiny_sizes() {
+        use super::clamp_popup_origin as clamp;
+        assert_eq!(clamp(20.0, 30.0, 100.0, 80.0, 900.0, 600.0), (20.0, 30.0));
+        assert_eq!(clamp(-10.0, -50.0, 100.0, 80.0, 900.0, 600.0), (0.0, 0.0));
+        assert_eq!(clamp(880.0, 590.0, 100.0, 80.0, 900.0, 600.0), (799.0, 520.0));
+        assert_eq!(clamp(2.0, -300.0, 400.0, 400.0, 100.0, 60.0), (0.0, 0.0));
+        assert_eq!(clamp(2.0, 2.0, 400.0, 400.0, 0.0, 0.0), (0.0, 0.0));
+    }
+}

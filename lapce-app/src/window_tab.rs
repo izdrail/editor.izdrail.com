@@ -2824,7 +2824,11 @@ impl WindowTabData {
             origin.x = 0.0;
         }
 
-        origin
+        let (x, y) = crate::completion::clamp_popup_origin(
+            origin.x, origin.y, completion_size.width, completion_size.height,
+            tab_size.width, tab_size.height,
+        );
+        Point::new(x, y)
     }
 
     pub fn code_action_origin(&self) -> Point {
