@@ -12,8 +12,8 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use tantivy::collector::TopDocs;
-use tantivy::query::{QueryParser, QueryParserError};
-use tantivy::schema::{Field, Schema, Value, INDEXED, STORED, STRING, TEXT};
+use tantivy::query::{BooleanQuery, QueryParser, QueryParserError, RegexQuery, TermQuery};
+use tantivy::schema::{Field, IndexRecordOption, Schema, Value, INDEXED, STORED, STRING, TEXT};
 use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument, TantivyError, Term};
 
 /// What an indexed record represents.
@@ -228,6 +228,39 @@ impl ProjectIndex {
         Ok(hits)
     }
 
+    /// Prefix candidates from symbol definitions only. This is a lexical
+    /// candidate source, not type-aware completion. Invalid or empty prefixes
+    /// return no candidates rather than interpreting query/regex syntax.
+    pub fn symbol_prefix(&self, prefix: &str, language: &str, limit: usize) -> Result<Vec<SearchHit>> {
+        if limit == 0 || prefix.is_empty() || prefix.len() > 128
+            || !prefix.chars().all(|ch| ch.is_alphanumeric() || ch == '_')
+        {
+            return Ok(Vec::new());
+        }
+        // TEXT's default tokenizer lowercases terms; restrict characters
+        // above so the prefix cannot introduce a regex operator.
+        let pattern = format!("{}.*", prefix.to_lowercase());
+        let query = BooleanQuery::intersection(vec![
+            Box::new(RegexQuery::from_pattern(&pattern, self.fields.symbol)?),
+            Box::new(TermQuery::new(
+                Term::from_field_text(self.fields.kind, EntryKind::SymbolDef.as_str()),
+                IndexRecordOption::Basic,
+            )),
+            Box::new(TermQuery::new(
+                Term::from_field_text(self.fields.language, language),
+                IndexRecordOption::Basic,
+            )),
+        ]);
+        let searcher = self.reader.searcher();
+        let docs = searcher.search(&query, &TopDocs::with_limit(limit.min(200)).order_by_score())?;
+        let mut hits = Vec::with_capacity(docs.len());
+        for (score, address) in docs {
+            let document: TantivyDocument = searcher.doc(address)?;
+            hits.push(self.hit_from_document(score, &document));
+        }
+        Ok(hits)
+    }
+
     fn hit_from_document(&self, score: f32, document: &TantivyDocument) -> SearchHit {
         SearchHit {
             path: self.text_value(document, self.fields.path).unwrap_or_default(),
@@ -394,6 +427,40 @@ mod tests {
         assert!(ProjectIndex::open_or_create(&dir).is_err());
         assert_eq!(fs::read(dir.join("meta.json")).unwrap(), bytes);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn symbol_prefix_filters_language_kind_and_case() {
+        let index = ProjectIndex::in_memory().unwrap();
+        for (path, language, kind, name) in [
+            ("a.php", "php", EntryKind::SymbolDef, "CheckoutService"),
+            ("b.ts", "typescript", EntryKind::SymbolDef, "CheckoutWidget"),
+            ("c.php", "php", EntryKind::SymbolRef, "CheckoutService"),
+            ("d.php", "php", EntryKind::SymbolDef, "InvoiceService"),
+        ] {
+            index.add_entry(&IndexEntry {
+                path: path.into(), language: language.into(), kind,
+                symbol: Some(name.into()), line: 1, col: 0, body: name.into(),
+            }).unwrap();
+        }
+        index.add_entry(&file_entry("file.php", "php", "CheckoutService")).unwrap();
+        index.commit().unwrap();
+        let hits = index.symbol_prefix("CHECK", "php", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "a.php");
+        assert_eq!(hits[0].symbol.as_deref(), Some("CheckoutService"));
+        assert_eq!(index.symbol_prefix("check", "typescript", 10).unwrap().len(), 1);
+        assert!(index.symbol_prefix("check", "vue", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn symbol_prefix_rejects_empty_query_syntax_and_zero_limit() {
+        let index = ProjectIndex::in_memory().unwrap();
+        for prefix in ["", "foo.*", "a:b", "a b", "(foo)", "foo\\bar"] {
+            assert!(index.symbol_prefix(prefix, "php", 10).unwrap().is_empty());
+        }
+        assert!(index.symbol_prefix("foo", "php", 0).unwrap().is_empty());
+        assert!(index.symbol_prefix(&"a".repeat(129), "php", 10).unwrap().is_empty());
     }
 
     #[test]

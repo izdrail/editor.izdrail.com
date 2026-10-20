@@ -69,3 +69,18 @@ sees one extra byte; it is never read to the end without a bound. Read failures
 also count as skipped files. This bounds per-file input allocation, not total
 index size or total process memory. Ignore/hidden filters and the cap mean
 this is not literal all-file coverage; coverage controls remain future work.
+
+## Symbol prefix candidates (item 250)
+
+`symbol_prefix(prefix, language, limit)` searches symbol-definition records
+only, scoped to an exact language ID, with case-insensitive token-prefix
+matching. It accepts identifier letters/digits/underscore, rejects query
+operators, caps the prefix at 128 UTF-8 bytes and results at 200 records.
+These are lexical candidates, not resolved types or full-name namespace
+matching. Names pass through Tantivy's default TEXT tokenizer; long tokens
+and punctuation follow that tokenizer's rules. Ranking/ties are not a stable
+completion order. A zero limit returns no candidates.
+
+This API is preparation only: the walker currently emits file records, not
+symbol definitions, and the completion UI does not call it yet. Extraction
+and integration must land before any project-wide autocomplete claim.
