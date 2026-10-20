@@ -2917,6 +2917,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // hook is the condition point floem routes every key through:
     // while the mention popup is open, arrows/Enter/Tab/Escape are
     // consumed here and everything else falls to the default keymap.
+    let keyboard_send_tab = tab.clone();
     let composer = text_editor_keys(
         data.input.get_untracked(),
         move |editor_sig, keypress, mods| {
@@ -2956,6 +2957,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 if consumed {
                     return CommandExecuted::Yes;
                 }
+            }
+            if matches!(&keypress.key, KeyInput::Keyboard(Key::Named(NamedKey::Enter), _))
+                && !mods.contains(floem::keyboard::Modifiers::SHIFT)
+            {
+                // Read the current composer document, not a possibly pending
+                // reactive update, before sending through the normal path.
+                input_signal.set(editor_sig.get_untracked().doc().text().to_string());
+                send(&keyboard_send_tab);
+                return CommandExecuted::Yes;
             }
             default_key_handler(editor_sig)(keypress, mods)
         },
@@ -3802,7 +3812,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 let on_send = context(&indicator_tab)
                     .map(|c| format!("On Send: {}", c.indicator()))
                     .unwrap_or_else(|| "On Send: no editor context".into());
-                format!("{on_send} - Enter for newline, click the arrow to send")
+                format!("{on_send} - Enter to send, Shift+Enter for newline")
             }
         })
         .style(move |s| {
