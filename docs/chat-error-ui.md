@@ -50,3 +50,18 @@ review/checkpoint and verify all controls still reachable. Wheel transcript
 versus outer body separately; check typed composer and focus after scroll.
 Capture top and bottom of panel. No scrollbar/click/keyboard pass is inferred
 from source. A sticky composer or collapsible review can be a later refinement.
+
+## Recovery target and reflow context (item 271)
+
+Recovery now requests the AI Chat section before opening Settings. The settings
+scroll observes the request and measured heading position, so both existing and
+new Settings tabs can reach the connection block. Sidebar navigation clears the
+request. Width changes reset to the current section heading instead of retaining
+a pixel offset that exposes only the preceding 400ms input. This intentionally
+loses within-section scroll position on width reflow, preserving label context.
+
+Host checks: recovery from closed and already-open Settings, at Core/Editor and
+with search text present; require AI Chat heading plus connection. Open/close
+right panel at AI Chat and require no isolated 400 input. Sidebar then wheel
+through sections to ensure target does not lock ordinary scrolling. Search can
+change section contents; recovery while a search is active needs explicit check.

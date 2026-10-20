@@ -345,6 +345,7 @@ pub fn settings_view(
     common: Rc<CommonData>,
 ) -> impl View {
     let config = common.config;
+    let settings_section = common.settings_section;
 
     let cx = Scope::current();
     let settings_data = SettingsData::new(cx, installed_plugins, common.clone());
@@ -410,6 +411,8 @@ pub fn settings_view(
         })
     };
 
+    let reflow_anchor = create_rw_signal(None::<String>);
+    let content_width = create_rw_signal(0.0_f64);
     let switcher_item = move |k: String,
                               pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
                               margin: f32| {
@@ -419,6 +422,8 @@ pub fn settings_view(
                 .style(move |s| s.text_ellipsis().padding_left(margin)),
         )
         .on_click_stop(move |_| {
+            settings_section.set(None);
+            reflow_anchor.set(None);
             if let Some(pos) = pos() {
                 ensure_visible.set(
                     settings_content_size
@@ -544,6 +549,21 @@ pub fn settings_view(
                             .min_width_pct(100.0)
                             .max_width(400.0)
                     })
+                })
+                .scroll_to(move || {
+                    let target = settings_section.get().or_else(|| reflow_anchor.get())?;
+                    kinds.get().iter().find(|(kind, _)| kind == &target)
+                        .map(|(_, pos)| pos.get())
+                })
+                .on_resize(move |rect| {
+                    let width = rect.width();
+                    let old = content_width.get_untracked();
+                    if old > 0.0 && (old - width).abs() > 1.0 {
+                        // Reflow changes preceding row heights. Start at the
+                        // visible section instead of leaving an orphan input.
+                        reflow_anchor.set(Some(current_kind.get_untracked()));
+                    }
+                    content_width.set(width);
                 })
                 .on_scroll(move |rect| {
                     scroll_pos.set(rect.origin());

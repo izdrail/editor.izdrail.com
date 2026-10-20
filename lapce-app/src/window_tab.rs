@@ -160,6 +160,7 @@ pub struct CommonData {
     pub breakpoints: RwSignal<BTreeMap<PathBuf, BTreeMap<usize, LapceBreakpoint>>>,
     // the current focused view which will receive keyboard events
     pub keyboard_focus: RwSignal<Option<ViewId>>,
+    pub settings_section: RwSignal<Option<String>>,
     pub window_common: Rc<WindowCommonData>,
 }
 
@@ -400,6 +401,7 @@ impl WindowTabData {
             window_origin: cx.create_rw_signal(Point::ZERO),
             breakpoints: cx.create_rw_signal(BTreeMap::new()),
             keyboard_focus: cx.create_rw_signal(None),
+            settings_section: cx.create_rw_signal(None),
             window_common: window_common.clone(),
         });
 

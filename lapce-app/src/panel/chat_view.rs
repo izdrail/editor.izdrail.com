@@ -2256,6 +2256,7 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
     let error = tab.chat.error;
     let config = tab.common.config;
     let main_split = tab.main_split.clone();
+    let settings_section = tab.common.settings_section;
     v_stack((
         label(|| "Chat needs attention".to_string()).style(|s| s.font_bold()),
         scroll(
@@ -2267,7 +2268,10 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
         ).style(|s| s.width_full().max_height(100.0)),
         label(|| "Open AI connection settings".to_string())
             .keyboard_navigable()
-            .on_click_stop(move |_| main_split.open_settings())
+            .on_click_stop(move |_| {
+                settings_section.set(Some("AI Chat".to_string()));
+                main_split.open_settings();
+            })
             .style(move |s| s.padding(6.0).border(1.0).border_radius(4.0)
                 .border_color(config.get().color(LapceColor::LAPCE_BORDER))
                 .cursor(CursorStyle::Pointer)),
