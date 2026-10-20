@@ -76,6 +76,24 @@ pub fn status(
     };
 
     let progresses = window_tab_data.progresses;
+    let inline = window_tab_data.common.inline_completion;
+    let keypress = window_tab_data.common.keypress;
+    let focus = window_tab_data.common.focus;
+    let ghost_hint = move || {
+        if focus.get() != crate::window_tab::Focus::Workbench { return String::new(); }
+        let Some(editor) = editor.get() else { return String::new(); };
+        let _ = editor.cursor().get();
+        let visible = inline.with(|data| {
+            data.status == crate::inline_completion::InlineCompletionStatus::Active
+                && !data.items.is_empty()
+                && editor.doc().content.get().path() == Some(&data.path)
+        });
+        if !visible { return String::new(); }
+        let keys = keypress.get();
+        let Some(accept) = keys.command_hint("inline_completion.select", &editor) else { return String::new(); };
+        let Some(cancel) = keys.command_hint("inline_completion.cancel", &editor) else { return String::new(); };
+        format!("Ghost: {accept} accept, {cancel} dismiss")
+    };
     let mode = create_memo(move |_| window_tab_data.mode());
     let pointer_down = floem::reactive::create_rw_signal(false);
 
@@ -230,6 +248,11 @@ pub fn status(
                         })
                 })
             },
+            label(ghost_hint).style(move |s| {
+                s.max_width(260.0).min_width(0.0).text_ellipsis()
+                    .padding_horiz(6.0)
+                    .color(config.get().color(LapceColor::STATUS_FOREGROUND))
+            }),
             progress_view(config, progresses),
         ))
         .style(|s| {

@@ -522,6 +522,31 @@ impl KeyPressData {
         }
     }
 
+    /// Conservative display hint: only advertise a sequence when every
+    /// currently eligible exact binding for it names this command. Ambiguous
+    /// fallthrough or chord-prefix sequences are omitted rather than guessed.
+    pub fn command_hint<T: KeyPressFocus + ?Sized>(
+        &self, command: &str, focus: &T,
+    ) -> Option<String> {
+        let candidates = self.command_keymaps.get(command)?;
+        candidates.iter().rev().find_map(|candidate| {
+            if candidate.key.is_empty() { return None; }
+            let eligible = |map: &&crate::keypress::keymap::KeyMap| {
+                (map.modes.is_empty() || map.modes.contains(focus.get_mode().into()))
+                    && map.when.as_ref().map(|condition|
+                        Self::check_condition(condition, focus)).unwrap_or(true)
+                    && !(focus.expect_char() && map.key.len() == 1 && map.key[0].is_char())
+            };
+            let maps = self.keymaps.get(&candidate.key)?;
+            let mut matches = maps.iter().filter(eligible).peekable();
+            matches.peek()?;
+            if matches.any(|map| map.key != candidate.key || map.command != command) {
+                return None;
+            }
+            Some(candidate.key.iter().map(|key| key.label()).collect::<Vec<_>>().join(" "))
+        })
+    }
+
     fn check_condition<T: KeyPressFocus + ?Sized>(
         condition: &str,
         check: &T,
@@ -754,6 +779,34 @@ mod esc_modal_tests {
         fn receive_char(&self, _c: &str) {
             unimplemented!()
         }
+    }
+
+    #[test]
+    fn ghost_hints_respect_mode_conditions_and_conflicts() {
+        let keys = modal_keymaps();
+        let inline = ModalFocus { mode: Mode::Insert,
+            accepted_conditions: &[Condition::InlineCompletionVisible] };
+        assert_eq!(keys.command_hint("inline_completion.select", &inline).as_deref(), Some("Tab"));
+        assert_eq!(keys.command_hint("inline_completion.cancel", &inline).as_deref(), Some("Escape"));
+        let modal = ModalFocus { mode: Mode::Insert,
+            accepted_conditions: &[Condition::InlineCompletionVisible, Condition::ModalFocus] };
+        assert!(keys.command_hint("inline_completion.select", &modal).is_none());
+        let normal = ModalFocus { mode: Mode::Normal,
+            accepted_conditions: &[Condition::InlineCompletionVisible] };
+        assert!(keys.command_hint("inline_completion.select", &normal).is_none());
+        let mut loader = KeyMapLoader::new();
+        loader.load_from_str(r#"[[keymaps]]
+key = "ctrl+j"
+command = "inline_completion.select"
+mode = "i"
+when = "inline_completion_visible"
+"#, true).unwrap();
+        let (keymaps, command_keymaps) = loader.finalize();
+        let mut custom = modal_keymaps();
+        custom.keymaps = Rc::new(keymaps);
+        custom.command_keymaps = Rc::new(command_keymaps);
+        assert_eq!(custom.command_hint("inline_completion.select", &inline).as_deref(), Some("Ctrl+j"));
+        assert!(custom.command_hint("inline_completion.cancel", &inline).is_none());
     }
 
     fn esc() -> KeyPress {
