@@ -64,3 +64,7 @@ then a loopback fixture with saved openai and shared=false must see zero request
 The connection card shows "Pending backend: Local" or "Pending backend: Remote". Internal backend ids (for example "ollama") are never shown.
 
 After Apply, the Settings page stays on the AI section instead of resetting to Core (the section is pinned to AI; the row rebuild no longer drops the view to the top). Exact scroll offset inside AI is restored to the AI header.
+
+## Scroll after Apply (root cause)
+
+Settings rows are keyed by value, so unchanged rows survive a config reload and keep writing their height to the size signal they were built with. Rebuilt items used to get fresh zero-size signals, so every section offset read 0 and the page scrolled to Core. SettingsData now keeps one size signal per (kind, name) across rebuilds.

@@ -151,6 +151,16 @@ impl SettingsData {
         let filtered_items = cx.create_rw_signal(im::Vector::new());
         let items = cx.create_rw_signal(im::Vector::new());
         let kinds = cx.create_rw_signal(im::Vector::new());
+        // Row views are kept across config reloads (the list is keyed by
+        // value) and keep writing to the size signal they were built with.
+        // Rebuilt items must reuse that signal or every offset reads 0 and
+        // the page jumps to the top.
+        let size_cache: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<(String, String), RwSignal<Size>>>> = Default::default();
+        let size_signal = move |kind: &str, name: &str| -> RwSignal<Size> {
+            *size_cache.borrow_mut()
+                .entry((kind.to_string(), name.to_string()))
+                .or_insert_with(|| cx.create_rw_signal(Size::ZERO))
+        };
         cx.create_effect(move |_| {
             let config = config.get();
 
@@ -209,7 +219,7 @@ impl SettingsData {
                         value: SettingsValue::Empty,
                         serde_value: Value::Null,
                         pos,
-                        size: cx.create_rw_signal(Size::ZERO),
+                        size: size_signal(section, ""),
                         header: true,
                     });
                     data_kinds.push_back((section.to_string(), pos));
@@ -243,6 +253,7 @@ impl SettingsData {
                     let filter_text = format!("{kind} {name} {desc}").to_lowercase();
                     let filter_text =
                         format!("{filter_text}{}", filter_text.replace(' ', ""));
+                    let size = size_signal(&kind, &name);
                     data_items.push_back(SettingsItem {
                         kind,
                         name,
@@ -251,7 +262,7 @@ impl SettingsData {
                         description: desc.to_string(),
                         value,
                         pos: cx.create_rw_signal(Point::ZERO),
-                        size: cx.create_rw_signal(Size::ZERO),
+                        size,
                         serde_value,
                         header: false,
                     });
@@ -281,7 +292,7 @@ impl SettingsData {
                         value: SettingsValue::Empty,
                         serde_value: Value::Null,
                         pos,
-                        size: cx.create_rw_signal(Size::ZERO),
+                        size: size_signal(&meta.display_name, ""),
                         header: true,
                     });
                     plugin_kinds_tmp.push_back((meta.display_name.clone(), pos));
@@ -309,6 +320,7 @@ impl SettingsData {
                                 .unwrap_or(config.default);
                             let value = SettingsValue::from(value);
 
+                            let size = size_signal(&kind, &name);
                             let item = SettingsItem {
                                 kind: kind.clone(),
                                 name,
@@ -317,7 +329,7 @@ impl SettingsData {
                                 description: desc.to_string(),
                                 value,
                                 pos: cx.create_rw_signal(Point::ZERO),
-                                size: cx.create_rw_signal(Size::ZERO),
+                                size,
                                 serde_value: Value::Null,
                                 header: false,
                             };
