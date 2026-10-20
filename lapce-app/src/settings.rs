@@ -218,7 +218,7 @@ impl SettingsData {
                     let field = name.replace('_', "-");
                     // The dedicated connection editor owns these fields.
                     // Do not expose a second independently buffered control.
-                    if kind == "AI Chat" && matches!(field.as_str(), "endpoint" | "model") {
+                    if kind == "AI Chat" && matches!(field.as_str(), "endpoint" | "model" | "backend" | "shared-connection") {
                         continue;
                     }
 
@@ -613,7 +613,7 @@ fn settings_item_view(
                     .text_overflow(floem::style::TextOverflow::Wrap).padding_vert(12.0)),
             label(move || {
                 let c = config.get();
-                format!("Current routing: Chat = {}; ghost text = {}. Existing choices are preserved. Remote ghost text still uses its legacy key-less Ollama connection, not the Chat gateway key.", c.ai_chat.backend, c.ai_autocomplete.backend)
+                format!("Current routing: Chat = {}; ghost text = {}. {}", c.ai_chat.backend, c.effective_ai_autocomplete().backend, if c.ai_chat.shared_connection { "Shared connection applied." } else { "Legacy choices preserved until Apply shared connection." })
             }).style(|s| s.max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
             label(move || if ai_advanced.get() {
@@ -623,6 +623,11 @@ fn settings_item_view(
             }).keyboard_navigable().on_click_stop(move |_| {
                 ai_advanced.update(|v| *v = !*v);
             }).style(move |s| ai_button_style(s, config)),
+            label(|| "Restore stored legacy ghost routing (advanced)".to_string())
+                .keyboard_navigable().on_click_stop(move |_| {
+                    LapceConfig::update_file("ai-chat", "shared-connection", toml_edit::Value::from(false));
+                }).style(move |s| ai_button_style(s, config)
+                    .apply_if(!ai_advanced.get(), |s| s.hide())),
             llm_connection_view(settings_data.common.clone()),
             ai_download_view(settings_data.common.clone()),
             curated_models_view(settings_data.common.clone()),
@@ -1565,10 +1570,11 @@ fn ai_model_download_view(
             .text_overflow(floem::style::TextOverflow::Wrap)),
         label(move || {
             let config = config.get();
+            let effective_ai = config.effective_ai_autocomplete();
             let (backend, selected) = if entry.chat {
                 (&config.ai_chat.backend, &config.ai_chat.local_model)
             } else {
-                (&config.ai_autocomplete.backend, &config.ai_autocomplete.local_model)
+                (&effective_ai.backend, &effective_ai.local_model)
             };
             local_model_selection_label(backend, selected == entry.id)
         }).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
@@ -1664,6 +1670,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     use floem::{event::{Event, EventPropagation}, keyboard::{Key, NamedKey, PhysicalKey, KeyCode}, Clipboard};
     let config = common.config;
     let initial = config.get_untracked();
+    let backend = create_rw_signal(initial.ai_chat.backend.clone());
     let endpoint = create_rw_signal(initial.ai_chat.endpoint.clone());
     let model = create_rw_signal(initial.ai_chat.model.clone());
     // Debug-only visual fixture: fixed dummy text, never an arbitrary secret.
@@ -1688,7 +1695,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     let busy = create_rw_signal(false);
     let credentials_version = create_rw_signal(0u64);
     let probe = create_rw_signal(None::<(String, String, u64, String)>);
-    let save_button = label(|| "Save connection".to_string()).on_click_stop(move |_| {
+    let save_button = label(|| "Apply shared connection to Chat and ghost text".to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
                 let endpoint_value = endpoint.get_untracked();
                 if crate::chat::completion_url(&endpoint_value).is_err() || model.get_untracked().trim().is_empty() {
@@ -1702,12 +1709,11 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     }
                 }
                 credentials_version.update(|v| *v += 1);
-                if LapceConfig::update_file("ai-chat", "endpoint", toml_edit::Value::from(endpoint_value.trim())).is_none()
-                    || LapceConfig::update_file("ai-chat", "model", toml_edit::Value::from(model.get_untracked().trim())).is_none() {
+                if LapceConfig::apply_shared_ai(&backend.get_untracked(), endpoint_value.trim(), model.get_untracked().trim()).is_none() {
                     state.set("Could not save endpoint/model settings".into()); return;
                 }
                 key.set(String::new());
-                state.set("Connection saved. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
+                state.set("Shared connection applied to Chat and ghost text. Legacy ghost connection remains stored. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
             }).keyboard_navigable()
             .style(move |s| ai_button_style(s, config).focus(|s|
                 s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))));
@@ -1801,12 +1807,21 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         if let Some(message) = result.get() { probe.set(Some(message)); busy.set(false); }
     });
     stack((
-        label(|| "Optional remote connection (not the local inference engine)".to_string())
+        label(|| "Shared AI connection".to_string())
             .style(|s| s.font_bold().max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
-        label(move || format!("Chat backend: {}. Saving a remote key does not enable remote inference.", config.get().ai_chat.backend))
+        label(move || format!("Pending backend: {}. Changes activate only on Apply.", backend.get()))
             .style(|s| s.max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || if backend.get() == "local" {
+            "Local (on-device). Click to choose remote.".to_string()
+        } else {
+            "Remote (opt-in). Click to choose local.".to_string()
+        }).keyboard_navigable().on_click_stop(move |_| {
+            backend.update(|b| *b = if b == "local" { "ollama".into() } else { "local".into() });
+        }).style(move |s| ai_button_style(s, config)),
+        label(|| "Applying remote sends Chat context on Send and ghost code context on manual trigger or every enabled typing pause to this endpoint, using the same key. Check ghost model and automatic-trigger controls below before Apply. Local never falls back to remote.".to_string())
+            .style(|s| s.max_width_pct(100.0).text_overflow(floem::style::TextOverflow::Wrap)),
         stack((
             label(|| "Endpoint".to_string()),
             floem::views::text_input(endpoint).style(move |s| {
@@ -1816,7 +1831,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             }),
         )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
         stack((
-            label(|| "Model".to_string()),
+            label(|| "Chat remote model".to_string()),
             model_input,
         )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
         label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),

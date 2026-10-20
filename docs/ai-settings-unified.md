@@ -19,3 +19,33 @@ Test old Chat and Autocomplete settings links land on AI, search still finds
 both legacy prefixes, and editing each row writes its original table. With a
 mixed saved profile, open/close and restart must preserve both backend/endpoint
 choices byte-for-byte. No send, automatic routing migration or real key is needed.
+
+## Explicit shared connection (item 289)
+
+One pending Local/Remote choice and endpoint/key live in the shared card. Apply
+writes backend, endpoint, Chat model and shared-connection=true in one settings
+file write. Only that click activates shared routing; no opening-time migration.
+Chat and ghost enabled toggles remain separate feature toggles on the same page.
+Chat/ghost models stay separate. Ghost remote model must be supported by the
+selected OpenAI endpoint; there is no silent model fallback. Existing native
+Ollama ghost fields remain stored for advanced restore. Workspace overrides may
+still take precedence over user-file changes and the current-routing notice is
+the authority for effective configuration.
+
+With shared active, Chat local means ghost local; Chat remote means app-side
+OpenAI ghost using the same endpoint/auth. Next-edit uses the same transport
+when explicitly enabled. Automatic ghost triggers send bounded cursor context;
+the card warns before Apply. Local selection never falls back to remote.
+Credentials never enter worker requests. Config changes discard stale results;
+new requests and explicit cancel abort the previous gateway request. Advanced
+Restore removes the shared override, not the preserved legacy fields.
+
+Host gate: shared_ai_is_explicit_and_preserves_legacy_values; full compile/test/
+clippy. Dummy loopback HTTP fixture before real use: explicit Apply remote must
+route Chat and ghost to /v1/chat/completions with dummy bearer; local Apply must
+produce zero requests; opening a mixed legacy profile must produce no writes or
+route changes. Verify manual/automatic ghost, next-edit opt-in, cancellation,
+stale doc/cursor/config rejection, suffix de-duplication, accept/reject and two
+model fields. Capture normal/narrow shared choice, disclosure, feature toggles,
+advanced restore and fresh-local sidebar. Model output quality and remote quota
+are not established by parser tests. No real project code or key in fixtures.

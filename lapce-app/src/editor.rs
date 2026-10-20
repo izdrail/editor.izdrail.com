@@ -229,6 +229,7 @@ pub struct EditorData {
     pub common: Rc<CommonData>,
     pub sticky_header_info: RwSignal<StickyHeaderInfo>,
     ai_generation: RwSignal<u64>,
+    ai_gateway_cancel: RwSignal<Option<Arc<std::sync::atomic::AtomicBool>>>,
     /// Debounce token for automatic (Copilot-style) ghost text. A newer
     /// keystroke replaces it, so only the last typing pause fires.
     ai_auto_timer: RwSignal<TimerToken>,
@@ -274,6 +275,7 @@ impl EditorData {
             common,
             sticky_header_info: cx.create_rw_signal(StickyHeaderInfo::default()),
             ai_generation: cx.create_rw_signal(0),
+            ai_gateway_cancel: cx.create_rw_signal(None),
             ai_auto_timer: cx.create_rw_signal(TimerToken::INVALID),
             ai_edit_history: cx.create_rw_signal(EditHistory::default()),
         };
@@ -2169,6 +2171,9 @@ impl EditorData {
 
     pub fn cancel_inline_completion(&self) {
         self.ai_auto_timer.set(TimerToken::INVALID);
+        if let Some(cancel) = self.ai_gateway_cancel.get_untracked() {
+            cancel.store(true, std::sync::atomic::Ordering::Release);
+        }
         self.ai_generation.update(|g| *g = g.wrapping_add(1));
         self.common.proxy.notification(
             lapce_rpc::proxy::ProxyNotification::CancelInlineCompletion {},
@@ -2192,7 +2197,7 @@ impl EditorData {
     /// invocation (Alt+Backslash) fires immediately; edit hooks only arm the
     /// debounce timer so inference starts after a typing pause.
     fn update_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
-        let ai = self.common.config.get_untracked().ai_autocomplete.clone();
+        let ai = self.common.config.get_untracked().effective_ai_autocomplete();
         match trigger_kind {
             InlineCompletionTriggerKind::Invoked => {
                 self.ai_auto_timer.set(TimerToken::INVALID);
@@ -2268,7 +2273,8 @@ impl EditorData {
     /// visible completion on guard failures.
     fn request_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
         let automatic = trigger_kind == InlineCompletionTriggerKind::Automatic;
-        let ai = self.common.config.get_untracked().ai_autocomplete.clone();
+        let request_config_id = self.common.config.get_untracked().id;
+        let ai = self.common.config.get_untracked().effective_ai_autocomplete();
         if !ai.enabled {
             self.cancel_inline_completion();
             return;
@@ -2341,11 +2347,15 @@ impl EditorData {
                 rope.slice_to_cow(offset..end).into_owned(),
             )
         });
+        let gateway_messages = if ai.backend == "openai" {
+            Some(crate::ghost_gateway::messages(&prefix, &suffix))
+        } else { None };
+        let gateway_suffix = suffix.clone();
         let request = if ai.backend == "ollama" {
             // Network lane: the worker POSTs this bounded context to the
             // configured key-less endpoint. No local model is resolved, and
-            // any backend string other than "ollama" keeps the on-device
-            // lane below, so a typo can never silently enable sending.
+            // the explicit shared OpenAI branch is handled app-side below.
+            // Unknown backend strings stay on the on-device lane.
             lapce_ai::Request {
                 model: std::path::PathBuf::new(),
                 tokenizer: std::path::PathBuf::new(),
@@ -2363,6 +2373,12 @@ impl EditorData {
                     model: ai.remote_model.clone(),
                     timeout_ms: ai.timeout_ms,
                 }),
+            }
+        } else if gateway_messages.is_some() {
+            lapce_ai::Request {
+                model: Default::default(), tokenizer: Default::default(),
+                prefix, suffix, prefix_tokens: 0, suffix_tokens: 0,
+                max_tokens: ai.max_tokens, request_id: 0, messages: None, remote: None,
             }
         } else {
             let root = match lapce_core::directory::Directory::data_local_directory() {
@@ -2429,7 +2445,8 @@ impl EditorData {
             self.scope,
             move |items: Vec<lsp_types::InlineCompletionItem>| {
                 let config = editor.common.config.get_untracked();
-                if generation_signal.get_untracked() != generation
+                if config.id != request_config_id
+                    || generation_signal.get_untracked() != generation
                     || doc.rev() != rev
                     || editor.doc().buffer_id != doc.buffer_id
                     || editor.cursor().with_untracked(|c| c.offset()) != offset
@@ -2458,6 +2475,32 @@ impl EditorData {
         );
 
         inline_completion.update(|c| c.status = InlineCompletionStatus::Started);
+
+        if let Some(messages) = gateway_messages {
+            if let Some(old) = self.ai_gateway_cancel.get_untracked() {
+                old.store(true, std::sync::atomic::Ordering::Release);
+            }
+            let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            self.ai_gateway_cancel.set(Some(cancelled.clone()));
+            std::thread::spawn(move || {
+                let result = crate::ghost_gateway::complete(
+                    &ai.endpoint, &ai.remote_model, &messages,
+                    ai.max_tokens, ai.timeout_ms, cancelled,
+                );
+                let items = result.ok().map(|text| {
+                    lapce_ai::ollama::clean(&text, &gateway_suffix)
+                }).filter(|text| !text.is_empty()).map(|text| {
+                    vec![lsp_types::InlineCompletionItem {
+                        insert_text: text, filter_text: None,
+                        range: Some(lsp_types::Range::new(position, position)),
+                        command: None,
+                        insert_text_format: Some(lsp_types::InsertTextFormat::PLAIN_TEXT),
+                    }]
+                }).unwrap_or_default();
+                send(items);
+            });
+            return;
+        }
 
         self.common.proxy.get_inline_completions(
             path,
@@ -2492,8 +2535,9 @@ impl EditorData {
     /// prediction through the existing ghost-text machinery at the located
     /// range; accepting applies the replacement in place (no cursor jump).
     fn request_next_edit(&self) {
-        let ai = self.common.config.get_untracked().ai_autocomplete.clone();
-        if !ai.enabled || !ai.next_edit || ai.backend != "ollama" {
+        let request_config_id = self.common.config.get_untracked().id;
+        let ai = self.common.config.get_untracked().effective_ai_autocomplete();
+        if !ai.enabled || !ai.next_edit || !["ollama", "openai"].contains(&ai.backend.as_str()) {
             return;
         }
         if self.get_mode() != Mode::Insert {
@@ -2559,7 +2603,7 @@ impl EditorData {
             // The dispatcher owns the worker job identity used for
             // cooperative cancellation; zero means untagged here.
             request_id: 0,
-            messages: Some(messages),
+            messages: Some(messages.clone()),
             remote: Some(lapce_ai::ollama::RemoteFim {
                 endpoint: ai.endpoint.clone(),
                 model: ai.remote_model.clone(),
@@ -2586,7 +2630,8 @@ impl EditorData {
             let doc = editor.doc();
             // Anchor offsets are only valid against the exact buffer the
             // model saw; any edit since discards the prediction.
-            if doc.buffer_id != buffer_id || doc.rev() != rev {
+            if editor.common.config.get_untracked().id != request_config_id
+                || doc.buffer_id != buffer_id || doc.rev() != rev {
                 return;
             }
             let item = doc.buffer.with_untracked(|buffer| {
@@ -2624,6 +2669,20 @@ impl EditorData {
                 c.update_doc(&doc, offset);
             });
         });
+        if ai.backend == "openai" {
+            if let Some(old) = self.ai_gateway_cancel.get_untracked() {
+                old.store(true, std::sync::atomic::Ordering::Release);
+            }
+            let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            self.ai_gateway_cancel.set(Some(cancelled.clone()));
+            std::thread::spawn(move || {
+                if let Ok(raw) = crate::ghost_gateway::complete(
+                    &ai.endpoint, &ai.remote_model, &messages,
+                    256, ai.timeout_ms, cancelled,
+                ) { send(raw); }
+            });
+            return;
+        }
         self.common.proxy.get_inline_completions(
             path,
             position,

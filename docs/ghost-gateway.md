@@ -17,3 +17,7 @@ Before activation, use a loopback HTTP fixture with dummy key to verify path,
 Authorization header, no-redirect, status errors, oversized response, timeout and
 in-flight cancellation. Real-model insertion quality remains unverified and
 must be inspected with ghost acceptance/rejection in a running editor.
+
+Item 289 wires this transport only after explicit shared Apply. It uses short
+instruct completion, not native raw FIM tokens; model quality must be evaluated
+for the user's selected ghost model, independently from Chat quality.

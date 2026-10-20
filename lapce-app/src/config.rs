@@ -1045,6 +1045,36 @@ impl LapceConfig {
         }
     }
 
+    /// Preserve legacy choices until the user explicitly applies shared routing.
+    pub fn effective_ai_autocomplete(&self) -> ai::AiConfig {
+        let mut ai = self.ai_autocomplete.clone();
+        if self.ai_chat.shared_connection {
+            ai.backend = if self.ai_chat.backend == "ollama" {
+                "openai".into()
+            } else {
+                "local".into()
+            };
+            ai.endpoint = self.ai_chat.endpoint.clone();
+        }
+        ai
+    }
+
+    /// Save one shared routing decision in one file write, not separate table edits.
+    pub fn apply_shared_ai(backend: &str, endpoint: &str, model: &str) -> Option<()> {
+        if !["local", "ollama"].contains(&backend) { return None; }
+        let mut document = Self::get_file_table().unwrap_or_default();
+        if !document.as_table().contains_key("ai-chat") {
+            document["ai-chat"] = toml_edit::Item::Table(toml_edit::Table::default());
+        }
+        let table = document.get_mut("ai-chat")?.as_table_mut()?;
+        table.insert("backend", toml_edit::value(backend));
+        table.insert("endpoint", toml_edit::value(endpoint));
+        table.insert("model", toml_edit::value(model));
+        table.insert("shared-connection", toml_edit::value(true));
+        std::fs::write(Self::settings_file()?, document.to_string()).ok()?;
+        Some(())
+    }
+
     fn get_file_table() -> Option<toml_edit::Document> {
         let path = Self::settings_file()?;
         let content = std::fs::read_to_string(path).ok()?;
@@ -1244,5 +1274,27 @@ mod vsix_import_smoke {
             .resolve_path_to_icon(&[std::path::Path::new("main.rs")])
             .expect("icon for .rs");
         assert!(icon.is_file(), "{icon:?}");
+    }
+}
+
+#[cfg(test)]
+mod shared_ai_tests {
+    #[test]
+    fn shared_ai_is_explicit_and_preserves_legacy_values() {
+        let mut config = super::LapceConfig::default_lapce_config();
+        config.ai_autocomplete.backend = "ollama".into();
+        config.ai_autocomplete.endpoint = "http://legacy.test".into();
+        assert!(!config.ai_chat.shared_connection);
+        assert_eq!(config.effective_ai_autocomplete().endpoint, "http://legacy.test");
+        config.ai_chat.shared_connection = true;
+        assert_eq!(config.effective_ai_autocomplete().backend, "local");
+        config.ai_chat.backend = "ollama".into();
+        let effective = config.effective_ai_autocomplete();
+        assert_eq!(effective.backend, "openai");
+        assert_eq!(effective.endpoint, config.ai_chat.endpoint);
+        assert_eq!(effective.remote_model, config.ai_autocomplete.remote_model);
+        assert_eq!(config.ai_autocomplete.endpoint, "http://legacy.test");
+        config.ai_chat.shared_connection = false;
+        assert_eq!(config.effective_ai_autocomplete().endpoint, "http://legacy.test");
     }
 }

@@ -20,6 +20,8 @@ pub struct ChatConfig {
         desc = "Backend: local (default, CPU Candle) or ollama (opt-in) (any OpenAI-compatible /v1 server - llm.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
     )]
     pub backend: String,
+    #[field_names(desc = "Use the shared AI connection for ghost text after explicit Apply. Legacy choices remain stored.")]
+    pub shared_connection: bool,
     #[field_names(desc = "Curated local instruct model. Download in the AI Chat local model manager.")]
     pub local_model: String,
     #[field_names(
@@ -50,6 +52,7 @@ impl Default for ChatConfig {
                 ),
             ],
             backend: "local".into(),
+            shared_connection: false,
             local_model: "qwen-chat-1.5b".into(),
             endpoint: "https://llm.izdrail.com".into(),
             model: "auto".into(),
@@ -66,6 +69,7 @@ mod tests {
     fn defaults_keep_chat_local_and_hosted_providers_disabled() {
         let config = ChatConfig::default();
         assert_eq!(config.backend, "local");
+        assert!(!config.shared_connection);
         assert_eq!(config.endpoint, "https://llm.izdrail.com");
         // The gateway's routing alias (verified 2026-10-08); /v1
         // re-probed 2026-10-19: validated 401 without
