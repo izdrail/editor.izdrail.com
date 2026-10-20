@@ -1714,11 +1714,24 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     key_focused.set(false);
                     keyboard_focus.set(None);
                     field_id.clear_focus();
-                    if event.modifiers.contains(Modifiers::SHIFT) {
-                        model_id.request_focus();
+                    let target = if event.modifiers.contains(Modifiers::SHIFT) {
+                        model_id
                     } else {
-                        save_id.request_focus();
-                    }
+                        save_id
+                    };
+                    target.request_focus();
+                    field_id.request_style();
+                    field_id.request_paint();
+                    target.request_style();
+                    target.request_paint();
+                    // Run after queued focus updates so the host need not
+                    // generate another input event to see the new ring.
+                    exec_after(Duration::from_millis(16), move |_| {
+                        field_id.request_style();
+                        field_id.request_paint();
+                        target.request_style();
+                        target.request_paint();
+                    });
                     return EventPropagation::Stop;
                 }
                 // Workbench shortcuts must reach the window dispatcher.

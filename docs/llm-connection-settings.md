@@ -106,3 +106,12 @@ Repeat actual click/type/Tab and Shift-Tab with screenshots of source and target
 rings; type after Shift-Tab and require Model changes, not key or terminal.
 Press Enter on Save with dummy/fixture values only. If handoff still fails,
 collect sanitized logical/physical key kind and focus IDs, never entered text.
+
+## Focus redraw (item 273)
+
+Tab handoff now requests style/paint on source and target immediately and once
+after queued focus updates. Forward still targets Save, Shift targets Model;
+no direction reversal was found in source. Host must distinguish an actual
+focus error from stale pixels by typing a dummy character after handoff, not
+only by inspecting the ring. Deferred redraw is a hypothesis-driven fix until
+the no-extra-event capture and actual destination agree.
