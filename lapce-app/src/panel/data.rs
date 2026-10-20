@@ -82,6 +82,28 @@ pub fn clamp_styles(
     }
 }
 
+/// Layouts saved before the right container defaulted to Chat carry
+/// active = 0, which is Document Symbol and draws blank without symbols.
+/// Move that default-looking state to Chat once on restore. A user who picked
+/// Document Symbol on purpose can switch back with its tab; the choice then
+/// persists as before (the migration only runs when index 0 is active and the
+/// order still lists Document Symbol first).
+pub fn prefer_chat_on_right(
+    styles: &mut im::HashMap<PanelPosition, PanelStyle>,
+    panels: &PanelOrder,
+) {
+    let Some(order) = panels.get(&PanelPosition::RightTop) else { return };
+    let Some(chat) = order.iter().position(|k| *k == PanelKind::Chat) else { return };
+    if order.front() != Some(&PanelKind::DocumentSymbol) {
+        return;
+    }
+    if let Some(style) = styles.get_mut(&PanelPosition::RightTop) {
+        if style.active == 0 {
+            style.active = chat;
+        }
+    }
+}
+
 // Persisted layouts from builds without debugging do not contain this panel.
 // Append only when absent: preserve custom placement and active panel indices.
 fn restore_debug_panel(panels: &mut PanelOrder) {
@@ -575,6 +597,26 @@ mod tests {
         let before = order.clone();
         ensure_core_panels(&mut order);
         assert_eq!(order, before);
+    }
+
+    #[test]
+    fn old_default_right_tab_migrates_to_chat() {
+        let mut order = PanelOrder::new();
+        order.insert(PanelPosition::RightTop, im::vector![PanelKind::DocumentSymbol, PanelKind::Chat]);
+        let mut styles = im::HashMap::new();
+        styles.insert(PanelPosition::RightTop, PanelStyle { active: 0, shown: true, maximized: false });
+        prefer_chat_on_right(&mut styles, &order);
+        assert_eq!(styles[&PanelPosition::RightTop].active, 1);
+        // An explicit later choice (active already Chat or another index) is kept.
+        styles.get_mut(&PanelPosition::RightTop).unwrap().active = 1;
+        prefer_chat_on_right(&mut styles, &order);
+        assert_eq!(styles[&PanelPosition::RightTop].active, 1);
+        // A custom order that does not start with Document Symbol is untouched.
+        let mut custom = PanelOrder::new();
+        custom.insert(PanelPosition::RightTop, im::vector![PanelKind::Chat, PanelKind::DocumentSymbol]);
+        styles.get_mut(&PanelPosition::RightTop).unwrap().active = 0;
+        prefer_chat_on_right(&mut styles, &custom);
+        assert_eq!(styles[&PanelPosition::RightTop].active, 0);
     }
 
     #[test]

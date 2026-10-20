@@ -479,6 +479,7 @@ impl WindowTabData {
                 crate::panel::data::ensure_core_panels(&mut panel_order);
                 let mut saved_styles = i.panel.styles.clone();
                 crate::panel::data::clamp_styles(&mut saved_styles, &panel_order);
+                crate::panel::data::prefer_chat_on_right(&mut saved_styles, &panel_order);
                 PanelData {
                     panels: cx.create_rw_signal(panel_order),
                     styles: cx.create_rw_signal(saved_styles),
