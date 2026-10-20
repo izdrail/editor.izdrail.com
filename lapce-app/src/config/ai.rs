@@ -1,17 +1,15 @@
 use serde::{Deserialize, Serialize};
 use structdesc::FieldNames;
-/// Ghost text defaults. Stefan's directive (2026-10-17): inline ghost text is
-/// served by his key-less Ollama at https://ai.izdrail.com; the local Candle
-/// lane stays as the on-device opt-in. Pinned by the tests at the bottom.
+/// On-device by default. Remote inference requires an explicit backend choice.
 #[derive(FieldNames, Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", default)]
 pub struct AiConfig {
     #[field_names(
-        desc = "AI ghost text at the cursor. The default ollama backend sends the code around the cursor to the configured endpoint; backend = local keeps everything on this device."
+        desc = "AI ghost text at the cursor. Local backend keeps inference on this device by default. Selecting ollama sends code around the cursor to the configured endpoint."
     )]
     pub enabled: bool,
     #[field_names(
-        desc = "Ghost text backend: ollama (default - code around the cursor is sent to the configured endpoint over the network) or local (CPU inference on this device - no code ever leaves this device)."
+        desc = "Ghost text backend: local (default, on-device CPU inference) or ollama (opt-in, code around the cursor sent to the configured endpoint)."
     )]
     pub backend: String,
     #[field_names(
@@ -55,11 +53,11 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            backend: "ollama".into(),
+            backend: "local".into(),
             endpoint: "https://ai.izdrail.com".into(),
             remote_model: "qwen2.5-coder:1.5b-instruct-q4_K_M".into(),
             timeout_ms: 15_000,
-            next_edit: true,
+            next_edit: false,
             local_model: "qwen-fim-1.5b".into(),
             model_path: String::new(),
             tokenizer_path: String::new(),
@@ -77,18 +75,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_serve_izdrail_ghost_text() {
+    fn defaults_keep_ghost_text_local() {
         let config = AiConfig::default();
         assert!(config.enabled);
-        assert_eq!(config.backend, "ollama");
+        assert_eq!(config.backend, "local");
         assert_eq!(config.endpoint, "https://ai.izdrail.com");
         // Verified on /api/tags and /v1/models 2026-10-17.
         assert_eq!(config.remote_model, "qwen2.5-coder:1.5b-instruct-q4_K_M");
         assert!(config.auto_trigger);
         let expected_timeout = 15_000;
         assert_eq!(config.timeout_ms, expected_timeout);
-        // Supercomplete chains off accepted ghost text by default.
-        assert!(config.next_edit);
+        // Remote next-edit prediction is opt-in.
+        assert!(!config.next_edit);
     }
 
     #[test]

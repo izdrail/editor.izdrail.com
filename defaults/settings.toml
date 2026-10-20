@@ -108,6 +108,8 @@ tab-close-button = "Right"
 open-editors-visible = true
 
 [ai-autocomplete]
+backend = "local"
+next-edit = false
 enabled = false
 model-path = ""
 tokenizer-path = ""
@@ -116,3 +118,6 @@ suffix-tokens = 128
 max-tokens = 32
 auto-trigger = false
 auto-trigger-debounce-ms = 400
+
+[ai-chat]
+backend = "local"

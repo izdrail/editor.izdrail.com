@@ -1,16 +1,11 @@
-//! AI chat defaults. Stefan's directive (2026-10-19): the default backend
-//! talks to his gateway at https://llm.izdrail.com (OpenAI-compatible /v1,
-//! ~197 models, `auto` routing; set LAPCE_LLM_API_KEY - the gateway rejects
-//! key-less calls with 401, and its Ollama emulation is disabled). His
-//! key-less Ollama at ai.izdrail.com stays selectable; the local Candle
-//! lane stays available as an opt-in. Pinned by the test at the bottom.
+//! Chat inference is local by default. Remote backend/provider use is opt-in.
 use serde::{Deserialize, Serialize};
 use structdesc::FieldNames;
 #[derive(FieldNames, Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", default)]
 pub struct ChatConfig {
     #[field_names(
-        desc = "Enable AI Chat. The ollama backend sends context on Send; local uses on-device CPU."
+        desc = "Enable AI Chat. Local on-device CPU inference is the default; selecting ollama sends context on Send."
     )]
     pub enabled: bool,
     #[field_names(
@@ -22,7 +17,7 @@ pub struct ChatConfig {
     )]
     pub hosted_providers: Vec<crate::agent_protocol::ProviderConfig>,
     #[field_names(
-        desc = "Backend: local (CPU Candle) or ollama (any OpenAI-compatible /v1 server - llm.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
+        desc = "Backend: local (default, CPU Candle) or ollama (opt-in) (any OpenAI-compatible /v1 server - llm.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
     )]
     pub backend: String,
     #[field_names(desc = "Curated local instruct model. Download in the AI Chat local model manager.")]
@@ -54,7 +49,7 @@ impl Default for ChatConfig {
                     crate::agent_protocol::ProviderKind::OpenRouter,
                 ),
             ],
-            backend: "ollama".into(),
+            backend: "local".into(),
             local_model: "qwen-chat-1.5b".into(),
             endpoint: "https://llm.izdrail.com".into(),
             model: "auto".into(),
@@ -68,9 +63,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_point_at_the_llm_gateway() {
+    fn defaults_keep_chat_local_and_hosted_providers_disabled() {
         let config = ChatConfig::default();
-        assert_eq!(config.backend, "ollama");
+        assert_eq!(config.backend, "local");
         assert_eq!(config.endpoint, "https://llm.izdrail.com");
         // The gateway's routing alias (verified 2026-10-08); /v1
         // re-probed 2026-10-19: validated 401 without
