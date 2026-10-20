@@ -3450,8 +3450,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 .to_string()
                         })
                         .style(move |s| {
-                            s.font_size(12.0).color(
-                                config.get().color(LapceColor::EDITOR_DIM),
+                            s.font_size(12.0).max_width_full().min_width(0.0)
+                                .text_overflow(floem::style::TextOverflow::Wrap).color(
+                                config.get().color(LapceColor::EDITOR_FOREGROUND),
                             )
                         }),
                     ))
@@ -3788,7 +3789,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         .style(|s| s.width_full().min_width(0.0).flex_shrink(0.0).gap(6.0)),
         label(move || {
             if data.busy.get() {
-                "Thinking... (local replies arrive as a full turn)".to_string()
+                let current_config = config.get();
+                let backend = &current_config.ai_chat.backend;
+                if data.acp.get() {
+                    "Agent is working... Use Stop to cancel.".to_string()
+                } else if backend == "local" {
+                    "Generating locally... Reply arrives as a full turn. Use Stop to cancel.".to_string()
+                } else {
+                    "Waiting for the endpoint... Use Stop to cancel.".to_string()
+                }
             } else {
                 let on_send = context(&indicator_tab)
                     .map(|c| format!("On Send: {}", c.indicator()))
@@ -3799,8 +3808,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         .style(move |s| {
             s.font_size(12.0)
                 .line_height(1.4)
-                .max_width_full()
-                .color(config.get().color(LapceColor::EDITOR_DIM))
+                .max_width_full().min_width(0.0).flex_shrink(0.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)
+                .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
         }),
         // Antigravity-style composer card: mode chips and the input live
         // inside one bordered card; send is a circular accent button.
