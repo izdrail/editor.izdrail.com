@@ -2250,6 +2250,37 @@ fn dropdown_button_style(
         })
 }
 
+/// Bounded error card keeps long server/transport feedback from pushing the
+/// composer outside its panel. Opening settings never retries a request.
+fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
+    let error = tab.chat.error;
+    let config = tab.common.config;
+    let main_split = tab.main_split.clone();
+    v_stack((
+        label(|| "Chat needs attention".to_string()).style(|s| s.font_bold()),
+        scroll(
+            label(move || error.get()).style(move |s| {
+                s.width_full().min_width(0.0)
+                    .text_overflow(floem::style::TextOverflow::Wrap)
+                    .color(config.get().color(LapceColor::LAPCE_ERROR))
+            }),
+        ).style(|s| s.width_full().max_height(100.0)),
+        label(|| "Open AI connection settings".to_string())
+            .keyboard_navigable()
+            .on_click_stop(move |_| main_split.open_settings())
+            .style(move |s| s.padding(6.0).border(1.0).border_radius(4.0)
+                .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                .cursor(CursorStyle::Pointer)),
+        label(|| "For connection or 401/403 errors: select AI Chat, check endpoint/model and key source, then Test connection. Retry only when ready.".to_string())
+            .style(|s| s.max_width_full().min_width(0.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)),
+    ))
+    .style(move |s| s.width_full().min_width(0.0).flex_shrink(0.0)
+        .padding(8.0).gap(6.0).border(1.0).border_radius(6.0)
+        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+        .apply_if(error.get().is_empty(), |s| s.hide()))
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let focus = tab.common.focus;
@@ -3698,10 +3729,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }),
         pending_command_card(tab.clone()),
         crate::agent_review_ui::panel(tab.clone()),
-        label(move || data.error.get()).style(move |s| {
-            s.max_width_full()
-                .color(config.get().color(LapceColor::LAPCE_ERROR))
-        }),
+        chat_error_card(tab.clone()),
         // Quiet trust line (Antigravity keeps chrome minimal): one dim
         // line with the state and a single action, next to the composer.
         h_stack((
