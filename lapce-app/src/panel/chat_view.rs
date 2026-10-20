@@ -3730,9 +3730,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         pending_command_card(tab.clone()),
         crate::agent_review_ui::panel(tab.clone()),
         chat_error_card(tab.clone()),
-        // Quiet trust line (Antigravity keeps chrome minimal): one dim
-        // line with the state and a single action, next to the composer.
-        h_stack((
+        // Approval must follow a complete readable disclosure, including
+        // endpoint. Never ellipsize the text that explains this permission.
+        v_stack((
             label(move || {
                 if data.trust_reads.get() {
                     "Project reads approved for this window".to_string()
@@ -3746,9 +3746,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .style(move |s| {
                 s.font_size(11.0)
                     .min_width(0.0)
-                    .text_ellipsis()
+                    .max_width_full()
+                    .flex_shrink(0.0)
+                    .text_overflow(floem::style::TextOverflow::Wrap)
                     .selectable(false)
-                    .color(config.get().color(LapceColor::EDITOR_DIM))
+                    .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
             }),
             label(move || {
                 if data.trust_reads.get() {
@@ -3780,7 +3782,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .color(config.get().color(LapceColor::EDITOR_LINK))
             }),
         ))
-        .style(|s| s.items_center().gap(6.0)),
+        .style(|s| s.width_full().min_width(0.0).flex_shrink(0.0).gap(6.0)),
         label(move || {
             if data.busy.get() {
                 "Thinking... (local replies arrive as a full turn)".to_string()

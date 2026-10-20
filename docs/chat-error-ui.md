@@ -20,3 +20,17 @@ Host regression matrix, at normal/narrow panel widths:
 This bounds the error body only. The full chat panel has other fixed sections
 and can still require further work at extremely short heights. Trust disclosure
 ellipsis and mode-specific empty state remain follow-ups, not solved here.
+
+## Trust disclosure (item 265)
+
+The host 57a0150 screenshot showed the endpoint in the project-read approval
+line truncated before the Approve action. The disclosure now wraps at ordinary
+foreground contrast, with its action on a separate row below. This changes no
+permission condition, endpoint binding, approve/revoke behavior or default.
+
+Host checks: narrow/normal chat panel, long fixture endpoint, unapproved and
+approved states. Read the complete endpoint and not-approved phrase without
+horizontal scrolling; Approve/Revoke must remain visible and not overlap the
+composer. Check short-height layout because the disclosure needs extra height.
+Do not approve real project disclosure merely to obtain a screenshot. This
+source change does not prove clicks, focus or permission behavior at runtime.
