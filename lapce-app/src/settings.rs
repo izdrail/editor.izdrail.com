@@ -591,6 +591,9 @@ fn settings_item_view(
     // ordinary settings scroll. No fixed-height sibling/nested viewport.
     let connection_panel = if item.header && item.kind == "AI Chat" {
         stack((
+            label(|| "Chat is the conversation panel. Autocomplete is inline code suggestions. They use separate models; both default to local inference.".to_string())
+                .style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
+                    .text_overflow(floem::style::TextOverflow::Wrap).padding_vert(12.0)),
             llm_connection_view(settings_data.common.clone()),
             ai_download_view(settings_data.common.clone()),
             curated_models_view(settings_data.common.clone()),
@@ -1756,7 +1759,12 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         if let Some(message) = result.get() { probe.set(Some(message)); busy.set(false); }
     });
     stack((
-        label(|| "LLM connection".to_string()),
+        label(|| "Optional remote connection (not the local inference engine)".to_string())
+            .style(|s| s.font_bold().max_width_pct(100.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || format!("Chat backend: {}. Saving a remote key does not enable remote inference.", config.get().ai_chat.backend))
+            .style(|s| s.max_width_pct(100.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)),
         stack((
             label(|| "Endpoint".to_string()),
             floem::views::text_input(endpoint).style(move |s| {
@@ -1821,5 +1829,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             .text_overflow(floem::style::TextOverflow::Wrap)),
         label(|| "Test sends a one-token request, which may use provider quota. Saved keys are local plaintext in a private file (0600 on Unix), not encrypted. Never commit that file.".to_string())
             .style(|s| s.max_width_pct(100.0)),
-    )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(8.0).padding_top(12.0).padding_bottom(16.0))
+    )).style(move |s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(10.0)
+        .padding(12.0).margin_bottom(16.0).border(1.0).border_radius(6.0)
+        .border_color(config.get().color(LapceColor::LAPCE_BORDER)))
 }

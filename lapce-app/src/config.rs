@@ -910,6 +910,10 @@ impl LapceConfig {
     /// update the dropdown items.
     pub fn get_dropdown_info(&self, kind: &str, key: &str) -> Option<DropdownInfo> {
         match (kind, key) {
+            ("ai autocomplete" | "ai-autocomplete", "backend") => Some(DropdownInfo {
+                active_index: usize::from(self.ai_autocomplete.backend == "ollama"),
+                items: im::vector!["local".into(), "ollama".into()],
+            }),
             ("ai chat" | "ai-chat", "backend") => Some(DropdownInfo {
                 active_index: usize::from(self.ai_chat.backend == "ollama"),
                 items: im::vector!["local".into(), "ollama".into()],
