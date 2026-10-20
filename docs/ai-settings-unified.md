@@ -72,3 +72,5 @@ Settings rows are keyed by value, so unchanged rows survive a config reload and 
 ## Spacing
 
 The AI page uses one scale: 12px between page blocks, 14px between blocks inside the connection card, 8px between a field label and its input. The previous layout had no gap between the routing text, the advanced toggle and the card.
+
+The AI block separates its rows with explicit bottom margins (12px) on the routing line, the advanced toggle and the restore row. The stack gap alone did not separate them in the running editor.

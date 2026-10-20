@@ -626,7 +626,7 @@ fn settings_item_view(
             label(move || {
                 let c = config.get();
                 format!("Current routing: Chat = {}; ghost text = {}. {}", c.ai_chat.backend, c.effective_ai_autocomplete().backend, if c.ai_chat.shared_connection { "Shared connection applied." } else { "Legacy choices preserved until Apply shared connection." })
-            }).style(|s| s.max_width_pct(100.0)
+            }).style(|s| s.max_width_pct(100.0).margin_bottom(AI_PANEL_GAP)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
             label(move || if ai_advanced.get() {
                 "Hide advanced legacy ghost connection".to_string()
@@ -634,11 +634,11 @@ fn settings_item_view(
                 "Show advanced legacy ghost connection".to_string()
             }).keyboard_navigable().on_click_stop(move |_| {
                 ai_advanced.update(|v| *v = !*v);
-            }).style(move |s| ai_button_style(s, config)),
+            }).style(move |s| ai_button_style(s, config).margin_bottom(AI_PANEL_GAP)),
             label(|| "Restore stored legacy ghost routing (advanced)".to_string())
                 .keyboard_navigable().on_click_stop(move |_| {
                     LapceConfig::update_file("ai-chat", "shared-connection", toml_edit::Value::from(false));
-                }).style(move |s| ai_button_style(s, config)
+                }).style(move |s| ai_button_style(s, config).margin_bottom(AI_PANEL_GAP)
                     .apply_if(!ai_advanced.get(), |s| s.hide())),
             llm_connection_view(settings_data.common.clone()),
             ai_download_view(settings_data.common.clone()),
@@ -1552,6 +1552,8 @@ mod model_selection_ui_tests {
 
     #[test]
     fn ai_spacing_scale_is_ordered() {
+        // Block separation uses margins, so it holds even where flex gap does not.
+        assert!(super::AI_PANEL_GAP >= 8.0);
         assert!(super::AI_FIELD_GAP < super::AI_PANEL_GAP);
         assert!(super::AI_PANEL_GAP <= super::AI_CARD_GAP);
     }
