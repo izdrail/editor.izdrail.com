@@ -384,6 +384,9 @@ pub fn settings_view(
     let settings_content_size = create_rw_signal(Size::ZERO);
     let scroll_pos = create_rw_signal(Point::ZERO);
 
+    // The auxiliary pane follows explicit navigation, not scroll-derived
+    // headings. Otherwise changing its height feeds back into scroll position.
+    let auxiliary_kind = create_rw_signal(String::new());
     let current_kind = {
         create_memo(move |_| {
             let scroll_pos = scroll_pos.get();
@@ -411,11 +414,13 @@ pub fn settings_view(
                               pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
                               margin: f32| {
         let kind = k.clone();
+        let auxiliary_selection = kind.clone();
         container(
             label(move || k.clone())
                 .style(move |s| s.text_ellipsis().padding_left(margin)),
         )
         .on_click_stop(move |_| {
+            auxiliary_kind.set(auxiliary_selection.clone());
             if let Some(pos) = pos() {
                 ensure_visible.set(
                     settings_content_size
@@ -522,18 +527,19 @@ pub fn settings_view(
             container(
                 scroll(
                     stack((
-                        llm_connection_view(connection_common).style(move |s| s.apply_if(current_kind.get().as_str() != "AI Chat", |s| s.hide())),
+                        llm_connection_view(connection_common).style(move |s| s.apply_if(auxiliary_kind.get().as_str() != "AI Chat", |s| s.hide())),
                         ai_download_view(ai_common.clone()),
                         curated_models_view(ai_common),
                     ))
                     .style(|s| s.flex_col().width_pct(100.0)),
                 )
-                .style(|s| s.width_pct(100.0).height(310.0).flex_shrink(0.0)),
+                .style(|s| s.width_pct(100.0).height(310.0).flex_shrink(0.0)
+                    .set(PropagatePointerWheel, false)),
             )
             .style(move |s| {
                 s.width_pct(100.0).apply_if(
                     !matches!(
-                        current_kind.get().as_str(),
+                        auxiliary_kind.get().as_str(),
                         "AI Autocomplete" | "AI Chat"
                     ),
                     |s| s.hide(),
