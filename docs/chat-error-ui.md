@@ -74,3 +74,12 @@ are now combined into one callback. This is a source-confirmed cause for the
 reflow fix not running, distinct from the speculative focus redraw issue.
 Re-test panel open/close at AI Chat and require the heading at the top, then
 wheel/sidebar navigation to confirm no persistent scroll lock.
+
+## Section offsets (item 274)
+
+Section lookup now sums measured row heights reactively instead of comparing
+header-local rect origins with a scroll-content offset. Sidebar/recovery/reflow
+use the same offsets. This corrects a coordinate-space mismatch and untracked
+header-position reads that could select the last section during reflow.
+Host must verify AI Chat stays selected through right-panel open/close, and
+Core/Editor/Terminal navigation plus manual wheel are not locked or jumping.

@@ -388,50 +388,40 @@ pub fn settings_view(
     let settings_content_size = create_rw_signal(Size::ZERO);
     let scroll_pos = create_rw_signal(Point::ZERO);
 
-    let current_kind = {
-        create_memo(move |_| {
-            let scroll_pos = scroll_pos.get();
-            let scroll_y = scroll_pos.y + 30.0;
-
-            let plugin_kinds = plugin_kinds.get_untracked();
-            for (kind, pos) in plugin_kinds.iter().rev() {
-                if pos.get_untracked().y < scroll_y {
-                    return kind.to_string();
-                }
-            }
-
-            let kinds = kinds.get();
-            for (kind, pos) in kinds.iter().rev() {
-                if pos.get_untracked().y < scroll_y {
-                    return kind.to_string();
-                }
-            }
-
-            kinds.get(0).unwrap().0.to_string()
-        })
-    };
+    // Derive section offsets from row heights, not child-local rect origins.
+    // Header positions must be tracked reactively as earlier rows reflow.
+    let section_offsets = create_memo(move |_| {
+        let mut y = 0.0;
+        let mut offsets = Vec::new();
+        for item in filtered_items_signal.get() {
+            if item.header { offsets.push((item.kind.clone(), y)); }
+            y += item.size.get().height;
+        }
+        offsets
+    });
+    let current_kind = create_memo(move |_| {
+        let y = scroll_pos.get().y + 30.0;
+        section_offsets.get().iter().rev()
+            .find(|(_, top)| *top <= y)
+            .map(|(kind, _)| kind.clone())
+            .unwrap_or_else(|| "Core".into())
+    });
 
     let reflow_anchor = create_rw_signal(None::<String>);
     let content_width = create_rw_signal(0.0_f64);
     let switcher_item = move |k: String,
-                              pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
+                              _pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
                               margin: f32| {
         let kind = k.clone();
+        let target_kind = kind.clone();
         container(
             label(move || k.clone())
                 .style(move |s| s.text_ellipsis().padding_left(margin)),
         )
         .on_click_stop(move |_| {
-            settings_section.set(None);
+            settings_section.set(Some(target_kind.clone()));
             reflow_anchor.set(None);
-            if let Some(pos) = pos() {
-                ensure_visible.set(
-                    settings_content_size
-                        .get_untracked()
-                        .to_rect()
-                        .with_origin(pos.get_untracked()),
-                );
-            }
+
         })
         .style(move |s| {
             let config = config.get();
@@ -552,8 +542,8 @@ pub fn settings_view(
                 })
                 .scroll_to(move || {
                     let target = settings_section.get().or_else(|| reflow_anchor.get())?;
-                    kinds.get().iter().find(|(kind, _)| kind == &target)
-                        .map(|(_, pos)| pos.get())
+                    section_offsets.get().iter().find(|(kind, _)| kind == &target)
+                        .map(|(_, y)| Point::new(0.0, *y))
                 })
                 .on_resize(move |rect| {
                     let width = rect.width();
