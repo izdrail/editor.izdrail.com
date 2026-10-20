@@ -1124,6 +1124,7 @@ impl View for TextInput {
 
         if is_handled {
             self.id.request_layout();
+            self.id.request_paint();
             self.last_cursor_action_on = Instant::now();
         }
 
@@ -1267,7 +1268,8 @@ impl View for TextInput {
     }
 
     fn paint(&mut self, cx: &mut crate::context::PaintCx) {
-        if self.buffer.with_untracked(|buff| buff.is_empty()) {
+        if self.buffer.with_untracked(|buff| buff.is_empty())
+            && !cx.app_state.is_focused(&self.id()) {
             if let Some(placeholder_buff) = &self.placeholder_buff {
                 self.paint_placeholder_text(placeholder_buff, cx);
             }

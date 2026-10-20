@@ -547,6 +547,7 @@ impl View for TextInput {
                 }
             }
             self.id.request_layout();
+            self.id.request_paint();
         }
     }
 
@@ -736,7 +737,7 @@ impl View for TextInput {
 
             if !self.content.is_empty() {
                 cx.draw_text(text_layout, point);
-            } else if !self.placeholder.is_empty() {
+            } else if !self.placeholder.is_empty() && !self.focus && !cx.is_focused(self.id) {
                 cx.draw_text(self.placeholder_text_layout.as_ref().unwrap(), point);
             }
 
