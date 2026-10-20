@@ -766,3 +766,12 @@ key = "ctrl+alt+m"
 command = "emmet_expand"
 mode = "i"
 when = "editor_focus && !list_focus"
+
+# Problem navigation without F8 (keyboards without a function row).
+[[keymaps]]
+key = "alt+shift+n"
+command = "next_error"
+
+[[keymaps]]
+key = "alt+shift+p"
+command = "previous_error"

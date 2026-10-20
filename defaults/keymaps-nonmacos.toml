@@ -344,3 +344,9 @@ when = "!file_explorer_focus"
 [[keymaps]]
 key = "ctrl+shift+d"
 command = "goto_definition"
+
+# Rename in the file explorer without F2.
+[[keymaps]]
+key = "ctrl+shift+r"
+command = "file_explorer.rename"
+when = "file_explorer_focus"
