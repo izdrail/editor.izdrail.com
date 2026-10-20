@@ -39,19 +39,31 @@ pub fn typescript_definitions(path: &str, source: &str, tsx: bool) -> Result<Vec
     extract_definitions(path, source, "typescript", typescript_language(tsx))
 }
 
+/// PHP and mixed PHP/HTML declarations. Blade directives are not PHP syntax.
+pub fn php_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry>> {
+    // SAFETY: pinned generated static PHP grammar is non-null ABI 14,
+    // accepted by the single workspace runtime (13..=14).
+    let language = unsafe {
+        let pointer = (tree_sitter_php::LANGUAGE_PHP.into_raw())();
+        assert!(!pointer.is_null(), "PHP grammar returned null");
+        tree_sitter::Language::from_raw(pointer.cast())
+    };
+    extract_definitions(path, source, "php", language)
+}
+
 fn extract_definitions(path: &str, source: &str, language_id: &str, language: tree_sitter::Language) -> Result<Vec<IndexEntry>> {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&language)
         .map_err(|err| IndexError::SymbolParse(err.to_string()))?;
     let tree = parser.parse(source, None)
-        .ok_or_else(|| IndexError::SymbolParse("JavaScript parse returned no tree".into()))?;
+        .ok_or_else(|| IndexError::SymbolParse("Definition parse returned no tree".into()))?;
     let mut cursor = tree.walk();
     let mut entries = Vec::new();
     loop {
         let node = cursor.node();
-        if matches!(node.kind(), "function_declaration" | "generator_function_declaration" | "class_declaration" | "method_definition" | "interface_declaration" | "type_alias_declaration" | "enum_declaration") {
+        if matches!(node.kind(), "function_declaration" | "generator_function_declaration" | "class_declaration" | "method_definition" | "interface_declaration" | "type_alias_declaration" | "enum_declaration" | "function_definition" | "method_declaration" | "trait_declaration") {
             if let Some(name) = node.child_by_field_name("name") {
-                if matches!(name.kind(), "identifier" | "property_identifier" | "type_identifier") && !name.is_missing() {
+                if matches!(name.kind(), "identifier" | "property_identifier" | "type_identifier" | "name") && !name.is_missing() {
                     if let Ok(text) = name.utf8_text(source.as_bytes()) {
                         if !text.is_empty() {
                             let point = name.start_position();
@@ -84,6 +96,17 @@ fn extract_definitions(path: &str, source: &str, language_id: &str, language: tr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn php_declarations_and_embedded_html_have_source_positions() {
+        let source = "<h1>Example</h1>\n<?php\ninterface Contract {}\ntrait Shared {}\nclass Cart { public function total() {} }\nfunction checkout() {}\nenum State { case Open; }";
+        let entries = php_definitions("cart.php", source).unwrap();
+        let names: Vec<_> = entries.iter().map(|e| e.symbol.as_deref().unwrap()).collect();
+        assert_eq!(names, ["Contract", "Shared", "Cart", "total", "checkout", "State"]);
+        assert_eq!((entries[0].line, entries[0].col), (3, 10));
+        assert!(entries.iter().all(|e| e.language == "php"));
+        assert!(php_definitions("a.php", "<?php /* function fake() {} */ checkout(); $x = 'class Fake {}';").unwrap().is_empty());
+    }
 
     #[test]
     fn typescript_and_tsx_grammars_accept_runtime_and_extract_types() {

@@ -141,6 +141,11 @@ pub fn index_workspace(
                 index.add_entry(&entry)?;
             }
         }
+        if language == "php" {
+            for entry in crate::symbols::php_definitions(&relative, &body)? {
+                index.add_entry(&entry)?;
+            }
+        }
         if language == "typescript" {
             let tsx = path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("tsx"));
             for entry in crate::symbols::typescript_definitions(&relative, &body, tsx)? {
@@ -244,9 +249,17 @@ mod tests {
         assert_eq!(reports.last(), Some(&2));
 
         let php_hits = index.search("render_checkout", 10).unwrap();
-        assert_eq!(php_hits.len(), 1);
-        assert_eq!(php_hits[0].path, "src/checkout.php");
-        assert_eq!(php_hits[0].language, "php");
+        // PHP now contributes both its whole-file body and a definition.
+        // Search ranks both; assert each record deliberately, not their order.
+        assert_eq!(php_hits.len(), 2);
+        assert!(php_hits.iter().all(|hit| hit.path == "src/checkout.php" && hit.language == "php"));
+        let file_hits: Vec<_> = php_hits.iter().filter(|hit| hit.kind == EntryKind::File).collect();
+        assert_eq!(file_hits.len(), 1);
+        assert_eq!(file_hits[0].symbol, None);
+        let definitions: Vec<_> = php_hits.iter().filter(|hit| hit.kind == EntryKind::SymbolDef).collect();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].symbol.as_deref(), Some("render_checkout"));
+        assert_eq!((definitions[0].line, definitions[0].col), (1, 15));
 
         let ts_hits = index.search("cartTotal", 10).unwrap();
         assert_eq!(ts_hits.len(), 1);
@@ -329,6 +342,21 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].path, "page.tsx");
         assert!(index.symbol_prefix("page", "javascript", 10).unwrap().is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn php_workspace_symbols_are_searchable() {
+        let dir = temp_dir("php");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("Cart.php"), "<?php class Cart { function total() {} }").unwrap();
+        let index = ProjectIndex::in_memory().unwrap();
+        let stats = index_workspace(&dir, &index, &AtomicBool::new(false), |_| {}).unwrap();
+        assert_eq!(stats.files_indexed, 1);
+        let hits = index.symbol_prefix("cart", "php", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "Cart.php");
+        assert_eq!(index.symbol_prefix("total", "php", 10).unwrap().len(), 1);
         fs::remove_dir_all(&dir).unwrap();
     }
 

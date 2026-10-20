@@ -117,3 +117,17 @@ components are included; arrow components and imported bindings are not.
 Both grammars emit ABI 14 and use the existing 0.22.6 runtime via the static
 LanguageFn bridge. Build cc ^1.1 permits the workspace's cc 1.2; the grammar's
 newer runtime dependency is dev-only. UI completion remains pending.
+
+## PHP definitions (item 255)
+
+Pinned PHP grammar 0.23.11 emits ABI 14 and builds with cc ^1.1, using
+LanguageFn with the existing runtime. PHP/phtml files now yield class,
+interface, trait, enum, function and method definitions, including PHP inside
+HTML. Names are lexical and unqualified: no namespace resolution, container,
+Eloquent, hook or property intelligence. Blade files share the .php mapping;
+only genuine PHP syntax is parsed, not @php/@class/@foreach directives or
+Blade component tags. Dedicated Blade extraction remains pending.
+
+A PHP language-server toast is separate: its "0 PHP files" is that server's
+reported count, not this index's count. Never relabel one subsystem's count as
+another's or present this parser as a fix for the server's own indexing.
