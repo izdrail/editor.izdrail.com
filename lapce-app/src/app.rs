@@ -4313,6 +4313,33 @@ pub fn launch() {
             .unwrap();
     }
 
+    // Periodic layout autosave. SIGTERM/SIGINT and crashes skip the close
+    // path, so without this the panel layout is lost. The thread only sends
+    // a unit tick; the save itself runs on the UI thread.
+    {
+        let (tx, rx) = sync_channel::<()>(1);
+        let tick = create_signal_from_channel(rx);
+        let app_data = app_data.clone();
+        let db = db.clone();
+        create_effect(move |_| {
+            if tick.get().is_some() && !app_data.app_terminated.get_untracked() {
+                if let Err(err) = db.save_app(&app_data) {
+                    tracing::error!("autosave: {:?}", err);
+                }
+            }
+        });
+        std::thread::Builder::new()
+            .name("LayoutAutosave".to_owned())
+            .spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                if tx.try_send(()).is_err() {
+                    // Full: the UI is busy; the next tick will retry.
+                    continue;
+                }
+            })
+            .unwrap();
+    }
+
     {
         let app_data = app_data.clone();
         app_data.app_command.listen(move |command| {
