@@ -134,10 +134,18 @@ pub fn index_workspace(
             .unwrap_or(path)
             .to_string_lossy()
             .replace('\\', "/");
+        let language = language_for_path(path);
+        // Only plain JavaScript/JSX uses this grammar. TS/Vue are not
+        // parsed as JS and must get their own tested grammar path.
+        if language == "javascript" {
+            for entry in crate::symbols::javascript_definitions(&relative, &body)? {
+                index.add_entry(&entry)?;
+            }
+        }
         index.add_entry(&IndexEntry {
             path: relative,
             kind: EntryKind::File,
-            language: language_for_path(path),
+            language,
             symbol: None,
             line: 0,
             col: 0,
@@ -280,6 +288,26 @@ mod tests {
         assert!(index.search("originaltoken", 10).unwrap().is_empty());
         assert!(index.search("deletedtoken", 10).unwrap().is_empty());
         assert_eq!(index.search("replacementtoken", 10).unwrap().len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn javascript_definitions_feed_prefix_candidates_and_rescan_removes_old_names() {
+        let dir = temp_dir("symbols");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("cart.js"), "export function Checkout() {}" ).unwrap();
+        let index = ProjectIndex::in_memory().unwrap();
+        let cancel = AtomicBool::new(false);
+        let stats = index_workspace(&dir, &index, &cancel, |_| {}).unwrap();
+        assert_eq!(stats.files_indexed, 1);
+        let hits = index.symbol_prefix("check", "javascript", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "cart.js");
+        assert_eq!((hits[0].line, hits[0].col), (1, 16));
+        fs::write(dir.join("cart.js"), "function Invoice() {}" ).unwrap();
+        index_workspace(&dir, &index, &cancel, |_| {}).unwrap();
+        assert!(index.symbol_prefix("check", "javascript", 10).unwrap().is_empty());
+        assert_eq!(index.symbol_prefix("inv", "javascript", 10).unwrap().len(), 1);
         fs::remove_dir_all(&dir).unwrap();
     }
 

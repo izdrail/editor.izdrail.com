@@ -81,6 +81,29 @@ matching. Names pass through Tantivy's default TEXT tokenizer; long tokens
 and punctuation follow that tokenizer's rules. Ranking/ties are not a stable
 completion order. A zero limit returns no candidates.
 
-This API is preparation only: the walker currently emits file records, not
-symbol definitions, and the completion UI does not call it yet. Extraction
-and integration must land before any project-wide autocomplete claim.
+This API is preparation only: the walker now emits JavaScript definitions (item 251), but other languages
+and completion UI integration are pending. No project-wide autocomplete
+claim follows from the candidate API alone.
+
+## JavaScript definition extraction (item 251)
+
+The first-open walker now ships a separate pinned tree-sitter JavaScript
+parser (tree-sitter 0.22.6, JS grammar 0.23.1). It emits named functions,
+generator declarations, classes and identifier-named methods, with 1-based
+line and 0-based UTF-8 byte column. Comments, calls, strings and computed
+method names are not definitions. File counts still count files, not records.
+
+This does not reuse Lexilla paint state or user-installed grammars. TypeScript,
+Vue, PHP and Liquid extraction remain pending. Local variables, imports,
+references, type resolution, incremental edits and completion UI integration
+are not included. Error-tolerant trees may yield partial definitions from
+broken source; these candidates are hints, not safe rename targets. Each file
+currently creates a fresh parser, so performance still needs measurement.
+
+The extraction runtime uses the same native tree-sitter 0.22.6 as core.
+Grammar 0.23.1 normally depends only on tree-sitter-language ^0.1, not a
+second native runtime. A documented LanguageFn raw-pointer bridge constructs
+0.22.6's Language from the generated static grammar pointer. Grammar ABI 14
+is in runtime's accepted 13..14 range, checked by a test and set_language.
+Runtime cc ^1.0.95 and grammar cc ^1.1 both accept the workspace's cc 1.2.
+The grammar's newer runtime dependency is dev-only and is not used here.

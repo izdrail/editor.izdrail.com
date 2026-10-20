@@ -6,6 +6,7 @@
 //! The schema and the build plan live in docs/project-index.md.
 
 pub mod walker;
+pub mod symbols;
 
 use std::fs;
 use std::path::Path;
@@ -78,6 +79,8 @@ pub enum IndexError {
     Io(#[from] std::io::Error),
     #[error("project index schema does not match this editor version; use a new cache directory")]
     SchemaMismatch,
+    #[error("symbol extraction: {0}")]
+    SymbolParse(String),
     #[error("query parse: {0}")]
     QueryParse(#[from] QueryParserError),
 }
