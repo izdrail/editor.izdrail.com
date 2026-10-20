@@ -1055,6 +1055,10 @@ impl LapceConfig {
                 "local".into()
             };
             ai.endpoint = self.ai_chat.endpoint.clone();
+        } else if ai.backend != "ollama" {
+            // Before shared routing existed every unknown string used local.
+            // A stored value named like our new internal lane is not consent.
+            ai.backend = "local".into();
         }
         ai
     }
@@ -1279,6 +1283,19 @@ mod vsix_import_smoke {
 
 #[cfg(test)]
 mod shared_ai_tests {
+    #[test]
+    fn unknown_legacy_backend_cannot_activate_gateway() {
+        let mut config = super::LapceConfig::default_lapce_config();
+        for backend in ["openai", "remote", "", "LOCAL"] {
+            config.ai_autocomplete.backend = backend.into();
+            config.ai_chat.backend = "ollama".into();
+            assert_eq!(config.effective_ai_autocomplete().backend, "local");
+            assert_eq!(config.ai_autocomplete.backend, backend);
+        }
+        config.ai_chat.shared_connection = true;
+        assert_eq!(config.effective_ai_autocomplete().backend, "openai");
+    }
+
     #[test]
     fn shared_ai_is_explicit_and_preserves_legacy_values() {
         let mut config = super::LapceConfig::default_lapce_config();

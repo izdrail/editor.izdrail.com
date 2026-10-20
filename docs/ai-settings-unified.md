@@ -49,3 +49,12 @@ stale doc/cursor/config rejection, suffix de-duplication, accept/reject and two
 model fields. Capture normal/narrow shared choice, disclosure, feature toggles,
 advanced restore and fresh-local sidebar. Model output quality and remote quota
 are not established by parser tests. No real project code or key in fixtures.
+
+## Unknown legacy backend guard (item 290)
+
+Before shared Apply, only the legacy explicit `ollama` value may select remote
+inference. Every other stored ghost backend value, including `openai`, remains
+local. Preserve the raw stored value; normalize only the effective routing.
+This prevents the new internal lane name from reinterpreting an old unknown
+value as remote approval. Host: unknown_legacy_backend_cannot_activate_gateway,
+then a loopback fixture with saved openai and shared=false must see zero requests.
