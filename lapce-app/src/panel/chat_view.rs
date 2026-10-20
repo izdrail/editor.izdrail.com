@@ -3340,6 +3340,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 .style(move |s| {
                                     s.padding(6.0)
                                         .flex_grow(1.0)
+                                        .flex_shrink(1.0)
+                                        .flex_basis(0.0)
                                         .min_width(0.0)
                                         .text_ellipsis()
                                         .cursor(CursorStyle::Pointer)
@@ -3378,6 +3380,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 })
                                 .style(move |s| {
                                     s.padding(6.0)
+                                        .flex_shrink(0.0)
                                         .cursor(CursorStyle::Pointer)
                                         .selectable(false)
                                         .color(config.get().color(LapceColor::EDITOR_DIM))
@@ -3393,8 +3396,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         })
                                 }),
                         ))
+                        .style(|s| s.width_full().min_width(0.0).items_center())
                     },
-                ),
+                )
+                .style(|s| s.width_full().min_width(0.0).flex_col()),
             )
             .style(move |s| {
                 s.apply_if(!show_sessions.get(), |s| s.hide())
