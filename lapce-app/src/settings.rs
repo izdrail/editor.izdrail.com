@@ -643,7 +643,7 @@ fn settings_item_view(
             llm_connection_view(settings_data.common.clone()),
             ai_download_view(settings_data.common.clone()),
             curated_models_view(settings_data.common.clone()),
-        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0)).into_any()
+        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(AI_PANEL_GAP)).into_any()
     } else {
         empty().into_any()
     };
@@ -1521,6 +1521,12 @@ fn ai_download_view(common: Rc<CommonData>) -> impl View {
             .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
     })
 }
+/// Vertical rhythm of the AI page: gap between page blocks, between blocks
+/// inside the connection card, and between a field label and its input.
+const AI_PANEL_GAP: f32 = 12.0;
+const AI_CARD_GAP: f32 = 14.0;
+const AI_FIELD_GAP: f32 = 8.0;
+
 fn pending_backend_label(backend: &str) -> String {
     let name = if backend == "local" { "Local" } else { "Remote" };
     format!("Pending backend: {name}. Changes activate only on Apply.")
@@ -1542,6 +1548,12 @@ mod model_selection_ui_tests {
         assert_eq!(super::ai_settings_section("AI Autocomplete"), "AI");
         assert_eq!(super::ai_settings_section("AI"), "AI");
         assert_eq!(super::ai_settings_section("Editor"), "Editor");
+    }
+
+    #[test]
+    fn ai_spacing_scale_is_ordered() {
+        assert!(super::AI_FIELD_GAP < super::AI_PANEL_GAP);
+        assert!(super::AI_PANEL_GAP <= super::AI_CARD_GAP);
     }
 
     #[test]
@@ -1857,11 +1869,11 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     .padding(8.0).border(1.0).border_radius(6.0)
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             }),
-        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
+        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(AI_FIELD_GAP)),
         stack((
             label(|| "Chat remote model".to_string()),
             model_input,
-        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
+        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(AI_FIELD_GAP)),
         label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),
         field,
         label(move || {
@@ -1915,7 +1927,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             .text_overflow(floem::style::TextOverflow::Wrap)),
         label(|| "Test sends a one-token request, which may use provider quota. Saved keys are local plaintext in a private file (0600 on Unix), not encrypted. Never commit that file.".to_string())
             .style(|s| s.max_width_pct(100.0)),
-    )).style(move |s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(10.0)
+    )).style(move |s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(AI_CARD_GAP)
         .padding(12.0).margin_bottom(16.0).border(1.0).border_radius(6.0)
         .border_color(config.get().color(LapceColor::LAPCE_BORDER)))
 }

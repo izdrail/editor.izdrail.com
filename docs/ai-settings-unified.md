@@ -68,3 +68,7 @@ After Apply, the Settings page stays on the AI section instead of resetting to C
 ## Scroll after Apply (root cause)
 
 Settings rows are keyed by value, so unchanged rows survive a config reload and keep writing their height to the size signal they were built with. Rebuilt items used to get fresh zero-size signals, so every section offset read 0 and the page scrolled to Core. SettingsData now keeps one size signal per (kind, name) across rebuilds.
+
+## Spacing
+
+The AI page uses one scale: 12px between page blocks, 14px between blocks inside the connection card, 8px between a field label and its input. The previous layout had no gap between the routing text, the advanced toggle and the card.
