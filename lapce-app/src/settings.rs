@@ -1612,7 +1612,16 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     let initial = config.get_untracked();
     let endpoint = create_rw_signal(initial.ai_chat.endpoint.clone());
     let model = create_rw_signal(initial.ai_chat.model.clone());
-    let key = create_rw_signal(String::new());
+    // Debug-only visual fixture: fixed dummy text, never an arbitrary secret.
+    // This validates masking pixels only, not keyboard/paste interaction.
+    let fixture_key = if cfg!(debug_assertions)
+        && std::env::var("LAPCE_UI_FIXTURE").ok().as_deref() == Some("masked-key")
+    {
+        "dummy-ui-key-not-a-secret".to_string()
+    } else {
+        String::new()
+    };
+    let key = create_rw_signal(fixture_key);
     let state = create_rw_signal("Type or paste a key in the masked field above. An empty entry preserves any saved key.".to_string());
     let busy = create_rw_signal(false);
     let credentials_version = create_rw_signal(0u64);
