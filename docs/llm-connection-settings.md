@@ -136,3 +136,7 @@ Chat and model-list failures now include the provider's own reason, for example 
 ## Reply length
 
 Chat requests ask for up to 4096 output tokens (was 512, which cut long replies off without notice). The value is the constant CHAT_MAX_TOKENS in chat.rs, not a setting.
+
+## Capability probes
+
+Opening the model list no longer probes every model. A tool-support probe (one max_tokens=1 completion on /v1-only gateways) runs only in Act mode and only for the selected model. Other rows stay unmarked, and unknown capability never blocks a pick.

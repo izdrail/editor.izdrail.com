@@ -1585,6 +1585,16 @@ pub fn model_row_pick(
     }
 }
 
+/// Which listed models get a tool-support probe. Each probe can be a billed
+/// completion on a /v1-only gateway, so probe nothing outside Act mode and
+/// only the selected model inside it. Unknown capability never blocks.
+pub fn models_to_probe(list: &[String], selected: &str, act: bool) -> Vec<String> {
+    if !act {
+        return Vec::new();
+    }
+    list.iter().filter(|m| m.as_str() == selected).cloned().collect()
+}
+
 /// "8s", "2m 05s", "1h 03m" - elapsed time for the Running row.
 pub fn elapsed_label(secs: u64) -> String {
     if secs < 60 {
@@ -2423,6 +2433,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         });
     }
     let models_result = floem::ext_event::create_signal_from_channel(models_rx);
+    let probe_mode = data.mode;
     {
         create_effect(move |_| {
             if let Some((endpoint, result)) = models_result.get() {
@@ -2433,7 +2444,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         // model): chat.rs caches completed probes and
                         // the in-flight set keeps concurrent opens
                         // from doubling requests (item 232 patch B).
-                        for model in &list {
+                        let act = probe_mode.get_untracked()
+                            == Some(crate::agent_loop::Mode::Act);
+                        let selected =
+                            config.get_untracked().ai_chat.model.clone();
+                        for model in &models_to_probe(&list, &selected, act) {
                             {
                                 let mut inflight =
                                     cap_inflight.lock().unwrap();
@@ -4310,7 +4325,7 @@ fn symbol_rows_json(
 mod tests {
     use super::{
         clip_step_detail, elapsed_label, journal_and_send,
-        journal_chat_outcome, mention_candidates, model_row_pick,
+        journal_chat_outcome, mention_candidates, model_row_pick, models_to_probe,
         resolve_mentions, show_project_read_approval, symbol_rows_json,
         trailing_mention,
         AgentStepRow, AgentUpdate, Update,
@@ -4547,6 +4562,14 @@ mod tests {
             model_row_pick("qwen3:4b", None, true),
             ("qwen3:4b".to_string(), true)
         );
+    }
+    #[test]
+    fn probes_only_the_selected_model_and_only_in_act() {
+        let list: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        assert!(models_to_probe(&list, "b", false).is_empty());
+        assert_eq!(models_to_probe(&list, "b", true), vec!["b".to_string()]);
+        assert!(models_to_probe(&list, "auto", true).is_empty());
+        assert!(models_to_probe(&[], "b", true).is_empty());
     }
     #[test]
     fn elapsed_label_formats_units() {
