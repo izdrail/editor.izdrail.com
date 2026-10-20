@@ -19,6 +19,31 @@ fn read(path: &Path) -> Result<BTreeMap<String, String>, String> {
 pub fn saved_key(endpoint: &str) -> Option<String> {
     read(&location().ok()?).ok()?.remove(&identity(endpoint).ok()?)
 }
+/// Status only: never return saved key bytes to the view.
+pub fn saved_key_exists(endpoint: &str) -> Result<bool, String> {
+    Ok(read(&location()?)?.contains_key(&identity(endpoint)?))
+}
+
+pub fn source_label(environment: bool, saved: Result<bool, String>) -> String {
+    if environment {
+        return "Active key source: LAPCE_LLM_API_KEY environment override. Saved keys are not used.".into();
+    }
+    match saved {
+        Ok(true) => "Active key source: saved key for this endpoint.".into(),
+        Ok(false) => "No key configured for this endpoint. Key-less servers may still work.".into(),
+        Err(_) => "Saved key status unavailable. Check endpoint and local credential file.".into(),
+    }
+}
+
+/// Endpoint/model/credential generation must still match a completed probe.
+pub fn probe_is_current(
+    tested: (&str, &str, u64),
+    current: (&str, &str, u64),
+    has_unsaved_key: bool,
+) -> bool {
+    !has_unsaved_key && tested == current
+}
+
 pub fn save(endpoint: &str, key: &str) -> Result<(), String> {
     save_at(&location()?, endpoint, key)
 }
@@ -62,6 +87,22 @@ pub fn append_key(value: &mut String, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn status_never_exposes_keys_and_distinguishes_sources() {
+        assert!(source_label(true, Ok(true)).contains("environment override"));
+        assert!(source_label(false, Ok(true)).contains("saved key"));
+        assert!(source_label(false, Ok(false)).contains("No key configured"));
+        assert!(!source_label(false, Err("private parser detail".into())).contains("private parser detail"));
+    }
+    #[test]
+    fn probe_result_expires_on_target_or_credential_changes() {
+        let tested = ("https://example.test", "auto", 1);
+        assert!(probe_is_current(tested, tested, false));
+        assert!(!probe_is_current(tested, ("https://other.test", "auto", 1), false));
+        assert!(!probe_is_current(tested, ("https://example.test", "other", 1), false));
+        assert!(!probe_is_current(tested, ("https://example.test", "auto", 2), false));
+        assert!(!probe_is_current(tested, tested, true));
+    }
     #[test]
     fn endpoint_bound_roundtrip_clear_and_permissions() {
         let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();

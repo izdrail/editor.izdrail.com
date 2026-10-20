@@ -1577,6 +1577,8 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     let key = create_rw_signal(String::new());
     let state = create_rw_signal("Type or paste a key in the masked field above. An empty entry preserves any saved key.".to_string());
     let busy = create_rw_signal(false);
+    let credentials_version = create_rw_signal(0u64);
+    let probe = create_rw_signal(None::<(String, String, u64, String)>);
     let field = label(move || {
         if key.with(|value| value.is_empty()) { "Click here, then type or paste API key".to_string() }
         else { "•••••••• (new key, not yet saved)".to_string() }
@@ -1601,10 +1603,10 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             }
         }).style(move |s| s.padding(8.0).border(1.0).border_radius(6.0)
             .border_color(config.get().color(LapceColor::LAPCE_BORDER)));
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let (tx, rx) = std::sync::mpsc::channel::<(String, String, u64, String)>();
     let result = floem::ext_event::create_signal_from_channel(rx);
     create_effect(move |_| {
-        if let Some(message) = result.get() { state.set(message); busy.set(false); }
+        if let Some(message) = result.get() { probe.set(Some(message)); busy.set(false); }
     });
     stack((
         label(|| "LLM connection".to_string()),
@@ -1626,6 +1628,14 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
         label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),
         field,
+        label(move || {
+            let _ = credentials_version.get();
+            crate::chat_credentials::source_label(
+                crate::chat::api_key().is_some(),
+                crate::chat_credentials::saved_key_exists(&endpoint.get()),
+            )
+        }).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)),
         stack((
             label(|| "Save connection".to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
@@ -1640,6 +1650,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                         state.set(message); return;
                     }
                 }
+                credentials_version.update(|v| *v += 1);
                 if LapceConfig::update_file("ai-chat", "endpoint", toml_edit::Value::from(endpoint_value.trim())).is_none()
                     || LapceConfig::update_file("ai-chat", "model", toml_edit::Value::from(model.get_untracked().trim())).is_none() {
                     state.set("Could not save endpoint/model settings".into()); return;
@@ -1650,7 +1661,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             label(|| "Remove saved key".to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
                 match crate::chat_credentials::save(&endpoint.get_untracked(), "") {
-                    Ok(()) => { key.set(String::new()); state.set("Saved key removed; environment override is unchanged".into()); }
+                    Ok(()) => { credentials_version.update(|v| *v += 1); key.set(String::new()); state.set("Saved key removed; environment override is unchanged".into()); }
                     Err(message) => state.set(message),
                 }
             }).style(move |s| ai_button_style(s, config)),
@@ -1658,12 +1669,33 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                 if busy.get_untracked() { return; }
                 if key.with_untracked(|value| !value.is_empty()) { state.set("Save the new key before testing".into()); return; }
                 let endpoint = endpoint.get_untracked(); let model = model.get_untracked();
-                busy.set(true); state.set("Testing endpoint and model; no project code is sent...".into());
+                let version = credentials_version.get_untracked();
+                busy.set(true);
+                state.set("Connection test uses the current field values, including unsaved endpoint/model edits. No project code is sent.".into());
                 let tx = tx.clone();
-                std::thread::spawn(move || { let _ = tx.send(crate::chat::test_connection(&endpoint, &model)); });
+                std::thread::spawn(move || {
+                    let message = crate::chat::test_connection(&endpoint, &model);
+                    let _ = tx.send((endpoint, model, version, message));
+                });
             }).style(move |s| ai_button_style(s, config)),
         )).style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
-        label(move || state.get()).style(|s| s.max_width_pct(100.0)),
+        label(move || state.get()).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || {
+            if busy.get() { return "Testing connection (up to 20 seconds)...".to_string(); }
+            let Some((tested_endpoint, tested_model, version, message)) = probe.get() else {
+                return "Connection not tested in this view.".to_string();
+            };
+            if !crate::chat_credentials::probe_is_current(
+                (&tested_endpoint, &tested_model, version),
+                (&endpoint.get(), &model.get(), credentials_version.get()),
+                key.with(|value| !value.is_empty()),
+            ) {
+                return "Previous test is out of date. Test again after saving any new key.".to_string();
+            }
+            format!("{message} (current endpoint/model fields; not proof that settings are saved)")
+        }).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)),
         label(|| "Test sends a one-token request, which may use provider quota. Saved keys are local plaintext in a private file (0600 on Unix), not encrypted. Never commit that file.".to_string())
             .style(|s| s.max_width_pct(100.0)),
     )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(8.0).padding_top(12.0).padding_bottom(16.0))

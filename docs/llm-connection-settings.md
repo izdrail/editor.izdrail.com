@@ -39,3 +39,26 @@ file. A stale pre-existing temporary file or symlink causes a safe error and
 is not deleted. The previous credential store stays unchanged. Malformed
 stored JSON is also preserved, not silently reset. This patch changes no UI;
 the running settings screen still requires the UI regression checklist.
+
+## Connection status and test freshness (item 261)
+
+The connection view reports the effective key source for the endpoint in its
+field: environment override, saved endpoint-bound key, none, or unavailable.
+No key bytes or credential-file parser details are displayed. An unsaved key
+stays masked and must be saved before testing. Environment status takes
+precedence even when the local credential file is unreadable.
+
+Tests use the current endpoint/model fields, which may not yet be saved.
+A completed result is only current while those values and the view's credential
+save/remove generation still match. Editing a field or entering a new key marks
+it stale. Editing while a test is in flight must not attach its success to the
+new values. This is not continuous credential monitoring: changes made outside
+the view require reopening it and retesting.
+
+Host regressions: at normal and narrow width, capture no-key and environment
+source states using fixtures only. Enter a dummy key and confirm no character
+is painted. Save/remove it and verify source refresh. Test a fixture server,
+change model while in flight, and require the stale-result message. Test again
+without edits and require the result for the current fields. Check 401 and
+20-second failure feedback, wrapping and vertical scrolling with Terminal open.
+Do not send a real provider request merely to validate screenshots.
