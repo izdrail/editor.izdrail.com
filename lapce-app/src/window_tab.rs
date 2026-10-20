@@ -2891,7 +2891,12 @@ impl WindowTabData {
                 point_below.y - viewport.y0,
             );
 
-        if origin.y + code_action_size.height > tab_size.height {
+        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
+        if crate::completion::should_flip_above(
+            origin.y,
+            code_action_size.height,
+            area_bottom,
+        ) {
             origin.y = origin.y
                 - config.editor.line_height() as f64
                 - code_action_size.height;
@@ -2903,7 +2908,15 @@ impl WindowTabData {
             origin.x = 0.0;
         }
 
-        origin
+        let (x, y) = crate::completion::clamp_popup_origin(
+            origin.x,
+            origin.y,
+            code_action_size.width,
+            code_action_size.height,
+            tab_size.width,
+            tab_size.height,
+        );
+        Point::new(x, y)
     }
 
     pub fn rename_origin(&self) -> Point {
