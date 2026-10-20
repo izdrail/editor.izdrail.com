@@ -90,6 +90,7 @@ struct SettingsData {
     plugin_kinds: RwSignal<im::Vector<(String, RwSignal<Point>)>>,
     filtered_items: RwSignal<im::Vector<SettingsItem>>,
     common: Rc<CommonData>,
+    ai_advanced: RwSignal<bool>,
 }
 
 impl KeyPressFocus for SettingsData {
@@ -170,16 +171,16 @@ impl SettingsData {
                     into_settings_map(&config.editor),
                 ),
                 (
-                    "AI Autocomplete",
-                    &AiConfig::FIELDS[..],
-                    &AiConfig::DESCS[..],
-                    into_settings_map(&config.ai_autocomplete),
-                ),
-                (
                     "AI Chat",
                     &ChatConfig::FIELDS[..],
                     &ChatConfig::DESCS[..],
                     into_settings_map(&config.ai_chat),
+                ),
+                (
+                    "AI Autocomplete",
+                    &AiConfig::FIELDS[..],
+                    &AiConfig::DESCS[..],
+                    into_settings_map(&config.ai_autocomplete),
                 ),
                 (
                     "UI",
@@ -194,20 +195,25 @@ impl SettingsData {
                     into_settings_map(&config.terminal),
                 ),
             ] {
-                let pos = cx.create_rw_signal(Point::new(0.0, item_height_accum));
-                data_items.push_back(SettingsItem {
-                    kind: kind.to_string(),
-                    name: "".to_string(),
-                    field: "".to_string(),
-                    filter_text: "".to_string(),
-                    description: "".to_string(),
-                    value: SettingsValue::Empty,
-                    serde_value: Value::Null,
-                    pos,
-                    size: cx.create_rw_signal(Size::ZERO),
-                    header: true,
-                });
-                data_kinds.push_back((kind.to_string(), pos));
+                // Both legacy config tables belong to one visible AI section.
+                // Keep each row's original kind for read/write compatibility.
+                if kind != "AI Autocomplete" {
+                    let section = ai_settings_section(kind);
+                    let pos = cx.create_rw_signal(Point::new(0.0, item_height_accum));
+                    data_items.push_back(SettingsItem {
+                        kind: section.to_string(),
+                        name: "".to_string(),
+                        field: "".to_string(),
+                        filter_text: "".to_string(),
+                        description: "".to_string(),
+                        value: SettingsValue::Empty,
+                        serde_value: Value::Null,
+                        pos,
+                        size: cx.create_rw_signal(Size::ZERO),
+                        header: true,
+                    });
+                    data_kinds.push_back((section.to_string(), pos));
+                }
                 for (name, desc) in fields.iter().zip(descs.iter()) {
                     let field = name.replace('_', "-");
                     // The dedicated connection editor owns these fields.
@@ -335,7 +341,15 @@ impl SettingsData {
             items,
             kinds,
             common,
+            ai_advanced: cx.create_rw_signal(false),
         }
+    }
+}
+
+fn ai_settings_section(kind: &str) -> &str {
+    match kind {
+        "AI Chat" | "AI Autocomplete" => "AI",
+        _ => kind,
     }
 }
 
@@ -542,7 +556,8 @@ pub fn settings_view(
                 })
                 .scroll_to(move || {
                     let target = settings_section.get().or_else(|| reflow_anchor.get())?;
-                    section_offsets.get().iter().find(|(kind, _)| kind == &target)
+                    let target = ai_settings_section(&target);
+                    section_offsets.get().iter().find(|(kind, _)| kind.as_str() == target)
                         .map(|(_, y)| Point::new(0.0, *y))
                 })
                 .on_resize(move |rect| {
@@ -587,13 +602,27 @@ fn settings_item_view(
         None
     };
 
-    // Keep connection and model management inside the AI Chat section's
-    // ordinary settings scroll. No fixed-height sibling/nested viewport.
-    let connection_panel = if item.header && item.kind == "AI Chat" {
+    let ai_advanced = settings_data.ai_advanced;
+    let legacy_connection = item.kind == "ai-autocomplete"
+        && matches!(item.field.as_str(), "backend" | "endpoint");
+    // One AI section uses the ordinary settings scroll, not a nested viewport.
+    let connection_panel = if item.header && item.kind == "AI" {
         stack((
             label(|| "Chat is the conversation panel. Autocomplete is inline code suggestions. They use separate models; both default to local inference.".to_string())
                 .style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
                     .text_overflow(floem::style::TextOverflow::Wrap).padding_vert(12.0)),
+            label(move || {
+                let c = config.get();
+                format!("Current routing: Chat = {}; ghost text = {}. Existing choices are preserved. Remote ghost text still uses its legacy key-less Ollama connection, not the Chat gateway key.", c.ai_chat.backend, c.ai_autocomplete.backend)
+            }).style(|s| s.max_width_pct(100.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)),
+            label(move || if ai_advanced.get() {
+                "Hide advanced legacy ghost connection".to_string()
+            } else {
+                "Show advanced legacy ghost connection".to_string()
+            }).keyboard_navigable().on_click_stop(move |_| {
+                ai_advanced.update(|v| *v = !*v);
+            }).style(move |s| ai_button_style(s, config)),
             llm_connection_view(settings_data.common.clone()),
             ai_download_view(settings_data.common.clone()),
             curated_models_view(settings_data.common.clone()),
@@ -806,7 +835,12 @@ fn settings_item_view(
             item.size.set(new_size);
         }
     })
-    .style(|s| {
+    .style(move |s| {
+        let s = if legacy_connection && !ai_advanced.get() {
+            s.display(floem::style::Display::None)
+        } else {
+            s
+        };
         // A settings row must retain its measured content height. Shrinking
         // the row in the scroll's column can overlap its heading and input.
         s.flex_col()
@@ -1480,6 +1514,14 @@ fn local_model_selection_label(backend: &str, selected: bool) -> String {
 
 #[cfg(test)]
 mod model_selection_ui_tests {
+    #[test]
+    fn legacy_ai_navigation_targets_share_one_section() {
+        assert_eq!(super::ai_settings_section("AI Chat"), "AI");
+        assert_eq!(super::ai_settings_section("AI Autocomplete"), "AI");
+        assert_eq!(super::ai_settings_section("AI"), "AI");
+        assert_eq!(super::ai_settings_section("Editor"), "Editor");
+    }
+
     #[test]
     fn labels_do_not_confuse_remote_and_local_selection() {
         assert!(super::local_model_selection_label("local", true).contains("local backend active"));
