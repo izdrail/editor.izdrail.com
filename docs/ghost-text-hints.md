@@ -17,3 +17,5 @@ palette/search/terminal focus. No hint for stale suggestion from another file.
 At 900px check status overflow alongside diagnostics/cursor info. Accept/dismiss
 must follow the actual displayed binding. Pixel capture latency already observed
 on the host is not treated as proof of an editor focus defect.
+
+Edge case: the hint also requires that ghost text is currently drawn in the document. A session can stay Active after typing or a cursor move hides its text; the hint then hides instead of advertising keys for nothing.

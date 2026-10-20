@@ -83,7 +83,8 @@ pub fn status(
         if focus.get() != crate::window_tab::Focus::Workbench { return String::new(); }
         let Some(editor) = editor.get() else { return String::new(); };
         let _ = editor.cursor().get();
-        let visible = inline.with(|data| {
+        let on_screen = editor.doc().inline_completion.with(|text| ghost_on_screen(text.as_deref()));
+        let visible = on_screen && inline.with(|data| {
             data.status == crate::inline_completion::InlineCompletionStatus::Active
                 && !data.items.is_empty()
                 && editor.doc().content.get().path() == Some(&data.path)
@@ -506,4 +507,21 @@ fn status_text<S: std::fmt::Display + 'static>(
             })
             .selectable(false)
     })
+}
+
+/// The hint may only name keys while ghost text is actually drawn. The
+/// inline-completion session can stay Active after typing or a cursor move
+/// hides its text.
+fn ghost_on_screen(drawn: Option<&str>) -> bool {
+    drawn.is_some_and(|text| !text.is_empty())
+}
+
+#[cfg(test)]
+mod ghost_hint_tests {
+    #[test]
+    fn hint_needs_drawn_ghost_text() {
+        assert!(super::ghost_on_screen(Some("foo()")));
+        assert!(!super::ghost_on_screen(Some("")));
+        assert!(!super::ghost_on_screen(None));
+    }
 }
