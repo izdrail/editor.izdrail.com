@@ -26,7 +26,7 @@ pub struct AiConfig {
         desc = "After accepting ghost text, predict the next edit elsewhere in the file. Ollama backend only; sends the same bounded context plus recent edits to the endpoint."
     )]
     pub next_edit: bool,
-    #[field_names(desc = "Curated local FIM model. Pick and download below.")]
+    #[field_names(desc = "Curated local FIM model. Download in the AI Chat local model manager.")]
     pub local_model: String,
     #[field_names(
         desc = "Local Qwen2 GGUF path; empty uses the downloaded curated model."

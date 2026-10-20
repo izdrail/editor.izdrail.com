@@ -10,7 +10,7 @@ use structdesc::FieldNames;
 #[serde(rename_all = "kebab-case", default)]
 pub struct ChatConfig {
     #[field_names(
-        desc = "Enable AI Chat. Local CPU is the default; Ollama sends context only on Send."
+        desc = "Enable AI Chat. The ollama backend sends context on Send; local uses on-device CPU."
     )]
     pub enabled: bool,
     #[field_names(
@@ -25,7 +25,7 @@ pub struct ChatConfig {
         desc = "Backend: local (CPU Candle) or ollama (any OpenAI-compatible /v1 server - llm.izdrail.com by default, or vLLM/LM Studio/llama.cpp)."
     )]
     pub backend: String,
-    #[field_names(desc = "Curated local instruct model. Pick and download below.")]
+    #[field_names(desc = "Curated local instruct model. Download in the AI Chat local model manager.")]
     pub local_model: String,
     #[field_names(
         desc = "OpenAI-compatible endpoint, root or /v1. llm.izdrail.com is the default. Save its API key in the LLM connection section above; LAPCE_LLM_API_KEY is an optional override."

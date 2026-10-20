@@ -71,3 +71,20 @@ value to confirm native input scrolling. Arbitrarily long values cannot all
 fit on one line; text input editing/scrolling must keep them accessible.
 Check the key field and action buttons after the increased connection height.
 Runtime screenshots and focus behavior remain required, not locally verified.
+
+## Local model status (item 262)
+
+Each model keeps its identity in a persistent bold heading; progress has its
+own wrapping row. Selection explicitly means local-model selection, not changing
+the remote model or backend. The live config drives selected/backend wording.
+A failed settings write no longer reports success. Download and selection are
+disabled during an active download, Cancel is disabled while idle, and the
+Download label shows its busy state. This does not change download transport,
+backend defaults, cancellation lifecycle, or installation verification policy.
+
+Host checks: at both widths, inspect first/last models and action wrapping.
+With a fixture installation, select while backend is remote and require wording
+that the remote model is unchanged. Check local-backend selected wording, failed
+settings-write feedback, and progress without losing the model heading. Do not
+start large real downloads solely for screenshots. Existing child-process
+cancellation/startup race handling is unchanged and needs a separate review.

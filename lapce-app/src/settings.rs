@@ -1447,7 +1447,7 @@ fn dropdown_scroll(
 fn ai_download_view(common: Rc<CommonData>) -> impl View {
     let config = common.config;
     label(|| {
-        "Curated coding models: download, then choose Use this model. FIM and Chat stay separate.".to_string()
+        "Local coding models: download, then Select local model. This does not switch backend or change a remote model. FIM and Chat stay separate.".to_string()
     })
     .style(move |s| {
         s.padding_top(16.0)
@@ -1458,6 +1458,25 @@ fn ai_download_view(common: Rc<CommonData>) -> impl View {
             .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
     })
 }
+fn local_model_selection_label(backend: &str, selected: bool) -> String {
+    match (selected, backend == "local") {
+        (true, true) => "Selected local model (local backend active).".into(),
+        (true, false) => "Selected for local backend; current backend is remote. Remote model is unchanged.".into(),
+        (false, _) => "Not selected for local backend. Selecting does not switch backend or remote model.".into(),
+    }
+}
+
+#[cfg(test)]
+mod model_selection_ui_tests {
+    #[test]
+    fn labels_do_not_confuse_remote_and_local_selection() {
+        assert!(super::local_model_selection_label("local", true).contains("local backend active"));
+        assert!(super::local_model_selection_label("ollama", true).contains("current backend is remote"));
+        assert!(super::local_model_selection_label("ollama", false).contains("Not selected"));
+        assert!(super::local_model_selection_label("local", false).contains("does not switch backend"));
+    }
+}
+
 fn ai_model_download_view(
     common: Rc<CommonData>,
     entry: &'static lapce_ai::catalog::ModelEntry,
@@ -1467,7 +1486,7 @@ fn ai_model_download_view(
         process::{Command, Stdio},
         sync::Mutex,
     };
-    let state = create_rw_signal(entry.label.to_string());
+    let state = create_rw_signal("No download started in this view. You can select an existing installation.".to_string());
     let busy = create_rw_signal(false);
     let child = Arc::new(Mutex::new(None::<std::process::Child>));
     let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -1487,7 +1506,21 @@ fn ai_model_download_view(
     let cancel_tx = tx.clone();
     let config = common.config;
     stack((
-        label(move ||state.get()).style(|s|s.max_width_pct(100.0).flex_shrink(0.0)),
+        label(move || entry.label.to_string()).style(|s| s.max_width_pct(100.0)
+            .flex_shrink(0.0).font_bold()
+            .text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || {
+            let config = config.get();
+            let (backend, selected) = if entry.chat {
+                (&config.ai_chat.backend, &config.ai_chat.local_model)
+            } else {
+                (&config.ai_autocomplete.backend, &config.ai_autocomplete.local_model)
+            };
+            local_model_selection_label(backend, selected == entry.id)
+        }).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || state.get()).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)),
         label(|| "Download from Hugging Face (explicit network request; no source code upload). Source and licence details: docs/ai-chat.md".to_string())
             .style(move |s| {
                 s.max_width_pct(100.0)
@@ -1496,7 +1529,7 @@ fn ai_model_download_view(
                     .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
             }),
         stack((
-        label(||"Download selected model".to_string()).on_click_stop(move |_| {
+        label(move || if busy.get() { "Downloading..." } else { "Download model" }.to_string()).on_click_stop(move |_| {
             if busy.get_untracked() {return;}
             busy.set(true);state.set("Starting download...".into());
             let child=child.clone();let tx=tx.clone();
@@ -1519,19 +1552,24 @@ fn ai_model_download_view(
                 })();
                 if let Err(e)=run {let _=tx.send(format!("Error: {e}"));}
             });
-        }).style(move |s| ai_button_style(s, config)),
-        label(|| "Use this model".to_string()).on_click_stop(move |_| {
+        }).disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
+        label(|| "Select local model".to_string()).on_click_stop(move |_| {
+            if busy.get_untracked() { return; }
             let root = lapce_core::directory::Directory::data_local_directory().map(|p| p.join("ai-models"));
             if root.is_none_or(|r| !r.join(format!("installed-{}.json", entry.id)).exists()) {
                 state.set("Download this model first".into()); return;
             }
-            LapceConfig::update_file(if entry.chat { "ai-chat" } else { "ai-autocomplete" }, "local-model", toml_edit::Value::from(entry.id));
-            state.set(format!("Selected: {}", entry.id));
-        }).style(move |s| ai_button_style(s, config)),
+            if LapceConfig::update_file(if entry.chat { "ai-chat" } else { "ai-autocomplete" }, "local-model", toml_edit::Value::from(entry.id)).is_none() {
+                state.set("Could not save local model selection".into());
+                return;
+            }
+            state.set("Local model selection saved. Backend and remote model are unchanged.".into());
+        }).disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
         label(||"Cancel download".to_string()).on_click_stop(move |_| {
+            if !busy.get_untracked() { return; }
             if let Some(c)=cancel_child.lock().unwrap().as_mut() {let _=c.kill();}
             let _=cancel_tx.send("Cancelled".to_string());
-        }).style(move |s| ai_button_style(s, config)),
+        }).disabled(move || !busy.get()).style(move |s| ai_button_style(s, config)),
         ))
         .style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
     )).style(move |s|s.flex_col().flex_shrink(0.0).gap(8.0).padding_bottom(18.0).font_size(config.get().ui.font_size() as f32))
