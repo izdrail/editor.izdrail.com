@@ -1627,18 +1627,66 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     let busy = create_rw_signal(false);
     let credentials_version = create_rw_signal(0u64);
     let probe = create_rw_signal(None::<(String, String, u64, String)>);
+    let save_button = label(|| "Save connection".to_string()).on_click_stop(move |_| {
+                if busy.get_untracked() { return; }
+                let endpoint_value = endpoint.get_untracked();
+                if crate::chat::completion_url(&endpoint_value).is_err() || model.get_untracked().trim().is_empty() {
+                    state.set("Enter a valid endpoint and model".into()); return;
+                }
+                let value = key.get_untracked();
+                // Empty entry preserves an existing key; deletion is explicit.
+                if !value.is_empty() {
+                    if let Err(message) = crate::chat_credentials::save(&endpoint_value, &value) {
+                        state.set(message); return;
+                    }
+                }
+                credentials_version.update(|v| *v += 1);
+                if LapceConfig::update_file("ai-chat", "endpoint", toml_edit::Value::from(endpoint_value.trim())).is_none()
+                    || LapceConfig::update_file("ai-chat", "model", toml_edit::Value::from(model.get_untracked().trim())).is_none() {
+                    state.set("Could not save endpoint/model settings".into()); return;
+                }
+                key.set(String::new());
+                state.set("Connection saved. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
+            }).keyboard_navigable().style(move |s| ai_button_style(s, config));
+    let save_id = save_button.id();
+    let common_focus = common.focus;
+    let keyboard_focus = common.keyboard_focus;
     let field = label(move || {
-        if key.with(|value| value.is_empty()) { "Click here, then type or paste API key".to_string() }
+        if key.with(|value| value.is_empty()) {
+            if key_focused.get() { "API key entry focused: type or paste (masked)".to_string() }
+            else { "Click here, then type or paste API key".to_string() }
+        }
         else { "•••••••• (new key, not yet saved)".to_string() }
     }).keyboard_navigable();
     let field_id = field.id();
-    let field = field.on_click_stop(move |_| { field_id.request_focus(); })
-        .on_event_stop(EventListener::FocusGained, move |_| key_focused.set(true))
-        .on_event_stop(EventListener::FocusLost, move |_| key_focused.set(false))
+    let field = field.on_event_stop(EventListener::PointerDown, move |_| {
+            common_focus.set(crate::window_tab::Focus::Workbench);
+            keyboard_focus.set(Some(field_id));
+            key_focused.set(true);
+            field_id.request_focus();
+        })
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(field_id));
+            key_focused.set(true);
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            key_focused.set(false);
+            if keyboard_focus.get_untracked() == Some(field_id) { keyboard_focus.set(None); }
+        })
         .on_event(EventListener::KeyDown, move |event| {
             if let Event::KeyDown(event) = event {
                 // Let the framework move focus out of this custom input.
                 if matches!(&event.key.logical_key, Key::Named(NamedKey::Tab)) {
+                    key_focused.set(false);
+                    keyboard_focus.set(None);
+                    save_id.request_focus();
+                    return EventPropagation::Stop;
+                }
+                // Workbench shortcuts must reach the window dispatcher.
+                if event.modifiers.intersects(Modifiers::CONTROL | Modifiers::META)
+                    && !matches!(&event.key.logical_key, Key::Character(text) if text.eq_ignore_ascii_case("v")) {
+                    key_focused.set(false);
+                    keyboard_focus.set(None);
                     return EventPropagation::Continue;
                 }
                 match &event.key.logical_key {
@@ -1698,27 +1746,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         }).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
             .text_overflow(floem::style::TextOverflow::Wrap)),
         stack((
-            label(|| "Save connection".to_string()).on_click_stop(move |_| {
-                if busy.get_untracked() { return; }
-                let endpoint_value = endpoint.get_untracked();
-                if crate::chat::completion_url(&endpoint_value).is_err() || model.get_untracked().trim().is_empty() {
-                    state.set("Enter a valid endpoint and model".into()); return;
-                }
-                let value = key.get_untracked();
-                // Empty entry preserves an existing key; deletion is explicit.
-                if !value.is_empty() {
-                    if let Err(message) = crate::chat_credentials::save(&endpoint_value, &value) {
-                        state.set(message); return;
-                    }
-                }
-                credentials_version.update(|v| *v += 1);
-                if LapceConfig::update_file("ai-chat", "endpoint", toml_edit::Value::from(endpoint_value.trim())).is_none()
-                    || LapceConfig::update_file("ai-chat", "model", toml_edit::Value::from(model.get_untracked().trim())).is_none() {
-                    state.set("Could not save endpoint/model settings".into()); return;
-                }
-                key.set(String::new());
-                state.set("Connection saved. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
-            }).style(move |s| ai_button_style(s, config)),
+            save_button,
             label(|| "Remove saved key".to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
                 match crate::chat_credentials::save(&endpoint.get_untracked(), "") {

@@ -77,3 +77,18 @@ subsequent typing must not append to its key. Return and check Backspace,
 paste and Escape. Repeat at 900px with Terminal open. A debug prefill screenshot
 checks masking only and cannot replace these keyboard tests. No claim is made
 that arbitrary cursor editing/selection is supported by this append-only field.
+
+## Explicit key focus handoff (item 268)
+
+0267's event propagation alone did not move focus on the host: the window root
+handles Tab as a workbench key. Key PointerDown now requests focus immediately,
+updates shared input focus and sets Workbench routing rather than leaving the
+Terminal as the command target. Empty focused entry has a visible focused hint.
+Tab explicitly hands focus to Save connection and clears the field's ring.
+Control/Meta shortcuts other than paste continue to the workbench dispatcher.
+Shift-Tab currently also hands off to Save (not reverse traversal); general
+reverse navigation remains a limitation. Neither Tab nor shortcuts save a key.
+
+Re-test click-before-type ring, real dummy typing, Tab ring reset, command
+palette open from the field, then chat composer versus terminal typing. Inspect
+both shared focus and actual destination; no runtime fix is claimed until then.
