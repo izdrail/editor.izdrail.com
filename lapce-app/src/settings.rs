@@ -210,6 +210,11 @@ impl SettingsData {
                 data_kinds.push_back((kind.to_string(), pos));
                 for (name, desc) in fields.iter().zip(descs.iter()) {
                     let field = name.replace('_', "-");
+                    // The dedicated connection editor owns these fields.
+                    // Do not expose a second independently buffered control.
+                    if kind == "AI Chat" && matches!(field.as_str(), "endpoint" | "model") {
+                        continue;
+                    }
 
                     let (value, serde_value) = if let Some(dropdown) =
                         config.get_dropdown_info(&kind.to_lowercase(), &field)
@@ -346,8 +351,6 @@ pub fn settings_view(
     let view_settings_data = settings_data.clone();
     let plugin_kinds = settings_data.plugin_kinds;
 
-    let ai_common = common.clone();
-    let connection_common = common.clone();
     let search_editor = editors.make_local(cx, common);
     let search_editor_id = search_editor.id();
     let doc = search_editor.doc_signal();
@@ -384,9 +387,6 @@ pub fn settings_view(
     let settings_content_size = create_rw_signal(Size::ZERO);
     let scroll_pos = create_rw_signal(Point::ZERO);
 
-    // The auxiliary pane follows explicit navigation, not scroll-derived
-    // headings. Otherwise changing its height feeds back into scroll position.
-    let auxiliary_kind = create_rw_signal(String::new());
     let current_kind = {
         create_memo(move |_| {
             let scroll_pos = scroll_pos.get();
@@ -414,13 +414,11 @@ pub fn settings_view(
                               pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
                               margin: f32| {
         let kind = k.clone();
-        let auxiliary_selection = kind.clone();
         container(
             label(move || k.clone())
                 .style(move |s| s.text_ellipsis().padding_left(margin)),
         )
         .on_click_stop(move |_| {
-            auxiliary_kind.set(auxiliary_selection.clone());
             if let Some(pos) = pos() {
                 ensure_visible.set(
                     settings_content_size
@@ -521,30 +519,6 @@ pub fn settings_view(
                     .request_focus(|| {})
             })
             .style(|s| s.padding_horiz(50.0).padding_vert(20.0)),
-            // The model list is long (one block per curated model). It lives in
-            // its own fixed-height scroll so it can never push the settings
-            // content past the bottom of the editor area, over the panels.
-            container(
-                scroll(
-                    stack((
-                        llm_connection_view(connection_common).style(move |s| s.apply_if(auxiliary_kind.get().as_str() != "AI Chat", |s| s.hide())),
-                        ai_download_view(ai_common.clone()),
-                        curated_models_view(ai_common),
-                    ))
-                    .style(|s| s.flex_col().width_pct(100.0)),
-                )
-                .style(|s| s.width_pct(100.0).height(310.0).flex_shrink(0.0)
-                    .set(PropagatePointerWheel, false)),
-            )
-            .style(move |s| {
-                s.width_pct(100.0).apply_if(
-                    !matches!(
-                        auxiliary_kind.get().as_str(),
-                        "AI Autocomplete" | "AI Chat"
-                    ),
-                    |s| s.hide(),
-                )
-            }),
             container({
                 scroll({
                     dyn_stack(
@@ -604,6 +578,17 @@ fn settings_item_view(
         None
     };
 
+    // Keep connection and model management inside the AI Chat section's
+    // ordinary settings scroll. No fixed-height sibling/nested viewport.
+    let connection_panel = if item.header && item.kind == "AI Chat" {
+        stack((
+            llm_connection_view(settings_data.common.clone()),
+            ai_download_view(settings_data.common.clone()),
+            curated_models_view(settings_data.common.clone()),
+        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0)).into_any()
+    } else {
+        empty().into_any()
+    };
     let timer = create_rw_signal(TimerToken::INVALID);
 
     let editor_value = match &item.value {
@@ -794,6 +779,7 @@ fn settings_item_view(
             },
         )),
         view().style(move |s| s.apply_if(!item.header, |s| s.margin_top(6.0))),
+        connection_panel,
     ))
     .on_resize(move |rect| {
         if item.header {
@@ -1457,12 +1443,12 @@ fn ai_download_view(common: Rc<CommonData>) -> impl View {
         "Curated coding models: download, then choose Use this model. FIM and Chat stay separate.".to_string()
     })
     .style(move |s| {
-        s.padding_horiz(50.0)
-            .padding_top(10.0)
+        s.padding_top(16.0)
+            .padding_bottom(12.0)
             .max_width_pct(100.0)
             .text_overflow(floem::style::TextOverflow::Wrap)
             .flex_shrink(0.0)
-            .color(config.get().color(LapceColor::EDITOR_DIM))
+            .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
     })
 }
 fn ai_model_download_view(
@@ -1500,7 +1486,7 @@ fn ai_model_download_view(
                 s.max_width_pct(100.0)
                     .text_overflow(floem::style::TextOverflow::Wrap)
                     .flex_shrink(0.0)
-                    .color(config.get().color(LapceColor::EDITOR_DIM))
+                    .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
             }),
         stack((
         label(||"Download selected model".to_string()).on_click_stop(move |_| {
@@ -1541,7 +1527,7 @@ fn ai_model_download_view(
         }).style(move |s| ai_button_style(s, config)),
         ))
         .style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
-    )).style(move |s|s.flex_col().flex_shrink(0.0).gap(8.0).padding_horiz(50.0).padding_bottom(15.0).font_size(config.get().ui.font_size() as f32))
+    )).style(move |s|s.flex_col().flex_shrink(0.0).gap(8.0).padding_bottom(18.0).font_size(config.get().ui.font_size() as f32))
 }
 
 fn ai_button_style(
@@ -1617,10 +1603,10 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         label(|| "LLM connection".to_string()),
         stack((
             label(|| "Endpoint".to_string()),
-            floem::views::text_input(endpoint).style(|s| s.width(340.0)),
+            floem::views::text_input(endpoint).style(move |s| s.width(340.0).max_width_pct(100.0).border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))),
             label(|| "Model".to_string()),
-            floem::views::text_input(model).style(|s| s.width(130.0)),
-        )).style(|s| s.flex_row().gap(8.0)),
+            floem::views::text_input(model).style(move |s| s.width(180.0).max_width_pct(100.0).border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))),
+        )).style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
         label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),
         field,
         stack((
@@ -1659,9 +1645,9 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                 let tx = tx.clone();
                 std::thread::spawn(move || { let _ = tx.send(crate::chat::test_connection(&endpoint, &model)); });
             }).style(move |s| ai_button_style(s, config)),
-        )).style(|s| s.flex_row().gap(8.0)),
+        )).style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
         label(move || state.get()).style(|s| s.max_width_pct(100.0)),
         label(|| "Test sends a one-token request, which may use provider quota. Saved keys are local plaintext in a private file (0600 on Unix), not encrypted. Never commit that file.".to_string())
             .style(|s| s.max_width_pct(100.0)),
-    )).style(|s| s.flex_col().gap(6.0).padding_horiz(50.0).padding_bottom(12.0))
+    )).style(|s| s.flex_col().gap(8.0).padding_top(12.0).padding_bottom(16.0))
 }
