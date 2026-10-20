@@ -65,3 +65,12 @@ with search text present; require AI Chat heading plus connection. Open/close
 right panel at AI Chat and require no isolated 400 input. Sidebar then wheel
 through sections to ensure target does not lock ordinary scrolling. Search can
 change section contents; recovery while a search is active needs explicit check.
+
+## Reflow callback correction (item 272)
+
+0271 installed two on_resize callbacks on the same scroll view. Floem stores
+one callback, so the second replaced the reflow handler. Both responsibilities
+are now combined into one callback. This is a source-confirmed cause for the
+reflow fix not running, distinct from the speculative focus redraw issue.
+Re-test panel open/close at AI Chat and require the heading at the top, then
+wheel/sidebar navigation to confirm no persistent scroll lock.

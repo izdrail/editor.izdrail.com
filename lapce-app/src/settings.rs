@@ -564,14 +564,13 @@ pub fn settings_view(
                         reflow_anchor.set(Some(current_kind.get_untracked()));
                     }
                     content_width.set(width);
+                    settings_content_size.set(rect.size());
                 })
                 .on_scroll(move |rect| {
                     scroll_pos.set(rect.origin());
                 })
                 .ensure_visible(move || ensure_visible.get())
-                .on_resize(move |rect| {
-                    settings_content_size.set(rect.size());
-                })
+
                 .style(|s| s.absolute().size_pct(100.0, 100.0))
             })
             .style(|s| s.size_pct(100.0, 100.0)),
