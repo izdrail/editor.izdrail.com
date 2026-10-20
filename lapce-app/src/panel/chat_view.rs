@@ -1600,6 +1600,16 @@ pub fn plan_row_label(file_name: &str, title: &str, when: &str) -> String {
     parts.join(" \u{b7} ")
 }
 
+/// Idle composer hint: what Send will attach, then the keys on their own
+/// line so a long file name or a narrow panel wraps cleanly.
+pub fn send_hint_text(context_indicator: Option<String>) -> String {
+    let on_send = match context_indicator {
+        Some(indicator) => format!("On Send: {indicator}"),
+        None => "On Send: no editor context".to_string(),
+    };
+    format!("{on_send}\nEnter to send, Shift+Enter for newline")
+}
+
 /// Which listed models get a tool-support probe. Each probe can be a billed
 /// completion on a /v1-only gateway, so probe nothing outside Act mode and
 /// only the selected model inside it. Unknown capability never blocks.
@@ -3876,10 +3886,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     "Waiting for the endpoint... Use Stop to cancel.".to_string()
                 }
             } else {
-                let on_send = context(&indicator_tab)
-                    .map(|c| format!("On Send: {}", c.indicator()))
-                    .unwrap_or_else(|| "On Send: no editor context".into());
-                format!("{on_send} - Enter to send, Shift+Enter for newline")
+                send_hint_text(context(&indicator_tab).map(|c| c.indicator()))
             }
         })
         .style(move |s| {
@@ -4348,7 +4355,7 @@ fn symbol_rows_json(
 mod tests {
     use super::{
         clip_step_detail, elapsed_label, journal_and_send,
-        journal_chat_outcome, mention_candidates, model_row_pick, models_to_probe, plan_row_label,
+        journal_chat_outcome, mention_candidates, model_row_pick, models_to_probe, plan_row_label, send_hint_text,
         resolve_mentions, show_project_read_approval, symbol_rows_json,
         trailing_mention,
         AgentStepRow, AgentUpdate, Update,
@@ -4586,6 +4593,17 @@ mod tests {
             ("qwen3:4b".to_string(), true)
         );
     }
+    #[test]
+    fn send_hint_puts_keys_on_their_own_line() {
+        assert_eq!(
+            send_hint_text(None),
+            "On Send: no editor context\nEnter to send, Shift+Enter for newline"
+        );
+        let with = send_hint_text(Some("File: a.rs | 10 bytes".into()));
+        assert!(with.starts_with("On Send: File: a.rs | 10 bytes\n"));
+        assert!(with.ends_with("Shift+Enter for newline"));
+    }
+
     #[test]
     fn plan_rows_are_told_apart_by_time() {
         assert_eq!(plan_row_label("walkthrough-1.md", "Walkthrough", "Oct 20 18:42"), "Walkthrough \u{b7} Oct 20 18:42");
