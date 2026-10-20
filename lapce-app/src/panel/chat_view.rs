@@ -3250,133 +3250,159 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             s.items_center()
                 .gap(4.0)
                 .padding_vert(2.0)
+                .padding_horiz(2.0)
+                .border_radius(4.0)
                 .cursor(CursorStyle::Pointer)
                 .selectable(false)
+                .hover(|s| {
+                    s.background(
+                        config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                    )
+                })
         }),
-        scroll(
-            dyn_stack(
-                move || session_list.get(),
-                |session| session.session.session_id.clone(),
-                move |rooted| {
-                    let session = rooted.session.clone();
-                    let row_root = rooted.root.clone();
-                    let foreign =
-                        agents_current_root.as_ref() != Some(&row_root);
-                    let text = format!(
-                        "{}  ·  {}  ·  {}",
-                        session_title(&session.title),
-                        session.agent,
-                        crate::agent_acp_store::age_label(
-                            session.updated_unix,
-                            crate::agent_acp_store::now_unix(),
-                        )
-                    );
-                    // Foreign rows carry their workspace folder name.
-                    let text = if foreign {
-                        let folder = row_root
-                            .file_name()
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .unwrap_or_default();
-                        format!("{text}  ·  {folder}")
-                    } else {
-                        text
-                    };
-                    let id = session.session_id.clone();
-                    let del_id = session.session_id.clone();
-                    let del_root = row_root.clone();
-                    let agents_data = agents_data.clone();
-                    let del_data = agents_data.clone();
-                    h_stack((
-                        label(move || text.clone())
-                            .on_click_stop(move |_| {
-                                if foreign {
-                                    // Resume happens in that project:
-                                    // open it as a tab, where the
-                                    // session tops its own Agents list.
-                                    agents_window_command.send(
-                                        crate::command::WindowCommand::NewWorkspaceTab {
-                                            workspace: crate::workspace::LapceWorkspace {
-                                                kind: crate::workspace::LapceWorkspaceType::Local,
-                                                path: Some(row_root.clone()),
-                                                last_open: 0,
+        v_stack((
+            label(move || {
+                agents_empty_hint(session_list.get().len(), show_sessions.get())
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .style(move |s| {
+                let visible =
+                    agents_empty_hint(session_list.get().len(), show_sessions.get())
+                        .is_some();
+                s.apply_if(!visible, |s| s.hide())
+                    .padding_horiz(6.0)
+                    .padding_vert(4.0)
+                    .font_size(11.0)
+                    .selectable(false)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))
+            }),
+            scroll(
+                dyn_stack(
+                    move || session_list.get(),
+                    |session| session.session.session_id.clone(),
+                    move |rooted| {
+                        let session = rooted.session.clone();
+                        let row_root = rooted.root.clone();
+                        let foreign =
+                            agents_current_root.as_ref() != Some(&row_root);
+                        let text = format!(
+                            "{}  ·  {}  ·  {}",
+                            session_title(&session.title),
+                            session.agent,
+                            crate::agent_acp_store::age_label(
+                                session.updated_unix,
+                                crate::agent_acp_store::now_unix(),
+                            )
+                        );
+                        // Foreign rows carry their workspace folder name.
+                        let text = if foreign {
+                            let folder = row_root
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_default();
+                            format!("{text}  ·  {folder}")
+                        } else {
+                            text
+                        };
+                        let id = session.session_id.clone();
+                        let del_id = session.session_id.clone();
+                        let del_root = row_root.clone();
+                        let agents_data = agents_data.clone();
+                        let del_data = agents_data.clone();
+                        h_stack((
+                            label(move || text.clone())
+                                .on_click_stop(move |_| {
+                                    if foreign {
+                                        // Resume happens in that project:
+                                        // open it as a tab, where the
+                                        // session tops its own Agents list.
+                                        agents_window_command.send(
+                                            crate::command::WindowCommand::NewWorkspaceTab {
+                                                workspace: crate::workspace::LapceWorkspace {
+                                                    kind: crate::workspace::LapceWorkspaceType::Local,
+                                                    path: Some(row_root.clone()),
+                                                    last_open: 0,
+                                                },
+                                                end: true,
                                             },
-                                            end: true,
-                                        },
-                                    );
-                                    show_sessions.set(false);
-                                } else {
-                                    agents_data.error.set(String::new());
-                                    agents_data.mode.set(None);
-                                    agents_data.acp.set(true);
-                                    agents_data.acp_resume.set(true);
-                                    agents_data.resume_id.set(Some(id.clone()));
-                                    show_sessions.set(false);
-                                }
-                            })
-                            .style(move |s| {
-                                s.padding(6.0)
-                                    .flex_grow(1.0)
-                                    .min_width(0.0)
-                                    .text_ellipsis()
-                                    .cursor(CursorStyle::Pointer)
-                                    .selectable(false)
-                                    .hover(|s| {
-                                        s.background(
-                                            config.get().color(
-                                                LapceColor::PANEL_HOVERED_BACKGROUND,
-                                            ),
-                                        )
-                                    })
-                            }),
-                        label(|| "Delete".to_string())
-                            .on_click_stop(move |_| {
-                                match crate::agent_acp_store::remove_session(
-                                    &del_root, &del_id,
-                                ) {
-                                    Ok(()) => {
-                                        session_list.update(|v| {
-                                            v.retain(|s| {
-                                                s.session.session_id != del_id
-                                            })
-                                        });
-                                        if del_data.resume_id.get_untracked()
-                                            .as_deref()
-                                            == Some(del_id.as_str())
-                                        {
-                                            del_data.resume_id.set(None);
-                                            del_data.acp_resume.set(false);
-                                        }
+                                        );
+                                        show_sessions.set(false);
+                                    } else {
+                                        agents_data.error.set(String::new());
+                                        agents_data.mode.set(None);
+                                        agents_data.acp.set(true);
+                                        agents_data.acp_resume.set(true);
+                                        agents_data.resume_id.set(Some(id.clone()));
+                                        show_sessions.set(false);
                                     }
-                                    Err(e) => del_data.error.set(format!(
-                                        "Could not remove the session: {e}"
-                                    )),
-                                }
-                            })
-                            .style(move |s| {
-                                s.padding(6.0)
-                                    .cursor(CursorStyle::Pointer)
-                                    .selectable(false)
-                                    .color(config.get().color(LapceColor::EDITOR_DIM))
-                                    .hover(|s| {
-                                        s.background(
-                                            config.get().color(
-                                                LapceColor::PANEL_HOVERED_BACKGROUND,
-                                            ),
-                                        )
-                                        .color(
-                                            config.get().color(LapceColor::LAPCE_ERROR),
-                                        )
-                                    })
-                            }),
-                    ))
-                },
-            ),
-        )
-        .style(move |s| {
-            s.apply_if(!show_sessions.get(), |s| s.hide())
-                .max_height(180.0)
-                .width_full()
-        }),
+                                })
+                                .style(move |s| {
+                                    s.padding(6.0)
+                                        .flex_grow(1.0)
+                                        .min_width(0.0)
+                                        .text_ellipsis()
+                                        .cursor(CursorStyle::Pointer)
+                                        .selectable(false)
+                                        .hover(|s| {
+                                            s.background(
+                                                config.get().color(
+                                                    LapceColor::PANEL_HOVERED_BACKGROUND,
+                                                ),
+                                            )
+                                        })
+                                }),
+                            label(|| "Delete".to_string())
+                                .on_click_stop(move |_| {
+                                    match crate::agent_acp_store::remove_session(
+                                        &del_root, &del_id,
+                                    ) {
+                                        Ok(()) => {
+                                            session_list.update(|v| {
+                                                v.retain(|s| {
+                                                    s.session.session_id != del_id
+                                                })
+                                            });
+                                            if del_data.resume_id.get_untracked()
+                                                .as_deref()
+                                                == Some(del_id.as_str())
+                                            {
+                                                del_data.resume_id.set(None);
+                                                del_data.acp_resume.set(false);
+                                            }
+                                        }
+                                        Err(e) => del_data.error.set(format!(
+                                            "Could not remove the session: {e}"
+                                        )),
+                                    }
+                                })
+                                .style(move |s| {
+                                    s.padding(6.0)
+                                        .cursor(CursorStyle::Pointer)
+                                        .selectable(false)
+                                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                                        .hover(|s| {
+                                            s.background(
+                                                config.get().color(
+                                                    LapceColor::PANEL_HOVERED_BACKGROUND,
+                                                ),
+                                            )
+                                            .color(
+                                                config.get().color(LapceColor::LAPCE_ERROR),
+                                            )
+                                        })
+                                }),
+                        ))
+                    },
+                ),
+            )
+            .style(move |s| {
+                s.apply_if(!show_sessions.get(), |s| s.hide())
+                    .max_height(180.0)
+                    .width_full()
+            }),
+        ))
+        .style(|s| s.width_full().flex_col()),
         // Plan artifacts (item 196): the workspace's newest plans as
         // clickable rows, hidden when there are none. Click opens the
         // plan as a normal editor buffer; the palette's Plans: Index
@@ -4661,5 +4687,26 @@ mod tests {
         assert_eq!(clipped.chars().count(), 121);
         assert!(clipped.ends_with('\u{2026}'));
         assert_eq!(clip_step_detail(""), "");
+    }
+}
+
+/// Hint under the Agents header when the list is open but holds no sessions.
+fn agents_empty_hint(count: usize, expanded: bool) -> Option<&'static str> {
+    if expanded && count == 0 {
+        Some("No saved agent sessions yet. Start a chat and it will appear here.")
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod agents_empty_tests {
+    use super::agents_empty_hint;
+
+    #[test]
+    fn hint_only_when_expanded_and_empty() {
+        assert!(agents_empty_hint(0, true).is_some());
+        assert!(agents_empty_hint(0, false).is_none());
+        assert!(agents_empty_hint(3, true).is_none());
     }
 }
