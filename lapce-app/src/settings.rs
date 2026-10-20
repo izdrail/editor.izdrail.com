@@ -1077,7 +1077,7 @@ fn color_section_list(
         .item_size_fixed(move || text_height.get() + 24.0)
         .style(|s| s.flex_col().padding_right(20)),
     ))
-    .style(|s| s.flex_col())
+    .style(|s| s.flex_col().flex_shrink(0.0))
 }
 
 pub fn theme_color_settings_view(
@@ -1460,7 +1460,8 @@ fn ai_download_view(common: Rc<CommonData>) -> impl View {
         s.padding_horiz(50.0)
             .padding_top(10.0)
             .max_width_pct(100.0)
-            .text_ellipsis()
+            .text_overflow(floem::style::TextOverflow::Wrap)
+            .flex_shrink(0.0)
             .color(config.get().color(LapceColor::EDITOR_DIM))
     })
 }
@@ -1493,11 +1494,12 @@ fn ai_model_download_view(
     let cancel_tx = tx.clone();
     let config = common.config;
     stack((
-        label(move ||state.get()).style(|s|s.max_width_pct(100.0)),
+        label(move ||state.get()).style(|s|s.max_width_pct(100.0).flex_shrink(0.0)),
         label(|| "Download from Hugging Face (explicit network request; no source code upload). Source and licence details: docs/ai-chat.md".to_string())
             .style(move |s| {
                 s.max_width_pct(100.0)
-                    .text_ellipsis()
+                    .text_overflow(floem::style::TextOverflow::Wrap)
+                    .flex_shrink(0.0)
                     .color(config.get().color(LapceColor::EDITOR_DIM))
             }),
         stack((
@@ -1538,8 +1540,8 @@ fn ai_model_download_view(
             let _=cancel_tx.send("Cancelled".to_string());
         }).style(move |s| ai_button_style(s, config)),
         ))
-        .style(|s| s.flex_row().gap(8.0)),
-    )).style(move |s|s.flex_col().gap(8.0).padding_horiz(50.0).padding_bottom(15.0).font_size(config.get().ui.font_size() as f32))
+        .style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
+    )).style(move |s|s.flex_col().flex_shrink(0.0).gap(8.0).padding_horiz(50.0).padding_bottom(15.0).font_size(config.get().ui.font_size() as f32))
 }
 
 fn ai_button_style(
@@ -1568,7 +1570,7 @@ fn curated_models_view(common: Rc<CommonData>) -> impl View {
             .iter()
             .map(|entry| ai_model_download_view(common.clone(), entry)),
     )
-    .style(|s| s.flex_col())
+    .style(|s| s.flex_col().flex_shrink(0.0))
 }
 
 /// Dedicated secret input: actual key text never enters an editor document,
