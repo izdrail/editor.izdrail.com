@@ -32,3 +32,24 @@ the only editable surface for those settings. This avoids two simultaneously
 buffered values disagreeing after model selection. Settings-file edits still
 reload through the existing watcher. Reopen settings after outside edits;
 live reconciliation of an already dirty connection draft is not implemented.
+
+## Settings row sizing (item 259)
+
+All generic settings rows retain their natural content height rather than
+flex-shrinking inside the settings column. Titles and descriptions wrap and
+retain their own height; input width is bounded by the available row width.
+The previous simultaneous 100%-minimum/300px-maximum row width is replaced by
+an explicit full-width row with a zero minimum, avoiding conflicting bounds.
+This targets missing/overlapped headings at narrow sizes, but the cause of the
+host screenshot's missing ghost-text heading is not confirmed from pixels alone.
+
+Host regression checks after compile/test/clippy:
+- At 900px and normal width, open Settings with Terminal open and closed.
+- Scroll through the AI Chat to AI Autocomplete boundary. The model field must
+  have its own title, description, then input, without overlap from model rows.
+- Search for a long setting title and verify it wraps rather than disappearing.
+- Compare each row at top/middle/bottom scroll positions; only the outer viewport
+  should clip content. Wheel back to reveal the complete title and input.
+- Check Core, Editor and Terminal sections for new horizontal overflow.
+
+No running-editor visual acceptance is claimed by the source change.

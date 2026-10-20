@@ -677,7 +677,7 @@ fn settings_item_view(
                 text_input_view
                     .keyboard_navigable()
                     .style(move |s| {
-                        s.width(300.0).border(1.0).border_radius(6.0).border_color(
+                        s.width(300.0).max_width_pct(100.0).flex_shrink(0.0).border(1.0).border_radius(6.0).border_color(
                             config.get().color(LapceColor::LAPCE_BORDER),
                         )
                     })
@@ -722,7 +722,8 @@ fn settings_item_view(
     stack((
         label(move || item.name.clone()).style(move |s| {
             s.font_bold()
-                .text_ellipsis()
+                .text_overflow(floem::style::TextOverflow::Wrap)
+                .flex_shrink(0.0)
                 .min_width(0.0)
                 .max_width_pct(100.0)
                 .line_height(1.8)
@@ -731,6 +732,8 @@ fn settings_item_view(
         stack((
             label(move || item.description.clone()).style(move |s| {
                 s.min_width(0.0)
+                    .flex_shrink(0.0)
+                    .text_overflow(floem::style::TextOverflow::Wrap)
                     .max_width_pct(100.0)
                     .line_height(1.8)
                     .apply_if(is_ticked.is_some(), |s| {
@@ -792,10 +795,14 @@ fn settings_item_view(
         }
     })
     .style(|s| {
+        // A settings row must retain its measured content height. Shrinking
+        // the row in the scroll's column can overlap its heading and input.
         s.flex_col()
+            .flex_shrink(0.0)
             .padding_vert(10.0)
-            .min_width_pct(100.0)
-            .max_width(300.0)
+            .width_pct(100.0)
+            .min_width(0.0)
+            .max_width_pct(100.0)
     })
 }
 
