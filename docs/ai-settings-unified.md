@@ -58,3 +58,7 @@ local. Preserve the raw stored value; normalize only the effective routing.
 This prevents the new internal lane name from reinterpreting an old unknown
 value as remote approval. Host: unknown_legacy_backend_cannot_activate_gateway,
 then a loopback fixture with saved openai and shared=false must see zero requests.
+
+## Pending backend wording
+
+The connection card shows "Pending backend: Local" or "Pending backend: Remote". Internal backend ids (for example "ollama") are never shown.

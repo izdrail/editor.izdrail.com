@@ -1509,6 +1509,11 @@ fn ai_download_view(common: Rc<CommonData>) -> impl View {
             .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
     })
 }
+fn pending_backend_label(backend: &str) -> String {
+    let name = if backend == "local" { "Local" } else { "Remote" };
+    format!("Pending backend: {name}. Changes activate only on Apply.")
+}
+
 fn local_model_selection_label(backend: &str, selected: bool) -> String {
     match (selected, backend == "local") {
         (true, true) => "Selected local model (local backend active).".into(),
@@ -1525,6 +1530,13 @@ mod model_selection_ui_tests {
         assert_eq!(super::ai_settings_section("AI Autocomplete"), "AI");
         assert_eq!(super::ai_settings_section("AI"), "AI");
         assert_eq!(super::ai_settings_section("Editor"), "Editor");
+    }
+
+    #[test]
+    fn pending_backend_label_uses_user_wording() {
+        assert_eq!(super::pending_backend_label("local"), "Pending backend: Local. Changes activate only on Apply.");
+        assert!(super::pending_backend_label("ollama").contains("Remote"));
+        assert!(!super::pending_backend_label("ollama").contains("ollama"));
     }
 
     #[test]
@@ -1810,7 +1822,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         label(|| "Shared AI connection".to_string())
             .style(|s| s.font_bold().max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
-        label(move || format!("Pending backend: {}. Changes activate only on Apply.", backend.get()))
+        label(move || pending_backend_label(&backend.get()))
             .style(|s| s.max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
         label(move || if backend.get() == "local" {
