@@ -3521,9 +3521,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             )
                         })
                         .style(move |s| {
-                            s.font_size(11.0).selectable(false).color(
-                                config.get().color(LapceColor::EDITOR_DIM),
-                            )
+                            s.font_size(11.0)
+                                .flex_grow(1.0)
+                                .flex_shrink(1.0)
+                                .flex_basis(0.0)
+                                .min_width(0.0)
+                                .text_ellipsis()
+                                .selectable(false)
+                                .color(config.get().color(LapceColor::EDITOR_DIM))
                         }),
                         label(|| "Stop".to_string())
                             .on_click_stop(move |_| {
@@ -3531,6 +3536,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             })
                             .style(move |s| {
                                 s.font_size(10.0)
+                                    .flex_shrink(0.0)
                                     .padding_horiz(6.0)
                                     .border(1.0)
                                     .border_radius(4.0)
@@ -3543,9 +3549,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     )
                             }),
                     ))
-                    .style(|s| s.width_full().gap(6.0).items_center())
+                    .style(|s| s.width_full().min_width(0.0).gap(6.0).items_center())
                 },
-            ),
+            )
+            .style(|s| s.flex_col().width_full().min_width(0.0).gap(2.0)),
         ))
         .style(move |s| {
             s.apply_if(runs_registry.entries().is_empty(), |s| s.hide())
