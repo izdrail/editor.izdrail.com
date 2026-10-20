@@ -249,12 +249,13 @@ pub fn parse_api_key(raw: Option<&str>) -> Option<String> {
         .filter(|k| !k.is_empty())
         .map(str::to_string)
 }
-/// Attach `Authorization: Bearer <key>` when LAPCE_LLM_API_KEY is
-/// set; key-less endpoints see no header either way.
+/// Environment override first, otherwise the endpoint-bound saved key.
+/// Key-less endpoints see no Authorization header.
 pub(crate) fn with_auth(
     req: reqwest::RequestBuilder,
+    endpoint: &str,
 ) -> reqwest::RequestBuilder {
-    match api_key() {
+    match select_key(api_key(), crate::chat_credentials::saved_key(endpoint)) {
         Some(key) => req.header(
             reqwest::header::AUTHORIZATION,
             format!("Bearer {key}"),
@@ -262,11 +263,15 @@ pub(crate) fn with_auth(
         None => req,
     }
 }
+fn select_key(environment: Option<String>, saved: Option<String>) -> Option<String> {
+    environment.or(saved)
+}
+
 /// The actionable suffix for a 401/403 from the configured
-/// endpoint: a keyed lane (llm.izdrail.com) wants the env var.
+/// endpoint: direct the user to the credential settings UI.
 pub(crate) fn auth_hint(status: reqwest::StatusCode) -> &'static str {
     if status.as_u16() == 401 || status.as_u16() == 403 {
-        " If this endpoint needs a key, set LAPCE_LLM_API_KEY."
+        " Open Settings > AI Chat > LLM connection and save an API key, then Test connection. LAPCE_LLM_API_KEY overrides the saved key if set."
     } else {
         ""
     }
@@ -292,11 +297,12 @@ pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())?;
     runtime.block_on(async {
         let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
-        let mut response = with_auth(client.get(&url))
+        let mut response = with_auth(client.get(&url), endpoint)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -434,12 +440,13 @@ pub fn model_capabilities(
         .map_err(|e| e.to_string())?;
     let probed = runtime.block_on(async {
         let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
         let mut response = with_auth(
-            client.post(&url).json(&json!({"model": model})),
+            client.post(&url).json(&json!({"model": model})), endpoint,
         )
         .send()
         .await
@@ -453,7 +460,7 @@ pub fn model_capabilities(
             let tools =
                 json!([{"type":"function","function":{"name":"probe_noop","description":"Capability probe: no arguments, no effect.","parameters":{"type":"object","properties":{},"required":[]}}}]);
             let probe = json!({"model": model, "messages": [{"role":"user","content":"hi"}], "max_tokens": 1, "tools": tools});
-            let mut response = match with_auth(client.post(&chat).json(&probe))
+            let mut response = match with_auth(client.post(&chat).json(&probe), endpoint)
                 .send()
                 .await
             {
@@ -526,8 +533,8 @@ pub fn ollama(
         .map_err(|e| e.to_string())?;
     runtime.block_on(async {
         let request = async {
-            let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
-            let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512}))).send();
+            let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
+            let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})), endpoint).send();
             let mut response = make(true).await.map_err(|e| e.to_string())?;
             if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
             if !response.status().is_success() { return Err(format!("The chat server returned HTTP {}. Check endpoint and model.{}", response.status(), auth_hint(response.status()))); }
@@ -1147,5 +1154,49 @@ mod cancellation_tests {
         assert!(parse_slash("/planx not-a-command").unwrap().is_err());
         assert!(parse_slash("/plan").unwrap().is_err());
         assert!(parse_slash("  /btw   spaced out ").unwrap().is_ok());
+    }
+}
+
+/// Explicit minimal generation probe: sends no project context. May use a small
+/// amount of provider quota. Never display provider bodies or request errors.
+pub fn test_connection(endpoint: &str, model: &str) -> String {
+    let Ok(url) = completion_url(endpoint) else { return "Invalid endpoint".into(); };
+    if model.trim().is_empty() { return "Set a model first".into(); }
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else {
+        return "Connection test could not start".into();
+    };
+    runtime.block_on(async {
+        let Ok(client) = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(20)).build() else { return "Connection test could not start".into(); };
+        let result = with_auth(client.post(url).json(&json!({"model": model,"messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false})), endpoint).send().await;
+        match result {
+            Ok(response) => connection_status(response.status().as_u16()),
+            Err(_) => "Connection failed or timed out. Check endpoint and network.".into(),
+        }
+    })
+}
+fn connection_status(status: u16) -> String {
+    match status {
+        200..=299 => "OK: endpoint accepted this key and model".into(),
+        401 => "401 Unauthorized: save a valid API key (check environment override too)".into(),
+        403 => "403 Forbidden: key or model access denied".into(),
+        _ => format!("HTTP {status}: connection rejected; check endpoint and model"),
+    }
+}
+
+#[cfg(test)]
+mod connection_tests {
+    #[test]
+    fn saved_key_fallback_and_environment_precedence() {
+        assert_eq!(super::select_key(None, Some("saved".into())).as_deref(), Some("saved"));
+        assert_eq!(super::select_key(Some("env".into()), Some("saved".into())).as_deref(), Some("env"));
+        assert!(super::select_key(None, None).is_none());
+    }
+    #[test]
+    fn connection_outcomes_and_auth_guidance_are_actionable() {
+        assert!(super::connection_status(200).starts_with("OK:"));
+        assert!(super::connection_status(401).starts_with("401 Unauthorized:"));
+        assert!(super::connection_status(500).starts_with("HTTP 500:"));
+        assert!(super::auth_hint(reqwest::StatusCode::UNAUTHORIZED).contains("Settings > AI Chat > LLM connection"));
     }
 }

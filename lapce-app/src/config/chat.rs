@@ -28,10 +28,10 @@ pub struct ChatConfig {
     #[field_names(desc = "Curated local instruct model. Pick and download below.")]
     pub local_model: String,
     #[field_names(
-        desc = "OpenAI-compatible endpoint, root or /v1. llm.izdrail.com is the default and needs LAPCE_LLM_API_KEY set in the environment."
+        desc = "OpenAI-compatible endpoint, root or /v1. llm.izdrail.com is the default. Save its API key in the LLM connection section above; LAPCE_LLM_API_KEY is an optional override."
     )]
     pub endpoint: String,
-    #[field_names(desc = "Ollama chat model name.")]
+    #[field_names(desc = "Chat model name or routing alias (auto by default).")]
     pub model: String,
     #[field_names(
         desc = "ACP agent command for the chat panel, e.g. `opencode acp` or a Claude Code/Codex adapter binary. Empty disables ACP mode."

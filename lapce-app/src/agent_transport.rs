@@ -37,7 +37,7 @@ pub fn ollama(
     runtime.block_on(async {
         let run=async {
             let client=reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e|e.to_string())?;
-            let mut response=crate::chat::with_auth(client.post(url).json(&request)).send().await.map_err(|e|e.to_string())?;
+            let mut response=crate::chat::with_auth(client.post(url).json(&request), endpoint).send().await.map_err(|e|e.to_string())?;
             if !response.status().is_success() {
                 let status = response.status();
                 // The provider's error body says WHY (unknown model,
@@ -50,7 +50,7 @@ pub fn ollama(
                 // (host QA: gemma3:4b Act runs died this way).
                 if status.as_u16() == 401 || status.as_u16() == 403 {
                     return Err(format!(
-                        "The provider rejected the request (HTTP {status}). If this endpoint needs a key, set LAPCE_LLM_API_KEY."
+                        "The provider rejected the request (HTTP {status}). Open Settings > AI Chat > LLM connection to save an API key and Test connection. LAPCE_LLM_API_KEY overrides the saved key."
                     ));
                 }
                 if body.contains("does not support tools") {

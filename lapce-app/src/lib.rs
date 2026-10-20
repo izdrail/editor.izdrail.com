@@ -1,5 +1,6 @@
 pub mod blade_props;
 pub mod chat;
+pub mod chat_credentials;
 pub mod chat_schedule;
 pub mod chat_session;
 pub mod agent_protocol;

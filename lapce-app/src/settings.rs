@@ -347,6 +347,7 @@ pub fn settings_view(
     let plugin_kinds = settings_data.plugin_kinds;
 
     let ai_common = common.clone();
+    let connection_common = common.clone();
     let search_editor = editors.make_local(cx, common);
     let search_editor_id = search_editor.id();
     let doc = search_editor.doc_signal();
@@ -521,12 +522,13 @@ pub fn settings_view(
             container(
                 scroll(
                     stack((
+                        llm_connection_view(connection_common).style(move |s| s.apply_if(current_kind.get().as_str() != "AI Chat", |s| s.hide())),
                         ai_download_view(ai_common.clone()),
                         curated_models_view(ai_common),
                     ))
                     .style(|s| s.flex_col().width_pct(100.0)),
                 )
-                .style(|s| s.width_pct(100.0).height(170.0).flex_shrink(0.0)),
+                .style(|s| s.width_pct(100.0).height(310.0).flex_shrink(0.0)),
             )
             .style(move |s| {
                 s.width_pct(100.0).apply_if(
@@ -1561,4 +1563,97 @@ fn curated_models_view(common: Rc<CommonData>) -> impl View {
             .map(|entry| ai_model_download_view(common.clone(), entry)),
     )
     .style(|s| s.flex_col())
+}
+
+/// Dedicated secret input: actual key text never enters an editor document,
+/// layout, clipboard-copy action, settings search map or Debug config.
+fn llm_connection_view(common: Rc<CommonData>) -> impl View {
+    use floem::{event::Event, keyboard::{Key, NamedKey}, Clipboard};
+    let config = common.config;
+    let initial = config.get_untracked();
+    let endpoint = create_rw_signal(initial.ai_chat.endpoint.clone());
+    let model = create_rw_signal(initial.ai_chat.model.clone());
+    let key = create_rw_signal(String::new());
+    let state = create_rw_signal("Saved key is kept private. Type or paste a replacement below.".to_string());
+    let busy = create_rw_signal(false);
+    let field = label(move || {
+        if key.with(|value| value.is_empty()) { "Click here, then type or paste API key".to_string() }
+        else { "•••••••• (new key, not yet saved)".to_string() }
+    }).keyboard_navigable();
+    let field_id = field.id();
+    let field = field.on_click_stop(move |_| { field_id.request_focus(); })
+        .on_event_stop(EventListener::KeyDown, move |event| {
+            if let Event::KeyDown(event) = event {
+                match &event.key.logical_key {
+                    Key::Named(NamedKey::Backspace) => key.update(|value| { value.pop(); }),
+                    Key::Named(NamedKey::Escape) => key.set(String::new()),
+                    Key::Character(text) if (event.modifiers.contains(Modifiers::CONTROL) || event.modifiers.contains(Modifiers::META)) && text.eq_ignore_ascii_case("v") => {
+                        if let Ok(text) = Clipboard::get_contents() {
+                            key.update(|value| crate::chat_credentials::append_key(value, text.trim()));
+                        }
+                    }
+                    Key::Character(text) if !event.modifiers.intersects(Modifiers::CONTROL | Modifiers::META | Modifiers::ALT) => {
+                        key.update(|value| crate::chat_credentials::append_key(value, text));
+                    }
+                    _ => {}
+                }
+            }
+        }).style(move |s| s.padding(8.0).border(1.0).border_radius(6.0)
+            .border_color(config.get().color(LapceColor::LAPCE_BORDER)));
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let result = floem::ext_event::create_signal_from_channel(rx);
+    create_effect(move |_| {
+        if let Some(message) = result.get() { state.set(message); busy.set(false); }
+    });
+    stack((
+        label(|| "LLM connection".to_string()),
+        stack((
+            label(|| "Endpoint".to_string()),
+            floem::views::text_input(endpoint).style(|s| s.width(340.0)),
+            label(|| "Model".to_string()),
+            floem::views::text_input(model).style(|s| s.width(130.0)),
+        )).style(|s| s.flex_row().gap(8.0)),
+        label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),
+        field,
+        stack((
+            label(|| "Save connection".to_string()).on_click_stop(move |_| {
+                if busy.get_untracked() { return; }
+                let endpoint_value = endpoint.get_untracked();
+                if crate::chat::completion_url(&endpoint_value).is_err() || model.get_untracked().trim().is_empty() {
+                    state.set("Enter a valid endpoint and model".into()); return;
+                }
+                let value = key.get_untracked();
+                // Empty entry preserves an existing key; deletion is explicit.
+                if !value.is_empty() {
+                    if let Err(message) = crate::chat_credentials::save(&endpoint_value, &value) {
+                        state.set(message); return;
+                    }
+                }
+                if LapceConfig::update_file("ai-chat", "endpoint", toml_edit::Value::from(endpoint_value.trim())).is_none()
+                    || LapceConfig::update_file("ai-chat", "model", toml_edit::Value::from(model.get_untracked().trim())).is_none() {
+                    state.set("Could not save endpoint/model settings".into()); return;
+                }
+                key.set(String::new());
+                state.set("Connection saved. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
+            }).style(move |s| ai_button_style(s, config)),
+            label(|| "Remove saved key".to_string()).on_click_stop(move |_| {
+                if busy.get_untracked() { return; }
+                match crate::chat_credentials::save(&endpoint.get_untracked(), "") {
+                    Ok(()) => { key.set(String::new()); state.set("Saved key removed; environment override is unchanged".into()); }
+                    Err(message) => state.set(message),
+                }
+            }).style(move |s| ai_button_style(s, config)),
+            label(move || if busy.get() { "Testing..." } else { "Test connection" }.to_string()).on_click_stop(move |_| {
+                if busy.get_untracked() { return; }
+                if key.with_untracked(|value| !value.is_empty()) { state.set("Save the new key before testing".into()); return; }
+                let endpoint = endpoint.get_untracked(); let model = model.get_untracked();
+                busy.set(true); state.set("Testing endpoint and model; no project code is sent...".into());
+                let tx = tx.clone();
+                std::thread::spawn(move || { let _ = tx.send(crate::chat::test_connection(&endpoint, &model)); });
+            }).style(move |s| ai_button_style(s, config)),
+        )).style(|s| s.flex_row().gap(8.0)),
+        label(move || state.get()).style(|s| s.max_width_pct(100.0)),
+        label(|| "Test sends a one-token request, which may use provider quota. Saved keys are local plaintext in a private file (0600 on Unix), not encrypted. Never commit that file.".to_string())
+            .style(|s| s.max_width_pct(100.0)),
+    )).style(|s| s.flex_col().gap(6.0).padding_horiz(50.0).padding_bottom(12.0))
 }
