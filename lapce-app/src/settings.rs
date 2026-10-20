@@ -1607,7 +1607,7 @@ fn curated_models_view(common: Rc<CommonData>) -> impl View {
 /// Dedicated secret input: actual key text never enters an editor document,
 /// layout, clipboard-copy action, settings search map or Debug config.
 fn llm_connection_view(common: Rc<CommonData>) -> impl View {
-    use floem::{event::{Event, EventPropagation}, keyboard::{Key, NamedKey}, Clipboard};
+    use floem::{event::{Event, EventPropagation}, keyboard::{Key, NamedKey, PhysicalKey, KeyCode}, Clipboard};
     let config = common.config;
     let initial = config.get_untracked();
     let endpoint = create_rw_signal(initial.ai_chat.endpoint.clone());
@@ -1623,6 +1623,13 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     };
     let key = create_rw_signal(fixture_key);
     let key_focused = create_rw_signal(false);
+    let save_focused = create_rw_signal(false);
+    let model_input = floem::views::text_input(model).style(move |s| {
+        s.width_pct(100.0).min_width(0.0).flex_shrink(0.0)
+            .padding(8.0).border(1.0).border_radius(6.0)
+            .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+    });
+    let model_id = model_input.id();
     let state = create_rw_signal("Type or paste a key in the masked field above. An empty entry preserves any saved key.".to_string());
     let busy = create_rw_signal(false);
     let credentials_version = create_rw_signal(0u64);
@@ -1647,7 +1654,11 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                 }
                 key.set(String::new());
                 state.set("Connection saved. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
-            }).keyboard_navigable().style(move |s| ai_button_style(s, config));
+            }).keyboard_navigable()
+            .on_event_stop(EventListener::FocusGained, move |_| save_focused.set(true))
+            .on_event_stop(EventListener::FocusLost, move |_| save_focused.set(false))
+            .style(move |s| ai_button_style(s, config).apply_if(save_focused.get(), |s|
+                s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))));
     let save_id = save_button.id();
     let common_focus = common.focus;
     let keyboard_focus = common.keyboard_focus;
@@ -1675,11 +1686,20 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         })
         .on_event(EventListener::KeyDown, move |event| {
             if let Event::KeyDown(event) = event {
-                // Let the framework move focus out of this custom input.
-                if matches!(&event.key.logical_key, Key::Named(NamedKey::Tab)) {
+                // Harness/platform events may report Tab as a physical key
+                // or a control character instead of Named(Tab).
+                if matches!(&event.key.logical_key, Key::Named(NamedKey::Tab))
+                    || matches!(&event.key.logical_key, Key::Character(text) if text.as_str() == "\t")
+                    || matches!(event.key.physical_key, PhysicalKey::Code(KeyCode::Tab))
+                {
                     key_focused.set(false);
                     keyboard_focus.set(None);
-                    save_id.request_focus();
+                    field_id.clear_focus();
+                    if event.modifiers.contains(Modifiers::SHIFT) {
+                        model_id.request_focus();
+                    } else {
+                        save_id.request_focus();
+                    }
                     return EventPropagation::Stop;
                 }
                 // Workbench shortcuts must reach the window dispatcher.
@@ -1729,11 +1749,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
         stack((
             label(|| "Model".to_string()),
-            floem::views::text_input(model).style(move |s| {
-                s.width_pct(100.0).min_width(0.0).flex_shrink(0.0)
-                    .padding(8.0).border(1.0).border_radius(6.0)
-                    .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-            }),
+            model_input,
         )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
         label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),
         field,

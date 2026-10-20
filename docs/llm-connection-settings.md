@@ -92,3 +92,17 @@ reverse navigation remains a limitation. Neither Tab nor shortcuts save a key.
 Re-test click-before-type ring, real dummy typing, Tab ring reset, command
 palette open from the field, then chat composer versus terminal typing. Inspect
 both shared focus and actual destination; no runtime fix is claimed until then.
+
+## Tab event normalization (item 270)
+
+The 1d577f4 host sequence still did not leave key entry on Tab. The previous
+handler matched only logical Named(Tab); it now also accepts physical Tab and
+logical tab-character events, explicitly clears key focus before requesting the
+target, and gives Save a visible focused border. Shift-Tab targets the preceding
+Model input. This broadens event matching, not evidence that the host used one
+particular representation: that cause remains unconfirmed without event trace.
+
+Repeat actual click/type/Tab and Shift-Tab with screenshots of source and target
+rings; type after Shift-Tab and require Model changes, not key or terminal.
+Press Enter on Save with dummy/fixture values only. If handoff still fails,
+collect sanitized logical/physical key kind and focus IDs, never entered text.
