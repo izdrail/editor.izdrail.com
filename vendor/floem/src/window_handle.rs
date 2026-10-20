@@ -235,6 +235,8 @@ impl WindowHandle {
     pub fn event(&mut self, event: Event) {
         set_current_view(self.id);
         let event = event.transform(Affine::scale(self.app_state.scale));
+        #[cfg(debug_assertions)]
+        let trace_key = crate::focus_trace::begin(&event, self.app_state.focus);
 
         let mut cx = EventCx {
             app_state: &mut self.app_state,
@@ -424,7 +426,11 @@ impl WindowHandle {
             cx.app_state.clicking.clear();
         }
 
+        #[cfg(debug_assertions)]
+        if trace_key { crate::focus_trace::note("dispatch_end", self.app_state.focus, self.app_state.request_paint); }
         self.process_update();
+        #[cfg(debug_assertions)]
+        if trace_key { crate::focus_trace::note("updates_end", self.app_state.focus, self.app_state.request_paint); }
     }
 
     pub(crate) fn scale(&mut self, scale: f64) {
@@ -653,6 +659,8 @@ impl WindowHandle {
     }
 
     pub fn paint(&mut self, gpu_resources: Option<GpuResources>) -> Option<peniko::Image> {
+        #[cfg(debug_assertions)]
+        crate::focus_trace::note("paint_begin", self.app_state.focus, self.app_state.request_paint);
         let mut cx = PaintCx {
             app_state: &mut self.app_state,
             paint_state: &mut self.paint_state,
@@ -881,9 +889,13 @@ impl WindowHandle {
                 };
                 match msg {
                     UpdateMessage::RequestPaint => {
+                        #[cfg(debug_assertions)]
+                        crate::focus_trace::note("paint_update", cx.app_state.focus, true);
                         cx.app_state.request_paint = true;
                     }
                     UpdateMessage::Focus(id) => {
+                        #[cfg(debug_assertions)]
+                        crate::focus_trace::transition(cx.app_state.focus, Some(id), cx.app_state.request_paint);
                         if cx.app_state.focus != Some(id) {
                             let old = cx.app_state.focus;
                             cx.app_state.focus = Some(id);
@@ -891,6 +903,8 @@ impl WindowHandle {
                         }
                     }
                     UpdateMessage::ClearFocus(id) => {
+                        #[cfg(debug_assertions)]
+                        crate::focus_trace::note("clear_focus_update", cx.app_state.focus, cx.app_state.request_paint);
                         if cx.app_state.focus == Some(id) {
                             cx.app_state.clear_focus();
                             cx.app_state.focus_changed(Some(id), None);
@@ -1200,6 +1214,8 @@ impl WindowHandle {
     }
 
     fn schedule_repaint(&self) {
+        #[cfg(debug_assertions)]
+        crate::focus_trace::note("request_redraw", self.app_state.focus, true);
         if let Some(window) = self.window.as_ref() {
             window.request_redraw();
         }

@@ -318,6 +318,8 @@ impl AppState {
     }
 
     pub(crate) fn focus_changed(&mut self, old: Option<ViewId>, new: Option<ViewId>) {
+        #[cfg(debug_assertions)]
+        crate::focus_trace::transition(old, new, self.request_paint);
         if let Some(id) = new {
             // To apply the styles of the Focus selector
             if self.has_style_for_sel(id, StyleSelector::Focus)

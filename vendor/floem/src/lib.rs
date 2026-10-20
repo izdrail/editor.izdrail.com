@@ -248,3 +248,6 @@ pub mod prelude {
     pub use peniko::color::palette;
     pub use peniko::Color;
 }
+
+#[cfg(debug_assertions)]
+mod focus_trace;
