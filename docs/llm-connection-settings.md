@@ -128,3 +128,7 @@ Host: no extra input after Tab, require Save ring in captured frame. Space with
 dummy values confirms destination independently. Shift-Tab from Save must show
 key ring; Shift-Tab from key must show Model ring and typing must edit Model.
 The stale-frame cause remains a hypothesis until these checks pass.
+
+## Remote error detail
+
+Chat and model-list failures now include the provider's own reason, for example `The chat server returned HTTP 404: model 'auto' not found. Check endpoint and model.` The reason is read from an OpenAI-style `error.message` (or `error`), whitespace-collapsed and clipped to 300 characters. A stream that closes right after its last event, with no trailing blank line, is now read to the end instead of being reported as cut off. The 401/403 hint points to Settings > AI.

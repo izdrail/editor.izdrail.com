@@ -291,9 +291,29 @@ pub(crate) fn build_default_key_available(endpoint: &str) -> bool {
 /// endpoint: direct the user to the credential settings UI.
 pub(crate) fn auth_hint(status: reqwest::StatusCode) -> &'static str {
     if status.as_u16() == 401 || status.as_u16() == 403 {
-        " Open Settings > AI Chat > LLM connection and save an API key, then Test connection. LAPCE_LLM_API_KEY overrides the saved key if set."
+        " Open Settings > AI, save an API key in the shared connection, then Test connection. LAPCE_LLM_API_KEY overrides the saved key if set."
     } else {
         ""
+    }
+}
+
+/// The provider's own reason for a failed request, clipped for the panel:
+/// OpenAI-style {"error":{"message":..}} or {"error":".."}, else raw text.
+pub(crate) fn server_detail(body: &str) -> String {
+    let text = serde_json::from_str::<Value>(body).ok().and_then(|v| {
+        v.pointer("/error/message").or_else(|| v.get("error")).or_else(|| v.get("message"))
+            .and_then(Value::as_str).map(str::to_string)
+    }).unwrap_or_else(|| body.to_string());
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    text.chars().take(300).collect()
+}
+/// "<what> returned HTTP 404: model not found. <advice>" (detail optional).
+pub(crate) fn http_failure(what: &str, status: u16, body: &str, advice: &str) -> String {
+    let detail = server_detail(body);
+    if detail.is_empty() {
+        format!("{what} returned HTTP {status}. {advice}")
+    } else {
+        format!("{what} returned HTTP {status}: {detail}. {advice}")
     }
 }
 
@@ -327,10 +347,13 @@ pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
             .await
             .map_err(|e| e.to_string())?;
         if !response.status().is_success() {
-            return Err(format!(
-                "The model list returned HTTP {}. Check the endpoint.{}",
-                response.status(),
-                auth_hint(response.status())
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(http_failure(
+                "The model list",
+                status.as_u16(),
+                &body,
+                &format!("Check the endpoint.{}", auth_hint(status)),
             ));
         }
         let mut bytes = Vec::new();
@@ -557,7 +580,7 @@ pub fn ollama(
             let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": 512})), endpoint).send();
             let mut response = make(true).await.map_err(|e| e.to_string())?;
             if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
-            if !response.status().is_success() { return Err(format!("The chat server returned HTTP {}. Check endpoint and model.{}", response.status(), auth_hint(response.status()))); }
+            if !response.status().is_success() { let status = response.status(); let body = response.text().await.unwrap_or_default(); return Err(http_failure("The chat server", status.as_u16(), &body, &format!("Check endpoint and model.{}", auth_hint(status)))); }
             let streaming = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).is_some_and(|h| h.contains("text/event-stream"));
             if streaming {
                 let mut buffer = Vec::new();
@@ -575,6 +598,15 @@ pub fn ollama(
                             if parse_event(&payload, &mut |text| send(Update::Delta(text)))? { send(Update::Done(String::new())); return Ok(()); }
                         } else if let Some(data) = line.strip_prefix("data:") { lines.push(data.trim_start().to_string()); }
                     }
+                }
+                // A server may close the stream right after its last event
+                // without a trailing blank line: read what is left first.
+                if let Ok(rest) = std::str::from_utf8(&buffer) {
+                    if let Some(data) = rest.trim_end_matches(['\r','\n']).strip_prefix("data:") { lines.push(data.trim_start().to_string()); }
+                }
+                if !lines.is_empty() {
+                    let payload = lines.join("\n");
+                    if parse_event(&payload, &mut |text| send(Update::Delta(text)))? { send(Update::Done(String::new())); return Ok(()); }
                 }
                 Err("The chat stream ended before completion. Partial response kept.".into())
             } else {
@@ -718,6 +750,18 @@ mod mention_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn http_failures_carry_the_provider_reason() {
+        assert_eq!(
+            super::http_failure("The chat server", 404, r#"{"error":{"message":"model 'auto' not found"}}"#, "Check endpoint and model."),
+            "The chat server returned HTTP 404: model 'auto' not found. Check endpoint and model."
+        );
+        assert_eq!(super::server_detail(r#"{"error":"Invalid API key"}"#), "Invalid API key");
+        assert_eq!(super::server_detail("  plain\n text "), "plain text");
+        assert_eq!(super::http_failure("The model list", 500, "", "Check the endpoint."), "The model list returned HTTP 500. Check the endpoint.");
+        assert_eq!(super::server_detail(&"x".repeat(1000)).len(), 300);
+    }
+
     use super::*;
 
     #[test]
@@ -1229,6 +1273,6 @@ mod connection_tests {
         assert!(super::connection_status(200).starts_with("OK:"));
         assert!(super::connection_status(401).starts_with("401 Unauthorized:"));
         assert!(super::connection_status(500).starts_with("HTTP 500:"));
-        assert!(super::auth_hint(reqwest::StatusCode::UNAUTHORIZED).contains("Settings > AI Chat > LLM connection"));
+        assert!(super::auth_hint(reqwest::StatusCode::UNAUTHORIZED).contains("Settings > AI, save an API key"));
     }
 }

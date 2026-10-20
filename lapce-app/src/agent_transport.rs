@@ -50,7 +50,7 @@ pub fn ollama(
                 // (host QA: gemma3:4b Act runs died this way).
                 if status.as_u16() == 401 || status.as_u16() == 403 {
                     return Err(format!(
-                        "The provider rejected the request (HTTP {status}). Open Settings > AI Chat > LLM connection to save an API key and Test connection. LAPCE_LLM_API_KEY overrides the saved key."
+                        "The provider rejected the request (HTTP {status}). Open Settings > AI to save an API key in the shared connection and Test connection. LAPCE_LLM_API_KEY overrides the saved key."
                     ));
                 }
                 if body.contains("does not support tools") {
