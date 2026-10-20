@@ -96,6 +96,8 @@ pub mod history;
 pub mod hover;
 pub mod id;
 pub mod inline_ai_edit;
+#[allow(dead_code)]
+mod ghost_gateway;
 pub mod inline_completion;
 pub mod keymap;
 pub mod keypress;
