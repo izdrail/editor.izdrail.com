@@ -3335,7 +3335,9 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
     .style(move |s| {
         let config = config.get();
         let origin = window_tab_data.completion_origin();
-        s.position(Position::Absolute)
+        let has_items = completion_data.with(|c| !c.filtered_items.is_empty());
+        s.display(if has_items { Display::Flex } else { Display::None })
+            .position(Position::Absolute)
             .width((config.editor.completion_width as f64)
                 .max(1.0).min((tab_rect.get().width() - 1.0).max(0.0)) as f32)
             .max_height(400.0_f64.min(tab_rect.get().height().max(0.0)) as f32)

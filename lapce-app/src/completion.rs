@@ -524,8 +524,22 @@ pub fn clamp_popup_origin(
     )
 }
 
+/// True when a popup placed at `y` with `height` would run past `area_bottom`.
+pub fn should_flip_above(y: f64, height: f64, area_bottom: f64) -> bool {
+    y + height > area_bottom
+}
+
 #[cfg(test)]
 mod popup_geometry_tests {
+    #[test]
+    fn flips_when_popup_passes_editor_bottom() {
+        use super::should_flip_above as flip;
+        assert!(!flip(100.0, 200.0, 400.0));
+        assert!(!flip(200.0, 200.0, 400.0));
+        assert!(flip(201.0, 200.0, 400.0));
+        assert!(flip(390.0, 20.0, 400.0));
+    }
+
     #[test]
     fn popup_origin_stays_in_tab_at_edges_and_tiny_sizes() {
         use super::clamp_popup_origin as clamp;

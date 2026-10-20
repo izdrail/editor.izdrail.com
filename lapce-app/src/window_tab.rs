@@ -2825,7 +2825,14 @@ impl WindowTabData {
                     - 5.0,
                 point_below.y - viewport.y0,
             );
-        if origin.y + completion_size.height > tab_size.height {
+        // Flip against the bottom of the editor viewport, not the whole tab,
+        // so the popup does not open over the terminal or other panels.
+        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
+        if crate::completion::should_flip_above(
+            origin.y,
+            completion_size.height,
+            area_bottom,
+        ) {
             origin.y = window_origin.y + (point_above.y - viewport.y0)
                 - completion_size.height;
         }
