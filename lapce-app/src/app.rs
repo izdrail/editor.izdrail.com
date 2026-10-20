@@ -3438,7 +3438,11 @@ fn code_action(window_tab_data: Rc<WindowTabData>) -> impl View {
         .margin_left(origin.x as f32)
         .margin_top(origin.y as f32)
         .background(config.get().color(LapceColor::COMPLETION_BACKGROUND))
+        .border(1.0)
+        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
         .border_radius(6.0)
+        .box_shadow_blur(6.0)
+        .box_shadow_color(config.get().color(LapceColor::LAPCE_DROPDOWN_SHADOW))
     })
     .debug_name("Code Action Layer")
 }
