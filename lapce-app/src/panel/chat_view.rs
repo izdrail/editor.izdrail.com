@@ -3286,9 +3286,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         let row_root = rooted.root.clone();
                         let foreign =
                             agents_current_root.as_ref() != Some(&row_root);
-                        let text = format!(
-                            "{}  ·  {}  ·  {}",
-                            session_title(&session.title),
+                        let title_text = session_title(&session.title);
+                        let meta_text = format!(
+                            "{}  ·  {}",
                             session.agent,
                             crate::agent_acp_store::age_label(
                                 session.updated_unix,
@@ -3296,14 +3296,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             )
                         );
                         // Foreign rows carry their workspace folder name.
-                        let text = if foreign {
+                        let meta_text = if foreign {
                             let folder = row_root
                                 .file_name()
                                 .map(|n| n.to_string_lossy().into_owned())
                                 .unwrap_or_default();
-                            format!("{text}  ·  {folder}")
+                            format!("{meta_text}  ·  {folder}")
                         } else {
-                            text
+                            meta_text
                         };
                         let id = session.session_id.clone();
                         let del_id = session.session_id.clone();
@@ -3311,7 +3311,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         let agents_data = agents_data.clone();
                         let del_data = agents_data.clone();
                         h_stack((
-                            label(move || text.clone())
+                            v_stack((
+                                label(move || title_text.clone()).style(|s| {
+                                    s.width_full().min_width(0.0).text_ellipsis()
+                                }),
+                                label(move || meta_text.clone()).style(move |s| {
+                                    s.width_full()
+                                        .min_width(0.0)
+                                        .text_ellipsis()
+                                        .font_size(10.0)
+                                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                                }),
+                            ))
                                 .on_click_stop(move |_| {
                                     if foreign {
                                         // Resume happens in that project:
