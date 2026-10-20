@@ -1575,7 +1575,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     let endpoint = create_rw_signal(initial.ai_chat.endpoint.clone());
     let model = create_rw_signal(initial.ai_chat.model.clone());
     let key = create_rw_signal(String::new());
-    let state = create_rw_signal("Saved key is kept private. Type or paste a replacement below.".to_string());
+    let state = create_rw_signal("Type or paste a key in the masked field above. An empty entry preserves any saved key.".to_string());
     let busy = create_rw_signal(false);
     let field = label(move || {
         if key.with(|value| value.is_empty()) { "Click here, then type or paste API key".to_string() }
@@ -1610,10 +1610,20 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         label(|| "LLM connection".to_string()),
         stack((
             label(|| "Endpoint".to_string()),
-            floem::views::text_input(endpoint).style(move |s| s.width(340.0).max_width_pct(100.0).border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))),
+            floem::views::text_input(endpoint).style(move |s| {
+                s.width_pct(100.0).min_width(0.0).flex_shrink(0.0)
+                    .padding(8.0).border(1.0).border_radius(6.0)
+                    .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            }),
+        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
+        stack((
             label(|| "Model".to_string()),
-            floem::views::text_input(model).style(move |s| s.width(180.0).max_width_pct(100.0).border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))),
-        )).style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
+            floem::views::text_input(model).style(move |s| {
+                s.width_pct(100.0).min_width(0.0).flex_shrink(0.0)
+                    .padding(8.0).border(1.0).border_radius(6.0)
+                    .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            }),
+        )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(6.0)),
         label(|| "API key (masked): paste/type, Backspace deletes last character, Esc clears entry".to_string()),
         field,
         stack((
@@ -1656,5 +1666,5 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         label(move || state.get()).style(|s| s.max_width_pct(100.0)),
         label(|| "Test sends a one-token request, which may use provider quota. Saved keys are local plaintext in a private file (0600 on Unix), not encrypted. Never commit that file.".to_string())
             .style(|s| s.max_width_pct(100.0)),
-    )).style(|s| s.flex_col().gap(8.0).padding_top(12.0).padding_bottom(16.0))
+    )).style(|s| s.flex_col().width_pct(100.0).flex_shrink(0.0).gap(8.0).padding_top(12.0).padding_bottom(16.0))
 }

@@ -53,3 +53,21 @@ Host regression checks after compile/test/clippy:
 - Check Core, Editor and Terminal sections for new horizontal overflow.
 
 No running-editor visual acceptance is claimed by the source change.
+
+## Connection field layout (item 260)
+
+The 7e5cb58 captures confirmed an independently wrapped Model label at 900px
+and a fixed 180px model input hiding the configured value at both widths.
+Endpoint and Model now each have a label above a full-width padded input.
+Neither label can wrap onto the preceding field's line. The containing column
+and field groups retain their natural height. Status copy no longer suggests
+that a key definitely exists, or points below to an entry field above it.
+
+Host regression: compare 900px and 1600px Settings with Terminal open. Confirm
+Endpoint label/input then Model label/input, complete display of the test value
+qwen2.5-coder:1.5b-instruct-q4_K_M, no overlap with API key instructions, and no
+horizontal overflow. Focus each field and move through a longer-than-viewport
+value to confirm native input scrolling. Arbitrarily long values cannot all
+fit on one line; text input editing/scrolling must keep them accessible.
+Check the key field and action buttons after the increased connection height.
+Runtime screenshots and focus behavior remain required, not locally verified.
