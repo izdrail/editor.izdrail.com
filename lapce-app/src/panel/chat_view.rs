@@ -2998,7 +2998,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             accept_mention_at(&doc, mention_popup, index)
         })
     };
-    v_stack((
+    scroll(v_stack((
         // Antigravity-style header: pane title on the left, icon
         // actions on the right. The model indicator stays in this row
         // until the composer parity work moves it into the composer card.
@@ -3722,10 +3722,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             // A floor under the transcript: the review section and a
             // stale checkpoint card used to squeeze it to nothing
             // (host QA on 3562d6a).
-            s.width_full()
-                .flex_grow(1.0)
-                .flex_basis(0.0)
-                .min_height(160.0)
+            // Explicit bounded transcript inside the outer body scroll:
+            // other cards can no longer push the composer offscreen.
+            s.width_full().height(240.0).flex_shrink(0.0)
         }),
         pending_command_card(tab.clone()),
         crate::agent_review_ui::panel(tab.clone()),
@@ -4099,7 +4098,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .selectable(false)
                 .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
-    ))
+    )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
+        .padding(8.0).gap(8.0)))
     .style(move |s| {
         // Absolute and sized to the panel, like the other panels, so the
         // chat can neither overflow its slot nor sit under a sibling.
@@ -4113,8 +4113,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         };
         s.absolute()
             .size_pct(100.0, 100.0)
-            .padding(8.0)
-            .gap(8.0)
+            .set(PropagatePointerWheel, false)
             .border(1.0)
             .border_color(ring)
             .background(config.color(LapceColor::PANEL_BACKGROUND))

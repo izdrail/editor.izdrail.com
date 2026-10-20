@@ -34,3 +34,19 @@ horizontal scrolling; Approve/Revoke must remain visible and not overlap the
 composer. Check short-height layout because the disclosure needs extra height.
 Do not approve real project disclosure merely to obtain a screenshot. This
 source change does not prove clicks, focus or permission behavior at runtime.
+
+## Short-height body scroll (item 269)
+
+4b65d03 at 600px cut the error card and all following actions outside the panel.
+The complete chat body now lives in an outer vertical scroll. Its transcript
+has an explicit 240px viewport, with its existing inner scrolling/autoscroll;
+other sections use natural height. Recovery, disclosure and composer are
+reachable by scrolling the body even when review/checkpoint content is expanded.
+This trades the former expanding transcript for a stable bounded transcript.
+
+Host checks: 1600x600 and 900x600, full-height normal/narrow. After fixture 401,
+scroll outer body to recovery, then composer; click recovery and return. Expand
+review/checkpoint and verify all controls still reachable. Wheel transcript
+versus outer body separately; check typed composer and focus after scroll.
+Capture top and bottom of panel. No scrollbar/click/keyboard pass is inferred
+from source. A sticky composer or collapsible review can be a later refinement.
