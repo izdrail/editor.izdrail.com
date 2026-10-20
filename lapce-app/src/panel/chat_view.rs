@@ -2354,6 +2354,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let walkthrough_tab = tab.clone();
     let walkthrough = data.clone();
     let schedules_tab = tab.clone();
+    let hide_tab = tab.clone();
+    let hide_title_tab = tab.clone();
     let schedules_data = data.clone();
     let empty_tab = tab.clone();
     let empty_turns = data.clone();
@@ -3079,12 +3081,21 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         // actions on the right. The model indicator stays in this row
         // until the composer parity work moves it into the composer card.
         h_stack((
-            label(|| "Agent".to_string()).style(move |s| {
-                s.font_bold()
-                    .font_size(13.0)
-                    .selectable(false)
-                    .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
-            }),
+            label(|| "Agent".to_string())
+                .on_click_stop(move |_| {
+                    // Click the title to collapse the whole Agent panel. The
+                    // panel icon and the status-bar toggle bring it back, and
+                    // the shown state is saved with the workspace layout.
+                    hide_title_tab.toggle_panel_visual(PanelKind::Chat);
+                })
+                .style(move |s| {
+                    s.font_bold()
+                        .font_size(13.0)
+                        .selectable(false)
+                        .cursor(CursorStyle::Pointer)
+                        .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
+                        .hover(|s| s.color(config.get().color(LapceColor::EDITOR_LINK)))
+                }),
             h_stack((
                 clickable_icon(
                     || LapceIcons::ADD,
@@ -3178,6 +3189,16 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     || false,
                     || false,
                     || "Scheduled prompts",
+                    config,
+                ),
+                clickable_icon(
+                    || LapceIcons::SIDEBAR_RIGHT_OFF,
+                    move || {
+                        hide_tab.toggle_panel_visual(PanelKind::Chat);
+                    },
+                    || false,
+                    || false,
+                    || "Hide agent panel",
                     config,
                 ),
             ))
