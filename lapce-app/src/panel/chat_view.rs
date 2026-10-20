@@ -1585,6 +1585,21 @@ pub fn model_row_pick(
     }
 }
 
+/// One Plans row: kind, a distinguishing title and the time. Artifacts such
+/// as walkthroughs share one heading, so the time keeps rows apart.
+pub fn plan_row_label(file_name: &str, title: &str, when: &str) -> String {
+    let kind = if file_name.starts_with("walkthrough-") { "Walkthrough" } else { "Plan" };
+    let title = title.trim();
+    let mut parts = vec![kind.to_string()];
+    if !title.is_empty() && !title.eq_ignore_ascii_case(kind) {
+        parts.push(title.to_string());
+    }
+    if !when.is_empty() {
+        parts.push(when.to_string());
+    }
+    parts.join(" \u{b7} ")
+}
+
 /// Which listed models get a tool-support probe. Each probe can be a billed
 /// completion on a /v1-only gateway, so probe nothing outside Act mode and
 /// only the selected model inside it. Unknown capability never blocks.
@@ -3344,10 +3359,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             dyn_stack(
                 move || plans_list.get(),
                 |(_, stamp, name, _)| (*stamp, name.clone()),
-                move |(root, _stamp, name, title)| {
+                move |(root, stamp, name, title)| {
                     let open_split = plans_open.clone();
                     let path = root.join(".lapce").join("plans").join(&name);
-                    label(move || title.clone())
+                    let when = chrono::DateTime::from_timestamp(stamp as i64, 0)
+                        .map(|t| t.with_timezone(&chrono::Local).format("%b %d %H:%M").to_string())
+                        .unwrap_or_default();
+                    let row_text = plan_row_label(&name, &title, &when);
+                    label(move || row_text.clone())
                         .on_click_stop(move |_| {
                             // Artifact files are write-once, so a
                             // synchronous read here is safe: if the
@@ -3383,6 +3402,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         .style(move |s| {
                             s.font_size(11.0)
                                 .width_full()
+                                .min_width(0.0)
+                                .text_ellipsis()
+                                .padding_vert(2.0)
                                 .selectable(false)
                                 .cursor(CursorStyle::Pointer)
                                 .color(
@@ -3399,7 +3421,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 })
                         })
                 },
-            ),
+            )
+            .style(|s| s.flex_col().width_full().gap(2.0)),
         ))
         .style(move |s| {
             s.apply_if(plans_list.get().is_empty(), |s| s.hide())
@@ -4325,7 +4348,7 @@ fn symbol_rows_json(
 mod tests {
     use super::{
         clip_step_detail, elapsed_label, journal_and_send,
-        journal_chat_outcome, mention_candidates, model_row_pick, models_to_probe,
+        journal_chat_outcome, mention_candidates, model_row_pick, models_to_probe, plan_row_label,
         resolve_mentions, show_project_read_approval, symbol_rows_json,
         trailing_mention,
         AgentStepRow, AgentUpdate, Update,
@@ -4563,6 +4586,13 @@ mod tests {
             ("qwen3:4b".to_string(), true)
         );
     }
+    #[test]
+    fn plan_rows_are_told_apart_by_time() {
+        assert_eq!(plan_row_label("walkthrough-1.md", "Walkthrough", "Oct 20 18:42"), "Walkthrough \u{b7} Oct 20 18:42");
+        assert_eq!(plan_row_label("plan-2.md", "Add login", "Oct 20 18:50"), "Plan \u{b7} Add login \u{b7} Oct 20 18:50");
+        assert_eq!(plan_row_label("plan-3.md", "(untitled plan)", ""), "Plan \u{b7} (untitled plan)");
+    }
+
     #[test]
     fn probes_only_the_selected_model_and_only_in_act() {
         let list: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
