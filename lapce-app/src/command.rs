@@ -825,6 +825,7 @@ pub enum LapceWorkbenchCommand {
 
 #[derive(Clone, Debug)]
 pub enum InternalCommand {
+    SendSelectionToChat { text: String },
     ReloadConfig,
     OpenFile {
         path: PathBuf,

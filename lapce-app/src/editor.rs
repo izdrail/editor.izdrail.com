@@ -4220,6 +4220,29 @@ impl EditorData {
             | DocContent::Scratch { .. } => (None, false),
         });
         let mut menu = Menu::new("");
+        // Snapshot selected bytes at menu-open time, before focus leaves editor.
+        let selected_context = doc.buffer.with_untracked(|buffer| {
+            let selection = self.cursor().with_untracked(|c| c.edit_selection(buffer));
+            let name = path.as_ref().map(|p| p.display().to_string())
+                .unwrap_or_else(|| "Untitled".into());
+            let mut blocks = Vec::new();
+            let mut bytes = 0;
+            for region in selection.regions().iter().filter(|r| r.min() < r.max()) {
+                bytes += region.max() - region.min();
+                if bytes > 32768 { return None; }
+                let first = buffer.line_of_offset(region.min()) + 1;
+                let last = buffer.line_of_offset(region.max().saturating_sub(1)) + 1;
+                let text = buffer.text().slice_to_cow(region.min()..region.max());
+                blocks.push(format!("Selected code: {name}:{first}-{last}\n<selected-code>\n{text}\n</selected-code>"));
+            }
+            (!blocks.is_empty()).then(|| blocks.join("\n\n"))
+        });
+        if let Some(text) = selected_context {
+            let command = self.common.internal_command;
+            menu = menu.entry(MenuItem::new("Send to chat").action(move || {
+                command.send(InternalCommand::SendSelectionToChat { text: text.clone() });
+            })).separator();
+        }
         let mut cmds = if is_file {
             if path
                 .as_ref()

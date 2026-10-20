@@ -1895,6 +1895,10 @@ impl WindowTabData {
     pub fn run_internal_command(&self, cmd: InternalCommand) {
         let cx = self.scope;
         match cmd {
+            InternalCommand::SendSelectionToChat { text } => {
+                self.show_panel(PanelKind::Chat);
+                self.chat.pending_selection.set(Some(text));
+            }
             InternalCommand::ReloadConfig => {
                 self.reload_config();
             }

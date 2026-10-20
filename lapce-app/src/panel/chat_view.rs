@@ -63,6 +63,7 @@ pub struct AgentStepRow {
 pub struct ChatData {
     pub turns: RwSignal<Vec<Turn>>,
     pub input: RwSignal<String>,
+    pub pending_selection: RwSignal<Option<String>>,
     pub busy: RwSignal<bool>,
     pub error: RwSignal<String>,
     pub history: RwSignal<Vec<Message>>,
@@ -175,6 +176,7 @@ impl ChatData {
             active_run: cx.create_rw_signal(None),
             turns: cx.create_rw_signal(turns),
             input: cx.create_rw_signal(String::new()),
+            pending_selection: cx.create_rw_signal(None),
             busy: cx.create_rw_signal(false),
             error: cx.create_rw_signal(error),
             history: cx.create_rw_signal({
@@ -2991,6 +2993,20 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             composer_focused.set(false);
         });
     let composer_doc = composer.doc();
+    let selection_doc = composer.doc();
+    let selection_view = composer.id();
+    let pending_selection = data.pending_selection;
+    create_effect(move |_| {
+        if let Some(text) = pending_selection.get() {
+            pending_selection.set(None);
+            use floem::views::editor::core::{editor::EditType, selection::Selection};
+            let len = selection_doc.text().len();
+            let prefix = if len == 0 { "" } else { "\n\n" };
+            selection_doc.edit_single(Selection::caret(len), &format!("{prefix}{text}"), EditType::Other);
+            input_signal.set(selection_doc.text().to_string());
+            selection_view.request_focus();
+        }
+    });
     create_effect(move |_| {
         let input = input_signal.get();
         if input.is_empty() && !composer_doc.text().is_empty() {
