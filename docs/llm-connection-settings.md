@@ -31,3 +31,11 @@ not model quality or later streaming/tool capabilities.
 Verification: fixture-only credential persistence/isolation/permissions tests,
 input bounds, override precedence and status messages. Real settings layout,
 focus/paste workflow, live gateway and config reload need host-run checks.
+
+## Save failure integrity (item 257)
+
+Temporary-file cleanup starts only after this save successfully creates the
+file. A stale pre-existing temporary file or symlink causes a safe error and
+is not deleted. The previous credential store stays unchanged. Malformed
+stored JSON is also preserved, not silently reset. This patch changes no UI;
+the running settings screen still requires the UI regression checklist.

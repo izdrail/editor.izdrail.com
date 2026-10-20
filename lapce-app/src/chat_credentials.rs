@@ -37,10 +37,14 @@ fn save_at(path: &Path, endpoint: &str, key: &str) -> Result<(), String> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
+    // Acquire ownership before arranging cleanup. A stale file or symlink
+    // must never be removed just because create_new refused to open it.
+    let mut file = options.open(&temp).map_err(|_| "Cannot create private credential file")?;
     let result: Result<(), String> = (|| {
-        let mut file = options.open(&temp).map_err(|_| "Cannot create private credential file")?;
         file.write_all(&bytes).map_err(|_| "Cannot write credentials")?;
         file.sync_all().map_err(|_| "Cannot flush credentials")?;
+        // Release the handle before rename (required on some platforms).
+        drop(file);
         std::fs::rename(&temp, path).map_err(|_| "Cannot replace credentials")?;
         Ok(())
     })();
@@ -75,6 +79,34 @@ mod tests {
         assert!(read(&path).unwrap().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn existing_temp_file_and_credentials_are_not_deleted_on_create_failure() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("chat-key-stale-{unique}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("credentials.json");
+        save_at(&path, "https://example.test", "old-fixture").unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let temp = path.with_extension(format!("tmp-{}", std::process::id()));
+        std::fs::write(&temp, b"existing temporary data").unwrap();
+        assert!(save_at(&path, "https://example.test", "new-fixture").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        assert_eq!(std::fs::read(&temp).unwrap(), b"existing temporary data");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn malformed_credential_store_is_not_overwritten() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("chat-key-invalid-{unique}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("credentials.json");
+        std::fs::write(&path, b"invalid metadata").unwrap();
+        assert!(save_at(&path, "https://example.test", "fixture").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"invalid metadata");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn input_rejects_controls_and_overlong_keys() {
         let mut key = String::new();
