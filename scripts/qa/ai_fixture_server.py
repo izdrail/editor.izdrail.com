@@ -27,6 +27,16 @@ class Handler(BaseHTTPRequestHandler):
         time.sleep(self.server.delay)
         if self.server.status != 200:
             self.reply(self.server.status, {'error': {'message': 'Fixture rejection'}})
+        elif self.path == '/api/generate' and self.server.inline:
+            # Native Ollama FIM lane consumes one JSON object per line.
+            data = (json.dumps({'response': 'fixtureCompletion()', 'done': True}) + '\n').encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/x-ndjson')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        elif self.path == '/api/generate':
+            self.reply(404, {'error': 'Inline fixture is disabled; start with --inline'})
         else:
             self.reply(200, {'choices': [{'message': {'role': 'assistant', 'content': 'Fixture reply'}, 'finish_reason': 'stop'}]})
 
@@ -36,11 +46,12 @@ def main():
     parser.add_argument('--port', type=int, default=18761)
     parser.add_argument('--status', type=int, choices=[200, 401, 403, 429, 500], default=200)
     parser.add_argument('--delay', type=float, default=0)
+    parser.add_argument('--inline', action='store_true', help='Enable canned Ollama /api/generate fixture')
     args = parser.parse_args()
     if not 0 <= args.delay <= 25:
         parser.error('delay must be 0..25 seconds')
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
-    server.status, server.delay = args.status, args.delay
+    server.status, server.delay, server.inline = args.status, args.delay, args.inline
     print(f'Fixture listening on http://127.0.0.1:{args.port} status={args.status}', flush=True)
     server.serve_forever()
 

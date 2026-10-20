@@ -44,3 +44,34 @@ proof a PHP language server is installed or that its symbols are rendered.
 Still required: harness keyboard/focus repair for actual key entry, in-flight
 field edits, completion popup, and symbol UI interaction. Synthetic screenshots
 must never be reported as those interaction checks passing.
+
+## Ghost-text and keymap-aware status hint (item 279)
+
+Start `python3 scripts/qa/ai_fixture_server.py --inline`. In a disposable profile:
+
+```toml
+[ai-autocomplete]
+enabled = true
+backend = "ollama"
+endpoint = "http://127.0.0.1:18761"
+remote-model = "fixture-model"
+auto-trigger = true
+auto-trigger-debounce-ms = 400
+next-edit = false
+```
+
+Open a real saved source file, enter insert mode, type a character and pause,
+or invoke `inline_completion.invoke` via its configured binding (default Alt+\).
+The native worker sends /api/generate; --inline returns the fixed NDJSON text
+`fixtureCompletion()`. No download, LLM, token or real service is used. Disable
+other completion popups if they suppress automatic ghost text. Focus must be
+Workbench, active document must match, and suggestion must be active for hint.
+
+Capture at 1600px and 900px, then use a disposable keymaps file to unbind default
+Tab/Esc and bind inline_completion.select/cancel to Ctrl+J/Ctrl+K. Verify the
+actual loaded mappings in keymap UI before capture. Accept/dismiss must follow
+the displayed sequence. Undo accepted fixture text; never use this profile for
+real code. --inline is off by default and does not alter editor product behavior.
+The server still never logs request bodies or keys. With --status 401 it returns
+that error even for /api/generate. This is transport response fixture coverage,
+not proof that auto-trigger, hint matching or paint passes on the host.
