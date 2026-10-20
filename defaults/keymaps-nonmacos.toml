@@ -339,3 +339,8 @@ when = "editor_focus"
 key = "ctrl+shift+r"
 command = "rename_symbol"
 when = "!file_explorer_focus"
+
+# Go to Definition without the F12 key (keyboards without a function row).
+[[keymaps]]
+key = "ctrl+shift+d"
+command = "goto_definition"
