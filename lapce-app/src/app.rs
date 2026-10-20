@@ -3253,6 +3253,7 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
                             .height_full()
                             .align_items(Some(AlignItems::Center))
                             .font_weight(Weight::BOLD)
+                            .border_radius(3.0)
                             .apply_opt(
                                 config.completion_color(item.item.kind),
                                 |s, c| s.color(c).background(c.multiply_alpha(0.3)),
@@ -3285,6 +3286,7 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
                             .min_width(0.0)
                             .align_items(Some(AlignItems::Center))
                             .size_full()
+                            .border_radius(3.0)
                             .cursor(CursorStyle::Pointer)
                             .apply_if(active.get() == i, |s| {
                                 s.background(
@@ -3310,6 +3312,7 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
         .style(|s| {
             s.align_items(Some(AlignItems::Center))
                 .width_full()
+                .padding_horiz(3.0)
                 .flex_col()
         }),
     )
@@ -3342,7 +3345,11 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
             .background(config.color(LapceColor::COMPLETION_BACKGROUND))
             .font_family(config.editor.font_family.clone())
             .font_size(config.editor.font_size() as f32)
+            .border(1.0)
+            .border_color(config.color(LapceColor::LAPCE_BORDER))
             .border_radius(6.0)
+            .box_shadow_blur(6.0)
+            .box_shadow_color(config.color(LapceColor::LAPCE_DROPDOWN_SHADOW))
     })
     .debug_name("Completion Layer")
 }
