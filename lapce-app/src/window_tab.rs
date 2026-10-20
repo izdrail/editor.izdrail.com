@@ -2784,7 +2784,16 @@ impl WindowTabData {
             origin.x = 0.0;
         }
 
-        Some(origin)
+        // The below-the-cursor fallback can run past the tab bottom.
+        let (x, y) = crate::completion::clamp_popup_origin(
+            origin.x,
+            origin.y,
+            hover_size.width,
+            hover_size.height,
+            tab_size.width,
+            tab_size.height,
+        );
+        Some(Point::new(x, y))
     }
 
     pub fn completion_origin(&self) -> Point {

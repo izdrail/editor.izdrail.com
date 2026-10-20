@@ -328,3 +328,9 @@ when = "editor_focus"
 key = "meta+k meta+j"
 command = "unfold_all"
 when = "editor_focus"
+
+# Rename without the F2 key (keyboards without a function row).
+[[keymaps]]
+key = "meta+shift+r"
+command = "rename_symbol"
+when = "!file_explorer_focus"
