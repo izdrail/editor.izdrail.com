@@ -2287,6 +2287,12 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
         .apply_if(error.get().is_empty(), |s| s.hide()))
 }
 
+// Only endpoint-backed modes need the remote project-read disclosure.
+// Keep unknown backends conservative rather than hiding the permission gate.
+fn show_project_read_approval(backend: &str) -> bool {
+    backend != "local"
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let focus = tab.common.focus;
@@ -3812,7 +3818,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .color(config.get().color(LapceColor::EDITOR_LINK))
             }),
         ))
-        .style(|s| s.width_full().min_width(0.0).flex_shrink(0.0).gap(6.0)),
+        .style(move |s| {
+            let s = s.width_full().min_width(0.0).flex_shrink(0.0).gap(6.0);
+            if show_project_read_approval(&config.get().ai_chat.backend) {
+                s
+            } else {
+                s.display(Display::None)
+            }
+        }),
         label(move || {
             if data.busy.get() {
                 let current_config = config.get();
@@ -4298,9 +4311,18 @@ mod tests {
     use super::{
         clip_step_detail, elapsed_label, journal_and_send,
         journal_chat_outcome, mention_candidates, model_row_pick,
-        resolve_mentions, symbol_rows_json, trailing_mention,
+        resolve_mentions, show_project_read_approval, symbol_rows_json,
+        trailing_mention,
         AgentStepRow, AgentUpdate, Update,
     };
+
+    #[test]
+    fn project_read_approval_hidden_only_for_local_backend() {
+        assert!(!show_project_read_approval("local"));
+        assert!(show_project_read_approval("ollama"));
+        assert!(show_project_read_approval(""));
+        assert!(show_project_read_approval("unknown"));
+    }
 
     #[test]
     fn journal_chat_outcome_records_only_terminal_updates() {

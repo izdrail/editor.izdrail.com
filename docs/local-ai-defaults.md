@@ -37,3 +37,19 @@ Host: normal/narrow cards and wrapping, local-first selectors in both sections,
 no key in exported settings/source/defaults, local send remains offline after
 saving a remote key. Check saved remote choices remain selected and selecting
 local persists. This is grouping phase one, not a full Settings redesign.
+
+## Chat project-read disclosure (item 286)
+
+Hide the whole remote project-read approval row, including its action, while
+Chat backend is `local`. The dormant endpoint must not look active in a fresh
+local profile. Visibility tracks backend changes without reopening the panel.
+Endpoint-backed modes retain the complete disclosure and Approve/Revoke action;
+this is presentation only and does not grant trust, change backend, or bypass
+the existing tool-mode checks.
+
+Host gate: run `project_read_approval_hidden_only_for_local_backend`, compile and
+clippy. Capture fresh local Chat at normal and narrow widths: no endpoint
+approval text/action and no blank row. Switch to ollama: full wrapping disclosure
+and Approve must return. Approve, switch local, switch back: Revoke must return
+with existing state intact. Switch back local: row disappears again. No send or
+network request is needed for these checks.
