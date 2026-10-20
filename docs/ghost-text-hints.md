@@ -27,3 +27,7 @@ Edge case: the hint also requires that ghost text is currently drawn in the docu
 ## Stale ghost text with auto-trigger off (item 303)
 
 With `[ai-autocomplete] auto-trigger` off (the default) a ghost suggestion comes only from Alt+Backslash. The edit handler for typing returned early for that case, before the code that re-checks the visible suggestion, so a mismatching character never hid it (the typed character then appeared after the ghost text, because the ghost is drawn at the position where it was requested). The early return now calls `refresh_visible_inline_completion`: no request is made, but the visible suggestion is hidden on mismatch or shortened on a matching prefix, and cancelled when it belongs to another line or file.
+
+## Typed characters (item 304, supersedes the 0303 routing)
+
+0303 added the refresh inside `request_inline_completion`, but a typed character never reaches that function when auto-trigger is off. The real chain is `receive_char` (or `run_edit_command`) -> `update_inline_completion(Automatic)`, which only armed the debounce timer when auto-trigger was on, and the old refresh lived behind the timer even then. `update_inline_completion(Automatic)` now asks the pure `automatic_edit_plan` and always refreshes a visible suggestion immediately; only scheduling a new request depends on auto-trigger.

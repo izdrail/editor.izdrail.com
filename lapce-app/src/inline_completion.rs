@@ -237,6 +237,28 @@ impl InlineCompletionData {
     }
 }
 
+/// What an edit or typed character must do about ghost text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutomaticEditPlan {
+    /// Re-check the suggestion already on screen against the new buffer.
+    pub refresh_visible: bool,
+    /// Arm the debounce timer for a fresh automatic request.
+    pub schedule_request: bool,
+}
+/// Pure routing for `update_inline_completion(Automatic)`. A manual
+/// (Alt+Backslash) suggestion must be refreshed on every edit even when
+/// auto-trigger is off; only the scheduling depends on auto-trigger.
+pub fn automatic_edit_plan(
+    ai_enabled: bool,
+    auto_trigger: bool,
+    session_active: bool,
+) -> AutomaticEditPlan {
+    AutomaticEditPlan {
+        refresh_visible: session_active,
+        schedule_request: ai_enabled && auto_trigger,
+    }
+}
+
 /// Update the inline-completion data and draw its ghost text in one batch.
 /// `update_doc` sets doc signals while the data signal is mutably borrowed.
 /// Unbatched, effects that read the data signal (the status-bar ghost hint,
@@ -501,6 +523,23 @@ replacement \
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_chars_refresh_a_visible_ghost_even_with_auto_trigger_off() {
+        // The captured failure: auto-trigger off, manual ghost on screen.
+        let plan = automatic_edit_plan(true, false, true);
+        assert!(plan.refresh_visible);
+        assert!(!plan.schedule_request);
+        // Nothing visible: nothing to refresh, no request without auto-trigger.
+        assert_eq!(automatic_edit_plan(true, false, false),
+            AutomaticEditPlan { refresh_visible: false, schedule_request: false });
+        // Auto-trigger on: refresh now and still schedule the debounced request.
+        assert_eq!(automatic_edit_plan(true, true, true),
+            AutomaticEditPlan { refresh_visible: true, schedule_request: true });
+        // AI disabled never schedules.
+        assert!(!automatic_edit_plan(false, true, false).schedule_request);
+    }
+
 
     fn plain(text: &str) -> InlineCompletionItem {
         InlineCompletionItem {

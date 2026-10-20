@@ -2204,7 +2204,19 @@ impl EditorData {
                 self.request_inline_completion(trigger_kind);
             }
             InlineCompletionTriggerKind::Automatic => {
-                if ai.enabled && ai.auto_trigger {
+                // Every typed character and edit lands here (receive_char,
+                // run_edit_command). Keep a visible suggestion correct at
+                // once, whether or not auto-trigger will request a new one.
+                let session_active = self.common.inline_completion.with_untracked(
+                    |c| c.status != InlineCompletionStatus::Inactive,
+                );
+                let plan = crate::inline_completion::automatic_edit_plan(
+                    ai.enabled, ai.auto_trigger, session_active,
+                );
+                if plan.refresh_visible {
+                    self.refresh_visible_inline_completion();
+                }
+                if plan.schedule_request {
                     self.schedule_auto_inline_completion(
                         ai.auto_trigger_debounce_ms,
                     );
@@ -2299,7 +2311,9 @@ impl EditorData {
             crate::inline_completion::update_batched(inline_completion, |completion| {
                 completion.update_inline_completion(&config, &doc, offset);
             });
-        } else {
+        } else if inline_completion
+            .with_untracked(|c| c.status != InlineCompletionStatus::Inactive)
+        {
             // A suggestion on another line or file no longer applies.
             self.cancel_inline_completion();
         }
