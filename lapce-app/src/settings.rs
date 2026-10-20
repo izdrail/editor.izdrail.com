@@ -1784,6 +1784,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             crate::chat_credentials::source_label(
                 crate::chat::api_key().is_some(),
                 crate::chat_credentials::saved_key_exists(&endpoint.get()),
+                crate::chat::build_default_key_available(&endpoint.get()),
             )
         }).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
             .text_overflow(floem::style::TextOverflow::Wrap)),
@@ -1792,7 +1793,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
             label(|| "Remove saved key".to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
                 match crate::chat_credentials::save(&endpoint.get_untracked(), "") {
-                    Ok(()) => { credentials_version.update(|v| *v += 1); key.set(String::new()); state.set("Saved key removed; environment override is unchanged".into()); }
+                    Ok(()) => { credentials_version.update(|v| *v += 1); key.set(String::new()); state.set("Saved key removed; environment/build fallback is unchanged".into()); }
                     Err(message) => state.set(message),
                 }
             }).style(move |s| ai_button_style(s, config)),

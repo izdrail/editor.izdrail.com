@@ -255,7 +255,8 @@ pub(crate) fn with_auth(
     req: reqwest::RequestBuilder,
     endpoint: &str,
 ) -> reqwest::RequestBuilder {
-    match select_key(api_key(), crate::chat_credentials::saved_key(endpoint)) {
+    match select_key(api_key(), crate::chat_credentials::saved_key(endpoint))
+        .or_else(|| build_default_key(endpoint)) {
         Some(key) => req.header(
             reqwest::header::AUTHORIZATION,
             format!("Bearer {key}"),
@@ -265,6 +266,25 @@ pub(crate) fn with_auth(
 }
 fn select_key(environment: Option<String>, saved: Option<String>) -> Option<String> {
     environment.or(saved)
+}
+
+/// Optional distributor fallback, restricted to the canonical HTTPS gateway.
+/// This value is recoverable from binaries. It is not a secret storage method.
+fn gateway_build_key(endpoint: &str, embedded: Option<&str>) -> Option<String> {
+    let target = completion_url(endpoint).ok()?;
+    let url = url::Url::parse(&target).ok()?;
+    if url.scheme() != "https" || url.host_str() != Some("llm.izdrail.com")
+        || url.port_or_known_default() != Some(443)
+        || url.path() != "/v1/chat/completions" {
+        return None;
+    }
+    parse_api_key(embedded)
+}
+fn build_default_key(endpoint: &str) -> Option<String> {
+    gateway_build_key(endpoint, option_env!("LAPCE_BUILD_LLM_API_KEY"))
+}
+pub(crate) fn build_default_key_available(endpoint: &str) -> bool {
+    build_default_key(endpoint).is_some()
 }
 
 /// The actionable suffix for a 401/403 from the configured
@@ -1186,6 +1206,18 @@ fn connection_status(status: u16) -> String {
 
 #[cfg(test)]
 mod connection_tests {
+    #[test]
+    fn build_key_is_optional_and_bound_to_canonical_gateway() {
+        for endpoint in ["https://llm.izdrail.com", "https://llm.izdrail.com/v1/", "https://llm.izdrail.com/v1/chat/completions"] {
+            assert_eq!(super::gateway_build_key(endpoint, Some(" fixture ")).as_deref(), Some("fixture"));
+        }
+        for endpoint in ["http://llm.izdrail.com", "https://llm.izdrail.com:444", "https://other.test", "https://llm.izdrail.com.evil.test", "https://llm.izdrail.com/custom", "https://user@llm.izdrail.com", "https://llm.izdrail.com?x=1"] {
+            assert!(super::gateway_build_key(endpoint, Some("fixture")).is_none());
+        }
+        assert!(super::gateway_build_key("https://llm.izdrail.com", None).is_none());
+        assert!(super::gateway_build_key("https://llm.izdrail.com", Some(" ")).is_none());
+        assert_eq!(super::select_key(None, Some("user".into())).or_else(|| super::gateway_build_key("https://llm.izdrail.com", Some("build"))).as_deref(), Some("user"));
+    }
     #[test]
     fn saved_key_fallback_and_environment_precedence() {
         assert_eq!(super::select_key(None, Some("saved".into())).as_deref(), Some("saved"));

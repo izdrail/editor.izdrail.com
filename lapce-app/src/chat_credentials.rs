@@ -24,12 +24,13 @@ pub fn saved_key_exists(endpoint: &str) -> Result<bool, String> {
     Ok(read(&location()?)?.contains_key(&identity(endpoint)?))
 }
 
-pub fn source_label(environment: bool, saved: Result<bool, String>) -> String {
+pub fn source_label(environment: bool, saved: Result<bool, String>, build_default: bool) -> String {
     if environment {
         return "Active key source: LAPCE_LLM_API_KEY environment override. Saved keys are not used.".into();
     }
     match saved {
         Ok(true) => "Active key source: saved key for this endpoint.".into(),
+        Ok(false) if build_default => "Active key source: distributor build default for llm.izdrail.com. Recoverable from this binary; user keys override it.".into(),
         Ok(false) => "No key configured for this endpoint. Key-less servers may still work.".into(),
         Err(_) => "Saved key status unavailable. Check endpoint and local credential file.".into(),
     }
@@ -89,10 +90,11 @@ mod tests {
     use super::*;
     #[test]
     fn status_never_exposes_keys_and_distinguishes_sources() {
-        assert!(source_label(true, Ok(true)).contains("environment override"));
-        assert!(source_label(false, Ok(true)).contains("saved key"));
-        assert!(source_label(false, Ok(false)).contains("No key configured"));
-        assert!(!source_label(false, Err("private parser detail".into())).contains("private parser detail"));
+        assert!(source_label(true, Ok(true), true).contains("environment override"));
+        assert!(source_label(false, Ok(true), true).contains("saved key"));
+        assert!(source_label(false, Ok(false), false).contains("No key configured"));
+        assert!(source_label(false, Ok(false), true).contains("distributor build default"));
+        assert!(!source_label(false, Err("private parser detail".into()), false).contains("private parser detail"));
     }
     #[test]
     fn probe_result_expires_on_target_or_credential_changes() {
