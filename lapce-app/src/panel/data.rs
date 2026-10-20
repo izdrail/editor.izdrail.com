@@ -50,6 +50,38 @@ pub fn default_panel_order() -> PanelOrder {
     order
 }
 
+/// Add panels that older saved layouts do not list. Shared by a fresh layout
+/// and by a restored one, so a restored workspace never opens a right
+/// container without the Chat panel in it.
+pub fn ensure_core_panels(panels: &mut PanelOrder) {
+    restore_debug_panel(panels);
+    // Phase-1 layouts omit the plugin panel too.
+    if !panels.values().any(|items| items.contains(&PanelKind::Plugin)) {
+        panels.entry(PanelPosition::LeftTop).or_default().push_back(PanelKind::Plugin);
+    }
+    if !panels.values().any(|items| items.contains(&PanelKind::Chat)) {
+        panels.entry(PanelPosition::RightTop).or_default().push_back(PanelKind::Chat);
+    }
+}
+
+/// Make restored styles consistent with the panel order: an active index past
+/// the end falls back to the last panel, and a position with no panels cannot
+/// be shown (it would draw an empty container).
+pub fn clamp_styles(
+    styles: &mut im::HashMap<PanelPosition, PanelStyle>,
+    panels: &PanelOrder,
+) {
+    for (position, style) in styles.iter_mut() {
+        let len = panels.get(position).map(|p| p.len()).unwrap_or(0);
+        if len == 0 {
+            style.shown = false;
+            style.active = 0;
+        } else if style.active >= len {
+            style.active = len - 1;
+        }
+    }
+}
+
 // Persisted layouts from builds without debugging do not contain this panel.
 // Append only when absent: preserve custom placement and active panel indices.
 fn restore_debug_panel(panels: &mut PanelOrder) {
@@ -119,26 +151,7 @@ impl PanelData {
         common: Rc<CommonData>,
     ) -> Self {
         let mut panels = panels;
-        restore_debug_panel(&mut panels);
-        // Phase-1 layouts omit the plugin panel too.
-        if !panels
-            .values()
-            .any(|items| items.contains(&PanelKind::Plugin))
-        {
-            panels
-                .entry(PanelPosition::LeftTop)
-                .or_default()
-                .push_back(PanelKind::Plugin);
-        }
-        if !panels
-            .values()
-            .any(|items| items.contains(&PanelKind::Chat))
-        {
-            panels
-                .entry(PanelPosition::RightTop)
-                .or_default()
-                .push_back(PanelKind::Chat);
-        }
+        ensure_core_panels(&mut panels);
         let panels = cx.create_rw_signal(panels);
 
         let mut styles = im::HashMap::new();
@@ -190,6 +203,17 @@ impl PanelData {
                 maximized: false,
             },
         );
+        // A fresh right container opens on Chat, not on its first tab.
+        let chat_index = panels.with_untracked(|panels| {
+            panels
+                .get(&PanelPosition::RightTop)
+                .and_then(|order| order.iter().position(|k| *k == PanelKind::Chat))
+        });
+        if let Some(index) = chat_index {
+            if let Some(style) = styles.get_mut(&PanelPosition::RightTop) {
+                style.active = index;
+            }
+        }
         let styles = cx.create_rw_signal(styles);
         let size = cx.create_rw_signal(PanelSize {
             left: 250.0,
@@ -532,5 +556,38 @@ mod debug_panel_tests {
         let original = panels.clone();
         restore_debug_panel(&mut panels);
         assert_eq!(panels, original);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restored_layout_without_chat_gets_chat_and_plugin() {
+        let mut order = PanelOrder::new();
+        order.insert(PanelPosition::LeftTop, im::vector![PanelKind::FileExplorer]);
+        order.insert(PanelPosition::RightTop, im::vector![PanelKind::DocumentSymbol]);
+        ensure_core_panels(&mut order);
+        assert!(order[&PanelPosition::RightTop].contains(&PanelKind::Chat));
+        assert!(order[&PanelPosition::LeftTop].contains(&PanelKind::Plugin));
+        // Idempotent: a second pass adds nothing.
+        let before = order.clone();
+        ensure_core_panels(&mut order);
+        assert_eq!(order, before);
+    }
+
+    #[test]
+    fn clamp_styles_fixes_stale_active_and_empty_positions() {
+        let mut order = PanelOrder::new();
+        order.insert(PanelPosition::RightTop, im::vector![PanelKind::DocumentSymbol, PanelKind::Chat]);
+        let mut styles = im::HashMap::new();
+        styles.insert(PanelPosition::RightTop, PanelStyle { active: 7, shown: true, maximized: false });
+        styles.insert(PanelPosition::RightBottom, PanelStyle { active: 3, shown: true, maximized: false });
+        clamp_styles(&mut styles, &order);
+        assert_eq!(styles[&PanelPosition::RightTop].active, 1);
+        assert!(styles[&PanelPosition::RightTop].shown);
+        assert!(!styles[&PanelPosition::RightBottom].shown);
+        assert_eq!(styles[&PanelPosition::RightBottom].active, 0);
     }
 }

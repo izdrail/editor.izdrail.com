@@ -471,12 +471,17 @@ impl WindowTabData {
         let panel = workspace_info
             .as_ref()
             .map(|i| {
-                let panel_order = db
+                let mut panel_order = db
                     .get_panel_orders()
                     .unwrap_or_else(|_| default_panel_order());
+                // The restore path skipped PanelData::new, so a saved layout
+                // without Chat opened a blank right container.
+                crate::panel::data::ensure_core_panels(&mut panel_order);
+                let mut saved_styles = i.panel.styles.clone();
+                crate::panel::data::clamp_styles(&mut saved_styles, &panel_order);
                 PanelData {
                     panels: cx.create_rw_signal(panel_order),
-                    styles: cx.create_rw_signal(i.panel.styles.clone()),
+                    styles: cx.create_rw_signal(saved_styles),
                     size: cx.create_rw_signal(i.panel.size.clone()),
                     available_size: panel_available_size,
                     sections: cx.create_rw_signal(

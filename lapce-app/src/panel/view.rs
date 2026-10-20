@@ -461,9 +461,12 @@ fn panel_view(
             .with(|p| p.get(&position).cloned().unwrap_or_default())
     };
     let active_fn = move || {
-        panel
+        let active = panel
             .styles
-            .with(|s| s.get(&position).map(|s| s.active).unwrap_or(0))
+            .with(|s| s.get(&position).map(|s| s.active).unwrap_or(0));
+        // An index past the last panel drew tabs with no content.
+        let len = panel.panels.with(|p| p.get(&position).map(|v| v.len()).unwrap_or(0));
+        active.min(len.saturating_sub(1))
     };
     tab(
         active_fn,

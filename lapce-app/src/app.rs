@@ -98,7 +98,7 @@ use crate::{
         PaletteStatus,
         item::{PaletteItem, PaletteItemContent},
     },
-    panel::{position::PanelContainerPosition, view::panel_container_view},
+    panel::{kind::PanelKind, position::PanelContainerPosition, view::panel_container_view},
     plugin::{PluginData, plugin_info_view},
     settings::{settings_view, theme_color_settings_view},
     status::status,
@@ -2249,6 +2249,39 @@ fn tooltip_tip<V: View + 'static>(
     })
 }
 
+/// A thin edge strip with one icon, shown only while the right container is
+/// hidden, so the Agent panel can be brought back with a click and not only
+/// from the status bar or the palette.
+fn agent_restore_handle(window_tab_data: Rc<WindowTabData>) -> impl View {
+    let config = window_tab_data.common.config;
+    let panel = window_tab_data.panel.clone();
+    let shown_panel = panel.clone();
+    let click_data = window_tab_data.clone();
+    container(clickable_icon(
+        || LapceIcons::SIDEBAR_RIGHT,
+        move || {
+            click_data.show_panel(PanelKind::Chat);
+        },
+        || false,
+        || false,
+        || "Show agent panel",
+        config,
+    ))
+    .style(move |s| {
+        let config = config.get();
+        s.apply_if(shown_panel.is_container_shown(&PanelContainerPosition::Right, true), |s| s.hide())
+            .width(28.0)
+            .height_pct(100.0)
+            .flex_shrink(0.0)
+            .padding_top(6.0)
+            .justify_center()
+            .border_left(1.0)
+            .border_color(config.color(LapceColor::LAPCE_BORDER))
+            .background(config.color(LapceColor::PANEL_BACKGROUND))
+    })
+    .debug_name("Agent Restore Handle")
+}
+
 fn workbench(window_tab_data: Rc<WindowTabData>) -> impl View {
     let workbench_size = window_tab_data.common.workbench_size;
     let main_split_width = window_tab_data.main_split.width;
@@ -2272,6 +2305,7 @@ fn workbench(window_tab_data: Rc<WindowTabData>) -> impl View {
             .style(|s| s.flex_col().flex_grow(1.0f32))
         },
         panel_container_view(window_tab_data.clone(), PanelContainerPosition::Right),
+        agent_restore_handle(window_tab_data.clone()),
         window_message_view(window_tab_data.messages, window_tab_data.common.config),
     ))
     .on_resize(move |rect| {
