@@ -2954,7 +2954,8 @@ impl WindowTabData {
         let mut origin = window_origin
             + Vec2::new(point_below.x - viewport.x0, point_below.y - viewport.y0);
 
-        if origin.y + rename_size.height > tab_size.height {
+        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
+        if crate::completion::should_flip_above(origin.y, rename_size.height, area_bottom) {
             origin.y =
                 origin.y - config.editor.line_height() as f64 - rename_size.height;
         }
@@ -2965,7 +2966,15 @@ impl WindowTabData {
             origin.x = 0.0;
         }
 
-        origin
+        let (x, y) = crate::completion::clamp_popup_origin(
+            origin.x,
+            origin.y,
+            rename_size.width,
+            rename_size.height,
+            tab_size.width,
+            tab_size.height,
+        );
+        Point::new(x, y)
     }
 
     /// Overlay position for the inline AI edit input, anchored below the
@@ -3005,7 +3014,8 @@ impl WindowTabData {
         let mut origin = window_origin
             + Vec2::new(point_below.x - viewport.x0, point_below.y - viewport.y0);
 
-        if origin.y + overlay_size.height > tab_size.height {
+        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
+        if crate::completion::should_flip_above(origin.y, overlay_size.height, area_bottom) {
             origin.y =
                 origin.y - config.editor.line_height() as f64 - overlay_size.height;
         }
@@ -3016,7 +3026,15 @@ impl WindowTabData {
             origin.x = 0.0;
         }
 
-        origin
+        let (x, y) = crate::completion::clamp_popup_origin(
+            origin.x,
+            origin.y,
+            overlay_size.width,
+            overlay_size.height,
+            tab_size.width,
+            tab_size.height,
+        );
+        Point::new(x, y)
     }
 
     /// Get the mode for the current editor or terminal
