@@ -135,10 +135,15 @@ pub fn index_workspace(
             .to_string_lossy()
             .replace('\\', "/");
         let language = language_for_path(path);
-        // Only plain JavaScript/JSX uses this grammar. TS/Vue are not
-        // parsed as JS and must get their own tested grammar path.
+        // Select a grammar explicitly; Vue SFCs are not parsed as JS.
         if language == "javascript" {
             for entry in crate::symbols::javascript_definitions(&relative, &body)? {
+                index.add_entry(&entry)?;
+            }
+        }
+        if language == "typescript" {
+            let tsx = path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("tsx"));
+            for entry in crate::symbols::typescript_definitions(&relative, &body, tsx)? {
                 index.add_entry(&entry)?;
             }
         }
@@ -308,6 +313,22 @@ mod tests {
         index_workspace(&dir, &index, &cancel, |_| {}).unwrap();
         assert!(index.symbol_prefix("check", "javascript", 10).unwrap().is_empty());
         assert_eq!(index.symbol_prefix("inv", "javascript", 10).unwrap().len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn typescript_walker_indexes_types_and_tsx_components() {
+        let dir = temp_dir("typescript");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("cart.ts"), "interface Cart {}" ).unwrap();
+        fs::write(dir.join("page.tsx"), "export function Page() { return <div/>; }" ).unwrap();
+        let index = ProjectIndex::in_memory().unwrap();
+        index_workspace(&dir, &index, &AtomicBool::new(false), |_| {}).unwrap();
+        assert_eq!(index.symbol_prefix("cart", "typescript", 10).unwrap().len(), 1);
+        let hits = index.symbol_prefix("page", "typescript", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "page.tsx");
+        assert!(index.symbol_prefix("page", "javascript", 10).unwrap().is_empty());
         fs::remove_dir_all(&dir).unwrap();
     }
 

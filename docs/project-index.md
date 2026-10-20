@@ -107,3 +107,13 @@ second native runtime. A documented LanguageFn raw-pointer bridge constructs
 is in runtime's accepted 13..14 range, checked by a test and set_language.
 Runtime cc ^1.0.95 and grammar cc ^1.1 both accept the workspace's cc 1.2.
 The grammar's newer runtime dependency is dev-only and is not used here.
+
+## TypeScript and TSX extraction (item 252)
+
+Pinned tree-sitter-typescript 0.23.2 adds separate TS and TSX grammars,
+selected by extension. In addition to JS-style declarations, extract named
+interfaces, type aliases and enums as TypeScript definitions. TSX function
+components are included; arrow components and imported bindings are not.
+Both grammars emit ABI 14 and use the existing 0.22.6 runtime via the static
+LanguageFn bridge. Build cc ^1.1 permits the workspace's cc 1.2; the grammar's
+newer runtime dependency is dev-only. UI completion remains pending.

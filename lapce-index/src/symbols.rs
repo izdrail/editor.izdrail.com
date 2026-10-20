@@ -19,8 +19,29 @@ fn javascript_language() -> tree_sitter::Language {
 /// Extract named function/class declarations and identifier-named methods.
 /// No reference/type resolution, local variables, imports or computed names.
 pub fn javascript_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry>> {
+    extract_definitions(path, source, "javascript", javascript_language())
+}
+
+fn typescript_language(tsx: bool) -> tree_sitter::Language {
+    let grammar = if tsx { tree_sitter_typescript::LANGUAGE_TSX }
+        else { tree_sitter_typescript::LANGUAGE_TYPESCRIPT };
+    // SAFETY: both pinned generated grammars return immutable non-null
+    // static language data, ABI 14, accepted by runtime 0.22.6.
+    unsafe {
+        let pointer = (grammar.into_raw())();
+        assert!(!pointer.is_null(), "TypeScript grammar returned null");
+        tree_sitter::Language::from_raw(pointer.cast())
+    }
+}
+
+/// TypeScript declarations, using the TSX grammar for .tsx sources.
+pub fn typescript_definitions(path: &str, source: &str, tsx: bool) -> Result<Vec<IndexEntry>> {
+    extract_definitions(path, source, "typescript", typescript_language(tsx))
+}
+
+fn extract_definitions(path: &str, source: &str, language_id: &str, language: tree_sitter::Language) -> Result<Vec<IndexEntry>> {
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&javascript_language())
+    parser.set_language(&language)
         .map_err(|err| IndexError::SymbolParse(err.to_string()))?;
     let tree = parser.parse(source, None)
         .ok_or_else(|| IndexError::SymbolParse("JavaScript parse returned no tree".into()))?;
@@ -28,15 +49,15 @@ pub fn javascript_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry
     let mut entries = Vec::new();
     loop {
         let node = cursor.node();
-        if matches!(node.kind(), "function_declaration" | "generator_function_declaration" | "class_declaration" | "method_definition") {
+        if matches!(node.kind(), "function_declaration" | "generator_function_declaration" | "class_declaration" | "method_definition" | "interface_declaration" | "type_alias_declaration" | "enum_declaration") {
             if let Some(name) = node.child_by_field_name("name") {
-                if matches!(name.kind(), "identifier" | "property_identifier") && !name.is_missing() {
+                if matches!(name.kind(), "identifier" | "property_identifier" | "type_identifier") && !name.is_missing() {
                     if let Ok(text) = name.utf8_text(source.as_bytes()) {
                         if !text.is_empty() {
                             let point = name.start_position();
                             entries.push(IndexEntry {
                                 path: path.to_owned(), kind: EntryKind::SymbolDef,
-                                language: "javascript".into(), symbol: Some(text.into()),
+                                language: language_id.into(), symbol: Some(text.into()),
                                 line: point.row as u64 + 1, col: point.column as u64,
                                 // Avoid repeating a potentially large declaration body.
                                 body: text.into(),
@@ -63,6 +84,23 @@ pub fn javascript_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typescript_and_tsx_grammars_accept_runtime_and_extract_types() {
+        for tsx in [false, true] {
+            let language = typescript_language(tsx);
+            assert_eq!(language.version(), 14);
+            tree_sitter::Parser::new().set_language(&language).unwrap();
+            let source = "interface Cart {}\ntype Total = number;\nenum State { Open }\nexport function Checkout(): void {}";
+            let entries = typescript_definitions("cart.ts", source, tsx).unwrap();
+            let names: Vec<_> = entries.iter().map(|e| e.symbol.as_deref().unwrap()).collect();
+            assert_eq!(names, ["Cart", "Total", "State", "Checkout"]);
+            assert!(entries.iter().all(|e| e.language == "typescript"));
+        }
+        let entries = typescript_definitions("page.tsx", "export function Page() { return <div>Hello</div>; }", true).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].symbol.as_deref(), Some("Page"));
+    }
 
     #[test]
     fn generated_grammar_abi_is_accepted_by_workspace_runtime() {
