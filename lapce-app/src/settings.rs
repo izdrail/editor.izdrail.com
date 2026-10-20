@@ -1707,6 +1707,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
     let busy = create_rw_signal(false);
     let credentials_version = create_rw_signal(0u64);
     let probe = create_rw_signal(None::<(String, String, u64, String)>);
+    let settings_section_pin = common.settings_section;
     let save_button = label(|| "Apply shared connection to Chat and ghost text".to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
                 let endpoint_value = endpoint.get_untracked();
@@ -1725,6 +1726,9 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     state.set("Could not save endpoint/model settings".into()); return;
                 }
                 key.set(String::new());
+                // Applying rewrites AI config, which rebuilds rows and clamps
+                // the scroll to the top (Core). Pin the section to AI.
+                settings_section_pin.set(Some(ai_settings_section("AI Chat").to_string()));
                 state.set("Shared connection applied to Chat and ghost text. Legacy ghost connection remains stored. LAPCE_LLM_API_KEY overrides the saved key if set.".into());
             }).keyboard_navigable()
             .style(move |s| ai_button_style(s, config).focus(|s|

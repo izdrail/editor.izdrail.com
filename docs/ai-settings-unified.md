@@ -62,3 +62,5 @@ then a loopback fixture with saved openai and shared=false must see zero request
 ## Pending backend wording
 
 The connection card shows "Pending backend: Local" or "Pending backend: Remote". Internal backend ids (for example "ollama") are never shown.
+
+After Apply, the Settings page stays on the AI section instead of resetting to Core (the section is pinned to AI; the row rebuild no longer drops the view to the top). Exact scroll offset inside AI is restored to the AI header.
