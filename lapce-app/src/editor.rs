@@ -243,6 +243,43 @@ impl PartialEq for EditorData {
     }
 }
 
+/// Where a completion edit (and its snippet tab stops) begins: the earlier
+/// of the word start and the edit range start. The tab stops are positioned
+/// relative to this offset, so it must be the real start of the replaced text.
+pub(crate) fn snippet_origin(word_start: usize, edit_start: usize) -> usize {
+    word_start.min(edit_start)
+}
+
+/// Clamp snippet tab stops to a buffer of `len` bytes.
+pub(crate) fn clamp_snippet_tabs(
+    tabs: Vec<(usize, (usize, usize))>,
+    len: usize,
+) -> Vec<(usize, (usize, usize))> {
+    tabs.into_iter()
+        .map(|(n, (a, b))| (n, (a.min(len), b.min(len))))
+        .collect()
+}
+
+#[cfg(test)]
+mod snippet_origin_tests {
+    use super::{clamp_snippet_tabs, snippet_origin};
+
+    #[test]
+    fn origin_is_the_earlier_start() {
+        // `x-d` typed: word start after the hyphen (2), item range start 0.
+        assert_eq!(snippet_origin(2, 0), 0);
+        assert_eq!(snippet_origin(2, 2), 2);
+        assert_eq!(snippet_origin(2, 5), 2);
+    }
+
+    #[test]
+    fn tab_stops_are_clamped_to_the_new_text() {
+        let tabs = vec![(1, (3, 9)), (0, (20, 20))];
+        assert_eq!(clamp_snippet_tabs(tabs, 10), vec![(1, (3, 9)), (0, (10, 10))]);
+        assert!(clamp_snippet_tabs(Vec::new(), 0).is_empty());
+    }
+}
+
 impl EditorData {
     fn new(
         cx: Scope,
@@ -3138,8 +3175,12 @@ impl EditorData {
                     let edit_start = buffer.offset_of_position(&edit.range.start);
                     let edit_end = buffer.offset_of_position(&edit.range.end);
 
+                    // The edit starts at the earlier of the word start and the
+                    // item's own range start (a hyphenated Blade prefix or an
+                    // LSP range that begins before the word).
+                    let origin = snippet_origin(start_offset, edit_start);
                     let selection = lapce_core::selection::Selection::region(
-                        start_offset.min(edit_start),
+                        origin,
                         end_offset.max(edit_end),
                     );
                     match text_format {
@@ -3159,7 +3200,7 @@ impl EditorData {
                                 &edit.new_text,
                                 &selection,
                                 additional_edit,
-                                start_offset,
+                                origin,
                             )?;
                             return Ok(());
                         }
@@ -3257,7 +3298,10 @@ impl EditorData {
 
         let mut transformer = Transformer::new(&delta);
         let offset = transformer.transform(start_offset, false);
-        let snippet_tabs = snippet.tabs(offset);
+        // Safety net: tab stops must stay inside the new text, or the next
+        // paint asks the rope for an offset past its end.
+        let new_len = self.doc().buffer.with_untracked(|b| b.len());
+        let snippet_tabs = clamp_snippet_tabs(snippet.tabs(offset), new_len);
 
         let doc = self.doc();
         if snippet_tabs.is_empty() {
