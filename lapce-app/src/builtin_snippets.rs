@@ -238,6 +238,27 @@ mod tests {
     }
 
     #[test]
+    fn alpine_and_extra_livewire_attributes_are_offered_in_blade() {
+        let blade = &packs().blade;
+        for want in [
+            "x-data", "x-init", "x-show", "x-on", "x-bind", "x-model", "x-text", "x-html",
+            "x-ref", "x-cloak", "x-transition", "x-for", "x-if", "x-effect", "x-teleport",
+            "x-ignore", "x-id", "x-modelable", "wire-init", "wire-ignore", "wire-stream",
+            "wire-target", "wire-transition",
+        ] {
+            assert!(blade.iter().any(|s| s.prefix.iter().any(|p| p == want)), "{want}");
+        }
+        let body = |prefix: &str| {
+            let s = blade.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        // x-on is used instead of the Blade-clashing `@click` shorthand.
+        assert_eq!(body("x-on"), "x-on:click=\"handler\"");
+        assert!(body("x-for").contains("x-for=\"item in items\""));
+        assert!(body("x-data").contains("{ open: false }"));
+    }
+
+    #[test]
     fn symfony_pack_prefixes_are_unique_and_new_snippets_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().symfony {

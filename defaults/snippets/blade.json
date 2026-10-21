@@ -490,5 +490,28 @@
    "wire:cloak"
   ],
   "description": "Hide until Livewire initializes"
- }
+ },
+  "wire-init": {"prefix": "wire-init", "body": ["wire:init=\"${1:method}\""], "description": "Livewire: run an action when the element loads"},
+  "wire-ignore": {"prefix": "wire-ignore", "body": ["wire:ignore${1:.self}"], "description": "Livewire: skip DOM diffing for this element"},
+  "wire-stream": {"prefix": "wire-stream", "body": ["wire:stream=\"${1:name}\""], "description": "Livewire: streamed response target"},
+  "wire-target": {"prefix": "wire-target", "body": ["wire:target=\"${1:method}\""], "description": "Livewire: scope loading/offline states to an action"},
+  "wire-transition": {"prefix": "wire-transition", "body": ["wire:transition${1:.opacity}"], "description": "Livewire: transition when the element is added or removed"},
+  "x-data": {"prefix": "x-data", "body": ["x-data=\"{ ${1:open}: ${2:false} }\""], "description": "Alpine: component state"},
+  "x-init": {"prefix": "x-init", "body": ["x-init=\"${1:expression}\""], "description": "Alpine: run when the component initialises"},
+  "x-show": {"prefix": "x-show", "body": ["x-show=\"${1:open}\""], "description": "Alpine: toggle visibility"},
+  "x-on": {"prefix": "x-on", "body": ["x-on:${1:click}=\"${2:handler}\""], "description": "Alpine: event listener (x-on avoids the Blade @ clash)"},
+  "x-bind": {"prefix": "x-bind", "body": ["x-bind:${1:class}=\"${2:expression}\""], "description": "Alpine: bind an attribute"},
+  "x-model": {"prefix": "x-model", "body": ["x-model${1:.debounce}=\"${2:property}\""], "description": "Alpine: two-way binding"},
+  "x-text": {"prefix": "x-text", "body": ["x-text=\"${1:expression}\""], "description": "Alpine: set text content"},
+  "x-html": {"prefix": "x-html", "body": ["x-html=\"${1:expression}\""], "description": "Alpine: set inner HTML (trusted content only)"},
+  "x-ref": {"prefix": "x-ref", "body": ["x-ref=\"${1:name}\""], "description": "Alpine: element reference ($refs)"},
+  "x-cloak": {"prefix": "x-cloak", "body": ["x-cloak"], "description": "Alpine: hide until Alpine has initialised (needs [x-cloak]{display:none})"},
+  "x-transition": {"prefix": "x-transition", "body": ["x-transition${1:.opacity}"], "description": "Alpine: transition for x-show"},
+  "x-for": {"prefix": "x-for", "body": ["<template x-for=\"${1:item} in ${2:items}\" :key=\"${3:item.id}\">", "\t$0", "</template>"], "description": "Alpine: loop"},
+  "x-if": {"prefix": "x-if", "body": ["<template x-if=\"${1:condition}\">", "\t$0", "</template>"], "description": "Alpine: conditional render"},
+  "x-effect": {"prefix": "x-effect", "body": ["x-effect=\"${1:expression}\""], "description": "Alpine: re-run when dependencies change"},
+  "x-teleport": {"prefix": "x-teleport", "body": ["<template x-teleport=\"${1:body}\">", "\t$0", "</template>"], "description": "Alpine: move markup elsewhere in the DOM"},
+  "x-ignore": {"prefix": "x-ignore", "body": ["x-ignore"], "description": "Alpine: do not initialise this subtree"},
+  "x-id": {"prefix": "x-id", "body": ["x-id=\"['${1:name}']\""], "description": "Alpine: scoped ids ($id)"},
+  "x-modelable": {"prefix": "x-modelable", "body": ["x-modelable=\"${1:property}\""], "description": "Alpine: expose a property to x-model on the parent"}
 }
