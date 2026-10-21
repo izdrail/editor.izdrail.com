@@ -514,4 +514,15 @@
   "x-ignore": {"prefix": "x-ignore", "body": ["x-ignore"], "description": "Alpine: do not initialise this subtree"},
   "x-id": {"prefix": "x-id", "body": ["x-id=\"['${1:name}']\""], "description": "Alpine: scoped ids ($id)"},
   "x-modelable": {"prefix": "x-modelable", "body": ["x-modelable=\"${1:property}\""], "description": "Alpine: expose a property to x-model on the parent"}
+,
+ "dd": {"prefix": "dd", "body": ["@dd(${1:\\$value})"], "description": "Blade: dump and die"},
+ "dump": {"prefix": "dump", "body": ["@dump(${1:\\$value})"], "description": "Blade: dump without stopping"},
+ "canany": {"prefix": "canany", "body": ["@canany(['${1:edit}', '${2:delete}'], ${3:\\$post})", "\t$0", "@endcanany"], "description": "Blade: any of these abilities"},
+ "cannot": {"prefix": "cannot", "body": ["@cannot('${1:edit}', ${2:\\$post})", "\t$0", "@endcannot"], "description": "Blade: missing ability"},
+ "each": {"prefix": "each", "body": ["@each('${1:view.name}', ${2:\\$items}, '${3:item}')"], "description": "Blade: render a view per item"},
+ "includefirst": {"prefix": "includefirst", "body": ["@includeFirst(['${1:custom.view}', '${2:default.view}'])"], "description": "Blade: first view that exists"},
+ "inject": {"prefix": "inject", "body": ["@inject('${1:name}', '${2:App\\\\Services\\\\${3:Service}}')"], "description": "Blade: resolve a service"},
+ "use": {"prefix": "use", "body": ["@use('${1:App\\\\Models\\\\${2:Model}}')"], "description": "Blade: import a class"},
+ "pushif": {"prefix": "pushif", "body": ["@pushIf(${1:\\$condition}, '${2:stack}')", "\t$0", "@endPushIf"], "description": "Blade: conditional @push"},
+ "prependonce": {"prefix": "prependonce", "body": ["@prependOnce('${1:stack}')", "\t$0", "@endPrependOnce"], "description": "Blade: @prependOnce block"}
 }

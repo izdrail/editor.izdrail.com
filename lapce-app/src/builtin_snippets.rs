@@ -260,6 +260,31 @@ mod tests {
     }
 
     #[test]
+    fn blade_directive_entries_parse() {
+        let text_of = |prefix: &str| {
+            let s = packs()
+                .blade
+                .iter()
+                .find(|s| s.prefix.iter().any(|x| x == prefix))
+                .unwrap_or_else(|| panic!("missing snippet {prefix}"));
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text_of("dd").contains("@dd("));
+        assert!(text_of("dump").contains("@dump("));
+        assert!(text_of("canany").contains("@endcanany"));
+        assert!(text_of("cannot").contains("@endcannot"));
+        assert!(text_of("each").contains("@each('view.name'"));
+        assert!(text_of("includefirst").contains("@includeFirst("));
+        assert_eq!(
+            text_of("inject"),
+            "@inject('name', 'App\\Services\\Service')"
+        );
+        assert_eq!(text_of("use"), "@use('App\\Models\\Model')");
+        assert!(text_of("pushif").contains("@endPushIf"));
+        assert!(text_of("prependonce").contains("@endPrependOnce"));
+    }
+
+    #[test]
     fn hyphen_word_len_extends_over_hyphenated_segments() {
         assert_eq!(hyphen_word_len("<div x-"), 2);
         assert_eq!(hyphen_word_len("wire-"), 5);
