@@ -329,7 +329,7 @@
   "description": "Blade comment"
  },
  "xcomponent": {
-  "prefix": "x-",
+  "prefix": "xcomponent",
   "body": [
    "<x-${1:name}${2: attr=\"value\"} />"
   ],
