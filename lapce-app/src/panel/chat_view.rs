@@ -303,23 +303,38 @@ fn context(tab: &WindowTabData) -> Option<Context> {
     };
     doc.buffer.with(|b| {
         let selection = editor.cursor().with(|c| c.edit_selection(b));
-        let regions: Vec<_> = selection
-            .regions()
-            .iter()
-            .filter(|r| r.min() != r.max())
-            .collect();
-        if regions.is_empty() {
+        // This runs reactively and the buffer and cursor are separate
+        // signals, so right after an edit the cursor can still hold
+        // offsets from the old text. Clamp them to the buffer: slicing past
+        // the end crashed the editor in the rope iterator.
+        let ranges = selection_ranges(
+            selection.regions().iter().map(|r| (r.min(), r.max())),
+            b.len(),
+        );
+        if ranges.is_empty() {
             Some(Context::new(name, &b.to_string(), false))
         } else {
-            let selected = regions
+            let selected = ranges
                 .iter()
-                .map(|r| b.text().slice_to_cow(r.min()..r.max()).into_owned())
+                .map(|&(lo, hi)| b.text().slice_to_cow(lo..hi).into_owned())
                 .collect::<Vec<_>>()
                 .join("\n");
             Some(Context::new(name, &selected, true))
         }
     })
 }
+/// Non-empty selection ranges clamped to a buffer of `len` bytes, ordered
+/// low to high. Stale offsets past the end collapse to empty and are dropped.
+fn selection_ranges(
+    regions: impl Iterator<Item = (usize, usize)>,
+    len: usize,
+) -> Vec<(usize, usize)> {
+    regions
+        .map(|(a, b)| (a.min(b).min(len), a.max(b).min(len)))
+        .filter(|(lo, hi)| lo != hi)
+        .collect()
+}
+
 fn schedule_file_path(tab: &WindowTabData) -> Option<PathBuf> {
     tab.workspace
         .path
@@ -4731,5 +4746,23 @@ mod agents_empty_tests {
         assert!(agents_empty_hint(0, true).is_some());
         assert!(agents_empty_hint(0, false).is_none());
         assert!(agents_empty_hint(3, true).is_none());
+    }
+}
+
+#[cfg(test)]
+mod selection_range_tests {
+    use super::selection_ranges;
+
+    #[test]
+    fn stale_offsets_past_the_end_are_clamped_or_dropped() {
+        // Buffer shrank to 5 bytes while the cursor still held old offsets.
+        let r = selection_ranges([(2, 4), (3, 40), (30, 50), (7, 7)].into_iter(), 5);
+        assert_eq!(r, vec![(2, 4), (3, 5)]);
+    }
+
+    #[test]
+    fn reversed_regions_are_ordered_and_empty_buffer_yields_nothing() {
+        assert_eq!(selection_ranges([(4, 1)].into_iter(), 10), vec![(1, 4)]);
+        assert!(selection_ranges([(0, 9), (3, 8)].into_iter(), 0).is_empty());
     }
 }
