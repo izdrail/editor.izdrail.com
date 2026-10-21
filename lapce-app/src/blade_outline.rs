@@ -50,7 +50,34 @@ fn symbol(name: String, detail: Option<String>, kind: SymbolKind, start: u32, en
     }
 }
 
+/// Flat outline nested by line range: a directive that starts inside an
+/// earlier block's range (an `@php` inside an `@section`) becomes its child.
 pub fn outline(text: &str) -> Vec<DocumentSymbol> {
+    nest(flat_outline(text))
+}
+
+fn nest(flat: Vec<DocumentSymbol>) -> Vec<DocumentSymbol> {
+    fn push(into: &mut Vec<DocumentSymbol>, sym: DocumentSymbol) {
+        if let Some(last) = into.last_mut() {
+            // Strictly inside: a one-line symbol never contains anything.
+            if last.range.end.line > last.range.start.line
+                && sym.range.start.line > last.range.start.line
+                && sym.range.start.line <= last.range.end.line
+            {
+                push(last.children.get_or_insert_with(Vec::new), sym);
+                return;
+            }
+        }
+        into.push(sym);
+    }
+    let mut out = Vec::new();
+    for sym in flat {
+        push(&mut out, sym);
+    }
+    out
+}
+
+fn flat_outline(text: &str) -> Vec<DocumentSymbol> {
     if text.len() > MAX_BYTES {
         return Vec::new();
     }
@@ -145,7 +172,7 @@ x
 
     #[test]
     fn lists_directives_in_order_and_skips_comments_and_inline() {
-        let o = outline(V);
+        let o = flat_outline(V);
         assert_eq!(
             names(&o),
             [
@@ -161,7 +188,7 @@ x
 
     #[test]
     fn ranges_cover_the_block() {
-        let o = outline(V);
+        let o = flat_outline(V);
         assert_eq!((o[0].range.start.line, o[0].range.end.line), (2, 10));
         assert_eq!((o[1].range.start.line, o[1].range.end.line), (3, 5));
         assert_eq!(o[1].detail.as_deref(), Some("$n = 1;"));
@@ -170,8 +197,19 @@ x
     }
 
     #[test]
+    fn blocks_nest_by_range() {
+        let o = outline(V);
+        // The section holds php, livewire and component; push and the
+        // inline section are siblings after it.
+        assert_eq!(names(&o), ["@section content", "@push scripts", "@section title"]);
+        let kids = o[0].children.as_ref().unwrap();
+        assert_eq!(names(kids), ["@php", "@livewire counter", "@component alert"]);
+        assert!(o[1].children.is_none());
+    }
+
+    #[test]
     fn multiline_comment_and_blade_path() {
-        let o = outline("{{--\n@section('x')\n--}}\n@section('y')\n@endsection");
+        let o = flat_outline("{{--\n@section('x')\n--}}\n@section('y')\n@endsection");
         assert_eq!(names(&o), ["@section y"]);
         assert!(is_blade_path(std::path::Path::new("a/b/show.blade.php")));
         assert!(!is_blade_path(std::path::Path::new("a/b/show.php")));
