@@ -35,6 +35,28 @@ pub fn replaces_leading_char(language_id: &str, before: Option<char>) -> bool {
     language_id == "blade" && matches!(before, Some('@') | Some('<'))
 }
 
+/// Bytes to extend a word start backwards over hyphenated segments, so
+/// `x-d` and `wire-t` are completed as one word. `before` is the line text
+/// before the current word start; it must end in `-` for anything to extend.
+pub fn hyphen_word_len(before: &str) -> usize {
+    let mut rest = before;
+    let mut total = 0;
+    while let Some(r) = rest.strip_suffix('-') {
+        let word: usize = r
+            .chars()
+            .rev()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .map(char::len_utf8)
+            .sum();
+        if word == 0 {
+            break;
+        }
+        total += 1 + word;
+        rest = &r[..r.len() - word];
+    }
+    total
+}
+
 fn parse(text: &str) -> Vec<Snippet> {
     serde_json::from_str(text)
         .map(|doc| snippets::parse(&doc))
@@ -235,6 +257,18 @@ mod tests {
         assert!(text_of(&packs().livewire, "lw-test").contains("->assertSee('text');"));
         assert!(text_of(&packs().livewire, "lw-url").contains("#[Url]"));
         assert!(text_of(&packs().blade, "wire-navigate").contains("wire:navigate href="));
+    }
+
+    #[test]
+    fn hyphen_word_len_extends_over_hyphenated_segments() {
+        assert_eq!(hyphen_word_len("<div x-"), 2);
+        assert_eq!(hyphen_word_len("wire-"), 5);
+        assert_eq!(hyphen_word_len("a-b-"), 4);
+        assert_eq!(hyphen_word_len("<div "), 0);
+        assert_eq!(hyphen_word_len("x "), 0);
+        assert_eq!(hyphen_word_len("--"), 0);
+        assert_eq!(hyphen_word_len(""), 0);
+        assert_eq!(hyphen_word_len("é-"), 3);
     }
 
     #[test]

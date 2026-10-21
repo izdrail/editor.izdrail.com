@@ -2993,7 +2993,16 @@ impl EditorData {
 
         let offset = self.cursor().with_untracked(|c| c.offset());
         let (start_offset, input, char) = doc.buffer.with_untracked(|buffer| {
-            let start_offset = buffer.prev_code_boundary(offset);
+            let mut start_offset = buffer.prev_code_boundary(offset);
+            // Blade attributes such as `x-data` and `wire:target` snippets
+            // are hyphenated: take the whole `x-d` as the word so the
+            // replace range and the fuzzy match cover the hyphen too.
+            if path.to_string_lossy().ends_with(".blade.php") && start_offset > 0 {
+                let line_start =
+                    buffer.offset_of_line(buffer.line_of_offset(start_offset));
+                let before = buffer.slice_to_cow(line_start..start_offset);
+                start_offset -= crate::builtin_snippets::hyphen_word_len(&before);
+            }
             let end_offset = buffer.next_code_boundary(offset);
             let input = buffer.slice_to_cow(start_offset..end_offset).to_string();
             let char = if start_offset == 0 {
