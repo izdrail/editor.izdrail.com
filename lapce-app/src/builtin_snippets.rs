@@ -77,6 +77,17 @@ pub fn tag_name_word_len(before: &str) -> usize {
     0
 }
 
+/// Is the completion word start (at the end of `before`, the line text
+/// before it) inside a Blade component tag name, either right after the
+/// `<x-` / `<livewire:` marker or further into the dotted name? There the
+/// marker is not part of the word; elsewhere (`<div x-d`) a hyphenated
+/// prefix is one word.
+pub fn tag_name_context(before: &str) -> bool {
+    before.ends_with("<x-")
+        || before.ends_with("<livewire:")
+        || tag_name_word_len(before) > 0
+}
+
 fn parse(text: &str) -> Vec<Snippet> {
     serde_json::from_str(text)
         .map(|doc| snippets::parse(&doc))
@@ -318,6 +329,20 @@ mod tests {
         assert_eq!(tag_name_word_len("document."), 0);
         assert_eq!(tag_name_word_len("route('admin."), 0);
         assert_eq!(tag_name_word_len(""), 0);
+    }
+
+    #[test]
+    fn tag_name_context_distinguishes_tag_from_attribute() {
+        assert!(tag_name_context("<x-"));
+        assert!(tag_name_context("  <x-"));
+        assert!(tag_name_context("<x-forms."));
+        assert!(tag_name_context("<livewire:"));
+        assert!(tag_name_context("<livewire:admin."));
+        // Alpine attribute context: the `x-` follows whitespace, not `<`.
+        assert!(!tag_name_context("<div x-"));
+        assert!(!tag_name_context("<x-alert x-"));
+        assert!(!tag_name_context("document."));
+        assert!(!tag_name_context(""));
     }
 
     #[test]

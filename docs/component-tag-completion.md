@@ -27,3 +27,25 @@ left for a follow-up.
 
 Tests: `tag_name_word_len_covers_dotted_tag_names`,
 `empty_input_offers_only_opted_in_locals`.
+
+## `<x-` tag vs Alpine attribute (item 342)
+
+Item 341 combined the word-start extensions with `max(hyphen, tag)`, which
+was wrong for `<x-`: `hyphen_word_len` pulled the `x-` marker into the
+word, so the fuzzy input became `x-al` (component labels like `alert` never
+match, Alpine `x-*` snippets do) and `start_offset` stayed pinned to
+`completion.offset`, keeping the popup on the stale update path with the
+local items computed before the marker existed. Accepting a snippet there
+also replaced `<x-al` through the `replaces_leading_char('<')` range,
+destroying the tag.
+
+`tag_name_context(before)` now decides which extension applies: in a tag
+name (right after `<x-` / `<livewire:` or inside the dotted name) only
+`tag_name_word_len` extends, so the word never includes the marker and the
+offset moves as the name grows, forcing a fresh item fetch in tag context
+(components only, via item 341). After whitespace (`<div x-d`,
+`<x-alert x-d`) the hyphen extension runs as before and Alpine `x-*`
+snippets still complete. The empty-input gate also opens on `<x-` even
+though `-` is not a trigger char.
+
+Tests: `tag_name_context_distinguishes_tag_from_attribute`.

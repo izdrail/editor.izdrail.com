@@ -260,8 +260,14 @@ pub(crate) fn completion_word_start(
     if blade && start > 0 {
         let line_start = buffer.offset_of_line(buffer.line_of_offset(start));
         let before = buffer.slice_to_cow(line_start..start);
-        start -= crate::builtin_snippets::hyphen_word_len(&before)
-            .max(crate::builtin_snippets::tag_name_word_len(&before));
+        // In a component tag name the marker (`<x-` / `<livewire:`) stays
+        // outside the word; elsewhere a hyphenated prefix (`x-da`,
+        // `wire-ta`) is one word.
+        start -= if crate::builtin_snippets::tag_name_context(&before) {
+            crate::builtin_snippets::tag_name_word_len(&before)
+        } else {
+            crate::builtin_snippets::hyphen_word_len(&before)
+        };
     }
     start
 }
@@ -3078,7 +3084,8 @@ impl EditorData {
         };
 
         let offset = self.cursor().with_untracked(|c| c.offset());
-        let (start_offset, input, char) = doc.buffer.with_untracked(|buffer| {
+        let (start_offset, input, char, tag_ctx) =
+            doc.buffer.with_untracked(|buffer| {
             // Blade words cover hyphenated snippet prefixes (`x-da`) and
             // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
             let start_offset = completion_word_start(buffer, Some(&path), offset);
@@ -3091,9 +3098,23 @@ impl EditorData {
                     .slice_to_cow(start_offset - 1..start_offset)
                     .to_string()
             };
-            (start_offset, input, char)
+            // `<x-` ends in `-`, which is not a trigger char, but the
+            // component list should open there too.
+            let tag_ctx = path.to_string_lossy().ends_with(".blade.php")
+                && start_offset > 0 && {
+                let line_start =
+                    buffer.offset_of_line(buffer.line_of_offset(start_offset));
+                crate::builtin_snippets::tag_name_context(
+                    &buffer.slice_to_cow(line_start..start_offset),
+                )
+            };
+            (start_offset, input, char, tag_ctx)
         });
-        if !display_if_empty_input && input.is_empty() && char != "." && char != ":"
+        if !display_if_empty_input
+            && input.is_empty()
+            && char != "."
+            && char != ":"
+            && !tag_ctx
         {
             self.cancel_completion();
             return;
