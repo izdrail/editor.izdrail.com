@@ -70,7 +70,8 @@ pub fn file_explorer_panel(
     PanelBuilder::new(config, position)
         .add_height_style(
             "Open Editors",
-            150.0,
+            // About 8 rows plus the group header. 150 showed only 4 rows.
+            230.0,
             container(open_editors_view(window_tab_data.clone()))
                 .style(|s| s.size_full()),
             window_tab_data.panel.section_open(PanelSection::OpenEditor),
