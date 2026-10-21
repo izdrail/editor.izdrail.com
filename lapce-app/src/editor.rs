@@ -243,6 +243,29 @@ impl PartialEq for EditorData {
     }
 }
 
+/// Word start for completion: the code boundary, extended in Blade files
+/// over hyphenated snippet prefixes (`x-da`) and dotted component tag names
+/// (`<x-forms.in`, `<livewire:admin.us`). Every consumer of the word start
+/// (filter input, snippet range, apply path, snippet origin) uses this so
+/// the replace range and the inserted text agree.
+pub(crate) fn completion_word_start(
+    buffer: &lapce_core::buffer::Buffer,
+    path: Option<&std::path::Path>,
+    offset: usize,
+) -> usize {
+    let mut start = buffer.prev_code_boundary(offset);
+    let blade = path
+        .map(|p| p.to_string_lossy().ends_with(".blade.php"))
+        .unwrap_or(false);
+    if blade && start > 0 {
+        let line_start = buffer.offset_of_line(buffer.line_of_offset(start));
+        let before = buffer.slice_to_cow(line_start..start);
+        start -= crate::builtin_snippets::hyphen_word_len(&before)
+            .max(crate::builtin_snippets::tag_name_word_len(&before));
+    }
+    start
+}
+
 /// Where a completion edit (and its snippet tab stops) begins: the earlier
 /// of the word start and the edit range start. The tab stops are positioned
 /// relative to this offset, so it must be the real start of the replaced text.
@@ -2978,6 +3001,7 @@ impl EditorData {
             score: 0,
             label_score: 0,
             indices: Vec::new(),
+            show_on_empty: false,
         };
         let project = self
             .common
@@ -2988,6 +3012,31 @@ impl EditorData {
                 crate::project_completion::items(root, Some(path), &line_before)
             })
             .unwrap_or_default();
+        // Inside a `<x-...` / `<livewire:...` tag name, only the project's
+        // component tags are relevant: no snippets, keywords or words, and
+        // show them even before a letter is typed.
+        let tag_only = path.to_string_lossy().ends_with(".blade.php")
+            && matches!(
+                crate::project_completion::context(&line_before),
+                Some(
+                    crate::project_completion::Kind::ComponentTag
+                        | crate::project_completion::Kind::LivewireTag
+                )
+            );
+        if tag_only {
+            return project
+                .into_iter()
+                .map(|item| ScoredCompletionItem {
+                    item,
+                    plugin_id: lapce_rpc::plugin::PluginId(0),
+                    source: CompletionSource::Project,
+                    score: 0,
+                    label_score: 0,
+                    indices: Vec::new(),
+                    show_on_empty: true,
+                })
+                .collect();
+        }
         snippets
             .into_iter()
             .map(|i| wrap(i, CompletionSource::Snippet))
@@ -3030,16 +3079,9 @@ impl EditorData {
 
         let offset = self.cursor().with_untracked(|c| c.offset());
         let (start_offset, input, char) = doc.buffer.with_untracked(|buffer| {
-            let mut start_offset = buffer.prev_code_boundary(offset);
-            // Blade attributes such as `x-data` and `wire:target` snippets
-            // are hyphenated: take the whole `x-d` as the word so the
-            // replace range and the fuzzy match cover the hyphen too.
-            if path.to_string_lossy().ends_with(".blade.php") && start_offset > 0 {
-                let line_start =
-                    buffer.offset_of_line(buffer.line_of_offset(start_offset));
-                let before = buffer.slice_to_cow(line_start..start_offset);
-                start_offset -= crate::builtin_snippets::hyphen_word_len(&before);
-            }
+            // Blade words cover hyphenated snippet prefixes (`x-da`) and
+            // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
+            let start_offset = completion_word_start(buffer, Some(&path), offset);
             let end_offset = buffer.next_code_boundary(offset);
             let input = buffer.slice_to_cow(start_offset..end_offset).to_string();
             let char = if start_offset == 0 {
@@ -3133,6 +3175,9 @@ impl EditorData {
                     position,
                 );
             }
+            // Show the local items right away; a plain Blade file has no
+            // LSP server, so no response would ever refresh the list.
+            completion.filter_items();
         });
     }
 
@@ -3148,6 +3193,7 @@ impl EditorData {
         let doc = self.doc();
         let buffer = doc.buffer.get_untracked();
         let cursor = self.cursor().get_untracked();
+        let path = doc.content.with_untracked(|c| c.path().cloned());
         // Get all the edits which would be applied in places other than right where the cursor is
         let additional_edit: Vec<_> = item
             .additional_text_edits
@@ -3170,7 +3216,8 @@ impl EditorData {
             match edit {
                 CompletionTextEdit::Edit(edit) => {
                     let offset = cursor.offset();
-                    let start_offset = buffer.prev_code_boundary(offset);
+                    let start_offset =
+                        completion_word_start(&buffer, path.as_deref(), offset);
                     let end_offset = buffer.next_code_boundary(offset);
                     let edit_start = buffer.offset_of_position(&edit.range.start);
                     let edit_end = buffer.offset_of_position(&edit.range.end);
@@ -3212,7 +3259,8 @@ impl EditorData {
         }
 
         let offset = cursor.offset();
-        let start_offset = buffer.prev_code_boundary(offset);
+        let start_offset =
+            completion_word_start(&buffer, path.as_deref(), offset);
         let end_offset = buffer.next_code_boundary(offset);
         let selection = Selection::region(start_offset, end_offset);
 

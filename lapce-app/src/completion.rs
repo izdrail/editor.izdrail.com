@@ -40,6 +40,9 @@ pub struct ScoredCompletionItem {
     pub score: u32,
     pub label_score: u32,
     pub indices: Vec<usize>,
+    /// Offer even when nothing has been typed yet (component tag names
+    /// right after `<x-` / `<livewire:`). Everything else waits for input.
+    pub show_on_empty: bool,
 }
 
 #[derive(Clone)]
@@ -127,6 +130,7 @@ impl CompletionData {
                 score: 0,
                 label_score: 0,
                 indices: Vec::new(),
+                show_on_empty: false,
             })
             .collect();
         self.input_items.insert(input.to_string(), items);
@@ -191,7 +195,18 @@ impl CompletionData {
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
         let items = self.lsp_items();
         if self.input.is_empty() {
-            return items;
+            let locals = empty_input_locals(&self.local_items);
+            if locals.is_empty() {
+                return items;
+            }
+            let mut all: Vec<ScoredCompletionItem> =
+                items.into_iter().collect();
+            all.extend(locals);
+            return dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
+                i.source.tier()
+            })
+            .into_iter()
+            .collect();
         }
         let typed = self.input.chars().count();
         let mut all: Vec<ScoredCompletionItem> = items.into_iter().collect();
@@ -385,6 +400,18 @@ impl CompletionData {
     }
 }
 
+/// Local items offered before anything is typed: only the ones that asked
+/// for it (component tag names after `<x-` / `<livewire:`).
+fn empty_input_locals(
+    local_items: &im::Vector<ScoredCompletionItem>,
+) -> im::Vector<ScoredCompletionItem> {
+    local_items
+        .iter()
+        .filter(|l| l.show_on_empty)
+        .cloned()
+        .collect()
+}
+
 fn sort_text(i: &ScoredCompletionItem) -> &str {
     i.item.sort_text.as_deref().unwrap_or(&i.item.label)
 }
@@ -495,7 +522,20 @@ mod blend_tests {
             score,
             label_score: score,
             indices: Vec::new(),
+            show_on_empty: false,
         }
+    }
+
+    #[test]
+    fn empty_input_offers_only_opted_in_locals() {
+        let mut tag = item("forms.input", CompletionSource::Project, 0);
+        tag.show_on_empty = true;
+        let snip = item("foreach", CompletionSource::Snippet, 0);
+        let locals: im::Vector<_> = vec![tag, snip].into_iter().collect();
+        let got = empty_input_locals(&locals);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].item.label, "forms.input");
+        assert!(empty_input_locals(&im::Vector::new()).is_empty());
     }
 
     #[test]

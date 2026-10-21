@@ -57,6 +57,26 @@ pub fn hyphen_word_len(before: &str) -> usize {
     total
 }
 
+/// Byte length of the Blade/Livewire component tag name being typed at the
+/// end of `before` (the line text before the completion word start), so
+/// `<x-forms.in` and `<livewire:admin.us` are completed as one dotted name.
+/// Returns 0 outside a tag-name context.
+pub fn tag_name_word_len(before: &str) -> usize {
+    for marker in ["<x-", "<livewire:"] {
+        if let Some(at) = before.rfind(marker) {
+            let name = &before[at + marker.len()..];
+            if !name.is_empty()
+                && name.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')
+                })
+            {
+                return name.len();
+            }
+        }
+    }
+    0
+}
+
 fn parse(text: &str) -> Vec<Snippet> {
     serde_json::from_str(text)
         .map(|doc| snippets::parse(&doc))
@@ -282,6 +302,22 @@ mod tests {
         assert_eq!(text_of("use"), "@use('App\\Models\\Model')");
         assert!(text_of("pushif").contains("@endPushIf"));
         assert!(text_of("prependonce").contains("@endPrependOnce"));
+    }
+
+    #[test]
+    fn tag_name_word_len_covers_dotted_tag_names() {
+        assert_eq!(tag_name_word_len("<x-"), 0);
+        assert_eq!(tag_name_word_len("<x-forms."), 6);
+        assert_eq!(tag_name_word_len("<x-forms.in"), 8);
+        assert_eq!(tag_name_word_len("<livewire:"), 0);
+        assert_eq!(tag_name_word_len("<livewire:admin."), 6);
+        assert_eq!(tag_name_word_len("<livewire:admin.us"), 8);
+        assert_eq!(tag_name_word_len("<livewire:admin.user-"), 11);
+        // Attribute context is not a tag name; neither is a dotted path.
+        assert_eq!(tag_name_word_len("<div x-"), 0);
+        assert_eq!(tag_name_word_len("document."), 0);
+        assert_eq!(tag_name_word_len("route('admin."), 0);
+        assert_eq!(tag_name_word_len(""), 0);
     }
 
     #[test]
