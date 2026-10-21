@@ -52,6 +52,8 @@ pub enum Kind {
     ComponentTag,
     /// Livewire component tag `<livewire:name` (dots for nesting).
     LivewireTag,
+    /// Livewire directive `@livewire('name')`: a component name.
+    LivewireName,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -198,6 +200,7 @@ pub fn context(line: &str) -> Option<Kind> {
         "push" | "pushOnce" | "stack" if blade => Kind::Stack,
         "__" | "trans" | "trans_choice" => Kind::Lang,
         "lang" | "choice" if blade => Kind::Lang,
+        "livewire" if blade => Kind::LivewireName,
         "get" | "has" | "choice" if head[..word_start].ends_with("Lang::") => {
             Kind::Lang
         }
@@ -1013,6 +1016,9 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::Stack
                 | Kind::Lang
                 | Kind::Gate
+                | Kind::Lang
+                | Kind::Gate
+                | Kind::LivewireName
         )
     )
 }
@@ -1064,6 +1070,9 @@ pub fn items(
     if kind == Kind::LivewireTag {
         return livewire_tags(root, file);
     }
+    if kind == Kind::LivewireName {
+        return livewire_tags(root, file);
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1078,6 +1087,8 @@ pub fn items(
         Kind::LivewireAction => (Vec::new(), "Livewire method"),
         // Returned early above; the match must stay exhaustive.
         Kind::ComponentTag => (Vec::new(), "Blade component"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireName => (Vec::new(), "Livewire component"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1418,6 +1429,7 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert!(dotted_name_context("@extends('layouts.ap"));
         assert!(dotted_name_context("__('messages.we"));
         assert!(dotted_name_context("$user->can('edit-po"));
+        assert!(dotted_name_context("@livewire('admin.us"));
         assert!(!dotted_name_context("document.getE"));
         assert!(!dotted_name_context("$this->foo->b"));
         assert!(!dotted_name_context("env('APP_"));
@@ -1427,6 +1439,26 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(dotted_word_len("route('"), 0);
         assert_eq!(dotted_word_len("'"), 0);
         assert_eq!(dotted_word_len(""), 0);
+    }
+
+    #[test]
+    fn offers_livewire_directive_names() {
+        assert_eq!(context("@livewire('"), Some(Kind::LivewireName));
+        assert_eq!(context("  @livewire('admin.us"), Some(Kind::LivewireName));
+        // Not the directive: no @, so no completion.
+        assert_eq!(context("livewire('admin.us"), None);
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "app/Livewire/Admin/UserProfile.php", "");
+        put(r, "app/Livewire/Counter.php", "");
+        put(r, "resources/views/pages/home.blade.php", "");
+        let view = r.join("resources/views/pages/home.blade.php");
+        let labels = items(r, Some(&view), "@livewire('")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"admin.user-profile".to_string()));
+        assert!(labels.contains(&"counter".to_string()));
     }
 
     #[test]
