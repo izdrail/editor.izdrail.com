@@ -998,6 +998,51 @@ fn livewire_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
         .collect()
 }
 
+/// Does the completion context at the end of `line_before_cursor` offer
+/// dotted names (routes, config keys, views, sections, stacks, translation
+/// keys, Gate abilities)? Used to extend the completion word start over
+/// `.`-joined segments so accepting replaces the whole name.
+pub fn dotted_name_context(line_before_cursor: &str) -> bool {
+    matches!(
+        context(line_before_cursor),
+        Some(
+            Kind::Route
+                | Kind::Config
+                | Kind::View
+                | Kind::Section
+                | Kind::Stack
+                | Kind::Lang
+                | Kind::Gate
+        )
+    )
+}
+
+/// Bytes to extend a completion word start backwards over `.`- and
+/// `-`-joined segments of a quoted name (`admin.us`,
+/// `messages.welcome-back`). Stops at anything else, such as the opening
+/// quote. Returns 0 when `before` does not end in a joined segment.
+pub fn dotted_word_len(before: &str) -> usize {
+    let mut rest = before;
+    let mut total = 0;
+    while let Some(sep) =
+        rest.chars().next_back().filter(|c| matches!(c, '.' | '-'))
+    {
+        let r = &rest[..rest.len() - sep.len_utf8()];
+        let word: usize = r
+            .chars()
+            .rev()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .map(char::len_utf8)
+            .sum();
+        if word == 0 {
+            break;
+        }
+        total += sep.len_utf8() + word;
+        rest = &r[..r.len() - word];
+    }
+    total
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -1362,6 +1407,26 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("<x-alert "), None);
         assert_eq!(context("<div class=\"x-foo"), None);
         assert_eq!(context("<x"), None);
+    }
+
+    #[test]
+    fn dotted_name_context_and_word_len() {
+        assert!(dotted_name_context("route('admin.us"));
+        assert!(dotted_name_context("config('app."));
+        assert!(dotted_name_context("view('pages.ho"));
+        assert!(dotted_name_context("  @include('partials.he"));
+        assert!(dotted_name_context("@extends('layouts.ap"));
+        assert!(dotted_name_context("__('messages.we"));
+        assert!(dotted_name_context("$user->can('edit-po"));
+        assert!(!dotted_name_context("document.getE"));
+        assert!(!dotted_name_context("$this->foo->b"));
+        assert!(!dotted_name_context("env('APP_"));
+        assert_eq!(dotted_word_len("route('admin."), 6);
+        assert_eq!(dotted_word_len("config('app."), 4);
+        assert_eq!(dotted_word_len("__('messages.welcome-"), 17);
+        assert_eq!(dotted_word_len("route('"), 0);
+        assert_eq!(dotted_word_len("'"), 0);
+        assert_eq!(dotted_word_len(""), 0);
     }
 
     #[test]

@@ -253,23 +253,36 @@ pub(crate) fn completion_word_start(
     path: Option<&std::path::Path>,
     offset: usize,
 ) -> usize {
-    let mut start = buffer.prev_code_boundary(offset);
-    let blade = path
-        .map(|p| p.to_string_lossy().ends_with(".blade.php"))
-        .unwrap_or(false);
-    if blade && start > 0 {
-        let line_start = buffer.offset_of_line(buffer.line_of_offset(start));
-        let before = buffer.slice_to_cow(line_start..start);
-        // In a component tag name the marker (`<x-` / `<livewire:`) stays
-        // outside the word; elsewhere a hyphenated prefix (`x-da`,
-        // `wire-ta`) is one word.
-        start -= if crate::builtin_snippets::tag_name_context(&before) {
-            crate::builtin_snippets::tag_name_word_len(&before)
-        } else {
-            crate::builtin_snippets::hyphen_word_len(&before)
-        };
+    let start = buffer.prev_code_boundary(offset);
+    let Some(path) = path else { return start };
+    if start == 0 {
+        return start;
     }
-    start
+    let name = path.to_string_lossy();
+    let blade = name.ends_with(".blade.php");
+    let php = name.ends_with(".php");
+    if !php {
+        return start;
+    }
+    let line_start = buffer.offset_of_line(buffer.line_of_offset(start));
+    let before = buffer.slice_to_cow(line_start..start);
+    // In a Blade component tag name the marker (`<x-` / `<livewire:`) stays
+    // outside the word; in a quoted helper call (`route('admin.us')`) the
+    // whole dotted name is the word; elsewhere in Blade a hyphenated
+    // prefix (`x-da`, `wire-ta`) is one word.
+    let ext = if blade && crate::builtin_snippets::tag_name_context(&before) {
+        crate::builtin_snippets::tag_name_word_len(&before)
+    } else {
+        let before_cursor = buffer.slice_to_cow(line_start..offset);
+        if crate::project_completion::dotted_name_context(&before_cursor) {
+            crate::project_completion::dotted_word_len(&before)
+        } else if blade {
+            crate::builtin_snippets::hyphen_word_len(&before)
+        } else {
+            0
+        }
+    };
+    start - ext
 }
 
 /// Where a completion edit (and its snippet tab stops) begins: the earlier
