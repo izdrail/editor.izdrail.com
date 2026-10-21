@@ -50,6 +50,8 @@ pub enum Kind {
     LivewireAction,
     /// Blade component tag `<x-<partial>` (dots for nested components).
     ComponentTag,
+    /// Livewire component tag `<livewire:name` (dots for nesting).
+    LivewireTag,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -101,6 +103,17 @@ pub fn context(line: &str) -> Option<Kind> {
             }
         }
         break;
+    }
+    // Livewire component tag `<livewire:admin.user-profile`: the tail after
+    // the marker is name characters only.
+    if let Some(at) = line.rfind("<livewire:") {
+        let tail = &line[at + "<livewire:".len()..];
+        if tail
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+        {
+            return Some(Kind::LivewireTag);
+        }
     }
     // Blade component tag `<x-<partial>`: the tail of the line is tag
     // characters (letters, digits, `.`, `-`, `_`) right after `<x-`.
@@ -894,6 +907,97 @@ fn component_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
         .collect()
 }
 
+/// kebab-case of a StudlyCaps class name: `UserProfile` -> `user-profile`.
+fn kebab(name: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in name.chars().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                out.push('-');
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Livewire component names: view files under `resources/views/livewire`
+/// and classes under `app/Livewire` / `app/Http/Livewire`, dotted and
+/// kebab-cased (`Admin/UserProfile.php` -> `admin.user-profile`). Symlinks
+/// are not followed; bounded walk.
+fn livewire_names(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, base: &Path, ext: &str, out: &mut Vec<String>) {
+        if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, base, ext, out);
+            } else if ft.is_file() {
+                let Some(fname) = p.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                let Some(stem) = fname.strip_suffix(ext) else { continue };
+                let Ok(rel) = p.strip_prefix(base) else { continue };
+                let mut parts: Vec<String> = rel
+                    .parent()
+                    .map(|pp| {
+                        pp.components()
+                            .map(|c| c.as_os_str().to_string_lossy().to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                parts.push(stem.to_string());
+                let name = parts
+                    .iter()
+                    .map(|x| kebab(x))
+                    .collect::<Vec<_>>()
+                    .join(".");
+                if !out.contains(&name) && out.len() < MAX_VIEW_FILES {
+                    out.push(name);
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let views = root.join("resources").join("views").join("livewire");
+    walk(&views, 0, &views, ".blade.php", &mut out);
+    for base in [root.join("app").join("Livewire"), root.join("app").join("Http").join("Livewire")] {
+        walk(&base, 0, &base, ".php", &mut out);
+    }
+    out.sort();
+    out
+}
+
+/// `<livewire:...>` tag completion: only inside a `.blade.php` view.
+fn livewire_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
+    let is_blade = file
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(".blade.php"));
+    if !is_blade {
+        return Vec::new();
+    }
+    livewire_names(root)
+        .into_iter()
+        .take(MAX_ITEMS)
+        .map(|n| CompletionItem {
+            label: n,
+            kind: Some(CompletionItemKind::CLASS),
+            detail: Some("Livewire component".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -912,6 +1016,9 @@ pub fn items(
     if kind == Kind::ComponentTag {
         return component_tags(root, file);
     }
+    if kind == Kind::LivewireTag {
+        return livewire_tags(root, file);
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -926,6 +1033,7 @@ pub fn items(
         Kind::LivewireAction => (Vec::new(), "Livewire method"),
         // Returned early above; the match must stay exhaustive.
         Kind::ComponentTag => (Vec::new(), "Blade component"),
+        Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
     };
@@ -1254,6 +1362,30 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("<x-alert "), None);
         assert_eq!(context("<div class=\"x-foo"), None);
         assert_eq!(context("<x"), None);
+    }
+
+    #[test]
+    fn offers_livewire_tags() {
+        assert_eq!(context("<livewire:"), Some(Kind::LivewireTag));
+        assert_eq!(context("  <livewire:admin.us"), Some(Kind::LivewireTag));
+        assert_eq!(context("<livewire:counter :n=\"1\""), None);
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "app/Livewire/Admin/UserProfile.php", "");
+        put(r, "app/Livewire/Counter.php", "");
+        put(r, "resources/views/livewire/only-view.blade.php", "");
+        put(r, "resources/views/pages/home.blade.php", "");
+        let view = r.join("resources/views/pages/home.blade.php");
+        let labels = items(r, Some(&view), "<livewire:")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"admin.user-profile".to_string()));
+        assert!(labels.contains(&"counter".to_string()));
+        assert!(labels.contains(&"only-view".to_string()));
+        let plain = r.join("routes/web.php");
+        put(r, "routes/web.php", "<?php");
+        assert!(items(r, Some(&plain), "<livewire:").is_empty());
     }
 
     #[test]
