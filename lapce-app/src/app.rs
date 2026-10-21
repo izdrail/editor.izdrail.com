@@ -949,12 +949,6 @@ fn editor_tab_header(
                 })
                 .on_resize(move |rect| {
                     header_content_size.set(rect.size());
-                    // The strip's ensure_visible follows this rect. It was
-                    // never written, so the active tab stayed at Rect::ZERO
-                    // and the strip never scrolled to it.
-                    if layout_rect.get_untracked() != rect {
-                        layout_rect.set(rect);
-                    }
                 })
                 .draggable()
                 .dragging_style(move |s| {
