@@ -3064,11 +3064,13 @@ impl EditorData {
                     .into_iter()
                     .map(|i| wrap(i, CompletionSource::Keyword)),
             )
-            .chain(
-                project
-                    .into_iter()
-                    .map(|i| wrap(i, CompletionSource::Project)),
-            )
+            .chain(project.into_iter().map(|i| {
+                // Project items exist only because the line is a known
+                // quoted context, so offer them on the bare quote too.
+                let mut w = wrap(i, CompletionSource::Project);
+                w.show_on_empty = true;
+                w
+            }))
             .chain(
                 blade_vars
                     .into_iter()
@@ -3097,7 +3099,7 @@ impl EditorData {
         };
 
         let offset = self.cursor().with_untracked(|c| c.offset());
-        let (start_offset, input, char, tag_ctx) =
+        let (start_offset, input, char, tag_ctx, project_ctx) =
             doc.buffer.with_untracked(|buffer| {
             // Blade words cover hyphenated snippet prefixes (`x-da`) and
             // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
@@ -3121,13 +3123,25 @@ impl EditorData {
                     &buffer.slice_to_cow(line_start..start_offset),
                 )
             };
-            (start_offset, input, char, tag_ctx)
+            // `route('`, `@include('`, `wire:model="..."` and friends: the
+            // project has items for an empty quoted argument, so open on
+            // the bare quote too.
+            let project_ctx = path.to_string_lossy().ends_with(".php") && {
+                let line_start =
+                    buffer.offset_of_line(buffer.line_of_offset(offset));
+                crate::project_completion::context(
+                    &buffer.slice_to_cow(line_start..offset),
+                )
+                .is_some()
+            };
+            (start_offset, input, char, tag_ctx, project_ctx)
         });
         if !display_if_empty_input
             && input.is_empty()
             && char != "."
             && char != ":"
             && !tag_ctx
+            && !project_ctx
         {
             self.cancel_completion();
             return;

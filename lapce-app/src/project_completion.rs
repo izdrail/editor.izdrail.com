@@ -1494,6 +1494,24 @@ Gate::define(\"buy-cd\", 'shop.buy');
     }
 
     #[test]
+    fn context_detects_the_bare_quote() {
+        // The popup opens on these (empty input, no letter typed yet).
+        assert_eq!(context("route('"), Some(Kind::Route));
+        assert_eq!(context("route(\""), Some(Kind::Route));
+        assert_eq!(context("config('"), Some(Kind::Config));
+        assert_eq!(context("view('"), Some(Kind::View));
+        assert_eq!(context("  @include('"), Some(Kind::View));
+        assert_eq!(context("@livewire('"), Some(Kind::LivewireName));
+        assert_eq!(context("__('"), Some(Kind::Lang));
+        assert_eq!(context("<input wire:model=\""), Some(Kind::LivewireModel));
+        assert_eq!(context("<button wire:click=\""), Some(Kind::LivewireAction));
+        // Closed string / unknown caller / second argument: nothing.
+        assert_eq!(context("route('x')"), None);
+        assert_eq!(context("route('x', ["), None);
+        assert_eq!(context("console.log('"), None);
+    }
+
+    #[test]
     fn offers_livewire_directive_names() {
         assert_eq!(context("@livewire('"), Some(Kind::LivewireName));
         assert_eq!(context("  @livewire('admin.us"), Some(Kind::LivewireName));
