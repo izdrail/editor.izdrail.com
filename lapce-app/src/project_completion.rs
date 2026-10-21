@@ -659,6 +659,7 @@ pub fn blade_variables(
         p = o + 7 + q2;
     }
 
+    let builtins = builtin_blade_variables(text, &vars);
     vars.into_iter()
         .take(100)
         .map(|n| CompletionItem {
@@ -667,7 +668,58 @@ pub fn blade_variables(
             detail: Some("Blade variable".to_string()),
             ..Default::default()
         })
+        .chain(builtins)
         .collect()
+}
+
+/// Blade's own variables that are in scope without any assignment the
+/// scanner could see: `$errors` is shared with every view, `$loop` exists
+/// inside an unclosed `@foreach`/`@forelse`, `$message` inside `@error`,
+/// and `$slot` / `$attributes` in a component view (one with `@props`).
+fn builtin_blade_variables(
+    text: &str,
+    vars: &[String],
+) -> Vec<CompletionItem> {
+    let mut out: Vec<CompletionItem> = Vec::new();
+    let mut push = |name: &str, detail: &str| {
+        if !vars.iter().any(|v| v == name)
+            && !out.iter().any(|i| i.label == name)
+        {
+            out.push(CompletionItem {
+                label: name.to_string(),
+                kind: Some(CompletionItemKind::VARIABLE),
+                detail: Some(detail.to_string()),
+                ..Default::default()
+            });
+        }
+    };
+    push("errors", "Blade: shared ViewErrorBag of validation errors");
+    let open_loops = (text.matches("@foreach").count()
+        + text.matches("@forelse").count())
+    .saturating_sub(
+        text.matches("@endforeach").count() + text.matches("@endforelse").count(),
+    );
+    if open_loops > 0 {
+        push(
+            "loop",
+            "Blade: current iteration ($loop->index, ->iteration, ->first, ->last, ->remaining, ->count, ->depth)",
+        );
+    }
+    let open_error = text
+        .matches("@error")
+        .count()
+        .saturating_sub(text.matches("@enderror").count());
+    if open_error > 0 {
+        push("message", "Blade: the field's validation message inside @error");
+    }
+    if text.contains("@props") {
+        push("slot", "Blade component: default slot content");
+        push(
+            "attributes",
+            "Blade component: attribute bag ($attributes->merge([...]))",
+        );
+    }
+    out
 }
 
 static METHOD_CACHE: std::sync::OnceLock<
@@ -1523,7 +1575,7 @@ Gate::define(\"buy-cd\", 'shop.buy');
             v,
             [
                 "title", "count", "pair", "idx", "item", "user", "disabled",
-                "type", "flat", "metrics"
+                "type", "flat", "metrics", "errors", "slot", "attributes"
             ]
         );
         let item = blade_variables(BLADE_VIEW, "{{ $fo")
@@ -1544,12 +1596,19 @@ Gate::define(\"buy-cd\", 'shop.buy');
 
     #[test]
     fn blade_variables_excludes_non_definitions() {
-        assert!(blade_variables("<?php $x += 1;", "$").is_empty());
-        assert!(blade_variables("<?php $x == 1;", "$x == 1; $").is_empty());
-        assert!(blade_variables("{{ $this->foo }}", "{{ $").is_empty());
+        // No view variable is defined; only the always-shared $errors shows.
+        assert_eq!(labels(blade_variables("<?php $x += 1;", "$")), ["errors"]);
+        assert_eq!(
+            labels(blade_variables("<?php $x == 1;", "$x == 1; $")),
+            ["errors"]
+        );
+        assert_eq!(
+            labels(blade_variables("{{ $this->foo }}", "{{ $")),
+            ["errors"]
+        );
         assert_eq!(
             labels(blade_variables("<?php $1abc = 1; $ok2 = 2;", "$")),
-            ["ok2"]
+            ["ok2", "errors"]
         );
         // Values in @props are not prop names.
         assert_eq!(
@@ -1557,8 +1616,32 @@ Gate::define(\"buy-cd\", 'shop.buy');
                 "@props([\"tone\" => 'info', \"size\"])",
                 "$"
             )),
-            ["tone", "size"]
+            ["tone", "size", "errors", "slot", "attributes"]
         );
+    }
+
+    #[test]
+    fn blade_variables_adds_builtin_scope() {
+        // $loop inside an unclosed @foreach, not after @endforeach.
+        let t = "@foreach ($items as $i)\n    {{ $lo";
+        let v = labels(blade_variables(t, t));
+        assert!(v.contains(&"loop".to_string()));
+        let t = "@foreach ($items as $i) @endforeach {{ $lo";
+        assert!(!labels(blade_variables(t, t)).contains(&"loop".to_string()));
+        let t = "@forelse ($items as $i)\n{{ $lo";
+        assert!(labels(blade_variables(t, t)).contains(&"loop".to_string()));
+        // $message only inside @error.
+        let t = "@error('title') {{ $me";
+        assert!(labels(blade_variables(t, t)).contains(&"message".to_string()));
+        let t = "@error('title') @enderror {{ $me";
+        assert!(!labels(blade_variables(t, t)).contains(&"message".to_string()));
+        // $errors is always shared; a view-defined $errors wins (no dup).
+        let t = "@php($errors = []) @endphp {{ $er";
+        let v = labels(blade_variables(t, t));
+        assert_eq!(v.iter().filter(|x| *x == "errors").count(), 1);
+        // $slot / $attributes only in a component view.
+        assert!(!labels(blade_variables("{{ $sl", "{{ $sl"))
+            .contains(&"slot".to_string()));
     }
 
     #[test]
