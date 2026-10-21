@@ -949,6 +949,12 @@ fn editor_tab_header(
                 })
                 .on_resize(move |rect| {
                     header_content_size.set(rect.size());
+                    // The strip's ensure_visible follows this rect. It was
+                    // never written, so the active tab stayed at Rect::ZERO
+                    // and the strip never scrolled to it.
+                    if layout_rect.get_untracked() != rect {
+                        layout_rect.set(rect);
+                    }
                 })
                 .draggable()
                 .dragging_style(move |s| {
@@ -1143,9 +1149,14 @@ fn editor_tab_header(
             })
             .ensure_visible(move || {
                 let active = editor_tab_active.get();
+                // Tracked: the rect is only known after the first layout, so
+                // the scroll must re-run when it arrives.
                 editor_tab
-                    .with_untracked(|editor_tab| editor_tab.children[active].1)
-                    .get_untracked()
+                    .with_untracked(|editor_tab| {
+                        editor_tab.children.get(active).map(|c| c.1)
+                    })
+                    .map(|r| r.get())
+                    .unwrap_or_default()
             })
             .scroll_style(|s| s.hide_bars(true))
             .style(|s| {
