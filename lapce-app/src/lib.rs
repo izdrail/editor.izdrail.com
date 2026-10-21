@@ -118,6 +118,7 @@ pub mod route_hover;
 pub mod schema_hover;
 pub mod route_index;
 pub mod blade_end;
+pub mod blade_outline;
 pub mod composer_pkg;
 pub mod tag_close;
 pub mod tw_sort;

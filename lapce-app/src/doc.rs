@@ -1194,21 +1194,40 @@ impl Doc {
                     if rev != doc.rev() {
                         return;
                     }
-                    if let Ok(ProxyResponse::GetDocumentSymbols { resp }) = result {
-                        let items: Vec<RwSignal<SymbolInformationItemData>> =
-                            match resp {
-                                DocumentSymbolResponse::Flat(_symbols) => {
-                                    Vec::with_capacity(0)
-                                }
-                                DocumentSymbolResponse::Nested(symbols) => symbols
-                                    .into_iter()
-                                    .map(|x| {
-                                        cx.create_rw_signal(
-                                            SymbolInformationItemData::from((x, cx)),
-                                        )
-                                    })
-                                    .collect(),
-                            };
+                    let from_lsp: Vec<RwSignal<SymbolInformationItemData>> =
+                        match result {
+                            Ok(ProxyResponse::GetDocumentSymbols {
+                                resp: DocumentSymbolResponse::Nested(symbols),
+                            }) => symbols
+                                .into_iter()
+                                .map(|x| {
+                                    cx.create_rw_signal(
+                                        SymbolInformationItemData::from((x, cx)),
+                                    )
+                                })
+                                .collect(),
+                            _ => Vec::new(),
+                        };
+                    // No language server answer: Blade views get a local
+                    // outline so the panel is not blank.
+                    let items = if from_lsp.is_empty()
+                        && crate::blade_outline::is_blade_path(&path)
+                    {
+                        let text = doc
+                            .buffer
+                            .with_untracked(|b| b.text().to_string());
+                        crate::blade_outline::outline(&text)
+                            .into_iter()
+                            .map(|x| {
+                                cx.create_rw_signal(
+                                    SymbolInformationItemData::from((x, cx)),
+                                )
+                            })
+                            .collect()
+                    } else {
+                        from_lsp
+                    };
+                    {
                         let symbol_new = Some(SymbolData::new(items, path, cx));
                         doc.document_symbol_data.update(|symbol| {
                             *symbol = symbol_new;
