@@ -114,6 +114,83 @@ const ENDS: &[(&str, &str)] = &[
     ("endteleport", "teleport"), ("endpersist", "persist"), ("endscript", "script"), ("endassets", "assets"),
 ];
 
+/// Alpine and Livewire 3 attributes: (name, syntax, description).
+const ATTRIBUTES: &[(&str, &str, &str)] = &[
+    ("x-data", "x-data=\"{ open: false }\"", "Alpine: declares a component scope with reactive data."),
+    ("x-init", "x-init=\"expression\"", "Alpine: runs when the element is initialised."),
+    ("x-show", "x-show=\"expression\"", "Alpine: shows or hides the element (toggles `display: none`)."),
+    ("x-bind", "x-bind:attr=\"expression\"  or  :attr=\"expression\"", "Alpine: binds an attribute to an expression."),
+    ("x-on", "x-on:event.modifier=\"handler\"", "Alpine: listens for an event. The `@event` shorthand clashes with Blade directives in `.blade.php`, so prefer `x-on:`."),
+    ("x-model", "x-model.modifier=\"property\"", "Alpine: two-way binds an input to data. Modifiers include `.lazy`, `.number`, `.debounce`."),
+    ("x-text", "x-text=\"expression\"", "Alpine: sets the element's text content."),
+    ("x-html", "x-html=\"expression\"", "Alpine: sets inner HTML. Only use it with trusted content."),
+    ("x-ref", "x-ref=\"name\"", "Alpine: names the element so it is reachable as `$refs.name`."),
+    ("x-cloak", "x-cloak", "Alpine: removed once Alpine has initialised; hide it with `[x-cloak] { display: none !important; }`."),
+    ("x-transition", "x-transition  or  x-transition:enter=\"...\"", "Alpine: transitions an element shown or hidden with `x-show`."),
+    ("x-for", "<template x-for=\"item in items\" :key=\"item.id\">", "Alpine: loops over a list. Must be on a `<template>` with one root element."),
+    ("x-if", "<template x-if=\"condition\">", "Alpine: adds the content to the DOM only when true. Must be on a `<template>`."),
+    ("x-effect", "x-effect=\"expression\"", "Alpine: re-runs the expression when the data it reads changes."),
+    ("x-teleport", "<template x-teleport=\"selector\">", "Alpine: moves the template's content to another place in the DOM."),
+    ("x-ignore", "x-ignore", "Alpine: does not initialise this element or its children."),
+    ("x-id", "x-id=\"['name']\"", "Alpine: scopes generated ids for `$id('name')`."),
+    ("x-modelable", "x-modelable=\"property\"", "Alpine: exposes a data property so a parent `x-model` can bind to it."),
+    ("wire:click", "wire:click=\"method\"", "Livewire: calls a component method on click. Modifiers include `.prevent`, `.stop`."),
+    ("wire:model", "wire:model=\"property\"", "Livewire 3: binds an input to a component property. Updates are sent with the next request; add `.live` to send on input, `.blur` on blur."),
+    ("wire:submit", "wire:submit=\"method\"", "Livewire: calls a method when the form is submitted (the default submit is prevented)."),
+    ("wire:loading", "wire:loading  /  wire:loading.class=\"...\"", "Livewire: shows or styles the element while a request is in flight. Scope it with `wire:target`."),
+    ("wire:target", "wire:target=\"method\"", "Livewire: limits `wire:loading` or `wire:offline` to one action or property."),
+    ("wire:poll", "wire:poll.5s=\"method\"", "Livewire: refreshes the component on an interval."),
+    ("wire:navigate", "<a href=\"...\" wire:navigate>", "Livewire 3: SPA-style page navigation without a full reload."),
+    ("wire:key", "wire:key=\"unique\"", "Livewire: unique key for items in a loop so the DOM can be tracked."),
+    ("wire:init", "wire:init=\"method\"", "Livewire: calls a method when the element is initialised."),
+    ("wire:ignore", "wire:ignore  /  wire:ignore.self", "Livewire: keeps the element out of DOM updates (for third-party widgets)."),
+    ("wire:stream", "wire:stream=\"name\"", "Livewire: target for content sent with `$this->stream()`."),
+    ("wire:transition", "wire:transition", "Livewire 3: transitions the element when it is added or removed."),
+    ("wire:confirm", "wire:confirm=\"Are you sure?\"", "Livewire 3: asks for confirmation before a `wire:click` or `wire:submit` action runs."),
+    ("wire:dirty", "wire:dirty  /  wire:dirty.class=\"...\"", "Livewire: shows or styles the element while the property has unsaved changes."),
+    ("wire:offline", "wire:offline", "Livewire: shows the element while the browser is offline."),
+    ("wire:cloak", "wire:cloak", "Livewire: hides the element until Livewire has initialised."),
+];
+
+/// The base attribute name (`x-on`, `wire:model`) when `col` is on an Alpine
+/// or Livewire attribute in `line`: arguments (`:click`) and modifiers
+/// (`.live`) are dropped.
+fn attribute_at(line: &str, col: usize) -> Option<&str> {
+    let mut col = col.min(line.len());
+    while !line.is_char_boundary(col) {
+        col -= 1;
+    }
+    let is_attr = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | ':' | '.' | '_');
+    let mut s = col;
+    while let Some(c) = line[..s].chars().next_back() {
+        if is_attr(c) { s -= c.len_utf8() } else { break }
+    }
+    let mut e = col;
+    while let Some(c) = line[e..].chars().next() {
+        if is_attr(c) { e += c.len_utf8() } else { break }
+    }
+    // The attribute must follow whitespace (or start the line): `foo-x-data` is not one.
+    if s > 0 && !line[..s].ends_with(|c: char| c.is_whitespace()) {
+        return None;
+    }
+    let token = &line[s..e];
+    let base = token.split('.').next()?;
+    if let Some(rest) = base.strip_prefix("x-") {
+        let name = rest.split(':').next()?;
+        return Some(&base[..2 + name.len()]);
+    }
+    if base.starts_with("wire:") {
+        return Some(base);
+    }
+    None
+}
+
+fn attribute_help(line: &str, col: usize) -> Option<String> {
+    let name = attribute_at(line, col)?;
+    let (n, syntax, desc) = ATTRIBUTES.iter().find(|(n, _, _)| *n == name)?;
+    Some(format!("```html\n{syntax}\n```\n{desc}  \n`{n}`"))
+}
+
 fn directive(name: &str) -> Option<(String, String)> {
     if let Some((_, s, d)) = DIRECTIVES.iter().find(|(n, _, _)| *n == name) {
         return Some((s.to_string(), d.to_string()));
@@ -219,6 +296,9 @@ pub fn help(root: Option<&Path>, file: &Path, window: &str, at: usize) -> Option
     if let Some(md) = variable_help(root, file, line, at - line_start) {
         return Some(md);
     }
+    if let Some(md) = attribute_help(line, at - line_start) {
+        return Some(md);
+    }
     let root = root?;
     let Some((tag, attr)) = crate::blade_props::tag_and_attr(window, at) else {
         return crate::livewire_props::help(root, file, line, at - line_start);
@@ -250,6 +330,35 @@ mod tests {
         assert_eq!(directive_at("@", 1), None);
         assert!(directive("vite").is_some());
         assert!(directive("nope").is_none());
+    }
+
+    #[test]
+    fn alpine_and_livewire_attribute_hover() {
+        let l = r#"<button x-on:click.prevent="open = true" wire:model.live="q" :class="a">"#;
+        let at = |needle: &str, off: usize| l.find(needle).unwrap() + off;
+        assert_eq!(attribute_at(l, at("x-on", 1)), Some("x-on"));
+        assert_eq!(attribute_at(l, at("click", 2)), Some("x-on"));
+        assert_eq!(attribute_at(l, at("prevent", 2)), Some("x-on"));
+        assert_eq!(attribute_at(l, at("wire:model", 7)), Some("wire:model"));
+        assert_eq!(attribute_at(l, at("live", 1)), Some("wire:model"));
+        assert_eq!(attribute_at(l, at(":class", 2)), None);
+        assert_eq!(attribute_at("<div x-data>", 7), Some("x-data"));
+        assert_eq!(attribute_at("foo-x-data", 6), None);
+        assert_eq!(attribute_at("<div>", 3), None);
+        assert_eq!(attribute_at("é x-ref", 5), Some("x-ref"));
+        let h = attribute_help(l, at("wire:model", 2)).unwrap();
+        assert!(h.contains("Livewire 3") && h.contains("wire:model"), "{h}");
+        assert!(attribute_help("<a x-unknown>", 6).is_none());
+        let f = Path::new("a.blade.php");
+        assert!(help(None, f, "<div x-show=\"open\">", 8).unwrap().contains("display: none"));
+    }
+
+    #[test]
+    fn attribute_table_is_unique_and_well_formed() {
+        for (i, (n, s, _)) in ATTRIBUTES.iter().enumerate() {
+            assert!(s.contains(n) || n.starts_with("x-on") || n.starts_with("x-bind"), "{n}");
+            assert!(ATTRIBUTES[i + 1..].iter().all(|(m, _, _)| m != n), "dup {n}");
+        }
     }
 
     #[test]
