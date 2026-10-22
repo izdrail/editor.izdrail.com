@@ -236,6 +236,57 @@ const VARIABLES: &[(&str, &str, &str)] = &[
     ("message", "$message", "The error text inside `@error('field') ... @enderror`."),
 ];
 
+/// Alpine and Livewire magic properties usable inside attribute
+/// expressions (`x-on:click="$dispatch('saved')"`, `wire:click="$wire.save()"`).
+const MAGICS: &[(&str, &str, &str)] = &[
+    ("el", "$el", "Alpine: the element the current expression is on."),
+    ("refs", "$refs", "Alpine: elements in this component tagged with `x-ref`, read as `$refs.name`."),
+    ("store", "$store", "Alpine: a global store registered with `Alpine.store('name', ...)`; read and write as `$store.name.prop` from any component."),
+    ("watch", "$watch", "Alpine: `$watch('prop', (value, old) => ...)` runs the callback when the component property changes."),
+    ("dispatch", "$dispatch", "Alpine: `$dispatch('saved', { id: 1 })` dispatches a bubbling CustomEvent; listen with `x-on:saved`, `@saved.window` outside the component, or `#[On('saved')]` in Livewire."),
+    ("nextTick", "$nextTick", "Alpine: `$nextTick(() => ...)` runs the callback after Alpine has applied the pending DOM updates."),
+    ("root", "$root", "Alpine: the root element of the current component (the one carrying `x-data`)."),
+    ("id", "$id", "Alpine: `$id('input')` returns a page-unique id inside an `x-id` scope, for label/input pairs."),
+    ("data", "$data", "Alpine: the merged `x-data` object of the current component."),
+    ("wire", "$wire", "Livewire (inside Alpine expressions): the component. `$wire.count` reads a property, `$wire.save()` calls a method, `$wire.set('count', 1)` and `$wire.toggle('open')` write, `$wire.$refresh()` re-renders, `$wire.$parent` reaches the parent component."),
+    ("js", "$js", "Livewire 3: a function registered with `$js('name', fn)` in the component's `@script` block, called from Alpine as `$wire.$js.name()`."),
+    ("entangle", "$entangle", "Livewire: `$entangle('prop')` two-way binds an Alpine property to a Livewire property. Livewire 3 usually wants `wire:model` or `@entangle` in Blade instead."),
+];
+
+/// True when byte `col` sits inside a quoted string on this line, but not
+/// inside a Blade echo `{{ ... }}` / `{!! ... !!}` within it: magic
+/// properties live in Alpine/Livewire attribute expressions, so a plain
+/// Blade `{{ $data }}` must not be explained as Alpine's `$data`.
+fn in_expression_string(line: &str, col: usize) -> bool {
+    let bytes = line.as_bytes();
+    let mut open: Option<(usize, u8)> = None;
+    let mut i = 0;
+    while i < col.min(bytes.len()) {
+        let b = bytes[i];
+        if b == b'\\' {
+            i += 2;
+            continue;
+        }
+        match open {
+            Some((_, q)) if b == q => open = None,
+            None if b == b'\'' || b == b'"' => open = Some((i, b)),
+            _ => {}
+        }
+        i += 1;
+    }
+    let Some((start, _)) = open else { return false };
+    let within = &line[start..col];
+    !within.contains("{{") && !within.contains("{!!")
+}
+
+/// Help for an Alpine/Livewire magic property (`$dispatch`, `$wire`, ...)
+/// in an attribute expression.
+fn magic_help(line: &str, col: usize, name: &str) -> Option<String> {
+    let (_, syntax, desc) = MAGICS.iter().find(|(n, _, _)| *n == name)?;
+    in_expression_string(line, col)
+        .then(|| format!("```js\n{syntax}\n```\n{desc}"))
+}
+
 fn variable_at(line: &str, col: usize) -> Option<&str> {
     let mut col = col.min(line.len());
     while !line.is_char_boundary(col) {
@@ -266,13 +317,19 @@ fn variable_help(root: Option<&Path>, file: &Path, line: &str, col: usize) -> Op
         }
     }
     if in_component {
-        std::fs::symlink_metadata(file).ok().filter(|m| m.is_file() && m.len() <= 1 << 20)?;
-        let text = std::fs::read_to_string(file).ok()?;
-        let n = crate::blade_props::prop_line(&text, name)?;
-        let decl = text.lines().nth(n)?.trim();
-        return Some(format!("**Prop** `${name}`\n```php\n{decl}\n```\nline {} of this component (from the saved file)", n + 1));
+        let prop = || -> Option<String> {
+            let meta = std::fs::symlink_metadata(file).ok()?;
+            (meta.is_file() && meta.len() <= 1 << 20).then_some(())?;
+            let text = std::fs::read_to_string(file).ok()?;
+            let n = crate::blade_props::prop_line(&text, name)?;
+            let decl = text.lines().nth(n)?.trim();
+            Some(format!("**Prop** `${name}`\n```php\n{decl}\n```\nline {} of this component (from the saved file)", n + 1))
+        };
+        if let Some(md) = prop() {
+            return Some(md);
+        }
     }
-    None
+    magic_help(line, col, name)
 }
 
 /// `(marker, name)` when the caret is on a component tag name on this
@@ -520,6 +577,36 @@ mod tests {
         assert!(md.contains("@props(['type' => 'info'])"), "{md}");
         // Unknown component: no hover, no panic.
         assert!(help(Some(r), &view, "<x-missing />", 3).is_none());
+    }
+
+    #[test]
+    fn magic_property_hover() {
+        let f = Path::new("resources/views/a.blade.php");
+        let l = r#"<button x-on:click="$dispatch('saved')" wire:click="$wire.save()">x</button>"#;
+        let h = help(None, f, l, l.find("$dispatch").unwrap() + 3).unwrap();
+        assert!(h.contains("$dispatch") && h.contains("CustomEvent"), "{h}");
+        let h = help(None, f, l, l.find("$wire").unwrap() + 3).unwrap();
+        assert!(h.contains("Livewire") && h.contains("$wire.save()"), "{h}");
+        let l = r#"<div x-data="{ open: $store.nav }">x</div>"#;
+        assert!(help(None, f, l, l.find("$store").unwrap() + 2)
+            .unwrap()
+            .contains("Alpine.store"));
+        // A Blade echo inside an attribute is not an Alpine expression.
+        let l = r#"<p class="{{ $data }}">x</p>"#;
+        assert!(help(None, f, l, l.find("$data").unwrap() + 2).is_none());
+        // Outside any quoted string: nothing.
+        assert!(help(None, f, "{{ $watch }}", 4).is_none());
+        // A component prop beats a magic name.
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let comp = r.join("resources/views/components/btn.blade.php");
+        std::fs::create_dir_all(comp.parent().unwrap()).unwrap();
+        std::fs::write(&comp, "@props(['data' => null])\n").unwrap();
+        let l = r#"<p class="{{ $data }}">x</p>"#;
+        let h = help(Some(r), &comp, l, l.find("$data").unwrap() + 2).unwrap();
+        assert!(h.contains("Prop") && h.contains("'data' => null"), "{h}");
+        assert!(in_expression_string(r#"x-on:click="$el.focus()"#, 16));
+        assert!(!in_expression_string("plain $el text", 8));
     }
 
     #[test]
