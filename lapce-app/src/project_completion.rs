@@ -54,6 +54,8 @@ pub enum Kind {
     LivewireTag,
     /// Livewire directive `@livewire('name')`: a component name.
     LivewireName,
+    /// Livewire attribute modifier: `wire:model.` / `wire:keydown.en`.
+    LivewireModifier,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -91,6 +93,14 @@ pub fn context(line: &str) -> Option<Kind> {
         let attr = &after[..attr_len];
         let event = attr.split('.').next().unwrap_or("");
         let rest = &after[attr_len..];
+        // Still inside the attribute name after a dot: a modifier follows.
+        if rest.is_empty()
+            && attr.contains('.')
+            && (event == "model"
+                || crate::livewire_handlers::EVENTS.contains(&event))
+        {
+            return Some(Kind::LivewireModifier);
+        }
         let quoted = rest
             .strip_prefix('=')
             .and_then(|r| r.chars().next().map(|q| (q, &r[q.len_utf8()..])));
@@ -1101,6 +1111,45 @@ pub fn dotted_word_len(before: &str) -> usize {
     total
 }
 
+/// `wire:<event>.` modifier completion: Livewire v3 modifier tables for
+/// the events that take them; other events have none.
+pub fn wire_modifiers_for(line: &str) -> Vec<CompletionItem> {
+    let Some(at) = line.rfind("wire:") else { return Vec::new() };
+    let after = &line[at + 5..];
+    let attr_len = after
+        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')))
+        .unwrap_or(after.len());
+    let attr = &after[..attr_len];
+    if !attr.contains('.') || attr_len != after.len() {
+        return Vec::new();
+    }
+    let event = attr.split('.').next().unwrap_or("");
+    let names: &[&str] = match event {
+        "model" => &[
+            "live", "blur", "change", "lazy", "fill", "debounce.150ms",
+            "throttle.500ms",
+        ],
+        "keydown" | "keyup" => &[
+            "enter", "escape", "space", "tab", "backspace", "arrow-up",
+            "arrow-down", "arrow-left", "arrow-right", "shift", "ctrl", "alt",
+            "meta",
+        ],
+        "click" | "dblclick" | "submit" | "mouseenter" | "mouseleave" => {
+            &["prevent", "stop"]
+        }
+        _ => &[],
+    };
+    names
+        .iter()
+        .map(|n| CompletionItem {
+            label: n.to_string(),
+            kind: Some(CompletionItemKind::ENUM_MEMBER),
+            detail: Some("Livewire modifier".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -1125,6 +1174,9 @@ pub fn items(
     if kind == Kind::LivewireName {
         return livewire_tags(root, file);
     }
+    if kind == Kind::LivewireModifier {
+        return wire_modifiers_for(line_before);
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1141,6 +1193,8 @@ pub fn items(
         Kind::ComponentTag => (Vec::new(), "Blade component"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireName => (Vec::new(), "Livewire component"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireModifier => (Vec::new(), "Livewire modifier"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1509,6 +1563,35 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("route('x')"), None);
         assert_eq!(context("route('x', ["), None);
         assert_eq!(context("console.log('"), None);
+    }
+
+    #[test]
+    fn offers_livewire_modifiers() {
+        assert_eq!(context("<input wire:model."), Some(Kind::LivewireModifier));
+        assert_eq!(context("<input wire:model.li"), Some(Kind::LivewireModifier));
+        assert_eq!(context("<input wire:keydown.en"), Some(Kind::LivewireModifier));
+        // The attribute value context wins once `=` is typed.
+        assert_eq!(context("<input wire:model=\""), Some(Kind::LivewireModel));
+        let labels = wire_modifiers_for("<input wire:model.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        for want in ["live", "blur", "debounce.150ms", "throttle.500ms"] {
+            assert!(labels.contains(&want.to_string()), "{want}");
+        }
+        let labels = wire_modifiers_for("<input wire:keydown.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"enter".to_string()));
+        assert!(labels.contains(&"arrow-up".to_string()));
+        let labels = wire_modifiers_for("<form wire:submit.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["prevent", "stop"]);
+        // Events without modifiers offer nothing.
+        assert!(wire_modifiers_for("<div wire:poll.").is_empty());
     }
 
     #[test]
