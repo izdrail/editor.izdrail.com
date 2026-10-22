@@ -150,7 +150,7 @@ pub(crate) fn blade_component(root: &Path, name: &str) -> Option<PathBuf> {
 /// `<livewire:admin.user-profile` / `@livewire('admin.user-profile')` ->
 /// `app/Livewire/Admin/UserProfile.php` (v3), `app/Http/Livewire/...` (v2),
 /// else `resources/views/livewire/admin/user-profile.blade.php`.
-fn livewire_component(root: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn livewire_component(root: &Path, name: &str) -> Option<PathBuf> {
     if !safe(name) || name.contains('/') || name.contains(':') {
         return None;
     }

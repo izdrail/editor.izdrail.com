@@ -275,6 +275,39 @@ fn variable_help(root: Option<&Path>, file: &Path, line: &str, col: usize) -> Op
     None
 }
 
+/// `(marker, name)` when the caret is on a component tag name on this
+/// line: `<x-alert`, `</x-forms.input`, `<livewire:admin.user-profile` (or
+/// their closing tags). The caret must be inside the name itself.
+fn component_tag_at(line: &str, col: usize) -> Option<(&'static str, &str)> {
+    let col = col.min(line.len());
+    let mut from = 0;
+    while let Some(rel) = line[from..].find('<') {
+        let lt = from + rel;
+        let mut p = lt + 1;
+        if line[p..].starts_with('/') {
+            p += 1;
+        }
+        for marker in ["x-", "livewire:"] {
+            if let Some(rest) = line[p..].strip_prefix(marker) {
+                let name_len = rest
+                    .bytes()
+                    .take_while(|b| {
+                        b.is_ascii_alphanumeric()
+                            || matches!(b, b'.' | b'-' | b'_')
+                    })
+                    .count();
+                let start = p + marker.len();
+                let end = start + name_len;
+                if name_len > 0 && (start..end).contains(&col) {
+                    return Some((marker, &line[start..end]));
+                }
+            }
+        }
+        from = lt + 1;
+    }
+    None
+}
+
 /// Markdown for the hover at byte `col` of the line the window ends on.
 /// `window` is the text of up to 30 lines above plus the hovered line (for
 /// multi-line component tags); `at` is the hover byte offset inside it.
@@ -297,6 +330,24 @@ pub fn help(root: Option<&Path>, file: &Path, window: &str, at: usize) -> Option
         return Some(md);
     }
     if let Some(md) = attribute_help(line, at - line_start) {
+        return Some(md);
+    }
+    if let Some((marker, tag)) = component_tag_at(line, at - line_start) {
+        let root = root?;
+        let target = if marker == "x-" {
+            crate::template_refs::blade_component(root, tag)
+        } else {
+            crate::template_refs::livewire_component(root, tag)
+        }?;
+        let shown = target.strip_prefix(root).unwrap_or(&target).display();
+        let mut md = format!("**`<{marker}{tag}>`**\n{shown}");
+        if let Ok(text) = std::fs::read_to_string(&target) {
+            if let Some(props) =
+                text.lines().find(|l| l.trim_start().starts_with("@props"))
+            {
+                md.push_str(&format!("\n```blade\n{}\n```", props.trim()));
+            }
+        }
         return Some(md);
     }
     let root = root?;
@@ -434,6 +485,41 @@ mod tests {
         assert_eq!(variable_at("$", 1), None);
         assert_eq!(variable_at("é$ab x", 4), Some("ab"));
         assert_eq!(variable_at("é$日 x", 5), None);
+    }
+
+    #[test]
+    fn component_tag_hover() {
+        let l = "  <x-forms.input type=\"text\" />";
+        assert_eq!(
+            component_tag_at(l, l.find("forms").unwrap()),
+            Some(("x-", "forms.input"))
+        );
+        assert_eq!(component_tag_at(l, l.find("type").unwrap()), None);
+        assert_eq!(component_tag_at("</x-alert", 4), Some(("x-", "alert")));
+        let l = "<livewire:admin.user-profile />";
+        assert_eq!(
+            component_tag_at(l, 15),
+            Some(("livewire:", "admin.user-profile"))
+        );
+        assert_eq!(component_tag_at("<div class=", 5), None);
+        // help() resolves the component file and shows its @props.
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let dir = r.join("resources/views/components");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("alert.blade.php"),
+            "@props(['type' => 'info'])\n<div>{{ $slot }}</div>\n",
+        )
+        .unwrap();
+        let view = r.join("resources/views/show.blade.php");
+        let w = "<x-alert type=\"info\" />";
+        let md = help(Some(r), &view, w, 3).unwrap();
+        assert!(md.contains("<x-alert>"), "{md}");
+        assert!(md.contains("resources/views/components/alert.blade.php"), "{md}");
+        assert!(md.contains("@props(['type' => 'info'])"), "{md}");
+        // Unknown component: no hover, no panic.
+        assert!(help(Some(r), &view, "<x-missing />", 3).is_none());
     }
 
     #[test]
