@@ -58,6 +58,9 @@ pub enum Kind {
     LivewireModifier,
     /// Alpine event modifier: `x-on:click.` / `@click.` / `@keydown.en`.
     AlpineModifier,
+    /// Alpine `$store.<name>`: a store registered with
+    /// `Alpine.store('name', ...)` in project JS/TS or inline scripts.
+    AlpineStore,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -70,6 +73,18 @@ pub enum Kind {
 /// `word(` whose argument string is still open. Quote escapes are not read;
 /// `route('it\'s')` is rare and simply falls out of context.
 pub fn context(line: &str) -> Option<Kind> {
+    // Alpine `$store.<name>` in an attribute expression or inline script:
+    // the text after the last `$store.` is a partial store name. Checked
+    // first so `wire:click="$store.na" is not read as a Livewire method.
+    if let Some(i) = line.rfind("$store.") {
+        let rest = &line[i + "$store.".len()..];
+        if rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            return Some(Kind::AlpineStore);
+        }
+    }
     // Livewire `wire:<event>(.modifier)*="..."`: an open attribute value.
     // No parenthesis involved, so this runs before the call-argument scan.
     let mut hay = line;
@@ -461,6 +476,84 @@ fn lang_keys(root: &Path) -> Vec<String> {
             rest.rsplit_once("  (").map(|(k, _)| k.to_string())
         })
         .collect()
+}
+
+/// File-cap and name-cap for the Alpine store scan.
+const MAX_STORE_FILES: usize = 400;
+const MAX_STORES: usize = 200;
+
+/// Collect JS/TS/PHP files that may register Alpine stores.
+fn walk_store_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > 8 || out.len() >= MAX_STORE_FILES {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut entries: Vec<_> = rd.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        if out.len() >= MAX_STORE_FILES {
+            return;
+        }
+        let path = e.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+        if meta.is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            walk_store_files(&path, depth + 1, out);
+        } else if meta.is_file()
+            && meta.len() <= 1 << 20
+            && path
+                .extension()
+                .and_then(|x| x.to_str())
+                .is_some_and(|x| matches!(x, "js" | "ts" | "php"))
+        {
+            out.push(path);
+        }
+    }
+}
+
+/// Store names from `Alpine.store('name', ...)` calls in `text`.
+fn stores_in(text: &str, out: &mut Vec<String>) {
+    let mut hay = text;
+    while let Some(i) = hay.find("Alpine.store(") {
+        hay = &hay[i + "Alpine.store(".len()..];
+        let t = hay.trim_start();
+        let Some(q) = t.chars().next() else { break };
+        if q != '\'' && q != '"' {
+            continue;
+        }
+        let body = &t[q.len_utf8()..];
+        let Some(end) = body.find(q) else { break };
+        let name = &body[..end];
+        if !name.is_empty() && name.len() <= 80 && !name.contains('\\') {
+            out.push(name.to_string());
+        }
+        hay = &body[end..];
+    }
+}
+
+/// Alpine store names registered with `Alpine.store('name', ...)` in the
+/// project's JS/TS files and inline `<script>` in Blade views. Textual
+/// scan; nothing is executed.
+fn store_names(root: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    for base in ["resources/js", "resources/ts", "resources/views", "public/js"] {
+        walk_store_files(&root.join(base), 0, &mut files);
+    }
+    let mut names = Vec::new();
+    for f in files {
+        if names.len() >= MAX_STORES {
+            break;
+        }
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            stores_in(&text, &mut names);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names.truncate(MAX_STORES);
+    names
 }
 
 fn lists(root: &Path) -> Lists {
@@ -1270,6 +1363,18 @@ pub fn items(
     if kind == Kind::AlpineModifier {
         return alpine_modifiers_for(line_before);
     }
+    if kind == Kind::AlpineStore {
+        return store_names(root)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("Alpine store".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1290,6 +1395,8 @@ pub fn items(
         Kind::LivewireModifier => (Vec::new(), "Livewire modifier"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineModifier => (Vec::new(), "Alpine modifier"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::AlpineStore => (Vec::new(), "Alpine store"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1435,6 +1542,35 @@ mod tests {
         );
         assert_eq!(labels("trans('"), langs);
         assert_eq!(labels("@lang('"), langs);
+    }
+
+    #[test]
+    fn detects_alpine_store_context() {
+        assert_eq!(context("x-on:click=\"$store."), Some(Kind::AlpineStore));
+        assert_eq!(context("wire:click=\"$store.na"), Some(Kind::AlpineStore));
+        assert_eq!(context("$store"), None);
+        assert_eq!(context("$store.nav.open"), None);
+        assert_eq!(context("x-data=\"{ s: $store.na }\""), None);
+    }
+
+    #[test]
+    fn offers_alpine_stores() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/js/app.js",
+            "Alpine.store('nav', { open: false });\nAlpine.store(\"dark-mode\", {});\n",
+        );
+        put(
+            r,
+            "resources/views/layouts/app.blade.php",
+            "<script>Alpine.store('theme', {});</script>\n",
+        );
+        let got = labels(items(r, None, "x-on:click=\"$store."));
+        assert!(got.contains(&"nav".to_string()), "{got:?}");
+        assert!(got.contains(&"dark-mode".to_string()), "{got:?}");
+        assert!(got.contains(&"theme".to_string()), "{got:?}");
     }
 
     #[test]
