@@ -191,8 +191,9 @@ impl CompletionData {
 
     /// LSP items plus the local sources. Local items are only offered once
     /// something has been typed, and buffer words need a little more. A label
-    /// offered by several sources is kept only for the highest-priority one,
-    /// except that a Blade snippet ties with LSP (see `blade_dedupe_tier`).
+    /// offered by several sources is kept only for the highest-priority one;
+    /// Blade snippets always keep their label (see
+    /// `dedupe_keeping_blade_snippets`).
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
         let blade = self.path.to_string_lossy().ends_with(".blade.php");
         let items = self.lsp_items();
@@ -204,9 +205,7 @@ impl CompletionData {
             let mut all: Vec<ScoredCompletionItem> =
                 items.into_iter().collect();
             all.extend(locals);
-            return dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
-                blade_dedupe_tier(i, blade)
-            })
+            return dedupe_keeping_blade_snippets(all, blade)
             .into_iter()
             .collect();
         }
@@ -221,9 +220,7 @@ impl CompletionData {
                 })
                 .cloned(),
         );
-        dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
-            blade_dedupe_tier(i, blade)
-        })
+        dedupe_keeping_blade_snippets(all, blade)
         .into_iter()
         .collect()
     }
@@ -300,8 +297,8 @@ impl CompletionData {
                     .collect()
             })
             .unwrap();
-        // Source priority first (LSP, snippets, lexer lists, buffer words),
-        // then match quality, `sortText` and label length.
+        // Source priority first (LSP, project, snippets, keywords, buffer
+        // words), then match quality, `sortText` and label length.
         items.sort_by(|a, b| compare(&rank_of(a), &rank_of(b)));
         self.filtered_items = items;
     }
@@ -406,16 +403,35 @@ impl CompletionData {
 
 /// Local items offered before anything is typed: only the ones that asked
 /// for it (component tag names after `<x-` / `<livewire:`).
-/// Tier for label dedupe. In Blade files a snippet ties with LSP (tier
-/// 0): a bare LSP or keyword `foreach` must not hide the directive
-/// snippet that expands the whole `@foreach ... @endforeach` block.
-/// Everywhere else (and for every other source) the source tier rules.
-fn blade_dedupe_tier(i: &ScoredCompletionItem, blade: bool) -> u8 {
-    if blade && matches!(i.source, CompletionSource::Snippet) {
-        0
-    } else {
-        i.source.tier()
+/// Dedupe `all` by label, but in Blade files a snippet never loses its
+/// label to another source: a bare LSP, keyword or project `foreach`
+/// must not hide the directive snippet that expands the whole
+/// `@foreach ... @endforeach` block. Snippets still dedupe among
+/// themselves, and everywhere else the highest-priority source wins.
+fn dedupe_keeping_blade_snippets(
+    all: Vec<ScoredCompletionItem>,
+    blade: bool,
+) -> Vec<ScoredCompletionItem> {
+    if !blade {
+        return dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
+            i.source.tier()
+        });
     }
+    let (snips, rest): (Vec<_>, Vec<_>) = all
+        .into_iter()
+        .partition(|i| matches!(i.source, CompletionSource::Snippet));
+    let mut out = dedupe_across_sources(rest, |i| i.item.label.as_str(), |i| {
+        i.source.tier()
+    });
+    // Snippets share one tier, and `dedupe_across_sources` keeps equal
+    // tiers, so collapse repeated labels first-wins instead.
+    let mut seen = std::collections::HashSet::new();
+    out.extend(
+        snips
+            .into_iter()
+            .filter(|i| seen.insert(i.item.label.clone())),
+    );
+    out
 }
 
 fn empty_input_locals(
@@ -561,23 +577,33 @@ mod blend_tests {
             item("foreach", CompletionSource::Snippet, 0),
             item("foreach", CompletionSource::Word, 0),
         ];
-        let got = dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
-            blade_dedupe_tier(i, true)
-        });
+        let got = dedupe_keeping_blade_snippets(all, true);
         // LSP and snippet both survive the shared label; the word is out.
         assert_eq!(got.len(), 2);
         assert!(got.iter().any(|i| matches!(i.source, CompletionSource::Lsp)));
         assert!(got
             .iter()
             .any(|i| matches!(i.source, CompletionSource::Snippet)));
+        // A project item and a snippet with the same label both survive
+        // too (`isset` in `wire:model="..."`).
+        let all = vec![
+            item("isset", CompletionSource::Project, 0),
+            item("isset", CompletionSource::Snippet, 0),
+        ];
+        let got = dedupe_keeping_blade_snippets(all, true);
+        assert_eq!(got.len(), 2);
+        // Duplicate snippets still dedupe among themselves.
+        let all = vec![
+            item("foreach", CompletionSource::Snippet, 0),
+            item("foreach", CompletionSource::Snippet, 0),
+        ];
+        assert_eq!(dedupe_keeping_blade_snippets(all, true).len(), 1);
         // Outside Blade the highest-priority source keeps the label alone.
         let all = vec![
             item("foreach", CompletionSource::Lsp, 0),
             item("foreach", CompletionSource::Snippet, 0),
         ];
-        let got = dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
-            blade_dedupe_tier(i, false)
-        });
+        let got = dedupe_keeping_blade_snippets(all, false);
         assert_eq!(got.len(), 1);
         assert!(matches!(got[0].source, CompletionSource::Lsp));
     }
@@ -590,10 +616,12 @@ mod blend_tests {
             item("c", CompletionSource::Snippet, 300),
             item("d", CompletionSource::Lsp, 20),
             item("e", CompletionSource::Lsp, 90),
+            item("f", CompletionSource::Project, 5),
         ];
         v.sort_by(|a, b| compare(&rank_of(a), &rank_of(b)));
         let labels: Vec<_> = v.iter().map(|i| i.item.label.as_str()).collect();
-        assert_eq!(labels, ["e", "d", "c", "b", "a"]);
+        // LSP first, then project, then snippets, keywords and words.
+        assert_eq!(labels, ["e", "d", "f", "c", "b", "a"]);
     }
 }
 

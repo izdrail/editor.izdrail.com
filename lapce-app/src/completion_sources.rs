@@ -26,11 +26,15 @@ pub enum CompletionSource {
 impl CompletionSource {
     /// Sort tier, lower is shown first.
     pub fn tier(self) -> u8 {
+        // Project items exist only when the line is a recognised project
+        // context (`route('...`, `wire:model="...` and friends), so ranking
+        // them right after LSP can never disturb a context they are absent
+        // from; inside their context they are the relevant answer.
         match self {
             CompletionSource::Lsp => 0,
-            CompletionSource::Snippet => 1,
-            CompletionSource::Keyword => 2,
-            CompletionSource::Project => 3,
+            CompletionSource::Project => 1,
+            CompletionSource::Snippet => 2,
+            CompletionSource::Keyword => 3,
             CompletionSource::Word => 4,
         }
     }
