@@ -516,9 +516,9 @@ mod tests {
         assert_eq!(bl(&snap, "'items.show'", 0), Some("string"));
         // HTML around everything
         assert_eq!(bl(&snap, "<div", 0), Some("tag"));
-        assert_eq!(bl(&snap, "class", 0), Some("type"));
+        assert_eq!(bl(&snap, "class", 0), Some("attribute"));
         assert_eq!(bl(&snap, "\"card ", 0), Some("string"));
-        assert_eq!(bl(&snap, "id=", 0), Some("type"));
+        assert_eq!(bl(&snap, "id=", 0), Some("attribute"));
         assert_eq!(bl(&snap, "raw>", 0), Some("string"));
         assert_eq!(bl(&snap, "</p>", 0), Some("tag"));
         assert_eq!(bl(&snap, "&amp;", 0), Some("constant"));

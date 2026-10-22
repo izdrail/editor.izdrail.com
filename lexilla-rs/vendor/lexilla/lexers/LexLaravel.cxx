@@ -199,7 +199,7 @@ const LexicalClass lexicalClasses[] = {
 	31, "SCE_LARAVEL_BLADE_COMMENT",   "comment",               "Blade comment",
 	32, "SCE_LARAVEL_BLADE_DELIM",     "keyword",               "Blade echo delimiter",
 	33, "SCE_LARAVEL_HTML_TAG",        "tag",                   "HTML tag",
-	34, "SCE_LARAVEL_HTML_ATTR",       "identifier type",       "HTML attribute name",
+	34, "SCE_LARAVEL_HTML_ATTR",       "attribute",           "HTML attribute name",
 	35, "SCE_LARAVEL_HTML_VALUE",      "literal string",        "HTML attribute value",
 	36, "SCE_LARAVEL_HTML_COMMENT",    "comment",               "HTML comment",
 	37, "SCE_LARAVEL_HTML_ENTITY",     "literal numeric",       "HTML entity",
