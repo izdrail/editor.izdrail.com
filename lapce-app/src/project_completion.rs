@@ -61,6 +61,8 @@ pub enum Kind {
     /// Alpine `$store.<name>`: a store registered with
     /// `Alpine.store('name', ...)` in project JS/TS or inline scripts.
     AlpineStore,
+    /// Alpine `$refs.<name>`: an `x-ref="name"` in the current file.
+    AlpineRef,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -83,6 +85,17 @@ pub fn context(line: &str) -> Option<Kind> {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
         {
             return Some(Kind::AlpineStore);
+        }
+    }
+    // Alpine `$refs.<name>`: the text after the last `$refs.` is a
+    // partial ref name.
+    if let Some(i) = line.rfind("$refs.") {
+        let rest = &line[i + "$refs.".len()..];
+        if rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            return Some(Kind::AlpineRef);
         }
     }
     // Livewire `wire:<event>(.modifier)*="..."`: an open attribute value.
@@ -553,6 +566,49 @@ fn store_names(root: &Path) -> Vec<String> {
     names.sort();
     names.dedup();
     names.truncate(MAX_STORES);
+    names
+}
+
+/// `x-ref="name"` values in `text` (Alpine refs, read via `$refs.name`).
+fn refs_in(text: &str, out: &mut Vec<String>) {
+    let mut hay = text;
+    while let Some(i) = hay.find("x-ref=") {
+        hay = &hay[i + "x-ref=".len()..];
+        let Some(q) = hay.chars().next() else { break };
+        if q != '\'' && q != '"' {
+            continue;
+        }
+        let body = &hay[q.len_utf8()..];
+        let Some(end) = body.find(q) else { break };
+        let name = &body[..end];
+        if !name.is_empty()
+            && name.len() <= 80
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            out.push(name.to_string());
+        }
+        hay = &body[end..];
+    }
+}
+
+/// Alpine `x-ref` names in the current file, for `$refs.` completion.
+/// Reads the saved file, like the Livewire property list.
+fn ref_names(file: Option<&Path>) -> Vec<String> {
+    let mut names = Vec::new();
+    let Some(f) = file else { return names };
+    let readable = std::fs::symlink_metadata(f)
+        .ok()
+        .is_some_and(|m| m.is_file() && m.len() <= 1 << 20);
+    if readable {
+        if let Ok(text) = std::fs::read_to_string(f) {
+            refs_in(&text, &mut names);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names.truncate(100);
     names
 }
 
@@ -1375,6 +1431,18 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::AlpineRef {
+        return ref_names(file)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("Alpine x-ref".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1397,6 +1465,8 @@ pub fn items(
         Kind::AlpineModifier => (Vec::new(), "Alpine modifier"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineStore => (Vec::new(), "Alpine store"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::AlpineRef => (Vec::new(), "Alpine x-ref"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1571,6 +1641,30 @@ mod tests {
         assert!(got.contains(&"nav".to_string()), "{got:?}");
         assert!(got.contains(&"dark-mode".to_string()), "{got:?}");
         assert!(got.contains(&"theme".to_string()), "{got:?}");
+    }
+
+    #[test]
+    fn detects_alpine_ref_context() {
+        assert_eq!(context("x-on:click=\"$refs."), Some(Kind::AlpineRef));
+        assert_eq!(context("$refs.in"), Some(Kind::AlpineRef));
+        assert_eq!(context("$refs"), None);
+        assert_eq!(context("$refs.a.b"), None);
+    }
+
+    #[test]
+    fn offers_alpine_refs() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/views/p.blade.php",
+            "<input x-ref=\"email\" />\n<span x-ref='feedback'></span>\n",
+        );
+        let f = r.join("resources/views/p.blade.php");
+        let got = labels(items(r, Some(&f), "x-on:click=\"$refs."));
+        assert!(got.contains(&"email".to_string()), "{got:?}");
+        assert!(got.contains(&"feedback".to_string()), "{got:?}");
+        assert!(items(r, None, "x-on:click=\"$refs.").is_empty());
     }
 
     #[test]
