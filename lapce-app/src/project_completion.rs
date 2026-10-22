@@ -63,6 +63,9 @@ pub enum Kind {
     AlpineStore,
     /// Alpine `$refs.<name>`: an `x-ref="name"` in the current file.
     AlpineRef,
+    /// Livewire event name: `$dispatch('...')`, `$this->dispatch('...')`,
+    /// `Livewire.dispatch('...')`, `->emit('...')` (Livewire 2).
+    LivewireEvent,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -275,6 +278,12 @@ pub fn context(line: &str) -> Option<Kind> {
         "__" | "trans" | "trans_choice" => Kind::Lang,
         "lang" | "choice" if blade => Kind::Lang,
         "livewire" if blade => Kind::LivewireName,
+        // Livewire events: `$dispatch('...')`, `$this->dispatch('...')`,
+        // `$wire.dispatch('...')`, `Livewire.dispatch('...')` and the
+        // Livewire 2 `->emit(...)` family.
+        "dispatch" | "emit" | "emitTo" | "dispatchBrowserEvent" => {
+            Kind::LivewireEvent
+        }
         "get" | "has" | "choice" if head[..word_start].ends_with("Lang::") => {
             Kind::Lang
         }
@@ -609,6 +618,100 @@ fn ref_names(file: Option<&Path>) -> Vec<String> {
     names.sort();
     names.dedup();
     names.truncate(100);
+    names
+}
+
+/// Caps for the Livewire event scan.
+const MAX_EVENT_FILES: usize = 400;
+const MAX_EVENTS: usize = 300;
+
+/// Collect `.php` files (plain and `.blade.php`) that may dispatch or
+/// listen for Livewire events.
+fn walk_event_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > 8 || out.len() >= MAX_EVENT_FILES {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut entries: Vec<_> = rd.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        if out.len() >= MAX_EVENT_FILES {
+            return;
+        }
+        let path = e.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+        if meta.is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            walk_event_files(&path, depth + 1, out);
+        } else if meta.is_file()
+            && meta.len() <= 1 << 20
+            && path
+                .extension()
+                .and_then(|x| x.to_str())
+                .is_some_and(|x| x == "php")
+        {
+            out.push(path);
+        }
+    }
+}
+
+/// Livewire event names dispatched or listened for in `text`: the first
+/// quoted argument of `dispatch(`, `dispatchBrowserEvent(`, `emit(`,
+/// `emitTo(` and `#[On('...')]`.
+fn events_in(text: &str, out: &mut Vec<String>) {
+    for pat in ["dispatch(", "dispatchBrowserEvent(", "emitTo(", "emit(", "#[On("] {
+        let mut hay = text;
+        while let Some(i) = hay.find(pat) {
+            // Not the tail of a longer identifier (`xdispatch(`).
+            if pat != "#[On(" && i > 0 {
+                let prev = hay.as_bytes()[i - 1];
+                if prev.is_ascii_alphanumeric() || prev == b'_' {
+                    hay = &hay[i + pat.len()..];
+                    continue;
+                }
+            }
+            hay = &hay[i + pat.len()..];
+            let t = hay.trim_start();
+            let Some(q) = t.chars().next() else { break };
+            if q != '\'' && q != '"' {
+                continue;
+            }
+            let body = &t[q.len_utf8()..];
+            let Some(end) = body.find(q) else { break };
+            let name = &body[..end];
+            if !name.is_empty()
+                && name.len() <= 100
+                && name.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':')
+                })
+            {
+                out.push(name.to_string());
+            }
+            hay = &body[end..];
+        }
+    }
+}
+
+/// Livewire event names from `app/` and `resources/views/`: dispatches
+/// and `#[On]` listeners. Textual scan; nothing is executed.
+fn event_names(root: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    walk_event_files(&root.join("app"), 0, &mut files);
+    walk_event_files(&root.join("resources/views"), 0, &mut files);
+    let mut names = Vec::new();
+    for f in files {
+        if names.len() >= MAX_EVENTS {
+            break;
+        }
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            events_in(&text, &mut names);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names.truncate(MAX_EVENTS);
     names
 }
 
@@ -1266,6 +1369,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::Lang
                 | Kind::Gate
                 | Kind::LivewireName
+                | Kind::LivewireEvent
         )
     )
 }
@@ -1443,6 +1547,18 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::LivewireEvent {
+        return event_names(root)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("Livewire event".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1467,6 +1583,8 @@ pub fn items(
         Kind::AlpineStore => (Vec::new(), "Alpine store"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineRef => (Vec::new(), "Alpine x-ref"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireEvent => (Vec::new(), "Livewire event"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1665,6 +1783,36 @@ mod tests {
         assert!(got.contains(&"email".to_string()), "{got:?}");
         assert!(got.contains(&"feedback".to_string()), "{got:?}");
         assert!(items(r, None, "x-on:click=\"$refs.").is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_event_context() {
+        assert_eq!(context("$dispatch('"), Some(Kind::LivewireEvent));
+        assert_eq!(context("$this->dispatch('"), Some(Kind::LivewireEvent));
+        assert_eq!(context("Livewire.dispatch(\""), Some(Kind::LivewireEvent));
+        assert_eq!(context("$wire.emit('"), Some(Kind::LivewireEvent));
+        assert_eq!(context("$dispatch('saved')"), None);
+        assert_eq!(context("mydispatch('"), None);
+    }
+
+    #[test]
+    fn offers_livewire_events() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Livewire/Counter.php",
+            "<?php\n#[On('post-created')]\npublic function refresh() {}\n$this->dispatch('count.changed');\n",
+        );
+        put(
+            r,
+            "resources/views/c.blade.php",
+            "<button x-on:click=\"$dispatch('saved')\">x</button>\n",
+        );
+        let got = labels(items(r, None, "$dispatch('"));
+        assert!(got.contains(&"post-created".to_string()), "{got:?}");
+        assert!(got.contains(&"count.changed".to_string()), "{got:?}");
+        assert!(got.contains(&"saved".to_string()), "{got:?}");
     }
 
     #[test]
