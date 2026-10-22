@@ -139,6 +139,11 @@ pub fn context(line: &str) -> Option<Kind> {
             .and_then(|r| r.chars().next().map(|q| (q, &r[q.len_utf8()..])));
         if let Some((q, value)) = quoted {
             if (q == '"' || q == '\'') && !value.contains(q) {
+                // A helper call inside the value (`$dispatch('...`) wins
+                // over the attribute's own model/action context.
+                if let Some(kind) = call_context(line) {
+                    return Some(kind);
+                }
                 if event == "model" {
                     return Some(Kind::LivewireModel);
                 }
@@ -224,6 +229,14 @@ pub fn context(line: &str) -> Option<Kind> {
             }
         }
     }
+    call_context(line)
+}
+
+/// The context of an open quoted call argument at the end of `line`
+/// (`route('...`, `$dispatch('...`): the last `(` whose argument string
+/// is still open. Quote escapes are not read; `route('it\'s')` is rare
+/// and simply falls out of context.
+fn call_context(line: &str) -> Option<Kind> {
     let paren = line.rfind('(')?;
     let before = &line[..paren];
     // Still inside the argument string: quote state at end of line is open.
@@ -1793,6 +1806,26 @@ mod tests {
         assert_eq!(context("$wire.emit('"), Some(Kind::LivewireEvent));
         assert_eq!(context("$dispatch('saved')"), None);
         assert_eq!(context("mydispatch('"), None);
+    }
+
+    #[test]
+    fn dispatch_call_wins_inside_wire_value() {
+        assert_eq!(
+            context("wire:click=\"$dispatch('"),
+            Some(Kind::LivewireEvent)
+        );
+        assert_eq!(
+            context("wire:click=\"$dispatch('count.ch"),
+            Some(Kind::LivewireEvent)
+        );
+        // No call in the value: the attribute context still applies.
+        assert_eq!(context("wire:model=\"form.ti"), Some(Kind::LivewireModel));
+        assert_eq!(context("wire:click=\"save"), Some(Kind::LivewireAction));
+        // An unknown call word keeps the attribute context too.
+        assert_eq!(
+            context("wire:click=\"confirm('"),
+            Some(Kind::LivewireAction)
+        );
     }
 
     #[test]
