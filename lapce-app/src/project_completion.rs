@@ -66,6 +66,8 @@ pub enum Kind {
     /// Livewire event name: `$dispatch('...')`, `$this->dispatch('...')`,
     /// `Livewire.dispatch('...')`, `->emit('...')` (Livewire 2).
     LivewireEvent,
+    /// Alpine event name: `x-on:<partial>` / `@<partial>` inside a tag.
+    AlpineEvent,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -154,8 +156,12 @@ pub fn context(line: &str) -> Option<Kind> {
         }
         break;
     }
-    // Alpine event attribute `x-on:<event>.` or `@<event>.`: the line ends
-    // inside the attribute name after a dot, so a modifier follows.
+    // Alpine event attribute `x-on:<event>(.modifier)*` or `@<event>...`:
+    // the line ends inside the attribute name. After a dot (and a known
+    // DOM event) a modifier follows; otherwise the event name itself is
+    // being typed. The event-name context needs a real tag (`<` after the
+    // last `>`), so a Blade directive like `@foreach` is not one.
+    let in_tag = line.rfind('<') > line.rfind('>');
     for marker in ["x-on:", "@"] {
         let mut hay = line;
         while let Some(at) = hay.rfind(marker) {
@@ -179,11 +185,14 @@ pub fn context(line: &str) -> Option<Kind> {
                 .unwrap_or(after.len());
             let attr = &after[..attr_len];
             let event = attr.split('.').next().unwrap_or("");
-            if attr_len == after.len()
-                && attr.contains('.')
-                && DOM_EVENTS.contains(&event)
-            {
-                return Some(Kind::AlpineModifier);
+            if attr_len == after.len() {
+                if attr.contains('.') {
+                    if DOM_EVENTS.contains(&event) {
+                        return Some(Kind::AlpineModifier);
+                    }
+                } else if in_tag {
+                    return Some(Kind::AlpineEvent);
+                }
             }
             break;
         }
@@ -1572,6 +1581,18 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::AlpineEvent {
+        return DOM_EVENTS
+            .iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n.to_string(),
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("Alpine event".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1598,6 +1619,8 @@ pub fn items(
         Kind::AlpineRef => (Vec::new(), "Alpine x-ref"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireEvent => (Vec::new(), "Livewire event"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::AlpineEvent => (Vec::new(), "Alpine event"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1846,6 +1869,32 @@ mod tests {
         assert!(got.contains(&"post-created".to_string()), "{got:?}");
         assert!(got.contains(&"count.changed".to_string()), "{got:?}");
         assert!(got.contains(&"saved".to_string()), "{got:?}");
+    }
+
+    #[test]
+    fn detects_alpine_event_context() {
+        assert_eq!(context("<button x-on:"), Some(Kind::AlpineEvent));
+        assert_eq!(context("<button x-on:cl"), Some(Kind::AlpineEvent));
+        assert_eq!(context("<button @"), Some(Kind::AlpineEvent));
+        assert_eq!(context("<button @key"), Some(Kind::AlpineEvent));
+        // A Blade directive outside a tag is not an Alpine event, and an
+        // `@` in text content after a closed tag is not in a tag either.
+        assert_eq!(context("@foreach"), None);
+        assert_eq!(context("</div> @cl"), None);
+        assert_eq!(context("<div>@key"), None);
+        // Attribute value and modifier contexts are unchanged.
+        assert_eq!(context("<div x-on:click."), Some(Kind::AlpineModifier));
+        assert_eq!(context("<div x-on:click=\"$foo"), None);
+    }
+
+    #[test]
+    fn offers_alpine_events() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let got = labels(items(r, None, "<button x-on:"));
+        assert!(got.contains(&"click".to_string()), "{got:?}");
+        assert!(got.contains(&"submit".to_string()), "{got:?}");
+        assert!(got.contains(&"keydown".to_string()), "{got:?}");
     }
 
     #[test]
