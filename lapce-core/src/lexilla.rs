@@ -36,7 +36,7 @@ pub fn is_laravel_project(file: &std::path::Path) -> bool {
 /// Word lists for the standalone `php` lexer: keywords, builtin functions,
 /// builtin types, other keywords.
 pub const PHP_WORD_LISTS: &[&str] = &[
-    "__halt_compiler abstract and array as break callable case catch class clone const continue declare default die do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile eval exit extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield",
+    "__halt_compiler abstract and array as break callable case catch class clone const continue declare default die do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum eval exit extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield",
     "array_key_exists array_keys array_map array_merge array_filter array_pop array_push array_reduce array_shift array_slice array_unique array_values count explode implode in_array is_array is_callable is_int is_null is_numeric is_object is_string json_decode json_encode preg_match preg_match_all preg_replace preg_split sprintf str_contains str_replace str_starts_with strlen strpos strtolower strtoupper substr trim ucfirst var_dump printf file_get_contents file_put_contents sort usort ksort intval floatval strval date time microtime sleep define defined",
     "bool boolean int integer float double string array object callable iterable mixed void null never self parent static true false resource",
     "__CLASS__ __DIR__ __FILE__ __FUNCTION__ __LINE__ __METHOD__ __NAMESPACE__ __TRAIT__ PHP_EOL PHP_INT_MAX PHP_VERSION E_ALL",
@@ -117,7 +117,7 @@ pub fn highlight_profile(
                 "async await const function let new return var",
                 "",
                 "",
-                "abstract as break case catch class const continue default do echo else elseif empty endfor endforeach endif extends false final finally for foreach function global if implements include include_once interface isset list namespace new null private protected public require require_once return static switch throw trait true try unset use var while yield",
+                "__halt_compiler abstract and array as break callable case catch class clone const continue declare default die do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum eval exit extends false final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new null or print private protected public readonly require require_once return static switch throw trait true try unset use var while xor yield",
             ],
         ),
         Css | Scss => ("css", &[]),
@@ -255,6 +255,10 @@ mod tests {
             (Sql, "SELECT id FROM users", "id", ""),
             // rust tags lifetimes as "annotation"; the theme's nearest key is attribute.
             (Rust, "fn f<'a>(x: &'a str)", "'a", "attribute"),
+            // enum (PHP 8.1) in both the pure-php lexer and the templated
+            // hypertext routing; the two keyword lists must agree.
+            (Php, "<?php enum Suit {}", "enum", "keyword"),
+            (Php, "<div><?php enum Suit {} ?></div>", "enum", "keyword"),
         ] {
             let snapshot = highlight(language, &Rope::from(text)).unwrap();
             let at = text.find(needle).unwrap();
