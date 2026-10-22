@@ -253,6 +253,8 @@ mod tests {
             (Toml, "[package]\nname = \"lapce\"\n", "\"lapce\"", "string"),
             (Sql, "SELECT id FROM users", "SELECT", "keyword"),
             (Sql, "SELECT id FROM users", "id", ""),
+            // rust tags lifetimes as "annotation"; the theme's nearest key is attribute.
+            (Rust, "fn f<'a>(x: &'a str)", "'a", "attribute"),
         ] {
             let snapshot = highlight(language, &Rope::from(text)).unwrap();
             let at = text.find(needle).unwrap();

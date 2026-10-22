@@ -336,6 +336,10 @@ fn scope_from_tags(tags: &str) -> Option<&'static str> {
         Some("tag")
     } else if tags.contains(&"type") {
         Some("type")
+    } else if tags.contains(&"annotation") {
+        // Rust lifetimes ('a). Placed after "type" so the Laravel lexer's
+        // "type annotation" PHP attributes keep their type scope.
+        Some("attribute")
     } else {
         None
     }
