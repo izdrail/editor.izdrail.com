@@ -88,6 +88,57 @@ bool KeywordAtChar(const char* lineBuffer, const char* startComment, const WordL
 #define YAML_STATE_TEXT_PARENT	(4 << YAML_STATE_BITSIZE)
 #define YAML_STATE_TEXT			(5 << YAML_STATE_BITSIZE)
 
+// Colour a scalar value (mapping value or sequence entry): references,
+// keywords (true/false/...), numbers, and plain or quoted text. Upstream
+// coloured non-keyword non-number scalars DEFAULT, leaving every mapping
+// value and list item uncoloured; here they become SCE_YAML_TEXT.
+void ColourYAMLValue(
+	char *lineBuffer,
+	Sci_PositionU i,
+	Sci_PositionU lengthLine,
+	Sci_PositionU startLine,
+	Sci_PositionU endPos,
+	Sci_PositionU currentLine,
+	const WordList &keywords,
+	Accessor &styler) {
+
+	Sci_PositionU startComment = i;
+	bool bInQuotes = false;
+	while (startComment < lengthLine) { // Comment must be space padded
+		if (lineBuffer[startComment] == '\'' || lineBuffer[startComment] == '\"')
+			bInQuotes = !bInQuotes;
+		if (lineBuffer[startComment] == '#' && isspacechar(lineBuffer[startComment - 1]) && !bInQuotes)
+			break;
+		startComment++;
+	}
+	styler.SetLineState(currentLine, YAML_STATE_VALUE);
+	if (lineBuffer[i] == '&' || lineBuffer[i] == '*') {
+		styler.ColourTo(startLine + startComment - 1, SCE_YAML_REFERENCE);
+	} else if (KeywordAtChar(&lineBuffer[i], &lineBuffer[startComment], keywords)) {
+		styler.ColourTo(startLine + startComment - 1, SCE_YAML_KEYWORD);
+	} else {
+		// A scalar made only of digits, separators and spaces is a number;
+		// anything else (plain or quoted) is text.
+		const Sci_PositionU i2 = i;
+		bool numeric = true;
+		while ((i < startComment) && lineBuffer[i]) {
+			if (!(IsASCII(lineBuffer[i]) && IsADigit(lineBuffer[i])) && lineBuffer[i] != '-'
+			        && lineBuffer[i] != '.' && lineBuffer[i] != ',' && lineBuffer[i] != ' ') {
+				numeric = false;
+				break;
+			}
+			i++;
+		}
+		if (numeric && i > i2) {
+			styler.ColourTo(startLine + startComment - 1, SCE_YAML_NUMBER);
+		} else {
+			styler.ColourTo(startLine + startComment - 1, SCE_YAML_TEXT);
+		}
+	}
+	if (startComment < lengthLine)
+		styler.ColourTo(endPos, SCE_YAML_COMMENT);
+}
+
 void ColouriseYAMLLine(
 	char *lineBuffer,
 	Sci_PositionU currentLine,
@@ -132,6 +183,32 @@ void ColouriseYAMLLine(
 		styler.ColourTo(endPos, SCE_YAML_COMMENT);
 		return;
 	}
+	if (lineBuffer[i] == '-' && IsWhiteSpaceOrEOL(lineBuffer[i + 1])) {	// Sequence entry
+		styler.ColourTo(startLine + i, SCE_YAML_OPERATOR);
+		i++;
+		while ((i < lengthLine) && lineBuffer[i] == ' ')
+			i++;
+		// A `- key: value` entry is a mapping inside the sequence.
+		Sci_PositionU colon = i;
+		while (colon < lengthLine) {
+			if (lineBuffer[colon] == '\'' || lineBuffer[colon] == '\"')
+				bInQuotes = !bInQuotes;
+			if (lineBuffer[colon] == ':' && !bInQuotes && (IsWhiteSpaceOrEOL(lineBuffer[colon + 1]) || colon == lengthLine - 1))
+				break;
+			colon++;
+		}
+		if (colon < lengthLine) {
+			styler.ColourTo(startLine + colon - 1, SCE_YAML_IDENTIFIER);
+			styler.ColourTo(startLine + colon, SCE_YAML_OPERATOR);
+			colon++;
+			while ((colon < lengthLine) && lineBuffer[colon] == ' ')
+				colon++;
+			i = colon;
+		}
+		ColourYAMLValue(lineBuffer, i, lengthLine, startLine, endPos,
+		                currentLine, keywords, styler);
+		return;
+	}
 	while (i < lengthLine) {
 		if (lineBuffer[i] == '\'' || lineBuffer[i] == '\"') {
 			bInQuotes = !bInQuotes;
@@ -174,46 +251,9 @@ void ColouriseYAMLLine(
 				styler.ColourTo(endPos, SCE_YAML_COMMENT);
 				return;
 			}
-			Sci_PositionU startComment = i;
-			bInQuotes = false;
-			while (startComment < lengthLine) { // Comment must be space padded
-				if (lineBuffer[startComment] == '\'' || lineBuffer[startComment] == '\"')
-					bInQuotes = !bInQuotes;
-				if (lineBuffer[startComment] == '#' && isspacechar(lineBuffer[startComment - 1]) && !bInQuotes)
-					break;
-				startComment++;
-			}
-			styler.SetLineState(currentLine, YAML_STATE_VALUE);
-			if (lineBuffer[i] == '&' || lineBuffer[i] == '*') {
-				styler.ColourTo(startLine + startComment - 1, SCE_YAML_REFERENCE);
-				if (startComment < lengthLine)
-					styler.ColourTo(endPos, SCE_YAML_COMMENT);
-				return;
-			}
-			if (KeywordAtChar(&lineBuffer[i], &lineBuffer[startComment], keywords)) { // Convertible value (true/false, etc.)
-				styler.ColourTo(startLine + startComment - 1, SCE_YAML_KEYWORD);
-				if (startComment < lengthLine)
-					styler.ColourTo(endPos, SCE_YAML_COMMENT);
-				return;
-			}
-			const Sci_PositionU i2 = i;
-			while ((i < startComment) && lineBuffer[i]) {
-				if (!(IsASCII(lineBuffer[i]) && IsADigit(lineBuffer[i])) && lineBuffer[i] != '-'
-				        && lineBuffer[i] != '.' && lineBuffer[i] != ',' && lineBuffer[i] != ' ') {
-					styler.ColourTo(startLine + startComment - 1, SCE_YAML_DEFAULT);
-					if (startComment < lengthLine)
-						styler.ColourTo(endPos, SCE_YAML_COMMENT);
-					return;
-				}
-				i++;
-			}
-			if (i > i2) {
-				styler.ColourTo(startLine + startComment - 1, SCE_YAML_NUMBER);
-				if (startComment < lengthLine)
-					styler.ColourTo(endPos, SCE_YAML_COMMENT);
-				return;
-			}
-			break; // shouldn't get here, but just in case, the rest of the line is coloured the default
+			ColourYAMLValue(lineBuffer, i, lengthLine, startLine, endPos,
+			                currentLine, keywords, styler);
+			return;
 		}
 		i++;
 	}

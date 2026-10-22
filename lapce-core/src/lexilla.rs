@@ -141,7 +141,9 @@ pub fn highlight_profile(
             ],
         ),
         Toml => ("toml", &[]),
-        Yaml => ("yaml", &[]),
+        // Booleans/null get the keyword scope; the lexer only styles values
+        // against this list.
+        Yaml => ("yaml", &["true false yes no on off null True False TRUE FALSE Null NULL"]),
         Xml => ("xml", &[]),
         // Paint whole ATX heading lines, not just the # marker (upstream
         // default styles the marker only).
@@ -259,6 +261,13 @@ mod tests {
             // hypertext routing; the two keyword lists must agree.
             (Php, "<?php enum Suit {}", "enum", "keyword"),
             (Php, "<div><?php enum Suit {} ?></div>", "enum", "keyword"),
+            // yaml scalar values colour as text; upstream left them default.
+            (Yaml, "name: tests\n", "tests", "string"),
+            (Yaml, "cron: '0 0 * * *'\n", "'0 0 * * *'", "string"),
+            (Yaml, "port: 3306\n", "3306", "constant"),
+            (Yaml, "flag: true\n", "true", "keyword"),
+            (Yaml, "- one\n", "one", "string"),
+            (Yaml, "- name: Run\n", "name", "property"),
         ] {
             let snapshot = highlight(language, &Rope::from(text)).unwrap();
             let at = text.find(needle).unwrap();
