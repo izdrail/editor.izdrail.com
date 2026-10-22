@@ -191,8 +191,10 @@ impl CompletionData {
 
     /// LSP items plus the local sources. Local items are only offered once
     /// something has been typed, and buffer words need a little more. A label
-    /// offered by several sources is kept only for the highest-priority one.
+    /// offered by several sources is kept only for the highest-priority one,
+    /// except that a Blade snippet ties with LSP (see `blade_dedupe_tier`).
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
+        let blade = self.path.to_string_lossy().ends_with(".blade.php");
         let items = self.lsp_items();
         if self.input.is_empty() {
             let locals = empty_input_locals(&self.local_items);
@@ -203,7 +205,7 @@ impl CompletionData {
                 items.into_iter().collect();
             all.extend(locals);
             return dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
-                i.source.tier()
+                blade_dedupe_tier(i, blade)
             })
             .into_iter()
             .collect();
@@ -219,9 +221,11 @@ impl CompletionData {
                 })
                 .cloned(),
         );
-        dedupe_across_sources(all, |i| i.item.label.as_str(), |i| i.source.tier())
-            .into_iter()
-            .collect()
+        dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
+            blade_dedupe_tier(i, blade)
+        })
+        .into_iter()
+        .collect()
     }
 
     pub fn filter_items(&mut self) {
@@ -402,6 +406,18 @@ impl CompletionData {
 
 /// Local items offered before anything is typed: only the ones that asked
 /// for it (component tag names after `<x-` / `<livewire:`).
+/// Tier for label dedupe. In Blade files a snippet ties with LSP (tier
+/// 0): a bare LSP or keyword `foreach` must not hide the directive
+/// snippet that expands the whole `@foreach ... @endforeach` block.
+/// Everywhere else (and for every other source) the source tier rules.
+fn blade_dedupe_tier(i: &ScoredCompletionItem, blade: bool) -> u8 {
+    if blade && matches!(i.source, CompletionSource::Snippet) {
+        0
+    } else {
+        i.source.tier()
+    }
+}
+
 fn empty_input_locals(
     local_items: &im::Vector<ScoredCompletionItem>,
 ) -> im::Vector<ScoredCompletionItem> {
@@ -536,6 +552,34 @@ mod blend_tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].item.label, "forms.input");
         assert!(empty_input_locals(&im::Vector::new()).is_empty());
+    }
+
+    #[test]
+    fn blade_keeps_directive_snippet_beside_lsp_keyword() {
+        let all = vec![
+            item("foreach", CompletionSource::Lsp, 0),
+            item("foreach", CompletionSource::Snippet, 0),
+            item("foreach", CompletionSource::Word, 0),
+        ];
+        let got = dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
+            blade_dedupe_tier(i, true)
+        });
+        // LSP and snippet both survive the shared label; the word is out.
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().any(|i| matches!(i.source, CompletionSource::Lsp)));
+        assert!(got
+            .iter()
+            .any(|i| matches!(i.source, CompletionSource::Snippet)));
+        // Outside Blade the highest-priority source keeps the label alone.
+        let all = vec![
+            item("foreach", CompletionSource::Lsp, 0),
+            item("foreach", CompletionSource::Snippet, 0),
+        ];
+        let got = dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
+            blade_dedupe_tier(i, false)
+        });
+        assert_eq!(got.len(), 1);
+        assert!(matches!(got[0].source, CompletionSource::Lsp));
     }
 
     #[test]
