@@ -56,6 +56,8 @@ pub enum Kind {
     LivewireName,
     /// Livewire attribute modifier: `wire:model.` / `wire:keydown.en`.
     LivewireModifier,
+    /// Alpine event modifier: `x-on:click.` / `@click.` / `@keydown.en`.
+    AlpineModifier,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -115,6 +117,40 @@ pub fn context(line: &str) -> Option<Kind> {
             }
         }
         break;
+    }
+    // Alpine event attribute `x-on:<event>.` or `@<event>.`: the line ends
+    // inside the attribute name after a dot, so a modifier follows.
+    for marker in ["x-on:", "@"] {
+        let mut hay = line;
+        while let Some(at) = hay.rfind(marker) {
+            // A name-ish char before the marker means it is part of a
+            // longer attribute; `@` also needs a non-name char before it,
+            // which this same check enforces.
+            if at > 0
+                && hay[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-' | '.'))
+            {
+                hay = &hay[..at];
+                continue;
+            }
+            let after = &hay[at + marker.len()..];
+            let attr_len = after
+                .find(|c: char| {
+                    !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+                })
+                .unwrap_or(after.len());
+            let attr = &after[..attr_len];
+            let event = attr.split('.').next().unwrap_or("");
+            if attr_len == after.len()
+                && attr.contains('.')
+                && DOM_EVENTS.contains(&event)
+            {
+                return Some(Kind::AlpineModifier);
+            }
+            break;
+        }
     }
     // Livewire component tag `<livewire:admin.user-profile`: the tail after
     // the marker is name characters only.
@@ -1111,6 +1147,60 @@ pub fn dotted_word_len(before: &str) -> usize {
     total
 }
 
+/// DOM events Alpine listens to with `x-on:` / `@`, for the modifier
+/// context check. Not every DOM event, only the ones worth completing.
+const DOM_EVENTS: &[&str] = &[
+    "click", "dblclick", "submit", "keydown", "keyup", "change", "input",
+    "blur", "focus", "mouseenter", "mouseleave", "mousedown", "mouseup",
+    "scroll", "paste", "resize",
+];
+
+/// `x-on:<event>.` / `@<event>.` modifier completion: Alpine v3 modifiers.
+pub fn alpine_modifiers_for(line: &str) -> Vec<CompletionItem> {
+    let at = if let Some(at) = line.rfind("x-on:") {
+        at + 5
+    } else if let Some(at) = line.rfind('@') {
+        at + 1
+    } else {
+        return Vec::new();
+    };
+    let after = &line[at..];
+    let attr_len = after
+        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')))
+        .unwrap_or(after.len());
+    let attr = &after[..attr_len];
+    if attr_len != after.len() || !attr.contains('.') {
+        return Vec::new();
+    }
+    let event = attr.split('.').next().unwrap_or("");
+    if !DOM_EVENTS.contains(&event) {
+        return Vec::new();
+    }
+    let mut names: Vec<&str> = vec![
+        "prevent", "stop", "once", "self", "capture", "passive", "window",
+        "document", "debounce.250ms", "throttle.250ms",
+    ];
+    if matches!(event, "click" | "dblclick" | "mousedown" | "mouseup") {
+        names.push("outside");
+    }
+    if matches!(event, "keydown" | "keyup") {
+        names.extend([
+            "enter", "escape", "space", "tab", "backspace", "arrow-up",
+            "arrow-down", "arrow-left", "arrow-right", "shift", "ctrl", "alt",
+            "meta",
+        ]);
+    }
+    names
+        .into_iter()
+        .map(|n| CompletionItem {
+            label: n.to_string(),
+            kind: Some(CompletionItemKind::ENUM_MEMBER),
+            detail: Some("Alpine modifier".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 /// `wire:<event>.` modifier completion: Livewire v3 modifier tables for
 /// the events that take them; other events have none.
 pub fn wire_modifiers_for(line: &str) -> Vec<CompletionItem> {
@@ -1177,6 +1267,9 @@ pub fn items(
     if kind == Kind::LivewireModifier {
         return wire_modifiers_for(line_before);
     }
+    if kind == Kind::AlpineModifier {
+        return alpine_modifiers_for(line_before);
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1195,6 +1288,8 @@ pub fn items(
         Kind::LivewireName => (Vec::new(), "Livewire component"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireModifier => (Vec::new(), "Livewire modifier"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::AlpineModifier => (Vec::new(), "Alpine modifier"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1563,6 +1658,32 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("route('x')"), None);
         assert_eq!(context("route('x', ["), None);
         assert_eq!(context("console.log('"), None);
+    }
+
+    #[test]
+    fn offers_alpine_modifiers() {
+        assert_eq!(context("<button x-on:click."), Some(Kind::AlpineModifier));
+        assert_eq!(context("<button @click."), Some(Kind::AlpineModifier));
+        assert_eq!(context("<input @keydown.en"), Some(Kind::AlpineModifier));
+        // Blade directives are not Alpine events.
+        assert_eq!(context("@foreach ("), None);
+        assert_eq!(context("<div x-data=\"{ o: false }\""), None);
+        let labels = alpine_modifiers_for("<button @click.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        for want in ["prevent", "once", "outside", "debounce.250ms"] {
+            assert!(labels.contains(&want.to_string()), "{want}");
+        }
+        let labels = alpine_modifiers_for("<input x-on:keydown.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"enter".to_string()));
+        assert!(!labels.contains(&"outside".to_string()));
+        // An attribute value or a non-event name offers nothing.
+        assert!(alpine_modifiers_for("<button @click=\"open = true").is_empty());
+        assert!(alpine_modifiers_for("<div @foreach.").is_empty());
     }
 
     #[test]
