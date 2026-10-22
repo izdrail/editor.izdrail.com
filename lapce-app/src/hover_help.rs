@@ -115,7 +115,7 @@ const ENDS: &[(&str, &str)] = &[
 ];
 
 /// Alpine and Livewire 3 attributes: (name, syntax, description).
-const ATTRIBUTES: &[(&str, &str, &str)] = &[
+pub(crate) const ATTRIBUTES: &[(&str, &str, &str)] = &[
     ("x-data", "x-data=\"{ open: false }\"", "Alpine: declares a component scope with reactive data."),
     ("x-init", "x-init=\"expression\"", "Alpine: runs when the element is initialised."),
     ("x-show", "x-show=\"expression\"", "Alpine: shows or hides the element (toggles `display: none`)."),

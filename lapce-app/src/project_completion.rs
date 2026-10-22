@@ -68,6 +68,9 @@ pub enum Kind {
     LivewireEvent,
     /// Alpine event name: `x-on:<partial>` / `@<partial>` inside a tag.
     AlpineEvent,
+    /// Livewire attribute name: `wire:<partial>` inside a tag, before any
+    /// modifier dot or value.
+    LivewireAttribute,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -103,6 +106,10 @@ pub fn context(line: &str) -> Option<Kind> {
             return Some(Kind::AlpineRef);
         }
     }
+    // Inside a real open tag (`<` after the last `>`)? Attribute-name
+    // contexts (wire: / x-on: names) require it, so a Blade directive or
+    // text content is not one.
+    let in_tag = line.rfind('<') > line.rfind('>');
     // Livewire `wire:<event>(.modifier)*="..."`: an open attribute value.
     // No parenthesis involved, so this runs before the call-argument scan.
     let mut hay = line;
@@ -136,6 +143,11 @@ pub fn context(line: &str) -> Option<Kind> {
         {
             return Some(Kind::LivewireModifier);
         }
+        // Still inside the attribute name with no dot or value: the
+        // attribute name itself is being typed (`wire:lo` in a tag).
+        if rest.is_empty() && !attr.contains('.') && in_tag {
+            return Some(Kind::LivewireAttribute);
+        }
         let quoted = rest
             .strip_prefix('=')
             .and_then(|r| r.chars().next().map(|q| (q, &r[q.len_utf8()..])));
@@ -161,7 +173,6 @@ pub fn context(line: &str) -> Option<Kind> {
     // DOM event) a modifier follows; otherwise the event name itself is
     // being typed. The event-name context needs a real tag (`<` after the
     // last `>`), so a Blade directive like `@foreach` is not one.
-    let in_tag = line.rfind('<') > line.rfind('>');
     for marker in ["x-on:", "@"] {
         let mut hay = line;
         while let Some(at) = hay.rfind(marker) {
@@ -1593,6 +1604,29 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::LivewireAttribute {
+        let mut names: Vec<String> = crate::livewire_handlers::EVENTS
+            .iter()
+            .map(|n| n.to_string())
+            .collect();
+        for (n, _, _) in crate::hover_help::ATTRIBUTES {
+            if let Some(rest) = n.strip_prefix("wire:") {
+                if !names.iter().any(|x| x.as_str() == rest) {
+                    names.push(rest.to_string());
+                }
+            }
+        }
+        return names
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("Livewire attribute".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -1621,6 +1655,8 @@ pub fn items(
         Kind::LivewireEvent => (Vec::new(), "Livewire event"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineEvent => (Vec::new(), "Alpine event"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireAttribute => (Vec::new(), "Livewire attribute"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -1895,6 +1931,36 @@ mod tests {
         assert!(got.contains(&"click".to_string()), "{got:?}");
         assert!(got.contains(&"submit".to_string()), "{got:?}");
         assert!(got.contains(&"keydown".to_string()), "{got:?}");
+    }
+
+    #[test]
+    fn detects_livewire_attribute_context() {
+        assert_eq!(context("<input wire:"), Some(Kind::LivewireAttribute));
+        assert_eq!(context("<input wire:mo"), Some(Kind::LivewireAttribute));
+        // Outside a tag: no.
+        assert_eq!(context("wire:mo"), None);
+        // Modifier and value contexts are unchanged.
+        assert_eq!(
+            context("<input wire:model."),
+            Some(Kind::LivewireModifier)
+        );
+        assert_eq!(
+            context("<input wire:model=\"form.ti"),
+            Some(Kind::LivewireModel)
+        );
+    }
+
+    #[test]
+    fn offers_livewire_attributes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let got = labels(items(r, None, "<input wire:"));
+        for n in ["click", "model", "loading", "navigate", "poll"] {
+            assert!(got.contains(&n.to_string()), "{n} {got:?}");
+        }
+        // Each name once, and labels carry no `wire:` prefix.
+        assert_eq!(got.iter().filter(|n| n.as_str() == "click").count(), 1);
+        assert!(got.iter().all(|n| !n.starts_with("wire:")), "{got:?}");
     }
 
     #[test]
