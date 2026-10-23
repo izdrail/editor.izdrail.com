@@ -69,6 +69,9 @@ pub enum Kind {
     /// Livewire `$wire.<member>`: a property or method of the component
     /// class, inside an Alpine expression or `wire:` attribute value.
     LivewireMember,
+    /// Livewire `$wire.$magic`: the `$wire` object's own magics
+    /// (`$set`, `$toggle`, `$refresh`, ...).
+    LivewireMagic,
     /// Alpine `x-data="name"`: a component registered with
     /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
     AlpineData,
@@ -113,6 +116,27 @@ pub fn context(line: &str) -> Option<Kind> {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
         {
             return Some(Kind::AlpineRef);
+        }
+    }
+    // Livewire `$wire.$magic` (`$set`, `$toggle`, ...): the partial
+    // after the last `$wire.$` must start a known magic name, so an
+    // unrelated `$wire.$foo` does not raise an irrelevant list. Runs
+    // before the `$wire.` member scan, whose partial never starts with
+    // `$`.
+    if let Some(i) = line.rfind("$wire.$") {
+        let rest = &line[i + "$wire.$".len()..];
+        if rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            && LIVEWIRE_WIRE_MAGICS
+                .iter()
+                .any(|(name, _, _)| name[1..].starts_with(rest))
+        {
+            if let Some(attr) = quoted_value_attr(line) {
+                if alpine_expression_attr(&attr) || attr.starts_with("wire:") {
+                    return Some(Kind::LivewireMagic);
+                }
+            }
         }
     }
     // Livewire `$wire.<member>`: the text after the last `$wire.` is a
@@ -417,6 +441,30 @@ const ALPINE_MAGICS: &[(&str, &str)] = &[
     (
         "$entangle",
         "Livewire magic: two-way bind an Alpine and a Livewire property",
+    ),
+];
+
+/// The `$wire` object's own magics offered after `$wire.$` (item 371):
+/// label, detail, and whether it is a method. Aligned with the `$wire`
+/// hover (item 350).
+const LIVEWIRE_WIRE_MAGICS: &[(&str, &str, bool)] = &[
+    ("$set", "Livewire $wire magic: $set('prop', value) writes a property", true),
+    ("$get", "Livewire $wire magic: $get('prop') reads a property", true),
+    (
+        "$toggle",
+        "Livewire $wire magic: $toggle('prop') flips a boolean property",
+        true,
+    ),
+    (
+        "$refresh",
+        "Livewire $wire magic: $refresh() re-renders the component",
+        true,
+    ),
+    ("$parent", "Livewire $wire magic: the parent component", false),
+    (
+        "$js",
+        "Livewire $wire magic: functions registered with $js('name', fn) in @script",
+        false,
     ),
 ];
 
@@ -2139,6 +2187,21 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::LivewireMagic {
+        return LIVEWIRE_WIRE_MAGICS
+            .iter()
+            .map(|(label, detail, method)| CompletionItem {
+                label: label.to_string(),
+                kind: Some(if *method {
+                    CompletionItemKind::METHOD
+                } else {
+                    CompletionItemKind::PROPERTY
+                }),
+                detail: Some(detail.to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     if kind == Kind::LivewireMember {
         let props = livewire_props(root, file);
         let seen: std::collections::HashSet<String> =
@@ -2226,6 +2289,8 @@ pub fn items(
         Kind::AlpineMagic => (Vec::new(), "Alpine magic"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireMember => (Vec::new(), "Livewire member"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireMagic => (Vec::new(), "Livewire $wire magic"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineData => (Vec::new(), "Alpine.data component"),
         // Returned early above; the match must stay exhaustive.
@@ -2517,8 +2582,9 @@ mod tests {
         assert_eq!(context(r#"x-data="$wire."#), None);
         // A partial magic name still wins before the dot.
         assert_eq!(context(r#"x-on:click="$wi"#), Some(Kind::AlpineMagic));
-        // `$wire.$` is a member-of-`$wire` position, not an Alpine magic.
-        assert_eq!(context(r#"x-on:click="$wire.$"#), None);
+        // `$wire.$` is not an Alpine magic; since item 371 it is the
+        // `$wire` object's own magic context.
+        assert_eq!(context(r#"x-on:click="$wire.$"#), Some(Kind::LivewireMagic));
         // Helper calls on `$wire` keep their own contexts.
         assert_eq!(
             context(r#"x-on:click="$wire.dispatch('"#),
@@ -2603,6 +2669,44 @@ mod tests {
         assert_eq!(got, ["dropdown", "search-form", "tabs"]);
         assert_eq!(labels("<div x-data=\"dro"), ["dropdown", "search-form", "tabs"]);
         assert!(labels("<div class=\"dro").is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_wire_magic_context() {
+        let magic = Some(Kind::LivewireMagic);
+        // A bare `$wire.$` and partial known magic names.
+        assert_eq!(context(r#"x-on:click="$wire.$"#), magic);
+        assert_eq!(context(r#"<button @click="$wire.$se"#), magic);
+        assert_eq!(context(r#"x-show="$wire.$tog"#), magic);
+        assert_eq!(context(r#"wire:click="$wire.$re"#), magic);
+        // Unknown partials and deeper paths are not magic contexts.
+        assert_eq!(context(r#"x-on:click="$wire.$foo"#), None);
+        assert_eq!(context(r#"x-on:click="$wire.$js."#), None);
+        // Plain attributes and x-data are not magic contexts.
+        assert_eq!(context(r#"class="$wire.$"#), None);
+        assert_eq!(context(r#"x-data="$wire.$"#), None);
+        // `$wire.<member>` still wins without the second `$`.
+        assert_eq!(
+            context(r#"x-on:click="$wire.sa"#),
+            Some(Kind::LivewireMember)
+        );
+        // A call into a magic falls out of context.
+        assert_eq!(context(r#"x-on:click="$wire.$set('"#), None);
+    }
+
+    #[test]
+    fn offers_livewire_wire_magics() {
+        let r = std::path::Path::new("/nonexistent-project-root-371");
+        let labels: Vec<_> = items(r, None, r#"x-on:click="$wire.$"#)
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(
+            labels,
+            ["$set", "$get", "$toggle", "$refresh", "$parent", "$js"]
+        );
+        assert_eq!(items(r, None, r#"wire:click="$wire.$to"#).len(), 6);
+        assert!(items(r, None, r#"class="$wire.$"#).is_empty());
     }
 
     #[test]

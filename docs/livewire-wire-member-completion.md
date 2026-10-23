@@ -17,11 +17,17 @@ contexts. Precedence: `$wi` (no dot yet) stays the magic-name context
 Alpine magic list (the magic context now also rejects a `.` before the
 `$`).
 
+`$wire.$` magics (item 371): `$wire.$` (or a partial) offers the
+object's own magics - `$set`, `$get`, `$toggle`, `$refresh` as methods,
+`$parent` and `$js` as properties - aligned with the `$wire` hover
+(item 350). The partial must start a known magic name, so `$wire.$foo`
+stays out of context, as do deeper paths (`$wire.$js.`).
+
 Limits: inline `<script>` bodies and `@script` blocks are not member
-contexts; `$wire.$` magics (`$set`, `$toggle`, `$refresh`, `$parent`)
-are not completed yet; the view must map to a component class under
+contexts; the view must map to a component class under
 `app/Livewire/**` or `app/Http/Livewire/**` (Volt/anonymous components
 have no class, so no members).
 
 Tests: `detects_livewire_wire_member_context`,
-`offers_livewire_wire_members`.
+`offers_livewire_wire_members`, `detects_livewire_wire_magic_context`,
+`offers_livewire_wire_magics`.
