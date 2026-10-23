@@ -796,6 +796,32 @@ fn livewire_prop_position(line: &str) -> Option<(&str, &str)> {
     tag_attr_position(line, "<livewire:")
 }
 
+/// The component whose mount properties are being named at the end of
+/// `line`: the tag of a `<livewire:...` attribute position, or the
+/// first argument of `@livewire('name', ['...'])`.
+fn livewire_prop_component(line: &str) -> Option<String> {
+    if let Some((tag, _)) = livewire_prop_position(line) {
+        return Some(tag.to_string());
+    }
+    let i = line.rfind("@livewire(")?;
+    let after = line[i + "@livewire(".len()..].trim_start();
+    let q = after.chars().next()?;
+    if q != '\'' && q != '"' {
+        return None;
+    }
+    let body = &after[q.len_utf8()..];
+    let end = body.find(q)?;
+    let name = &body[..end];
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+    {
+        return None;
+    }
+    Some(name.to_string())
+}
+
 /// The component tag and attribute partial at the end of `line` when
 /// the caret sits at an attribute-name position inside a component tag
 /// opened with `marker` (`<x-` or `<livewire:`): the tag opened on this
@@ -894,15 +920,24 @@ fn call_context(line: &str) -> Option<Kind> {
     let mut in_str: Option<char> = None;
     let mut depth: i32 = 0;
     let mut arg = 0usize;
+    // How the currently open string was opened: the non-space character
+    // before its quote and the bracket depth there. `@livewire('n',
+    // ['prop' => ...])` uses it to tell array keys from values.
+    let mut str_opener: Option<(u8, i32)> = None;
+    let mut prev_non_space: Option<u8> = None;
     for c in line[paren + 1..].chars() {
         match in_str {
             Some(q) => {
                 if c == q {
                     in_str = None;
+                    str_opener = None;
                 }
             }
             None => match c {
-                '\'' | '"' => in_str = Some(c),
+                '\'' | '"' => {
+                    in_str = Some(c);
+                    str_opener = prev_non_space.map(|b| (b, depth));
+                }
                 '[' | '(' | '{' => depth += 1,
                 ']' | '}' => depth -= 1,
                 ')' if depth == 0 => return None,
@@ -910,6 +945,13 @@ fn call_context(line: &str) -> Option<Kind> {
                 ',' if depth == 0 => arg += 1,
                 _ => {}
             },
+        }
+        if !c.is_whitespace() {
+            prev_non_space = if c.is_ascii() {
+                Some(c as u8)
+            } else {
+                None
+            };
         }
     }
     in_str?;
@@ -952,6 +994,17 @@ fn call_context(line: &str) -> Option<Kind> {
         "__" | "trans" | "trans_choice" if arg == 0 => Kind::Lang,
         "lang" | "choice" if blade && arg == 0 => Kind::Lang,
         "livewire" if blade && arg == 0 => Kind::LivewireName,
+        // `@livewire('name', ['prop' => ...])`: mount property keys in
+        // the props array - a string opened by `[` or by a comma inside
+        // the array, not a value after `=>`.
+        "livewire"
+            if blade
+                && arg == 1
+                && (matches!(str_opener, Some((b'[', _)))
+                    || matches!(str_opener, Some((b',', d)) if d >= 1)) =>
+        {
+            Kind::LivewireProp
+        }
         // Livewire events: `$dispatch('...')`, `$this->dispatch('...')`,
         // `$wire.dispatch('...')`, `Livewire.dispatch('...')` and the
         // Livewire 2 `->emit(...)` family. The event name is the first
@@ -2344,10 +2397,10 @@ pub fn items(
         return component_tags(root, file);
     }
     if kind == Kind::LivewireProp {
-        let Some((tag, _)) = livewire_prop_position(line_before) else {
+        let Some(name) = livewire_prop_component(line_before) else {
             return Vec::new();
         };
-        let Some(class) = crate::template_refs::livewire_component(root, tag)
+        let Some(class) = crate::template_refs::livewire_component(root, &name)
         else {
             return Vec::new();
         };
@@ -3236,6 +3289,42 @@ mod tests {
         // Unknown components and value positions offer nothing.
         assert!(labels("<livewire:nope ").is_empty());
         assert!(labels("<livewire:counter count=").is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_directive_prop_context() {
+        let prop = Some(Kind::LivewireProp);
+        // `@livewire('name', ['key' => ...])`: mount property keys.
+        assert_eq!(context("@livewire('counter', ['"), prop);
+        assert_eq!(context("@livewire('counter', ['cou"), prop);
+        assert_eq!(context("@livewire('counter', ['count' => 1, 'st"), prop);
+        assert_eq!(context("@livewire(\"counter\", [\"ma"), prop);
+        // Array values and a bare second argument are not keys.
+        assert_eq!(context("@livewire('counter', ['count' => 'va"), None);
+        assert_eq!(context("@livewire('counter', 'st"), None);
+        // The first argument keeps the component-name context.
+        assert_eq!(context("@livewire('cou"), Some(Kind::LivewireName));
+    }
+
+    #[test]
+    fn offers_livewire_directive_mount_props() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Livewire/Counter.php",
+            "<?php\nclass Counter extends \\Livewire\\Component {\n    public $count = 0;\n    public $maxCount = 10;\n}\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels("@livewire('counter', ['"), ["count", "max-count"]);
+        assert_eq!(labels("@livewire('counter', ['cou"), ["count", "max-count"]);
+        assert!(labels("@livewire('nope', ['").is_empty());
+        assert!(labels("@livewire('counter', ['count' => '").is_empty());
     }
 
     #[test]

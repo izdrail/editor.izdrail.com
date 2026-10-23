@@ -85,4 +85,12 @@ props defer to. Right after a closing
 quote, before the separating space, the popup stays shut - the item
 340 `<livewire:counter :n="1"` pin keeps its meaning.
 
-Tests: `detects_livewire_prop_context`, `offers_livewire_mount_props`.
+The same mount properties complete as keys of the `@livewire('name',
+['key' => ...])` props array (item 377): a string opened by `[` or by a
+comma inside the array is a key position; a string after `=>` is a
+value and stays silent, as does a bare (non-array) second argument.
+The first argument keeps the component-name context.
+
+Tests: `detects_livewire_prop_context`, `offers_livewire_mount_props`,
+`detects_livewire_directive_prop_context`,
+`offers_livewire_directive_mount_props`.
