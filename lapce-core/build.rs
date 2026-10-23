@@ -10,7 +10,7 @@ struct ReleaseInfo {
 
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=../.git/HEAD");
+    track_repo_refs();
     println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DISTRIBUTION");
     println!("cargo:rerun-if-env-changed=RELEASE_TAG_NAME");
@@ -34,6 +34,55 @@ fn main() -> Result<()> {
     fs::write(meta_file, meta)?;
 
     Ok(())
+}
+
+/// Declares the git paths whose change must re-run this script so the
+/// baked-in commit hash cannot go stale (item 389):
+///
+/// - `<gitdir>/HEAD` - moves between branches or on detach. `.git` is
+///   resolved through the `gitdir:` pointer file in a linked worktree.
+/// - `<commondir>/refs/heads` - a DIRECTORY, scanned recursively: a
+///   new commit rewrites the branch's loose ref file, and the
+///   packed-to-loose transition CREATES that file; both are caught by
+///   the directory scan, where declaring only the paths that exist at
+///   run time would miss the creation.
+/// - `<commondir>/packed-refs`, when it exists - covers commits while
+///   the branch ref is packed.
+///
+/// Branch refs live in the common dir shared by all worktrees, so the
+/// `commondir` file is resolved too. Only existing paths are declared:
+/// cargo cannot stat a missing path and re-runs the script every time.
+fn track_repo_refs() {
+    let dotgit = Path::new("../.git");
+    let git_dir = if dotgit.is_dir() {
+        dotgit.to_path_buf()
+    } else if let Ok(ptr) = fs::read_to_string(dotgit) {
+        let Some(dir) = ptr.trim().strip_prefix("gitdir: ") else { return };
+        let dir = Path::new(dir);
+        if dir.is_absolute() {
+            dir.to_path_buf()
+        } else {
+            // Relative gitdir: relative to the directory holding the
+            // `.git` file, i.e. the repo root (`..` from this crate).
+            Path::new("..").join(dir)
+        }
+    } else {
+        return;
+    };
+    let common_dir = fs::read_to_string(git_dir.join("commondir"))
+        .ok()
+        .map(|p| git_dir.join(p.trim()))
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| git_dir.clone());
+    println!("cargo:rerun-if-changed={}", git_dir.join("HEAD").display());
+    let heads = common_dir.join("refs/heads");
+    if heads.is_dir() {
+        println!("cargo:rerun-if-changed={}", heads.display());
+    }
+    let packed = common_dir.join("packed-refs");
+    if packed.exists() {
+        println!("cargo:rerun-if-changed={}", packed.display());
+    }
 }
 
 fn get_info() -> Result<ReleaseInfo> {
@@ -76,6 +125,11 @@ fn get_info() -> Result<ReleaseInfo> {
     Ok(release_info)
 }
 
+/// `<short-hash>` of HEAD, with a `-dirty` suffix when tracked files
+/// had uncommitted changes when this script last ran (item 389).
+/// Best effort, not a guarantee: edits made after that run change no
+/// declared input, so a clean-looking stamp can lag a freshly dirtied
+/// tree until the next re-run.
 #[cfg(not(target_os = "linux"))]
 fn get_head() -> Option<String> {
     let repo = match git2::Repository::discover(format!(
@@ -97,18 +151,44 @@ fn get_head() -> Option<String> {
     };
     let commit = reference.target();
     println!("cargo::warning=Commit found: {commit:?}");
-    commit.map(|s| s.to_string().split_at(7).0.to_owned())
+    let commit = commit.map(|s| s.to_string().split_at(7).0.to_owned())?;
+    let dirty = repo.statuses(None).map(|s| !s.is_empty()).unwrap_or(false);
+    if dirty {
+        Some(format!("{commit}-dirty"))
+    } else {
+        Some(commit)
+    }
 }
 
+/// `<short-hash>` of HEAD, with a `-dirty` suffix when tracked files
+/// had uncommitted changes when this script last ran (item 389).
+/// Best effort, not a guarantee: edits made after that run change no
+/// declared input, so a clean-looking stamp can lag a freshly dirtied
+/// tree until the next re-run.
 #[cfg(target_os = "linux")]
 fn get_head() -> Option<String> {
+    // Discover this repo explicitly: never whatever repo the caller's
+    // cwd happens to be inside.
+    let dir = env::var("CARGO_MANIFEST_DIR").ok()?;
     let cmd = std::process::Command::new("git")
         .args(["show", "--pretty=format:%h", "--no-patch"])
+        .current_dir(&dir)
         .output()
         .ok()?;
 
-    let commit = String::from_utf8_lossy(&cmd.stdout);
-    let commit = commit.trim();
-
-    Some(commit.to_string())
+    let commit = String::from_utf8_lossy(&cmd.stdout).trim().to_string();
+    if commit.is_empty() {
+        return None;
+    }
+    let dirty = std::process::Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .current_dir(&dir)
+        .output()
+        .ok()
+        .is_some_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty());
+    if dirty {
+        Some(format!("{commit}-dirty"))
+    } else {
+        Some(commit)
+    }
 }
