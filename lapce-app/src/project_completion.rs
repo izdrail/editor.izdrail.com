@@ -1158,6 +1158,51 @@ fn chain_table(head: &str) -> Option<&str> {
     }
 }
 
+/// Is `h` (the text before the method name) exactly a `Rule::`
+/// receiver - not `MyRule::` or a longer identifier?
+fn rule_head(h: &str) -> bool {
+    let Some(pre) = h.trim_end().strip_suffix("Rule::") else {
+        return false;
+    };
+    !pre.chars()
+        .last()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// The opening `(` of the last call on the line, unless it sits
+/// inside a comment or a string literal (item 394): the completion
+/// string itself is open, so a call `(` is never its own span.
+fn code_paren(line: &str) -> Option<usize> {
+    let (masked, strings) = mask_comments(line);
+    let paren = masked.rfind('(')?;
+    let i = strings.partition_point(|&(_, end)| paren > end);
+    if i < strings.len() && strings[i].0 <= paren {
+        return None;
+    }
+    Some(paren)
+}
+
+/// The table named by the first argument of the line's open
+/// `Rule::exists('TABLE', ...)` / `Rule::unique('TABLE', ...)` call
+/// (item 394). Extraction is tied to the actual call opening - the
+/// last code `(` - so an earlier `Rule::` mention on the line never
+/// donates its table to the current call, and a table given as a
+/// variable fails closed.
+fn fluent_rule_table(line: &str) -> Option<&str> {
+    let paren = code_paren(line)?;
+    let head = line[..paren].trim_end();
+    let word_start = head
+        .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .map(|x| x + 1)
+        .unwrap_or(0);
+    if !matches!(&head[word_start..], "exists" | "unique")
+        || !rule_head(&head[..word_start])
+    {
+        return None;
+    }
+    quoted_word(line[paren + 1..].trim_start())
+}
+
 /// The table named by an open `exists:TABLE,` / `unique:TABLE,` rule
 /// segment at the end of `line` (caret after the first comma).
 fn rule_param_table(line: &str) -> Option<&str> {
@@ -1410,6 +1455,31 @@ fn call_context(line: &str) -> Option<Kind> {
                 return None;
             }
             Kind::MiddlewareAlias
+        }
+        // Fluent validation rules (item 394): `Rule::exists('users',
+        // ...)` / `Rule::unique('users', ...)` take the table first,
+        // then the column (Laravel 12.x: `exists($table, $column)` /
+        // `unique($table, $column)`). `->exists(...)` on a query
+        // builder, `MyRule::exists(...)`, a call `(` inside a comment
+        // or string, and a table given as a variable stay silent
+        // (the context check mirrors the items() extraction).
+        "exists" | "unique"
+            if rule_head(&head[..word_start])
+                && arg == 0
+                && code_paren(line) == Some(paren) =>
+        {
+            Kind::DbTable
+        }
+        "exists" | "unique"
+            if rule_head(&head[..word_start])
+                && arg == 1
+                && code_paren(line) == Some(paren) =>
+        {
+            if fluent_rule_table(line).is_some() {
+                Kind::DbColumn
+            } else {
+                return None;
+            }
         }
         _ => return None,
     })
@@ -3493,7 +3563,9 @@ pub fn items(
             .collect();
     }
     if kind == Kind::DbColumn {
-        let Some(table) = rule_param_table(line_before) else {
+        let Some(table) = rule_param_table(line_before)
+            .or_else(|| fluent_rule_table(line_before))
+        else {
             return Vec::new();
         };
         return column_items(&lists(root), table);
@@ -4415,6 +4487,36 @@ mod tests {
     }
 
     #[test]
+    fn detects_fluent_rule_context() {
+        assert_eq!(context("Rule::exists('us"), Some(Kind::DbTable));
+        assert_eq!(context("Rule::unique('us"), Some(Kind::DbTable));
+        assert_eq!(
+            context("Rule::exists('users', 'em"),
+            Some(Kind::DbColumn)
+        );
+        assert_eq!(
+            context("Rule::unique('users', 'em"),
+            Some(Kind::DbColumn)
+        );
+        // A query-builder exists(), a look-alike static receiver, a
+        // variable table, a third argument, a comment-contained call
+        // and a string-contained call stay silent.
+        assert_eq!(context("$q->exists('us"), None);
+        assert_eq!(context("MyRule::exists('us"), None);
+        assert_eq!(context("Rule::exists($table, 'em"), None);
+        assert_eq!(context("Rule::exists('users', 'email', 'x"), None);
+        assert_eq!(context("// Rule::exists('us"), None);
+        assert_eq!(context("// Rule::exists('users', 'em"), None);
+        assert_eq!(context("$hint = \"use Rule::exists('us"), None);
+        // A prior call's literal never donates its table to the
+        // current call.
+        assert_eq!(
+            context("Rule::exists('posts', 'a'), Rule::unique($t, 'em"),
+            None
+        );
+    }
+
+    #[test]
     fn detects_middleware_alias_context() {
         let mw = Some(Kind::MiddlewareAlias);
         assert_eq!(context("Route::get('/a', $c)->middleware('au"), mw);
@@ -4658,6 +4760,43 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_fluent_rule_tables_and_columns() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $table) {\n    $table->id();\n    $table->string('name');\n    $table->string('email');\n});\n",
+        );
+        put(
+            r,
+            "database/migrations/2024_02_01_000000_create_posts_table.php",
+            "<?php\nSchema::create('posts', function (Blueprint $table) {\n    $table->id();\n    $table->string('title');\n});\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels("Rule::exists('"), ["posts", "users"]);
+        assert_eq!(labels("Rule::unique('"), ["posts", "users"]);
+        assert_eq!(
+            labels("Rule::exists('users', '"),
+            ["email", "id", "name"]
+        );
+        assert_eq!(labels("Rule::unique('posts', '"), ["id", "title"]);
+        // A variable table fails closed, and a prior call's literal
+        // never donates its table.
+        assert!(labels("Rule::exists($table, '").is_empty());
+        assert!(labels(
+            "Rule::exists('posts', 'a'), Rule::unique($t, '"
+        )
+        .is_empty());
+        assert!(labels("// Rule::exists('users', '").is_empty());
     }
 
     #[test]

@@ -43,6 +43,20 @@ anything but a literal `DB::table` base
 inherit a table - no model-to-table or cross-statement guessing. The
 operator/value arguments after the first are not column positions.
 
+## Fluent `Rule::exists` / `Rule::unique` (item 394)
+
+The fluent rule builders take the same pair as plain arguments
+(Laravel 12.x: `Rule::exists($table, $column)` /
+`Rule::unique($table, $column)`), and both positions complete:
+`Rule::exists('us` / `Rule::unique('us` offer table names, and
+`Rule::exists('users', 'em` offers the columns of the table quoted in
+the first argument. The table is read from the current call's own
+opening parenthesis, so an earlier `Rule::` mention on the line never
+donates its table to the current call. `->exists(...)` on a query
+builder, a look-alike `MyRule::exists(...)`, a call written inside a
+comment or a string, a table given as a variable, and the
+non-existent third argument stay silent.
+
 ## Where the columns come from
 
 A static text scan of `database/migrations/*.php` (same bounds as the
@@ -73,7 +87,9 @@ drop and rename commands are not harvested, so a column dropped by a
 later migration can linger. `Rule::exists(...)` / `Rule::unique(...)`
 are fluent PHP calls, not rule strings, and stay out.
 
-Tests: `offers_query_columns`, `detects_query_column_context`,
+Tests: `offers_fluent_rule_tables_and_columns`,
+`detects_fluent_rule_context`, `offers_query_columns`,
+`detects_query_column_context`,
 `offers_validation_rule_columns`,
 `harvest_ignores_comments_strings_and_stray_calls`,
 `harvest_fails_closed_on_heredoc`, plus the
