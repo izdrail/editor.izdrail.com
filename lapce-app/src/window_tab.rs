@@ -2922,6 +2922,39 @@ impl WindowTabData {
         )
     }
 
+    /// Shared vertical placement for line-anchored popups (code action,
+    /// rename, inline AI overlay): below the anchor line when it fits,
+    /// otherwise the roomier side, always inside the editor viewport.
+    /// Uses the measured height; these popups have no per-side height
+    /// cap, so a measurement cannot make a placement self-justifying.
+    #[allow(clippy::too_many_arguments)]
+    fn line_popup_y(
+        &self,
+        window_origin: Point,
+        viewport: Rect,
+        point_above: Point,
+        point_below: Point,
+        height: f64,
+        max_height: f64,
+        line_height: f64,
+    ) -> f64 {
+        let tab_height = self.layout_rect.get_untracked().size().height;
+        let area_top = window_origin.y.max(0.0);
+        // Flip against the bottom of the editor viewport, not the whole
+        // tab, so popups do not open over the terminal or other panels.
+        let area_bottom = (window_origin.y + viewport.height()).min(tab_height);
+        crate::completion::popup_vertical_placement(
+            window_origin.y + point_above.y - viewport.y0,
+            window_origin.y + point_below.y - viewport.y0,
+            height,
+            area_top,
+            area_bottom,
+            max_height.min(tab_height),
+            line_height,
+        )
+        .0
+    }
+
     pub fn code_action_origin(&self) -> Point {
         let code_action = self.code_action.get();
         let config = self.common.config.get();
@@ -2946,7 +2979,7 @@ impl WindowTabData {
         );
 
         // TODO(minor): What affinity should we use for this?
-        let (_point_above, point_below) =
+        let (point_above, point_below) =
             editor.points_of_offset(code_action.offset, CursorAffinity::Forward);
 
         let window_origin =
@@ -2963,16 +2996,15 @@ impl WindowTabData {
                 point_below.y - viewport.y0,
             );
 
-        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
-        if crate::completion::should_flip_above(
-            origin.y,
+        origin.y = self.line_popup_y(
+            window_origin,
+            viewport,
+            point_above,
+            point_below,
             code_action_size.height,
-            area_bottom,
-        ) {
-            origin.y = origin.y
-                - config.editor.line_height() as f64
-                - code_action_size.height;
-        }
+            400.0,
+            config.editor.line_height() as f64,
+        );
         if origin.x + code_action_size.width + 1.0 > tab_size.width {
             origin.x = tab_size.width - code_action_size.width - 1.0;
         }
@@ -3014,7 +3046,7 @@ impl WindowTabData {
         );
 
         // TODO(minor): What affinity should we use for this?
-        let (_point_above, point_below) = editor.points_of_offset(
+        let (point_above, point_below) = editor.points_of_offset(
             self.rename.start.get_untracked(),
             CursorAffinity::Forward,
         );
@@ -3026,11 +3058,15 @@ impl WindowTabData {
         let mut origin = window_origin
             + Vec2::new(point_below.x - viewport.x0, point_below.y - viewport.y0);
 
-        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
-        if crate::completion::should_flip_above(origin.y, rename_size.height, area_bottom) {
-            origin.y =
-                origin.y - config.editor.line_height() as f64 - rename_size.height;
-        }
+        origin.y = self.line_popup_y(
+            window_origin,
+            viewport,
+            point_above,
+            point_below,
+            rename_size.height,
+            tab_size.height,
+            config.editor.line_height() as f64,
+        );
         if origin.x + rename_size.width + 1.0 > tab_size.width {
             origin.x = tab_size.width - rename_size.width - 1.0;
         }
@@ -3074,7 +3110,7 @@ impl WindowTabData {
         );
 
         // TODO(minor): What affinity should we use for this?
-        let (_point_above, point_below) = editor.points_of_offset(
+        let (point_above, point_below) = editor.points_of_offset(
             self.inline_ai_edit.start.get_untracked(),
             CursorAffinity::Forward,
         );
@@ -3086,11 +3122,15 @@ impl WindowTabData {
         let mut origin = window_origin
             + Vec2::new(point_below.x - viewport.x0, point_below.y - viewport.y0);
 
-        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
-        if crate::completion::should_flip_above(origin.y, overlay_size.height, area_bottom) {
-            origin.y =
-                origin.y - config.editor.line_height() as f64 - overlay_size.height;
-        }
+        origin.y = self.line_popup_y(
+            window_origin,
+            viewport,
+            point_above,
+            point_below,
+            overlay_size.height,
+            tab_size.height,
+            config.editor.line_height() as f64,
+        );
         if origin.x + overlay_size.width + 1.0 > tab_size.width {
             origin.x = tab_size.width - overlay_size.width - 1.0;
         }
