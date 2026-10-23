@@ -49,8 +49,14 @@ open-call-argument helper, so it works inside `x-data` object values,
 `@click`/`wire:` attribute values and `@script` blocks alike; once the
 argument string closes (`$entangle('show', `) the context ends.
 
+`$wire.$watch('...')` (item 374): the first quoted argument offers the
+paired component's public properties (only properties can be watched).
+A bare Alpine `$watch('...')` stays out of context: it watches x-data
+keys, which this line-only context cannot see.
+
 Tests: `detects_livewire_wire_member_context`,
 `offers_livewire_wire_members`, `detects_livewire_wire_magic_context`,
 `offers_livewire_wire_magics`, `detects_livewire_js_context`,
 `offers_livewire_js_names`, `detects_livewire_entangle_context`,
-`offers_livewire_entangle_props`.
+`offers_livewire_entangle_props`, `detects_livewire_watch_context`,
+`offers_livewire_watch_props`.

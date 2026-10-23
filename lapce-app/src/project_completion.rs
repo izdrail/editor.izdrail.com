@@ -78,6 +78,9 @@ pub enum Kind {
     /// `$entangle('...')` / `$wire.entangle('...')`: a public property
     /// of the Livewire component paired with the current view.
     LivewireEntangle,
+    /// `$wire.$watch('...')`: a public property of the Livewire
+    /// component paired with the current view.
+    LivewireWatch,
     /// Alpine `x-data="name"`: a component registered with
     /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
     AlpineData,
@@ -849,6 +852,12 @@ fn call_context(line: &str) -> Option<Kind> {
         // `$wire.entangle('...')`. The property is the first argument;
         // the live flag is not a property.
         "entangle" if arg == 0 => Kind::LivewireEntangle,
+        // Livewire property watching: `$wire.$watch('...')`. A bare
+        // Alpine `$watch('...')` watches x-data keys, which this
+        // line-only context cannot see, so it stays out of context.
+        "watch" if head[..word_start].ends_with("$wire.$") && arg == 0 => {
+            Kind::LivewireWatch
+        }
         "get" | "has" | "choice"
             if head[..word_start].ends_with("Lang::") && arg == 0 =>
         {
@@ -2305,6 +2314,10 @@ pub fn items(
         // Only properties entangle; methods are not valid arguments.
         return livewire_props(root, file);
     }
+    if kind == Kind::LivewireWatch {
+        // Only properties can be watched.
+        return livewire_props(root, file);
+    }
     if kind == Kind::LivewireMember {
         let props = livewire_props(root, file);
         let seen: std::collections::HashSet<String> =
@@ -2398,6 +2411,8 @@ pub fn items(
         Kind::LivewireJs => (Vec::new(), "Livewire $js function"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireEntangle => (Vec::new(), "Livewire property"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireWatch => (Vec::new(), "Livewire property"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineData => (Vec::new(), "Alpine.data component"),
         // Returned early above; the match must stay exhaustive.
@@ -2901,6 +2916,52 @@ mod tests {
         assert_eq!(labels("<button @click=\"$entangle('em"), ["email"]);
         // Without a paired view file there is nothing to offer.
         assert!(items(r, None, "$entangle('").is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_watch_context() {
+        let watch = Some(Kind::LivewireWatch);
+        // `$wire.$watch('...')` in any call position.
+        assert_eq!(context("$wire.$watch('"), watch);
+        assert_eq!(context("$wire.$watch('em"), watch);
+        assert_eq!(context("x-on:click=\"$wire.$watch('o"), watch);
+        assert_eq!(context("@script $wire.$watch(\"open"), watch);
+        // No open argument string: no context.
+        assert_eq!(context("$wire.$watch("), None);
+        assert_eq!(context("$wire.$watch('show', "), None);
+        // The property is the first argument; a later string is not one.
+        assert_eq!(context("$wire.$watch('open', '"), None);
+        // A lookalike and a deeper member path are not contexts.
+        assert_eq!(context("$wire.$watcher('"), None);
+        assert_eq!(context("$this->watch('"), None);
+    }
+
+    #[test]
+    fn offers_livewire_watch_props() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/views/livewire/user-profile.blade.php",
+            "<button>\n",
+        );
+        put(
+            r,
+            "app/Livewire/UserProfile.php",
+            "<?php\nclass UserProfile extends \\Livewire\\Component {\n    public $email = '';\n    public function save() {}\n}\n",
+        );
+        let view = r.join("resources/views/livewire/user-profile.blade.php");
+        let labels = |line: &str| {
+            items(r, Some(view.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only properties can be watched; methods stay out.
+        assert_eq!(labels("<button @click=\"$wire.$watch('"), ["email"]);
+        assert_eq!(labels("@script $wire.$watch('em"), ["email"]);
+        // Without a paired view file there is nothing to offer.
+        assert!(items(r, None, "$wire.$watch('").is_empty());
     }
 
     #[test]
