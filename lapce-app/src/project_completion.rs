@@ -127,6 +127,9 @@ pub enum Kind {
     /// `->middleware('...')` / `Route::middleware('...')` /
     /// `->withoutMiddleware('...')` (item 393).
     MiddlewareAlias,
+    /// Filesystem disk: the first argument of `Storage::disk('...')`
+    /// / `Storage::drive('...')` (item 397).
+    StorageDisk,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1426,6 +1429,22 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Filesystem disks (item 397): `Storage::disk('...')` /
+        // `Storage::drive('...')` take the disk name as the scalar
+        // first argument (Laravel 12.x FilesystemManager:
+        // disk($name = null), drive($name = null) alias).
+        // `Storage::build(...)` is NOT a disk-name position - its
+        // non-array argument is a local root path - so it stays
+        // silent. The receiver must be exactly `Storage::`, and a
+        // `(` inside a comment or string is not a call.
+        "disk" | "drive"
+            if static_head(&head[..word_start], "Storage")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::StorageDisk
+        }
         // The Config facade (item 395): the static twin of
         // `config('...')` - `Config::get/has/set('key', ...)` all
         // take the key first (Laravel 12.x Repository: get($key,
@@ -1564,6 +1583,7 @@ struct Lists {
     tables: Vec<String>,
     columns: Vec<(String, String)>,
     middleware_aliases: Vec<String>,
+    disks: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1739,10 +1759,54 @@ fn middleware_aliases(root: &Path) -> Vec<String> {
     out
 }
 
+/// Filesystem disk names (item 397): the top-level string keys of
+/// the `'disks' => [...]` array in `config/filesystems.php` - each
+/// key is a disk `Storage::disk('...')` can resolve. Only that array
+/// is scanned: the `'default'` key, per-disk settings (`'driver'`,
+/// `'bucket'`, ... one level deeper) and commented-out disks invent
+/// nothing. Sorted, deduped.
+fn filesystem_disks(root: &Path) -> Vec<String> {
+    let p = root.join("config/filesystems.php");
+    let Ok(meta) = std::fs::metadata(&p) else {
+        return Vec::new();
+    };
+    if !meta.is_file() || meta.len() > MAX_FILE {
+        return Vec::new();
+    }
+    let Ok(text) = std::fs::read_to_string(&p) else {
+        return Vec::new();
+    };
+    if text.contains("<<<") {
+        // Same heredoc/nowdoc fail-closed guard as item 390d.
+        return Vec::new();
+    }
+    let (masked, strings) = mask_comments(&text);
+    let mut out = Vec::new();
+    for (start, end) in &strings {
+        if &text[start + 1..*end] != "disks" {
+            continue;
+        }
+        let after = masked[end + 1..].trim_start();
+        let Some(rest) = after.strip_prefix("=>") else {
+            continue;
+        };
+        if !rest.trim_start().starts_with('[') {
+            continue;
+        }
+        let open = masked.len() - rest.trim_start().len();
+        harvest_alias_keys(&masked, &text, &strings, open, &mut out);
+        break;
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
+}
+
 /// The top-level `'name' =>` keys of the array opened at `open`
-/// (item 393). String spans are jumped whole, so a quote inside a
-/// value cannot be misread as a key, and keys of nested arrays sit
-/// at depth two and are skipped.
+/// (items 393, 397). String spans are jumped whole, so a quote
+/// inside a value cannot be misread as a key, and keys of nested
+/// arrays sit at depth two and are skipped.
 fn harvest_alias_keys(
     masked: &str,
     text: &str,
@@ -2587,6 +2651,7 @@ fn lists(root: &Path) -> Lists {
     let tables = table_names(root);
     let columns = table_columns(root);
     let middleware_aliases = middleware_aliases(root);
+    let disks = filesystem_disks(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2603,6 +2668,7 @@ fn lists(root: &Path) -> Lists {
         tables,
         columns,
         middleware_aliases,
+        disks,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3229,6 +3295,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::LivewireName
                 | Kind::LivewireEvent
                 | Kind::MiddlewareAlias
+                | Kind::StorageDisk
         )
     )
 }
@@ -3710,6 +3777,7 @@ pub fn items(
         Kind::MiddlewareAlias => {
             (lists.middleware_aliases, "middleware alias")
         }
+        Kind::StorageDisk => (lists.disks, "filesystem disk"),
         // Returned early above; the match must stay exhaustive.
         Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
@@ -4549,6 +4617,23 @@ mod tests {
     }
 
     #[test]
+    fn detects_storage_disk_context() {
+        let dsk = Some(Kind::StorageDisk);
+        assert_eq!(context("Storage::disk('s"), dsk);
+        assert_eq!(context("Storage::drive('s"), dsk);
+        // build() is not a disk-name position (its string argument
+        // is a local root path), and look-alike receivers, object
+        // calls, a second argument and comment/string-contained
+        // calls stay silent.
+        assert_eq!(context("Storage::build('s"), None);
+        assert_eq!(context("MyStorage::disk('s"), None);
+        assert_eq!(context("$storage->disk('s"), None);
+        assert_eq!(context("Storage::disk('s3', 'x"), None);
+        assert_eq!(context("// Storage::disk('s"), None);
+        assert_eq!(context("$h = \"use Storage::disk('s"), None);
+    }
+
+    #[test]
     fn detects_view_facade_context() {
         let vw = Some(Kind::View);
         assert_eq!(context("View::make('pages.ho"), vw);
@@ -4871,6 +4956,38 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_storage_disks() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/filesystems.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('FILESYSTEM_DISK', 'local'),\n",
+                "    'disks' => [\n",
+                "        'local' => ['driver' => 'local'],\n",
+                "        's3' => ['driver' => 's3', 'bucket' => 'b'],\n",
+                "        // 'backup' => ['driver' => 'local'],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the disks array's top-level keys: not the 'default'
+        // key, the per-disk 'driver'/'bucket' settings one level
+        // deeper, or the commented-out 'backup'.
+        assert_eq!(labels("Storage::disk('"), ["local", "s3"]);
+        assert_eq!(labels("Storage::drive('"), ["local", "s3"]);
+        assert!(labels("Storage::build('").is_empty());
     }
 
     #[test]
