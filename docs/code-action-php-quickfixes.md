@@ -44,6 +44,12 @@ echo $greetign;
 Caret on `$greetign` (last line): the lightbulb offers
 "Correct undefined variable \"$greetign\" to \"$greeting\"". Choosing it
 rewrites `$greetign` to `$greeting`; undo restores the original text.
-Negatives: caret on `$greeting` (defined variable) offers no
-correct-variable-name quick fix; a file with no diagnostics offers no
-quickfix actions.
+
+Quick fixes are document-wide (item 386): in the pinned provider source,
+`CorrectUndefinedVariableCodeAction` loops every undefined-variable
+diagnostic in the document and ignores the request range, and the running
+editor confirmed it - a caret on line 1 of the fixture still offered the
+`$greetign` fix. A caret anywhere may therefore offer the fix for a
+diagnostic elsewhere in the file; choosing it still edits the diagnostic's
+own text, and undo restores it. A file with no diagnostics offers no
+quickfix actions (only context-free refactors such as "Extract constant").
