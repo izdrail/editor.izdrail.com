@@ -136,6 +136,9 @@ pub enum Kind {
     /// Log channel: `Log::channel('...')` / `Log::driver('...')` /
     /// `Log::stack(['...'])` (item 399).
     LogChannel,
+    /// Cache store: `Cache::store('...')` / `Cache::driver('...')`
+    /// (item 400).
+    CacheStore,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1462,6 +1465,19 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Cache stores (item 400): `Cache::store('...')` /
+        // `Cache::driver('...')` take the store name as the scalar
+        // first argument (Laravel 12.x CacheManager:
+        // store($name = null), driver($driver = null) alias). An
+        // array argument is an on-demand config, not a name list.
+        "store" | "driver"
+            if static_head(&head[..word_start], "Cache")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::CacheStore
+        }
         // Log channels (item 399): `Log::channel('...')` /
         // `Log::driver('...')` take the name as the scalar first
         // argument, `Log::stack([...])` takes a list of names
@@ -1643,6 +1659,7 @@ struct Lists {
     disks: Vec<String>,
     vite_entries: Vec<String>,
     log_channels: Vec<String>,
+    cache_stores: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1869,6 +1886,11 @@ fn filesystem_disks(root: &Path) -> Vec<String> {
 /// Log channel names (item 399).
 fn log_channels(root: &Path) -> Vec<String> {
     config_named_keys(root, "logging", "channels")
+}
+
+/// Cache store names (item 400).
+fn cache_stores(root: &Path) -> Vec<String> {
+    config_named_keys(root, "cache", "stores")
 }
 
 /// The top-level `'name' =>` keys of the array opened at `open`
@@ -2722,6 +2744,7 @@ fn lists(root: &Path) -> Lists {
     let disks = filesystem_disks(root);
     let vite_entries = vite_entries(root);
     let log_channels = log_channels(root);
+    let cache_stores = cache_stores(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2741,6 +2764,7 @@ fn lists(root: &Path) -> Lists {
         disks,
         vite_entries,
         log_channels,
+        cache_stores,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3384,6 +3408,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::MiddlewareAlias
                 | Kind::StorageDisk
                 | Kind::LogChannel
+                | Kind::CacheStore
         )
     )
 }
@@ -3887,6 +3912,7 @@ pub fn items(
         }
         Kind::StorageDisk => (lists.disks, "filesystem disk"),
         Kind::LogChannel => (lists.log_channels, "log channel"),
+        Kind::CacheStore => (lists.cache_stores, "cache store"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -4740,6 +4766,22 @@ mod tests {
     }
 
     #[test]
+    fn detects_cache_store_context() {
+        let cs = Some(Kind::CacheStore);
+        assert_eq!(context("Cache::store('re"), cs);
+        assert_eq!(context("Cache::driver('re"), cs);
+        // An array argument is an on-demand config, not a name;
+        // look-alike receivers, object calls, a second argument and
+        // comment or string-contained calls stay silent.
+        assert_eq!(context("Cache::store(['dri"), None);
+        assert_eq!(context("MyCache::store('re"), None);
+        assert_eq!(context("$cache->store('re"), None);
+        assert_eq!(context("Cache::store('redis', 'x"), None);
+        assert_eq!(context("// Cache::store('re"), None);
+        assert_eq!(context("$h = \"use Cache::store('re"), None);
+    }
+
+    #[test]
     fn detects_log_channel_context() {
         let ch = Some(Kind::LogChannel);
         assert_eq!(context("Log::channel('sl"), ch);
@@ -5125,6 +5167,38 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_cache_stores() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/cache.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('CACHE_STORE', 'file'),\n",
+                "    'stores' => [\n",
+                "        'file' => ['driver' => 'file'],\n",
+                "        'redis' => ['driver' => 'redis'],\n",
+                "        // 'memcached' => ['driver' => 'memcached'],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the stores array's top-level keys: not the 'default'
+        // key, the per-store 'driver' settings one level deeper, or
+        // the commented-out 'memcached'.
+        assert_eq!(labels("Cache::store('"), ["file", "redis"]);
+        assert_eq!(labels("Cache::driver('"), ["file", "redis"]);
+        assert!(labels("Cache::store(['").is_empty());
     }
 
     #[test]
