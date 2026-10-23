@@ -211,15 +211,7 @@ impl CompletionData {
         }
         let typed = self.input.chars().count();
         let mut all: Vec<ScoredCompletionItem> = items.into_iter().collect();
-        all.extend(
-            self.local_items
-                .iter()
-                .filter(|l| {
-                    matches!(l.source, CompletionSource::Snippet)
-                        || typed >= MIN_WORD_INPUT
-                })
-                .cloned(),
-        );
+        all.extend(typed_input_locals(&self.local_items, typed));
         dedupe_keeping_blade_snippets(all, blade)
         .into_iter()
         .collect()
@@ -444,6 +436,24 @@ fn empty_input_locals(
         .collect()
 }
 
+/// Local items offered once something has been typed: everything except
+/// buffer words, which wait for `MIN_WORD_INPUT` characters. Project
+/// items exist only in a recognised context (`route('...`, `wire:l`),
+/// so they are relevant from the first character; keywords and snippets
+/// match the usual one-character editor behaviour.
+fn typed_input_locals(
+    local_items: &im::Vector<ScoredCompletionItem>,
+    typed: usize,
+) -> im::Vector<ScoredCompletionItem> {
+    local_items
+        .iter()
+        .filter(|l| {
+            !matches!(l.source, CompletionSource::Word) || typed >= MIN_WORD_INPUT
+        })
+        .cloned()
+        .collect()
+}
+
 fn sort_text(i: &ScoredCompletionItem) -> &str {
     i.item.sort_text.as_deref().unwrap_or(&i.item.label)
 }
@@ -622,6 +632,25 @@ mod blend_tests {
         let labels: Vec<_> = v.iter().map(|i| i.item.label.as_str()).collect();
         // LSP first, then project, then snippets, keywords and words.
         assert_eq!(labels, ["e", "d", "f", "c", "b", "a"]);
+    }
+
+    #[test]
+    fn typed_input_keeps_project_items_below_word_minimum() {
+        let locals: im::Vector<_> = vec![
+            item("loading", CompletionSource::Project, 0),
+            item("foreach", CompletionSource::Snippet, 0),
+            item("while", CompletionSource::Keyword, 0),
+            item("login", CompletionSource::Word, 0),
+        ]
+        .into_iter()
+        .collect();
+        // One typed character (`wire:l`): project items, snippets and
+        // keywords are offered; buffer words wait for MIN_WORD_INPUT.
+        let got = typed_input_locals(&locals, 1);
+        let labels: Vec<_> = got.iter().map(|i| i.item.label.as_str()).collect();
+        assert_eq!(labels, ["loading", "foreach", "while"]);
+        // Buffer words join from MIN_WORD_INPUT characters up.
+        assert_eq!(typed_input_locals(&locals, MIN_WORD_INPUT).len(), 4);
     }
 }
 

@@ -9,7 +9,8 @@ use lsp_types::{
 };
 
 /// Where a completion item came from. The order is the popup priority:
-/// LSP, then snippets, then lexer word lists, then buffer words.
+/// LSP, then project strings, then snippets, then lexer word lists, then
+/// buffer words.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum CompletionSource {
     #[default]
