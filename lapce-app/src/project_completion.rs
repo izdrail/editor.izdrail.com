@@ -1014,7 +1014,16 @@ fn call_context(line: &str) -> Option<Kind> {
         "extends" | "include" | "includeIf" | "includeFirst" | "each"
             if blade && arg == 0 => Kind::View,
         "includeWhen" if blade && arg == 1 => Kind::View,
+        // Livewire full-page components:
+        // `view('livewire.counter')->layout('layouts.app')` names a
+        // layout view and `->section('content')` a section of it.
+        "layout" if head[..word_start].ends_with("->") && arg == 0 => {
+            Kind::View
+        }
         "section" | "yield" if blade && arg == 0 => Kind::Section,
+        "section" if head[..word_start].ends_with("->") && arg == 0 => {
+            Kind::Section
+        }
         "push" | "pushOnce" | "stack" if blade && arg == 0 => Kind::Stack,
         "__" | "trans" | "trans_choice" if arg == 0 => Kind::Lang,
         "lang" | "choice" if blade && arg == 0 => Kind::Lang,
@@ -2768,6 +2777,17 @@ mod tests {
         assert_eq!(context("@include('partials."), Some(Kind::View));
         assert_eq!(context("@section('con"), Some(Kind::Section));
         assert_eq!(context("@yield('con"), Some(Kind::Section));
+        // Livewire full-page chains: `->layout('...')` is a view,
+        // `->section('...')` a section; the bare helper is not one.
+        assert_eq!(
+            context("return view('livewire.counter')->layout('lay"),
+            Some(Kind::View)
+        );
+        assert_eq!(
+            context("return view('livewire.counter')->section('con"),
+            Some(Kind::Section)
+        );
+        assert_eq!(context("layout('lay"), None);
         assert_eq!(context("@push('scr"), Some(Kind::Stack));
         assert_eq!(context("@stack('mod"), Some(Kind::Stack));
         // Without the @, these are ordinary calls.
@@ -3464,6 +3484,30 @@ mod tests {
         assert!(got.contains(&"sometimes".to_string()));
         assert!(labels("$this->validate(['name' => 'max:1").is_empty());
         assert!(labels("$this->validate(['na").is_empty());
+    }
+
+    #[test]
+    fn offers_livewire_layout_chain() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/layouts/app.blade.php", "<html>@yield('content')\n@section('sidebar')\n");
+        put(r, "resources/views/livewire/counter.blade.php", "<div></div>\n");
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels("return view('livewire.counter')->layout('lay"),
+            ["layouts.app", "livewire.counter"]
+        );
+        assert_eq!(
+            labels("return view('livewire.counter')->section('"),
+            ["content", "sidebar"]
+        );
+        // The bare (non-chain) helper is not a Livewire layout context.
+        assert!(labels("layout('lay").is_empty());
     }
 
     #[test]
