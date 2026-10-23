@@ -139,6 +139,9 @@ pub enum Kind {
     /// Cache store: `Cache::store('...')` / `Cache::driver('...')`
     /// (item 400).
     CacheStore,
+    /// Mailer: `Mail::mailer('...')` / `Mail::driver('...')`
+    /// (item 401).
+    MailMailer,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1465,6 +1468,18 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Mailers (item 401): `Mail::mailer('...')` /
+        // `Mail::driver('...')` take the mailer name as the scalar
+        // first argument (Laravel 12.x MailManager:
+        // mailer($name = null), driver($driver = null) alias).
+        "mailer" | "driver"
+            if static_head(&head[..word_start], "Mail")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::MailMailer
+        }
         // Cache stores (item 400): `Cache::store('...')` /
         // `Cache::driver('...')` take the store name as the scalar
         // first argument (Laravel 12.x CacheManager:
@@ -1660,6 +1675,7 @@ struct Lists {
     vite_entries: Vec<String>,
     log_channels: Vec<String>,
     cache_stores: Vec<String>,
+    mail_mailers: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1891,6 +1907,11 @@ fn log_channels(root: &Path) -> Vec<String> {
 /// Cache store names (item 400).
 fn cache_stores(root: &Path) -> Vec<String> {
     config_named_keys(root, "cache", "stores")
+}
+
+/// Mailer names (item 401).
+fn mail_mailers(root: &Path) -> Vec<String> {
+    config_named_keys(root, "mail", "mailers")
 }
 
 /// The top-level `'name' =>` keys of the array opened at `open`
@@ -2745,6 +2766,7 @@ fn lists(root: &Path) -> Lists {
     let vite_entries = vite_entries(root);
     let log_channels = log_channels(root);
     let cache_stores = cache_stores(root);
+    let mail_mailers = mail_mailers(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2765,6 +2787,7 @@ fn lists(root: &Path) -> Lists {
         vite_entries,
         log_channels,
         cache_stores,
+        mail_mailers,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3409,6 +3432,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::StorageDisk
                 | Kind::LogChannel
                 | Kind::CacheStore
+                | Kind::MailMailer
         )
     )
 }
@@ -3913,6 +3937,7 @@ pub fn items(
         Kind::StorageDisk => (lists.disks, "filesystem disk"),
         Kind::LogChannel => (lists.log_channels, "log channel"),
         Kind::CacheStore => (lists.cache_stores, "cache store"),
+        Kind::MailMailer => (lists.mail_mailers, "mail mailer"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -4766,6 +4791,22 @@ mod tests {
     }
 
     #[test]
+    fn detects_mailer_context() {
+        let cs = Some(Kind::MailMailer);
+        assert_eq!(context("Mail::mailer('sm"), cs);
+        assert_eq!(context("Mail::driver('sm"), cs);
+        // A scalar name only; look-alike receivers, object calls, a
+        // second argument and comment or string-contained calls
+        // stay silent.
+        assert_eq!(context("Mail::mailer(['sm"), None);
+        assert_eq!(context("MyMail::mailer('sm"), None);
+        assert_eq!(context("$mail->mailer('sm"), None);
+        assert_eq!(context("Mail::mailer('smtp', 'x"), None);
+        assert_eq!(context("// Mail::mailer('sm"), None);
+        assert_eq!(context("$h = \"use Mail::mailer('sm"), None);
+    }
+
+    #[test]
     fn detects_cache_store_context() {
         let cs = Some(Kind::CacheStore);
         assert_eq!(context("Cache::store('re"), cs);
@@ -5167,6 +5208,38 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_mail_mailers() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/mail.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('MAIL_MAILER', 'log'),\n",
+                "    'mailers' => [\n",
+                "        'smtp' => ['transport' => 'smtp'],\n",
+                "        'log' => ['transport' => 'log'],\n",
+                "        // 'ses' => ['transport' => 'ses'],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the mailers array's top-level keys: not the
+        // 'default' key, the per-mailer 'transport' settings one
+        // level deeper, or the commented-out 'ses'.
+        assert_eq!(labels("Mail::mailer('"), ["log", "smtp"]);
+        assert_eq!(labels("Mail::driver('"), ["log", "smtp"]);
+        assert!(labels("Mail::mailer(['").is_empty());
     }
 
     #[test]
