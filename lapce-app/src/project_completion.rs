@@ -1158,6 +1158,18 @@ fn chain_table(head: &str) -> Option<&str> {
     }
 }
 
+/// Is `h` (the text before the method name) exactly `Name::` - not
+/// a longer identifier like `MyName::`?
+fn static_head(h: &str, name: &str) -> bool {
+    let suffix = format!("{name}::");
+    let Some(pre) = h.trim_end().strip_suffix(suffix.as_str()) else {
+        return false;
+    };
+    !pre.chars()
+        .last()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// Is `h` (the text before the method name) exactly a `Rule::`
 /// receiver - not `MyRule::` or a longer identifier?
 fn rule_head(h: &str) -> bool {
@@ -1388,6 +1400,31 @@ fn call_context(line: &str) -> Option<Kind> {
             if head[..word_start].ends_with("Lang::") && arg == 0 =>
         {
             Kind::Lang
+        }
+        // The Config facade (item 395): the static twin of
+        // `config('...')` - `Config::get/has/set('key', ...)` all
+        // take the key first (Laravel 12.x Repository: get($key,
+        // $default), has($key), set($key, $value)). In the array
+        // forms a string is a key only when it opens after `[` or
+        // `,` at depth exactly 1, the outer key array (a scalar
+        // first-arg string records no opener: the quote is the first
+        // thing after the paren, and `prev_non_space` starts unset) -
+        // getMany
+        // treats assoc keys as keys and assoc values as defaults,
+        // and set takes key => value pairs - so a string after `=>`
+        // or inside a nested array (depth 2+) never completes. The
+        // receiver must be
+        // exactly `Config::`, and a `(` inside a comment or string
+        // is not a call.
+        "get" | "has" | "set"
+            if static_head(&head[..word_start], "Config")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::Config
         }
         // Database tables (item 381): `Schema::table('...')` and drops,
         // `DB::table('...')`, foreign references
@@ -4487,6 +4524,37 @@ mod tests {
     }
 
     #[test]
+    fn detects_config_facade_context() {
+        let cfg = Some(Kind::Config);
+        assert_eq!(context("Config::get('app.na"), cfg);
+        assert_eq!(context("Config::has('app.de"), cfg);
+        assert_eq!(context("Config::set('app.de"), cfg);
+        assert_eq!(context("Config::get(['app.a', 'app.b"), cfg);
+        assert_eq!(context("Config::set(['app.na"), cfg);
+        // Array values are not keys: getMany treats assoc values as
+        // defaults and set takes key => value pairs.
+        assert_eq!(context("Config::set(['app.name' => 'arbi"), None);
+        assert_eq!(context("Config::get(['app.name' => 'de"), None);
+        // Nested array data (depth 2+) is value/default data, not
+        // keys.
+        assert_eq!(
+            context("Config::set(['app.options' => ['nes"),
+            None
+        );
+        assert_eq!(
+            context("Config::get(['app.key' => ['def"),
+            None
+        );
+        // A look-alike receiver, an object call, a value position
+        // and a comment- or string-contained call stay silent.
+        assert_eq!(context("MyConfig::get('app.na"), None);
+        assert_eq!(context("$config->get('app.na"), None);
+        assert_eq!(context("Config::get('app.name', 'de"), None);
+        assert_eq!(context("// Config::get('app.na"), None);
+        assert_eq!(context("$h = \"use Config::get('app.na"), None);
+    }
+
+    #[test]
     fn detects_fluent_rule_context() {
         assert_eq!(context("Rule::exists('us"), Some(Kind::DbTable));
         assert_eq!(context("Rule::unique('us"), Some(Kind::DbTable));
@@ -4760,6 +4828,35 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_config_facade_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/app.php",
+            "<?php\nreturn [\n    'name' => 'Acme',\n    'debug' => true,\n];\n",
+        );
+        // Config keys come in fixture file order (the helper
+        // completion is unsorted), so compare as sorted sets.
+        let labels = |line: &str| {
+            let mut v: Vec<_> =
+                items(r, None, line).into_iter().map(|i| i.label).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(labels("Config::get('"), ["app.debug", "app.name"]);
+        assert_eq!(labels("Config::set('"), ["app.debug", "app.name"]);
+        assert_eq!(labels("Config::set(['"), ["app.debug", "app.name"]);
+        // Array values (set values, getMany defaults) stay silent.
+        assert!(labels("Config::set(['app.name' => '").is_empty());
+        assert!(labels("Config::get(['app.name' => '").is_empty());
+        // Nested array data is not keys.
+        assert!(labels("Config::set(['app.options' => ['").is_empty());
+        assert!(labels("Config::get(['app.key' => ['").is_empty());
+        assert!(labels("Config::get('app.name', '").is_empty());
     }
 
     #[test]
