@@ -28,10 +28,10 @@ declared input changes (mtime comparison). The script declares:
   branch ref is packed.
 
 Branch refs live in the common dir shared by all worktrees, so the
-`commondir` file is resolved as well. Only existing paths are
-declared: cargo cannot stat a missing path and re-runs the script
-every time, which would rebuild `lapce-core` (and everything
-downstream) on every invocation.
+`commondir` file is resolved as well. Only paths that exist at run
+time are declared: a declaration for a missing path is inert - in
+current cargo it neither errors nor reliably re-triggers when the path
+appears later (host lab, item 391).
 
 The hash is resolved with `git show` pinned to `CARGO_MANIFEST_DIR`
 (git2 on non-Linux), so it always names THIS repo's HEAD regardless of
@@ -49,3 +49,8 @@ the caller's working directory.
 - A shared `CARGO_TARGET_DIR` across different checkouts relies on
   each checkout's git files being written on checkout/commit, which
   git does with fresh mtimes.
+- If the checkout's git metadata is invisible at build time - e.g. a
+  linked worktree built in a container without the main repo mounted -
+  the hash falls back to `unknown`, and on current cargo the git
+  files' later appearance does not by itself re-run the script. Force
+  a re-stamp with `cargo clean -p lapce-core` (item 391).

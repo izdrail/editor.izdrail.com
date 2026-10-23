@@ -50,8 +50,10 @@ fn main() -> Result<()> {
 ///   the branch ref is packed.
 ///
 /// Branch refs live in the common dir shared by all worktrees, so the
-/// `commondir` file is resolved too. Only existing paths are declared:
-/// cargo cannot stat a missing path and re-runs the script every time.
+/// `commondir` file is resolved too. Only paths that exist at run time
+/// are declared: a declaration for a missing path is inert - in
+/// current cargo it neither errors nor reliably re-triggers when the
+/// path appears later (host lab, item 389/391).
 fn track_repo_refs() {
     let dotgit = Path::new("../.git");
     let git_dir = if dotgit.is_dir() {
