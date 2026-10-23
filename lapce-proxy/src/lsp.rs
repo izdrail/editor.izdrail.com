@@ -406,6 +406,15 @@ fn detect_laravel(root: Option<&Path>) -> (bool, Option<PathBuf>) {
     (profile.laravel, laravel_root)
 }
 
+/// Servers that must not run without a user-opened folder (item 385).
+/// phpactor resolves its project root from the process cwd when no root is
+/// passed, then indexes or dies there. Servers that legitimately support
+/// single files (rust-analyzer, gopls, the npm-managed servers, ...) are
+/// deliberately not listed.
+fn workspace_dependent(server: &registry::Server) -> bool {
+    server.command == "phpactor" && server.packages.is_empty()
+}
+
 pub enum Job {
     Sync(crate::buffer::Buffer),
     Save(PathBuf),
@@ -442,6 +451,8 @@ impl Manager {
             let mut clients: HashMap<String, Arc<Client>> = HashMap::new();
             let mut failed: HashMap<String, Instant> = HashMap::new();
             let mut missing: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            let mut no_workspace_notified: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
             let mut laravel_probe: Option<(Instant, bool, Option<PathBuf>)> = None;
             let mut documents: HashMap<PathBuf, crate::buffer::Buffer> =
@@ -518,6 +529,28 @@ impl Manager {
                     let (name, server) = registry
                         .server(buffer.language_id, laravel_project)
                         .context("No enabled language server for this file")?;
+                    // phpactor without a workspace resolves the proxy's cwd
+                    // as its project root, then indexes or dies there (item
+                    // 385). Never spawn it outside a user-opened folder: no
+                    // cwd or parent-directory fallback, so nothing outside
+                    // the opened folder is ever indexed. Other servers keep
+                    // their single-file behavior.
+                    if root.is_none() && workspace_dependent(&server) {
+                        if no_workspace_notified.insert(name.clone()) {
+                            core.notification(CoreNotification::ShowMessage {
+                                title: "Language server".into(),
+                                message: lsp_types::ShowMessageParams {
+                                    typ: lsp_types::MessageType::INFO,
+                                    message: format!(
+                                        "{name}: open a folder to enable PHP language features; phpactor uses the opened folder as its project root and is not started for single files"
+                                    ),
+                                },
+                            });
+                        }
+                        anyhow::bail!(
+                            "{name} requires an open folder (no workspace root)"
+                        );
+                    }
                     if clients.get(&name).is_some_and(|client| !client.alive()) {
                         clients.remove(&name);
                     }
@@ -754,6 +787,66 @@ mod tests {
         std::fs::write(app.path().join("artisan"), "<?php").unwrap();
         let (_, value) = request(app.path()).unwrap();
         assert_eq!(value[0]["label"], "mock_completion");
+    }
+    #[test]
+    fn phpactor_is_not_spawned_without_a_workspace() {
+        use lapce_rpc::buffer::BufferId;
+        let registry = || registry::Registry {
+            enabled: true,
+            auto_install: false,
+            servers: HashMap::from([(
+                "php".into(),
+                registry::Server {
+                    languages: vec!["php".into()],
+                    command: "phpactor".into(),
+                    args: vec!["language-server".into()],
+                    ..registry::Server::default()
+                },
+            )]),
+        };
+        let request = |root: Option<&std::path::Path>| {
+            let manager = Manager::with_registry(
+                root.map(|r| r.to_path_buf()),
+                CoreRpcHandler::new(),
+                Ok(registry()),
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file.php");
+            std::fs::write(&path, "<?php").unwrap();
+            let mut buffer =
+                crate::buffer::Buffer::new(BufferId::next(), path.clone());
+            buffer.language_id = "php";
+            manager.send(Job::Sync(buffer.clone()));
+            let (tx, rx) = crossbeam_channel::bounded(1);
+            let uri = Url::from_file_path(&path).unwrap();
+            manager.send(Job::Request {
+                buffer,
+                method: "textDocument/hover".into(),
+                params: json!({"textDocument":{"uri":uri},"position":{"line":0,"character":0}}),
+                callback: Box::new(move |result| {
+                    tx.send(result).unwrap();
+                }),
+            });
+            rx.recv_timeout(Duration::from_secs(10)).unwrap()
+        };
+        // No workspace: refused by the guard before any spawn attempt - no
+        // cwd or parent-directory fallback can be reached.
+        let error = request(None).unwrap_err();
+        assert!(
+            error.message.contains("requires an open folder"),
+            "{error:?}"
+        );
+        // The predicate stays narrow: only the stock phpactor entry is
+        // workspace-dependent; single-file-capable servers are untouched.
+        assert!(workspace_dependent(&registry().servers["php"]));
+        assert!(!workspace_dependent(&registry::Server {
+            command: "rust-analyzer".into(),
+            ..registry::Server::default()
+        }));
+        assert!(!workspace_dependent(&registry::Server {
+            command: "/opt/my-php-ls".into(),
+            ..registry::Server::default()
+        }));
     }
     #[test]
     fn mock_stdio_roundtrip_sync_completion_hover_definition() {

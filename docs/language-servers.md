@@ -41,6 +41,14 @@ Custom commands/languages/options are supported. If multiple entries claim a
 language, the enabled alphabetically-first server wins; disable duplicates.
 It is one server per language, not multi-server aggregation.
 
+phpactor starts only when a folder is open (item 385): without a workspace it
+would resolve the proxy's working directory as its project root and index or
+die there, so the proxy refuses to spawn it for single files and shows a
+one-time "open a folder" message instead. There is deliberately no fallback
+to the file's parent directory - nothing outside the opened folder is ever
+indexed. Servers that legitimately support single files (rust-analyzer,
+gopls, the npm-managed servers) are unaffected.
+
 Managed npm packages have pinned versions. Install location is the editor data
 folder's language-servers/<server>/, never the project. Missing or changed pinned
 packages install lazily on first use. Install uses --ignore-scripts, --engine-strict,
