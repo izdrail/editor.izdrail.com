@@ -21,13 +21,26 @@ Alpine magic list (the magic context now also rejects a `.` before the
 object's own magics - `$set`, `$get`, `$toggle`, `$refresh` as methods,
 `$parent` and `$js` as properties - aligned with the `$wire` hover
 (item 350). The partial must start a known magic name, so `$wire.$foo`
-stays out of context, as do deeper paths (`$wire.$js.`).
+stays out of context. Deeper paths are handled by the more specific
+contexts: `$wire.$js.` is item 372 below, any other dotted path is out
+of context.
 
-Limits: inline `<script>` bodies and `@script` blocks are not member
-contexts; the view must map to a component class under
-`app/Livewire/**` or `app/Http/Livewire/**` (Volt/anonymous components
-have no class, so no members).
+`$wire.$js.<name>` (item 372): inside an Alpine expression attribute
+(`@click`, `x-on:`, `x-bind:`, `x-show`, ...) or a `wire:` attribute,
+`$wire.$js.` offers the `$js` functions registered in the CURRENT view
+- the `$js('name', fn)` registrations in its `@script` blocks (Livewire
+3). Names come from a textual scan of the saved file (same read model
+as the x-ref list), so a registration appears after the file is saved.
+`$wire.$j` / `$wire.$js` without the second dot stay the `$wire` magic
+context; a lookalike (`$wire.$jsx.`) or a deeper path
+(`$wire.$js.copy()`) is out of context; plain attributes (`class=`)
+and `x-data` are not contexts.
+
+Limits (v1): the scan is textual and covers only the current file, so
+names registered in a shared `@script` elsewhere or via a build step
+are not offered; only single-segment names are matched.
 
 Tests: `detects_livewire_wire_member_context`,
 `offers_livewire_wire_members`, `detects_livewire_wire_magic_context`,
-`offers_livewire_wire_magics`.
+`offers_livewire_wire_magics`, `detects_livewire_js_context`,
+`offers_livewire_js_names`.

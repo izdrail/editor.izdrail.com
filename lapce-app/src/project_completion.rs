@@ -72,6 +72,9 @@ pub enum Kind {
     /// Livewire `$wire.$magic`: the `$wire` object's own magics
     /// (`$set`, `$toggle`, `$refresh`, ...).
     LivewireMagic,
+    /// Livewire `$wire.$js.<name>`: a function registered with
+    /// `$js('name', fn)` in the view's `@script` block.
+    LivewireJs,
     /// Alpine `x-data="name"`: a component registered with
     /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
     AlpineData,
@@ -116,6 +119,22 @@ pub fn context(line: &str) -> Option<Kind> {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
         {
             return Some(Kind::AlpineRef);
+        }
+    }
+    // Livewire `$wire.$js.<name>`: a function registered with
+    // `$js('name', fn)` in the view's `@script` block (item 372). The
+    // more specific dotted path runs before the `$wire.$` magic scan.
+    if let Some(i) = line.rfind("$wire.$js.") {
+        let rest = &line[i + "$wire.$js.".len()..];
+        if rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            if let Some(attr) = quoted_value_attr(line) {
+                if alpine_expression_attr(&attr) || attr.starts_with("wire:") {
+                    return Some(Kind::LivewireJs);
+                }
+            }
         }
     }
     // Livewire `$wire.$magic` (`$set`, `$toggle`, ...): the partial
@@ -1239,6 +1258,50 @@ fn ref_names(file: Option<&Path>) -> Vec<String> {
     names
 }
 
+/// `$js('name', fn)` registrations in `text` (Livewire 3 `@script`).
+fn js_names_in(text: &str, out: &mut Vec<String>) {
+    let mut hay = text;
+    while let Some(i) = hay.find("$js(") {
+        hay = &hay[i + "$js(".len()..];
+        let t = hay.trim_start();
+        let Some(q) = t.chars().next() else { break };
+        if q != '\'' && q != '"' {
+            continue;
+        }
+        let body = &t[q.len_utf8()..];
+        let Some(end) = body.find(q) else { break };
+        let name = &body[..end];
+        if !name.is_empty()
+            && name.len() <= 80
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            out.push(name.to_string());
+        }
+        hay = &body[end..];
+    }
+}
+
+/// `$js` function names registered in the current file (read from the
+/// saved file, like the x-ref list), for `$wire.$js.` completion.
+fn js_names(file: Option<&Path>) -> Vec<String> {
+    let mut names = Vec::new();
+    let Some(f) = file else { return names };
+    let readable = std::fs::symlink_metadata(f)
+        .ok()
+        .is_some_and(|m| m.is_file() && m.len() <= 1 << 20);
+    if readable {
+        if let Ok(text) = std::fs::read_to_string(f) {
+            js_names_in(&text, &mut names);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names.truncate(100);
+    names
+}
+
 /// Caps for the Livewire event scan.
 const MAX_EVENT_FILES: usize = 400;
 const MAX_EVENTS: usize = 300;
@@ -2187,6 +2250,18 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::LivewireJs {
+        return js_names(file)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some("Livewire $js function".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     if kind == Kind::LivewireMagic {
         return LIVEWIRE_WIRE_MAGICS
             .iter()
@@ -2291,6 +2366,8 @@ pub fn items(
         Kind::LivewireMember => (Vec::new(), "Livewire member"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireMagic => (Vec::new(), "Livewire $wire magic"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireJs => (Vec::new(), "Livewire $js function"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineData => (Vec::new(), "Alpine.data component"),
         // Returned early above; the match must stay exhaustive.
@@ -2681,7 +2758,8 @@ mod tests {
         assert_eq!(context(r#"wire:click="$wire.$re"#), magic);
         // Unknown partials and deeper paths are not magic contexts.
         assert_eq!(context(r#"x-on:click="$wire.$foo"#), None);
-        assert_eq!(context(r#"x-on:click="$wire.$js."#), None);
+        // Since item 372 this is the `$js` function-name context.
+        assert_eq!(context(r#"x-on:click="$wire.$js."#), Some(Kind::LivewireJs));
         // Plain attributes and x-data are not magic contexts.
         assert_eq!(context(r#"class="$wire.$"#), None);
         assert_eq!(context(r#"x-data="$wire.$"#), None);
@@ -2707,6 +2785,47 @@ mod tests {
         );
         assert_eq!(items(r, None, r#"wire:click="$wire.$to"#).len(), 6);
         assert!(items(r, None, r#"class="$wire.$"#).is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_js_context() {
+        let js = Some(Kind::LivewireJs);
+        // A bare `$wire.$js.` and partial function names.
+        assert_eq!(context(r#"x-on:click="$wire.$js."#), js);
+        assert_eq!(context(r#"<button @click="$wire.$js.co"#), js);
+        assert_eq!(context(r#"wire:click="$wire.$js.save"#), js);
+        // Plain attributes and x-data are not contexts.
+        assert_eq!(context(r#"class="$wire.$js."#), None);
+        assert_eq!(context(r#"x-data="$wire.$js."#), None);
+        // `$wire.$j`/`$wire.$js` (no dot yet) stay `$wire` magics.
+        assert_eq!(context(r#"x-on:click="$wire.$j"#), Some(Kind::LivewireMagic));
+        assert_eq!(context(r#"x-on:click="$wire.$js"#), Some(Kind::LivewireMagic));
+        // A lookalike (`$jsx`) and a deeper path are not contexts.
+        assert_eq!(context(r#"x-on:click="$wire.$jsx."#), None);
+        assert_eq!(context(r#"x-on:click="$wire.$js.copy()"#), None);
+    }
+
+    #[test]
+    fn offers_livewire_js_names() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/views/livewire/clipboard.blade.php",
+            "<div>\n@script\n<script>\n    $js('copy', () => { $wire.save() });\n    $js(\"confirmSave\", () => {});\n</script>\n@endscript\n</div>\n",
+        );
+        let view = r.join("resources/views/livewire/clipboard.blade.php");
+        let labels = |line: &str| {
+            items(r, Some(view.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels("<button @click=\"$wire.$js."), ["confirmSave", "copy"]);
+        assert_eq!(labels("<button @click=\"$wire.$js.co"), ["confirmSave", "copy"]);
+        assert!(labels("<button class=\"$wire.$js.").is_empty());
+        // Without a file there is nothing to scan.
+        assert!(items(r, None, "<button @click=\"$wire.$js.").is_empty());
     }
 
     #[test]
