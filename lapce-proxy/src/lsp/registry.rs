@@ -93,6 +93,17 @@ impl Default for Registry {
                 vec![],
             ),
         ] {
+            let initialization_options = if name == "php" {
+                // Run code actions in-process (item 383). Phpactor's default
+                // outsources each codeAction to a spawned process killed after
+                // 5s; a timeout yields a silent empty result and a crash a
+                // JSON-RPC error, both indistinguishable from "no actions".
+                serde_json::json!({
+                    "language_server.code_action_outsource": false,
+                })
+            } else {
+                serde_json::json!({})
+            };
             servers.insert(
                 name.into(),
                 Server {
@@ -100,6 +111,7 @@ impl Default for Registry {
                     command: command.into(),
                     args: args.into_iter().map(str::to_owned).collect(),
                     packages: packages.into_iter().map(str::to_owned).collect(),
+                    initialization_options,
                     ..Server::default()
                 },
             );

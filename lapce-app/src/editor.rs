@@ -3688,6 +3688,10 @@ impl EditorData {
             (position, rev, diagnostics)
         });
 
+        // Both closures are dispatched through create_ext_action: the proxy
+        // callback must stay Send, so it cannot touch the Rc<Doc> directly.
+        // The clone for the error path must precede the move into `send`.
+        let doc_err = doc.clone();
         let send = create_ext_action(
             self.scope,
             move |resp: (PluginId, CodeActionResponse)| {
@@ -3698,18 +3702,29 @@ impl EditorData {
                 }
             },
         );
+        let send_err = create_ext_action(self.scope, move |()| {
+            doc_err.code_actions().update(|c| {
+                c.remove(&offset);
+            });
+        });
 
         self.common.proxy.get_code_actions(
             path,
             position,
             diagnostics,
             move |result| {
-                if let Ok(ProxyResponse::GetCodeActionsResponse {
-                    plugin_id,
-                    resp,
-                }) = result
-                {
-                    send((plugin_id, resp))
+                match result {
+                    Ok(ProxyResponse::GetCodeActionsResponse {
+                        plugin_id,
+                        resp,
+                    }) => send((plugin_id, resp)),
+                    // On error, drop the empty placeholder inserted above so
+                    // the next caret move retries; otherwise this offset
+                    // reports "no actions" forever (item 383).
+                    other => {
+                        tracing::warn!("code action request failed: {other:?}");
+                        send_err(());
+                    }
                 }
             },
         );
