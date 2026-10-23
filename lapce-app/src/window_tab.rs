@@ -2902,13 +2902,22 @@ impl WindowTabData {
         let area_bottom =
             (editor_window_origin.y + viewport_height).min(tab_size.height);
         let line_height = config.editor.line_height() as f64;
+        let max_height = 400.0_f64.min(tab_size.height);
+        // Place by the height the popup wants, never the measured one:
+        // the measurement is zero on the first open of a session and a
+        // capped measurement makes any placement self-justifying.
+        let wanted = crate::completion::desired_popup_height(
+            completion.filtered_items.len(),
+            line_height,
+            max_height,
+        );
         crate::completion::popup_vertical_placement(
             editor_window_origin.y + line_top,
             editor_window_origin.y + line_bottom,
-            completion.layout_rect.size().height,
+            wanted,
             area_top,
             area_bottom,
-            400.0_f64.min(tab_size.height),
+            max_height,
             line_height,
         )
     }

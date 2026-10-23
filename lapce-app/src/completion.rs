@@ -670,6 +670,12 @@ pub fn should_flip_above(y: f64, height: f64, area_bottom: f64) -> bool {
     y + height > area_bottom
 }
 
+/// The height the completion popup wants for `items` rows: one line per
+/// row plus the 1px border on each side, capped at `max_height`.
+pub fn desired_popup_height(items: usize, line_height: f64, max_height: f64) -> f64 {
+    (items as f64 * line_height + 2.0).min(max_height)
+}
+
 /// Vertical placement for a popup anchored to a text line: its `y` and a
 /// height cap. The popup goes below the line when it fits there or when
 /// below has at least as much room as above; otherwise it flips above the
@@ -678,6 +684,12 @@ pub fn should_flip_above(y: f64, height: f64, area_bottom: f64) -> bool {
 /// chosen side (`min_height` keeps at least one row reachable), instead
 /// of the old behaviour that flipped above whenever below was full and
 /// then clamped a too-tall popup to the window top over the typed line.
+///
+/// `height` must be the height the popup WANTS (see
+/// `desired_popup_height`), never a measured layout height: a measured
+/// height is zero on the first open of a session (nothing rendered yet,
+/// so "fits below" is seeded true) and after a capped render it equals
+/// the cap, which makes any placement self-justifying.
 pub fn popup_vertical_placement(
     line_top: f64,
     line_bottom: f64,
@@ -711,6 +723,24 @@ mod popup_geometry_tests {
         assert!(!flip(200.0, 200.0, 400.0));
         assert!(flip(201.0, 200.0, 400.0));
         assert!(flip(390.0, 20.0, 400.0));
+    }
+
+    #[test]
+    fn desired_height_counts_rows_plus_border() {
+        use super::desired_popup_height as want;
+        assert_eq!(want(10, 20.0, 400.0), 202.0);
+        assert_eq!(want(100, 20.0, 400.0), 400.0);
+        assert_eq!(want(1, 20.0, 400.0), 22.0);
+    }
+
+    #[test]
+    fn popup_vertical_cold_open_flips_on_desired_height() {
+        use super::popup_vertical_placement as place;
+        // First open of a session at the last visible line: the desired
+        // (not yet measured) height does not fit below, so the popup
+        // opens above at full size straight away.
+        let (y, cap) = place(300.0, 320.0, 202.0, 0.0, 325.0, 400.0, 20.0);
+        assert_eq!((y, cap), (98.0, 300.0));
     }
 
     #[test]

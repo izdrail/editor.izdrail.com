@@ -28,3 +28,20 @@ flip-only logic; they are candidates for the same treatment.
 Tests: `popup_vertical_prefers_below_when_it_fits`,
 `popup_vertical_flips_above_only_when_above_has_more_room`,
 `popup_vertical_never_covers_the_line`.
+
+## Item 361: place by desired height, not the last measurement
+
+Item 360 seeded the flip decision with the measured layout height. That
+height is zero on the first open of a session (nothing rendered yet), so
+a cold popup at the last visible line always "fit" below and was capped
+to a one-row strip; after a capped render the measurement equals the
+cap, which makes any placement self-justifying. Warm opens worked only
+because `layout_rect` keeps the previous session's measurement.
+
+Placement now uses the height the popup wants: filtered rows times the
+line height plus the border, capped (`desired_popup_height`). The flip
+decision no longer depends on anything the layout has rendered, so a
+cold popup at the bottom line opens above at full size immediately.
+
+Tests: `desired_height_counts_rows_plus_border`,
+`popup_vertical_cold_open_flips_on_desired_height`.
