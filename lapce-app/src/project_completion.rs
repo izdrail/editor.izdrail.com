@@ -133,6 +133,9 @@ pub enum Kind {
     /// Vite entry point: `Vite::asset('...')` / `@vite('...')` /
     /// `@vite(['...'])` (item 398).
     ViteEntry,
+    /// Log channel: `Log::channel('...')` / `Log::driver('...')` /
+    /// `Log::stack(['...'])` (item 399).
+    LogChannel,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1459,6 +1462,30 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Log channels (item 399): `Log::channel('...')` /
+        // `Log::driver('...')` take the name as the scalar first
+        // argument, `Log::stack([...])` takes a list of names
+        // (Laravel 12.x LogManager: channel($channel = null),
+        // driver($driver = null), stack(array $channels, ...)) - a
+        // scalar stack() is not a supported form. The receiver must
+        // be exactly `Log::`.
+        "channel" | "driver"
+            if static_head(&head[..word_start], "Log")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::LogChannel
+        }
+        "stack"
+            if static_head(&head[..word_start], "Log")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::LogChannel
+        }
         // Filesystem disks (item 397): `Storage::disk('...')` /
         // `Storage::drive('...')` take the disk name as the scalar
         // first argument (Laravel 12.x FilesystemManager:
@@ -1615,6 +1642,7 @@ struct Lists {
     middleware_aliases: Vec<String>,
     disks: Vec<String>,
     vite_entries: Vec<String>,
+    log_channels: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1790,14 +1818,13 @@ fn middleware_aliases(root: &Path) -> Vec<String> {
     out
 }
 
-/// Filesystem disk names (item 397): the top-level string keys of
-/// the `'disks' => [...]` array in `config/filesystems.php` - each
-/// key is a disk `Storage::disk('...')` can resolve. Only that array
-/// is scanned: the `'default'` key, per-disk settings (`'driver'`,
-/// `'bucket'`, ... one level deeper) and commented-out disks invent
-/// nothing. Sorted, deduped.
-fn filesystem_disks(root: &Path) -> Vec<String> {
-    let p = root.join("config/filesystems.php");
+/// The top-level string keys of the `'{key}' => [...]` array in
+/// `config/{file}.php` (items 397, 399): each key is a named driver
+/// entry (a filesystem disk, a log channel, ...). Only that array is
+/// scanned: sibling keys, per-entry settings one level deeper and
+/// commented-out entries invent nothing. Sorted, deduped.
+fn config_named_keys(root: &Path, file: &str, key: &str) -> Vec<String> {
+    let p = root.join("config").join(format!("{file}.php"));
     let Ok(meta) = std::fs::metadata(&p) else {
         return Vec::new();
     };
@@ -1814,7 +1841,7 @@ fn filesystem_disks(root: &Path) -> Vec<String> {
     let (masked, strings) = mask_comments(&text);
     let mut out = Vec::new();
     for (start, end) in &strings {
-        if &text[start + 1..*end] != "disks" {
+        if &text[start + 1..*end] != key {
             continue;
         }
         let after = masked[end + 1..].trim_start();
@@ -1832,6 +1859,16 @@ fn filesystem_disks(root: &Path) -> Vec<String> {
     out.dedup();
     out.truncate(MAX_NAMES);
     out
+}
+
+/// Filesystem disk names (item 397).
+fn filesystem_disks(root: &Path) -> Vec<String> {
+    config_named_keys(root, "filesystems", "disks")
+}
+
+/// Log channel names (item 399).
+fn log_channels(root: &Path) -> Vec<String> {
+    config_named_keys(root, "logging", "channels")
 }
 
 /// The top-level `'name' =>` keys of the array opened at `open`
@@ -2684,6 +2721,7 @@ fn lists(root: &Path) -> Lists {
     let middleware_aliases = middleware_aliases(root);
     let disks = filesystem_disks(root);
     let vite_entries = vite_entries(root);
+    let log_channels = log_channels(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2702,6 +2740,7 @@ fn lists(root: &Path) -> Lists {
         middleware_aliases,
         disks,
         vite_entries,
+        log_channels,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3344,6 +3383,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::LivewireEvent
                 | Kind::MiddlewareAlias
                 | Kind::StorageDisk
+                | Kind::LogChannel
         )
     )
 }
@@ -3846,6 +3886,7 @@ pub fn items(
             (lists.middleware_aliases, "middleware alias")
         }
         Kind::StorageDisk => (lists.disks, "filesystem disk"),
+        Kind::LogChannel => (lists.log_channels, "log channel"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -4699,6 +4740,24 @@ mod tests {
     }
 
     #[test]
+    fn detects_log_channel_context() {
+        let ch = Some(Kind::LogChannel);
+        assert_eq!(context("Log::channel('sl"), ch);
+        assert_eq!(context("Log::driver('sl"), ch);
+        assert_eq!(context("Log::stack(['single', 'sl"), ch);
+        assert_eq!(context("Log::stack(['sl"), ch);
+        // A scalar stack() is not a supported form; look-alike
+        // receivers, object calls, a second argument and comment or
+        // string-contained calls stay silent.
+        assert_eq!(context("Log::stack('sl"), None);
+        assert_eq!(context("MyLog::channel('sl"), None);
+        assert_eq!(context("$log->channel('sl"), None);
+        assert_eq!(context("Log::channel('slack', 'x"), None);
+        assert_eq!(context("// Log::channel('sl"), None);
+        assert_eq!(context("$h = \"use Log::channel('sl"), None);
+    }
+
+    #[test]
     fn detects_vite_entry_context() {
         let ve = Some(Kind::ViteEntry);
         assert_eq!(context("Vite::asset('resources/js/ap"), ve);
@@ -5066,6 +5125,38 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_log_channels() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/logging.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('LOG_CHANNEL', 'stack'),\n",
+                "    'channels' => [\n",
+                "        'single' => ['driver' => 'single'],\n",
+                "        'slack' => ['driver' => 'slack'],\n",
+                "        // 'flare' => ['driver' => 'flare'],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the channels array's top-level keys: not the
+        // 'default' key, the per-channel 'driver' settings one
+        // level deeper, or the commented-out 'flare'.
+        assert_eq!(labels("Log::channel('"), ["single", "slack"]);
+        assert_eq!(labels("Log::stack(['"), ["single", "slack"]);
+        assert!(labels("Log::stack('").is_empty());
     }
 
     #[test]
