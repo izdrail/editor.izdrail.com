@@ -1401,6 +1401,31 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::Lang
         }
+        // The View facade (item 396): the static twin of
+        // `view('...')` - `View::make('name', ...)` and
+        // `View::exists('name')` take the view name first, and
+        // `View::first(['a', 'b'])` takes a list of view names
+        // (Laravel 12.x Factory: make($view, ...), exists($view),
+        // first(array $views, ...)). A scalar `View::first('...')`
+        // is not a supported form; `make`/`exists` array strings
+        // are data, not names.
+        "make" | "exists"
+            if static_head(&head[..word_start], "View")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::View
+        }
+        "first"
+            if static_head(&head[..word_start], "View")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::View
+        }
         // The Config facade (item 395): the static twin of
         // `config('...')` - `Config::get/has/set('key', ...)` all
         // take the key first (Laravel 12.x Repository: get($key,
@@ -4524,6 +4549,24 @@ mod tests {
     }
 
     #[test]
+    fn detects_view_facade_context() {
+        let vw = Some(Kind::View);
+        assert_eq!(context("View::make('pages.ho"), vw);
+        assert_eq!(context("View::exists('pages.ho"), vw);
+        assert_eq!(context("View::first(['emails.welcome', 'fall"), vw);
+        // A scalar first(), a make()/exists() array, a look-alike
+        // receiver, the data argument, and comment/string-contained
+        // calls stay silent.
+        assert_eq!(context("View::first('pages.ho"), None);
+        assert_eq!(context("View::make(['pages.ho"), None);
+        assert_eq!(context("MyView::make('pages.ho"), None);
+        assert_eq!(context("$factory->make('pages.ho"), None);
+        assert_eq!(context("View::make('pages.home', ['ti"), None);
+        assert_eq!(context("// View::make('pages.ho"), None);
+        assert_eq!(context("$h = \"use View::make('pages.ho"), None);
+    }
+
+    #[test]
     fn detects_config_facade_context() {
         let cfg = Some(Kind::Config);
         assert_eq!(context("Config::get('app.na"), cfg);
@@ -4828,6 +4871,28 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_view_facade_names() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/pages/home.blade.php", "<h1>hi</h1>\n");
+        put(r, "resources/views/emails/welcome.php", "<p>w</p>\n");
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels("View::make('"), ["emails.welcome", "pages.home"]);
+        assert_eq!(labels("View::exists('"), ["emails.welcome", "pages.home"]);
+        assert_eq!(
+            labels("View::first(['pages.home', '"),
+            ["emails.welcome", "pages.home"]
+        );
+        assert!(labels("View::first('").is_empty());
+        assert!(labels("View::make('pages.home', ['").is_empty());
     }
 
     #[test]
