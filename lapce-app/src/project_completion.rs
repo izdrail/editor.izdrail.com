@@ -264,13 +264,39 @@ pub fn alpine_data_property_items(
     before_cursor: &str,
     line_before: &str,
 ) -> Vec<CompletionItem> {
+    // TEMPORARY diagnosis for the host ancestor-scope loss (item 365b):
+    // LAPCE_ALPINE_COMPLETION_DEBUG=1 logs what the parser saw in-app.
+    let debug = std::env::var_os("LAPCE_ALPINE_COMPLETION_DEBUG").is_some();
+    if debug {
+        let tail: String = before_cursor
+            .chars()
+            .rev()
+            .take(400)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        eprintln!(
+            "alpine-completion: line_before={line_before:?} before_cursor_tail={tail:?}"
+        );
+    }
     let Some(attr) = quoted_value_attr(line_before) else {
+        if debug {
+            eprintln!("alpine-completion: no open quoted value on the line");
+        }
         return Vec::new();
     };
     if !alpine_expression_attr(&attr) {
+        if debug {
+            eprintln!("alpine-completion: {attr:?} is not an expression attribute");
+        }
         return Vec::new();
     }
-    x_data_keys_at(before_cursor)
+    let keys = x_data_keys_at(before_cursor);
+    if debug {
+        eprintln!("alpine-completion: attr={attr:?} keys={keys:?}");
+    }
+    keys
         .into_iter()
         .take(MAX_ITEMS)
         .map(|n| CompletionItem {
@@ -529,7 +555,7 @@ fn push_data_key(segment: &str, keys: &mut Vec<String>) {
     let valid = !key.is_empty()
         && key
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '-'));
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '$' | '-'));
     if valid && !keys.iter().any(|k| k == key) {
         keys.push(key.to_string());
     }
@@ -2643,6 +2669,66 @@ Gate::define(\"buy-cd\", 'shop.buy');
         // wire: values stay Livewire contexts, not Alpine ones.
         let doc = r#"<div x-data="{ open: false }"><input wire:model="em"#;
         assert!(labels(doc, r#"<input wire:model="em"#).is_empty());
+    }
+
+    /// Regression: the exact ws365 host fixture where the GUI showed the
+    /// ancestor keys only as buffer words (item 365b).
+    #[test]
+    fn offers_x_data_properties_from_an_ancestor_tag() {
+        let before = concat!(
+            "<!DOCTYPE html>\n",
+            "<html>\n",
+            "<body>\n",
+            "<div x-data=\"{ count: 0, label: 'hi' }\" x-text=\"\"></div>\n",
+            "<div x-data=\"{ outerKey: 1 }\">\n",
+            "  <div x-data=\"{ innerKey: 2, bump() { this.innerKey++ } }\">\n",
+            "    <span x-text=\"inn",
+        );
+        let line = "    <span x-text=\"inn";
+        let labels: Vec<_> = alpine_data_property_items(before, line)
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(labels, ["innerKey", "bump"]);
+    }
+
+    /// Regression: the exact ws365b host fixture - non-ASCII object keys
+    /// (`caf\u{e9}`, `na\u{ef}ve`) are valid JavaScript identifiers and must
+    /// be offered (item 365b).
+    #[test]
+    fn offers_unicode_x_data_keys() {
+        let before = concat!(
+            "<!DOCTYPE html>\n",
+            "<html>\n",
+            "<body>\n",
+            "<div x-data=\"{ caf\u{e9}: 1, na\u{ef}ve: 2 }\" x-text=\"ca",
+        );
+        let line = "<div x-data=\"{ caf\u{e9}: 1, na\u{ef}ve: 2 }\" x-text=\"ca";
+        let labels: Vec<_> = alpine_data_property_items(before, line)
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(labels, ["caf\u{e9}", "na\u{ef}ve"]);
+    }
+
+    /// Regression: an unterminated quoted value on an earlier line must not
+    /// swallow following tags - the innermost well-formed x-data still wins
+    /// (item 365b).
+    #[test]
+    fn recovers_x_data_scope_after_malformed_prior_markup() {
+        let before = concat!(
+            "<!DOCTYPE html>\n",
+            "<html>\n",
+            "<body>\n",
+            "<div x-data=\"{ broken: \"><span x-text=\"\"></span>\n",
+            "<div x-data=\"{ caf\u{e9}: 1, naive: 2 }\" x-text=\"caf",
+        );
+        let line = "<div x-data=\"{ caf\u{e9}: 1, naive: 2 }\" x-text=\"caf";
+        let labels: Vec<_> = alpine_data_property_items(before, line)
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(labels, ["caf\u{e9}", "naive"]);
     }
 
     #[test]

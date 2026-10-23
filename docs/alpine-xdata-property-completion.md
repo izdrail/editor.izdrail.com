@@ -18,12 +18,20 @@ How it works:
 - The object literal's top-level keys are offered: plain and quoted
   keys, methods (`toggle() { ... }`), shorthand idents; spread entries
   are skipped; a truncated object (still being typed) yields the keys
-  completed so far.
+  completed so far. Non-ASCII identifier keys (`caf\u{e9}`, `na\u{ef}ve`)
+  are valid JavaScript and are offered too.
 
 Limits: attribute values that started on a previous line are not
 recognised, and `x-data="fn()"` component references are not resolved.
 Items blend as Project priority (item 358) from the first typed
 character (item 359).
 
+Diagnosis: `LAPCE_ALPINE_COMPLETION_DEBUG=1` logs the line, the buffer
+tail and the parsed keys on every invocation (temporary, item 365b -
+remove once the host ancestor-scope question is settled).
+
 Tests: `parses_x_data_keys`, `finds_x_data_on_the_innermost_open_tag`,
-`offers_x_data_properties_in_expression_values`.
+`offers_x_data_properties_in_expression_values`,
+`offers_x_data_properties_from_an_ancestor_tag`,
+`offers_unicode_x_data_keys`,
+`recovers_x_data_scope_after_malformed_prior_markup`.
