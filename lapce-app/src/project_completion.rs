@@ -110,6 +110,9 @@ pub enum Kind {
     /// Validation rule: the rules string of `->validate([...])`,
     /// `Validator::make(..., [...])` and `#[Validate('...')]`.
     ValidationRule,
+    /// Database table: `Schema::table('...')`, `DB::table('...')`,
+    /// `->constrained('...')` and friends.
+    DbTable,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -1100,6 +1103,24 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::Lang
         }
+        // Database tables (item 381): `Schema::table('...')` and drops,
+        // `DB::table('...')`, foreign references
+        // (`->constrained('users')`, `->on('users')`) and query joins.
+        // `Schema::create('...')` names a NEW table, so it stays out.
+        "table" | "drop" | "dropIfExists"
+            if head[..word_start].ends_with("Schema::") && arg == 0 =>
+        {
+            Kind::DbTable
+        }
+        "table" if head[..word_start].ends_with("DB::") && arg == 0 => {
+            Kind::DbTable
+        }
+        "constrained" | "on" | "join" | "leftJoin" | "rightJoin"
+        | "crossJoin"
+            if head[..word_start].ends_with("->") && arg == 0 =>
+        {
+            Kind::DbTable
+        }
         _ => return None,
     })
 }
@@ -1118,9 +1139,53 @@ struct Lists {
     components: Vec<String>,
     assets: Vec<String>,
     gates: Vec<String>,
+    tables: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
+
+/// Table names from `Schema::create('...')` in database/migrations
+/// (item 381). Sorted, deduped; `Schema::connection(...)->create(...)`
+/// is not seen.
+fn table_names(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(root.join("database/migrations"))
+    else {
+        return out;
+    };
+    let mut files: Vec<PathBuf> = rd
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "php"))
+        .collect();
+    files.sort();
+    files.truncate(MAX_ROUTE_FILES);
+    for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        for (i, _) in text.match_indices("Schema::create(") {
+            let rest = text[i + "Schema::create(".len()..].trim_start();
+            let Some(q) = rest.chars().next().filter(|c| *c == '\'' || *c == '"')
+            else {
+                continue;
+            };
+            let Some(end) = rest[1..].find(q) else { continue };
+            let name = &rest[1..1 + end];
+            if !name.is_empty()
+                && name.len() <= 100
+                && !out.iter().any(|n: &String| n == name)
+                && out.len() < MAX_NAMES
+            {
+                out.push(name.to_string());
+            }
+        }
+    }
+    out.sort();
+    out
+}
 
 /// `->name('...')` values in routes/*.php (Laravel).
 fn route_names(root: &Path) -> Vec<String> {
@@ -1684,6 +1749,7 @@ fn lists(root: &Path) -> Lists {
     let components = component_names(root);
     let assets = asset_paths(root);
     let gates = ability_names(root);
+    let tables = table_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -1697,6 +1763,7 @@ fn lists(root: &Path) -> Lists {
         components,
         assets,
         gates,
+        tables,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -2733,6 +2800,7 @@ pub fn items(
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
+        Kind::DbTable => (lists.tables, "database table"),
         // Returned early above; the match must stay exhaustive.
         Kind::ValidationRule => (Vec::new(), "validation rule"),
     };
@@ -2788,6 +2856,20 @@ mod tests {
             Some(Kind::Section)
         );
         assert_eq!(context("layout('lay"), None);
+        // Database tables (item 381): schema/query contexts name an
+        // existing table; `Schema::create` names a new one, so it and
+        // a bare `table('...')` stay silent.
+        assert_eq!(context("Schema::table('us"), Some(Kind::DbTable));
+        assert_eq!(context("Schema::dropIfExists('us"), Some(Kind::DbTable));
+        assert_eq!(context("DB::table('us"), Some(Kind::DbTable));
+        assert_eq!(
+            context("$table->foreignId('user_id')->constrained('us"),
+            Some(Kind::DbTable)
+        );
+        assert_eq!(context("->on('us"), Some(Kind::DbTable));
+        assert_eq!(context("->leftJoin('us"), Some(Kind::DbTable));
+        assert_eq!(context("Schema::create('us"), None);
+        assert_eq!(context("table('us"), None);
         assert_eq!(context("@push('scr"), Some(Kind::Stack));
         assert_eq!(context("@stack('mod"), Some(Kind::Stack));
         // Without the @, these are ordinary calls.
@@ -3508,6 +3590,39 @@ mod tests {
         );
         // The bare (non-chain) helper is not a Livewire layout context.
         assert!(labels("layout('lay").is_empty());
+    }
+
+    #[test]
+    fn offers_database_tables() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $t) {});\nSchema::create('password_resets', function (Blueprint $t) {});\n",
+        );
+        put(
+            r,
+            "database/migrations/2024_02_01_000000_create_posts_table.php",
+            "<?php\nSchema::create(\"posts\", function (Blueprint $t) {});\n",
+        );
+        // A `create` outside database/migrations is not harvested.
+        put(r, "database/schema/tables.php", "<?php\nSchema::create('ghost', function (Blueprint $t) {});\n");
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels("Schema::table('"),
+            ["password_resets", "posts", "users"]
+        );
+        assert_eq!(
+            labels("->constrained('us"),
+            ["password_resets", "posts", "users"]
+        );
+        assert!(labels("Schema::create('").is_empty());
     }
 
     #[test]
