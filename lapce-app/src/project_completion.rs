@@ -139,7 +139,8 @@ pub fn context(line: &str) -> Option<Kind> {
         if rest.is_empty()
             && attr.contains('.')
             && (event == "model"
-                || crate::livewire_handlers::EVENTS.contains(&event))
+                || crate::livewire_handlers::EVENTS.contains(&event)
+                || crate::livewire_handlers::MODIFIER_DIRECTIVES.contains(&event))
         {
             return Some(Kind::LivewireModifier);
         }
@@ -1513,6 +1514,13 @@ pub fn wire_modifiers_for(line: &str) -> Vec<CompletionItem> {
         "click" | "dblclick" | "submit" | "mouseenter" | "mouseleave" => {
             &["prevent", "stop"]
         }
+        "loading" => &[
+            "class", "class.remove", "attr", "remove", "delay",
+            "delay.shortest", "delay.longer", "delay.longest",
+        ],
+        "dirty" | "offline" => &["class", "class.remove", "attr", "remove"],
+        "navigate" => &["hover"],
+        "ignore" => &["self"],
         _ => &[],
     };
     names
@@ -1749,8 +1757,14 @@ mod tests {
             context("<input wire:keydown.enter='sa"),
             Some(Kind::LivewireAction)
         );
-        // Non-event attributes and closed values are not method contexts.
-        assert_eq!(context("<div wire:loading.cla"), None);
+        // Non-event directive attributes complete modifiers after the
+        // dot (item 362); their values and closed values are not method
+        // contexts.
+        assert_eq!(
+            context("<div wire:loading.cla"),
+            Some(Kind::LivewireModifier)
+        );
+        assert_eq!(context("<div wire:loading=\"cl"), None);
         assert_eq!(context("<div wire:key=\"it"), None);
         assert_eq!(context("<button wire:click=\"sa\""), None);
         assert_eq!(context("<button data-wire:click=\"sa"), None);
@@ -2239,6 +2253,30 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(labels, ["prevent", "stop"]);
         // Events without modifiers offer nothing.
         assert!(wire_modifiers_for("<div wire:poll.").is_empty());
+    }
+
+    #[test]
+    fn offers_livewire_directive_modifiers() {
+        assert_eq!(context("<div wire:loading."), Some(Kind::LivewireModifier));
+        assert_eq!(context("<div wire:loading.cl"), Some(Kind::LivewireModifier));
+        assert_eq!(context("<span wire:dirty."), Some(Kind::LivewireModifier));
+        assert_eq!(context("<a wire:navigate.h"), Some(Kind::LivewireModifier));
+        assert_eq!(context("<div wire:ignore."), Some(Kind::LivewireModifier));
+        let labels = wire_modifiers_for("<div wire:loading.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        for want in ["class", "class.remove", "attr", "remove", "delay", "delay.longest"] {
+            assert!(labels.contains(&want.to_string()), "{want}");
+        }
+        let labels = wire_modifiers_for("<div wire:dirty.")
+            .into_iter()
+            .map(|i| i.label)
+            .collect::<Vec<_>>();
+        assert!(labels.contains(&"class.remove".to_string()));
+        assert!(!labels.iter().any(|l| l.starts_with("delay")));
+        // Loading is not an action event: its value completes nothing.
+        assert_eq!(context("<div wire:loading=\""), None);
     }
 
     #[test]

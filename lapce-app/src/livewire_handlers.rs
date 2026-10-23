@@ -20,6 +20,12 @@ pub(crate) const EVENTS: &[&str] = &[
     "paste", "select", "confirm",
 ];
 
+/// `wire:` directives that take modifiers but are not action events:
+/// their value is not a component method (`wire:loading.class`,
+/// `wire:navigate.hover`, ...).
+pub(crate) const MODIFIER_DIRECTIVES: &[&str] =
+    &["loading", "dirty", "offline", "navigate", "ignore"];
+
 fn studly(part: &str) -> String {
     part.split(['-', '_'])
         .map(|w| {
