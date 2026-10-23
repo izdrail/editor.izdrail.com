@@ -118,6 +118,11 @@ pub enum Kind {
     /// validation rules (item 390). The table named before the comma
     /// decides which columns are offered.
     DbColumn,
+    /// Database column: the first argument of a query-builder call
+    /// (`->where('...')`, `->orderBy('...')`, ...) on a line that
+    /// names the base table earlier with `DB::table('...')`
+    /// (item 392).
+    QueryColumn,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1076,6 +1081,79 @@ fn validation_rule_context(line: &str) -> Option<Kind> {
     Some(Kind::ValidationRule)
 }
 
+/// The table named by the base of the query-builder chain that the
+/// call following `head` belongs to (item 392). `head` is the text
+/// before the call's method name and ends with `->`. The receiver is
+/// resolved by walking backward over whole `->method(...)` segments
+/// on comment/string-masked text, so a table named inside a
+/// completed subquery (`->whereIn('id', DB::table('posts')...)`)
+/// or by an earlier statement on the line is never inherited; only a
+/// chain whose base is a literal `DB::table('...')` qualifies.
+fn chain_table(head: &str) -> Option<&str> {
+    let (masked, _) = mask_comments(head);
+    let b = masked.as_bytes();
+    let mut i = masked.trim_end().len();
+    if !masked[..i].ends_with("->") {
+        return None;
+    }
+    i -= 2;
+    loop {
+        while i > 0 && b[i - 1].is_ascii_whitespace() {
+            i -= 1;
+        }
+        // Every consumed chain segment is a `method(...)` call; a
+        // property, variable or statement boundary ends the chain
+        // without a table.
+        if i == 0 || b[i - 1] != b')' {
+            return None;
+        }
+        let mut depth = 0usize;
+        let mut j = i;
+        while j > 0 {
+            j -= 1;
+            match b[j] {
+                b')' => depth += 1,
+                b'(' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if depth != 0 {
+            return None;
+        }
+        let mut k = j;
+        while k > 0 && (b[k - 1].is_ascii_alphanumeric() || b[k - 1] == b'_')
+        {
+            k -= 1;
+        }
+        let method = &masked[k..j];
+        let mut m = k;
+        while m > 0 && b[m - 1].is_ascii_whitespace() {
+            m -= 1;
+        }
+        if masked[..m].ends_with("->") {
+            i = m - 2;
+            continue;
+        }
+        if method == "table" && masked[..m].ends_with("::") {
+            let pre = masked[..m - 2].trim_end();
+            let db_ok = pre.ends_with("DB")
+                && (pre.len() == 2 || {
+                    let c = pre.as_bytes()[pre.len() - 3];
+                    !c.is_ascii_alphanumeric() && c != b'_'
+                });
+            if db_ok {
+                return quoted_word(head[j + 1..].trim_start());
+            }
+        }
+        return None;
+    }
+}
+
 /// The table named by an open `exists:TABLE,` / `unique:TABLE,` rule
 /// segment at the end of `line` (caret after the first comma).
 fn rule_param_table(line: &str) -> Option<&str> {
@@ -1279,6 +1357,23 @@ fn call_context(line: &str) -> Option<Kind> {
             if head[..word_start].ends_with("->") && arg == 0 =>
         {
             Kind::DbTable
+        }
+        // Query-builder columns (item 392): a column-name first
+        // argument, only when the call's own chain is based on a
+        // literal `DB::table('...')` earlier on the line.
+        // `Model::where('...')`, table-less lines and receivers the
+        // backward walk cannot prove stay silent - no model-to-table
+        // or cross-statement guessing.
+        "where" | "orWhere" | "whereIn" | "whereNotIn" | "whereNull"
+        | "whereNotNull" | "whereBetween" | "orderBy" | "groupBy"
+        | "select" | "pluck" | "value" | "latest" | "oldest"
+            if head[..word_start].ends_with("->") && arg == 0 =>
+        {
+            if chain_table(&head[..word_start]).is_some() {
+                Kind::QueryColumn
+            } else {
+                return None;
+            }
         }
         _ => return None,
     })
@@ -2954,6 +3049,22 @@ pub fn wire_modifiers_for(line: &str) -> Vec<CompletionItem> {
         .collect()
 }
 
+/// The harvested columns of `table` (items 390, 392).
+fn column_items(lists: &Lists, table: &str) -> Vec<CompletionItem> {
+    lists
+        .columns
+        .iter()
+        .filter(|(t, _)| t == table)
+        .take(MAX_ITEMS)
+        .map(|(_, c)| CompletionItem {
+            label: c.clone(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some(format!("{table} column")),
+            ..Default::default()
+        })
+        .collect()
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -3207,19 +3318,24 @@ pub fn items(
         let Some(table) = rule_param_table(line_before) else {
             return Vec::new();
         };
-        let lists = lists(root);
-        return lists
-            .columns
-            .iter()
-            .filter(|(t, _)| t == table)
-            .take(MAX_ITEMS)
-            .map(|(_, c)| CompletionItem {
-                label: c.clone(),
-                kind: Some(CompletionItemKind::PROPERTY),
-                detail: Some(format!("{table} column")),
-                ..Default::default()
-            })
-            .collect();
+        return column_items(&lists(root), table);
+    }
+    if kind == Kind::QueryColumn {
+        // The receiver head: text before the open call's method
+        // name, exactly as call_context sliced it.
+        let Some(paren) = line_before.rfind('(') else {
+            return Vec::new();
+        };
+        let word_start = paren
+            - line_before[..paren]
+                .bytes()
+                .rev()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                .count();
+        let Some(table) = chain_table(&line_before[..word_start]) else {
+            return Vec::new();
+        };
+        return column_items(&lists(root), table);
     }
     let lists = lists(root);
     let (names, detail) = match kind {
@@ -3277,6 +3393,8 @@ pub fn items(
         Kind::DbTable => (lists.tables, "database table"),
         // Returned early above; the match must stay exhaustive.
         Kind::DbColumn => (Vec::new(), "database column"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::QueryColumn => (Vec::new(), "database column"),
         // Returned early above; the match must stay exhaustive.
         Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
@@ -4080,6 +4198,42 @@ mod tests {
     }
 
     #[test]
+    fn detects_query_column_context() {
+        let col = Some(Kind::QueryColumn);
+        assert_eq!(context("DB::table('users')->where('em"), col);
+        assert_eq!(context("DB::table('users')->orderBy('na"), col);
+        assert_eq!(
+            context("DB::table('users')->where('email', 1)->orWhere('na"),
+            col
+        );
+        assert_eq!(context("DB::table('users')->select('na"), col);
+        // Nested chain: the nearest table wins.
+        assert_eq!(
+            context("DB::table('u')->whereIn('id', DB::table('p')->select('i"),
+            col
+        );
+        // A completed nested subquery is skipped: the outer call's
+        // receiver is the outer table.
+        assert_eq!(
+            context(
+                "DB::table('u')->whereIn('id', DB::table('p')->select('i'))->where('"
+            ),
+            col
+        );
+        // No base table on the line, a model static call, an
+        // unrelated receiver after a statement boundary, and a
+        // non-column argument position stay silent.
+        assert_eq!(context("->where('em"), None);
+        assert_eq!(context("User::where('em"), None);
+        assert_eq!(
+            context("$x = DB::table('users')->count(); $q->where('em"),
+            None
+        );
+        assert_eq!(context("DB::table('users')->where('email', '"), None);
+        assert_eq!(context("DB::table('users')->insert(['"), None);
+    }
+
+    #[test]
     fn offers_validation_rules() {
         let d = tempfile::tempdir().unwrap();
         let labels = |line: &str| {
@@ -4304,6 +4458,52 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_query_columns() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $table) {\n    $table->id();\n    $table->string('name');\n    $table->string('email');\n});\n",
+        );
+        put(
+            r,
+            "database/migrations/2024_02_01_000000_create_posts_table.php",
+            "<?php\nSchema::create('posts', function (Blueprint $table) {\n    $table->id();\n    $table->string('title');\n});\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels("DB::table('users')->where('"),
+            ["email", "id", "name"]
+        );
+        assert_eq!(labels("DB::table('posts')->orderBy('"), ["id", "title"]);
+        // Inside a nested chain the inner base decides.
+        assert_eq!(
+            labels("DB::table('users')->whereIn('id', DB::table('posts')->select('"),
+            ["id", "title"]
+        );
+        // After the nested subquery closes the outer base decides.
+        let closed = concat!(
+            "DB::table('users')->whereIn('id', DB::table('posts')",
+            "->select('u'))->where('"
+        );
+        assert_eq!(labels(closed), ["email", "id", "name"]);
+        // No chain base, an unrelated receiver across a statement
+        // boundary, and the value position stay silent.
+        assert!(labels("User::where('").is_empty());
+        assert!(labels(
+            "$x = DB::table('users')->count(); $q->where('"
+        )
+        .is_empty());
+        assert!(labels("DB::table('users')->where('email', '").is_empty());
     }
 
     #[test]
