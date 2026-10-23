@@ -40,7 +40,17 @@ Limits (v1): the scan is textual and covers only the current file, so
 names registered in a shared `@script` elsewhere or via a build step
 are not offered; only single-segment names are matched.
 
+`$entangle('...')` (item 373): the first quoted argument of
+`$entangle(`, `$wire.entangle(` (and a bare `entangle(`, matching the
+call-helper convention) offers the paired component's public
+properties - the same scan as `$wire.<member>`, minus the methods,
+which are not valid entangle arguments. Detection is the generic
+open-call-argument helper, so it works inside `x-data` object values,
+`@click`/`wire:` attribute values and `@script` blocks alike; once the
+argument string closes (`$entangle('show', `) the context ends.
+
 Tests: `detects_livewire_wire_member_context`,
 `offers_livewire_wire_members`, `detects_livewire_wire_magic_context`,
 `offers_livewire_wire_magics`, `detects_livewire_js_context`,
-`offers_livewire_js_names`.
+`offers_livewire_js_names`, `detects_livewire_entangle_context`,
+`offers_livewire_entangle_props`.

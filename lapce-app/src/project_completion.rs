@@ -75,6 +75,9 @@ pub enum Kind {
     /// Livewire `$wire.$js.<name>`: a function registered with
     /// `$js('name', fn)` in the view's `@script` block.
     LivewireJs,
+    /// `$entangle('...')` / `$wire.entangle('...')`: a public property
+    /// of the Livewire component paired with the current view.
+    LivewireEntangle,
     /// Alpine `x-data="name"`: a component registered with
     /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
     AlpineData,
@@ -827,6 +830,9 @@ fn call_context(line: &str) -> Option<Kind> {
         "dispatch" | "emit" | "emitTo" | "dispatchBrowserEvent" => {
             Kind::LivewireEvent
         }
+        // Alpine/Livewire entanglement: `$entangle('...')`,
+        // `$wire.entangle('...')`.
+        "entangle" => Kind::LivewireEntangle,
         "get" | "has" | "choice" if head[..word_start].ends_with("Lang::") => {
             Kind::Lang
         }
@@ -2277,6 +2283,10 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::LivewireEntangle {
+        // Only properties entangle; methods are not valid arguments.
+        return livewire_props(root, file);
+    }
     if kind == Kind::LivewireMember {
         let props = livewire_props(root, file);
         let seen: std::collections::HashSet<String> =
@@ -2368,6 +2378,8 @@ pub fn items(
         Kind::LivewireMagic => (Vec::new(), "Livewire $wire magic"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireJs => (Vec::new(), "Livewire $js function"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireEntangle => (Vec::new(), "Livewire property"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineData => (Vec::new(), "Alpine.data component"),
         // Returned early above; the match must stay exhaustive.
@@ -2826,6 +2838,51 @@ mod tests {
         assert!(labels("<button class=\"$wire.$js.").is_empty());
         // Without a file there is nothing to scan.
         assert!(items(r, None, "<button @click=\"$wire.$js.").is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_entangle_context() {
+        let ent = Some(Kind::LivewireEntangle);
+        // Bare, `$`-magic and `$wire`-member call shapes.
+        assert_eq!(context("$entangle('"), ent);
+        assert_eq!(context("$entangle('sh"), ent);
+        assert_eq!(context("$wire.entangle(\""), ent);
+        // The common home: an x-data object value.
+        assert_eq!(context("x-data=\"{ open: $entangle('sh"), ent);
+        assert_eq!(context("<button @click=\"$entangle('o"), ent);
+        // No open argument string: no context.
+        assert_eq!(context("$entangle("), None);
+        assert_eq!(context("$entangle('show'"), None);
+        assert_eq!(context("$entangle('show', "), None);
+        assert_eq!(context("$entangle('show')"), None);
+    }
+
+    #[test]
+    fn offers_livewire_entangle_props() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/views/livewire/user-profile.blade.php",
+            "<button>\n",
+        );
+        put(
+            r,
+            "app/Livewire/UserProfile.php",
+            "<?php\nclass UserProfile extends \\Livewire\\Component {\n    public $email = '';\n    public function save() {}\n}\n",
+        );
+        let view = r.join("resources/views/livewire/user-profile.blade.php");
+        let labels = |line: &str| {
+            items(r, Some(view.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Properties entangle; methods do not.
+        assert_eq!(labels("x-data=\"{ open: $entangle('"), ["email"]);
+        assert_eq!(labels("<button @click=\"$entangle('em"), ["email"]);
+        // Without a paired view file there is nothing to offer.
+        assert!(items(r, None, "$entangle('").is_empty());
     }
 
     #[test]
