@@ -2417,11 +2417,20 @@ pub fn items(
         let Ok(text) = std::fs::read_to_string(&class) else {
             return Vec::new();
         };
+        // Tags are HTML: attribute names are kebab-case. The
+        // `@livewire('name', [...])` array is PHP: keys read as the
+        // property names as declared (Livewire accepts both - mount
+        // params with `-` are camel-cased for matching).
+        let kebab_keys = livewire_prop_position(line_before).is_some();
         return crate::livewire_handlers::public_props(&text)
             .into_iter()
             .take(MAX_ITEMS)
             .map(|n| CompletionItem {
-                label: crate::blade_props::kebab(&n),
+                label: if kebab_keys {
+                    crate::blade_props::kebab(&n)
+                } else {
+                    n
+                },
                 kind: Some(CompletionItemKind::PROPERTY),
                 detail: Some("Livewire mount property".to_string()),
                 ..Default::default()
@@ -3321,8 +3330,8 @@ mod tests {
                 .map(|i| i.label)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(labels("@livewire('counter', ['"), ["count", "max-count"]);
-        assert_eq!(labels("@livewire('counter', ['cou"), ["count", "max-count"]);
+        assert_eq!(labels("@livewire('counter', ['"), ["count", "maxCount"]);
+        assert_eq!(labels("@livewire('counter', ['cou"), ["count", "maxCount"]);
         assert!(labels("@livewire('nope', ['").is_empty());
         assert!(labels("@livewire('counter', ['count' => '").is_empty());
     }
