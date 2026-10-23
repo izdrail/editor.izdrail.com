@@ -66,6 +66,9 @@ pub enum Kind {
     /// Alpine/Livewire magic property: `$el`, `$store`, `$wire`, ...
     /// typed inside an Alpine expression or `wire:` attribute value.
     AlpineMagic,
+    /// Livewire `$wire.<member>`: a property or method of the component
+    /// class, inside an Alpine expression or `wire:` attribute value.
+    LivewireMember,
     /// Livewire event name: `$dispatch('...')`, `$this->dispatch('...')`,
     /// `Livewire.dispatch('...')`, `->emit('...')` (Livewire 2).
     LivewireEvent,
@@ -109,6 +112,23 @@ pub fn context(line: &str) -> Option<Kind> {
             return Some(Kind::AlpineRef);
         }
     }
+    // Livewire `$wire.<member>`: the text after the last `$wire.` is a
+    // partial member name inside an Alpine expression or `wire:`
+    // attribute value. Runs before the magic scan and the `wire:` scan
+    // so `wire:click="$wire.sa` offers members, not bare method names.
+    if let Some(i) = line.rfind("$wire.") {
+        let rest = &line[i + "$wire.".len()..];
+        if rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            if let Some(attr) = quoted_value_attr(line) {
+                if alpine_expression_attr(&attr) || attr.starts_with("wire:") {
+                    return Some(Kind::LivewireMember);
+                }
+            }
+        }
+    }
     // Alpine/Livewire magic property (`$el`, `$store`, `$wire`, ...):
     // the line ends with `$` plus an optional partial identifier inside
     // an Alpine expression attribute value or a `wire:` attribute value.
@@ -123,11 +143,15 @@ pub fn context(line: &str) -> Option<Kind> {
         }
         // `i` is a char boundary: the scan only consumed ASCII bytes.
         if let Some(dollar) = line[..i].strip_suffix('$') {
-            // `foo$`, `$$` and `$this->` are not magic starts.
+            // `foo$`, `$$` and `$this->` are not magic starts, and a
+            // dot (`$wire.$`, `$this.$`) is a member-of-object position,
+            // not an Alpine magic one.
             let preceded = dollar
                 .chars()
                 .next_back()
-                .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$'));
+                .is_some_and(|c| {
+                    c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '.')
+                });
             // The partial must be empty or start a known magic name, so
             // an unrelated `$foo` does not raise an irrelevant list.
             let known_prefix = ALPINE_MAGICS
@@ -1951,6 +1975,18 @@ pub fn items(
     if kind == Kind::AlpineMagic {
         return alpine_magic_items();
     }
+    if kind == Kind::LivewireMember {
+        let props = livewire_props(root, file);
+        let seen: std::collections::HashSet<String> =
+            props.iter().map(|i| i.label.clone()).collect();
+        let mut out = props;
+        out.extend(
+            livewire_methods(root, file)
+                .into_iter()
+                .filter(|i| !seen.contains(&i.label)),
+        );
+        return out;
+    }
     if kind == Kind::LivewireEvent {
         return event_names(root)
             .into_iter()
@@ -2024,6 +2060,8 @@ pub fn items(
         Kind::AlpineRef => (Vec::new(), "Alpine x-ref"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineMagic => (Vec::new(), "Alpine magic"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireMember => (Vec::new(), "Livewire member"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireEvent => (Vec::new(), "Livewire event"),
         // Returned early above; the match must stay exhaustive.
@@ -2296,6 +2334,61 @@ mod tests {
         // The same list in a `wire:` value; nothing outside the context.
         assert_eq!(items(r, None, r#"wire:click="$"#).len(), 12);
         assert!(items(r, None, r#"class="$"#).is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_wire_member_context() {
+        let member = Some(Kind::LivewireMember);
+        // A bare `$wire.` and partial member names in Alpine expression
+        // and `wire:` attribute values.
+        assert_eq!(context(r#"x-on:click="$wire."#), member);
+        assert_eq!(context(r#"<button @click="$wire.sa"#), member);
+        assert_eq!(context(r#"x-show="$wire.cou"#), member);
+        assert_eq!(context(r#"wire:click="$wire.sa"#), member);
+        assert_eq!(context(r#"wire:model="$wire."#), member);
+        // Plain attributes and x-data are not member contexts.
+        assert_eq!(context(r#"class="$wire."#), None);
+        assert_eq!(context(r#"x-data="$wire."#), None);
+        // A partial magic name still wins before the dot.
+        assert_eq!(context(r#"x-on:click="$wi"#), Some(Kind::AlpineMagic));
+        // `$wire.$` is a member-of-`$wire` position, not an Alpine magic.
+        assert_eq!(context(r#"x-on:click="$wire.$"#), None);
+        // Helper calls on `$wire` keep their own contexts.
+        assert_eq!(
+            context(r#"x-on:click="$wire.dispatch('"#),
+            Some(Kind::LivewireEvent)
+        );
+        assert_eq!(context(r#"x-on:click="$wire.save('"#), None);
+    }
+
+    #[test]
+    fn offers_livewire_wire_members() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/views/livewire/user-profile.blade.php",
+            "<button>\n",
+        );
+        put(
+            r,
+            "app/Livewire/UserProfile.php",
+            "<?php\nclass UserProfile extends \\Livewire\\Component {\n    public $email = '';\n    public function save() {}\n    private function helper() {}\n}\n",
+        );
+        let view = r.join("resources/views/livewire/user-profile.blade.php");
+        let labels = |line: &str| {
+            items(r, Some(view.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Properties first, then methods, private members left out.
+        assert_eq!(labels("<button @click=\"$wire."), ["email", "save"]);
+        assert_eq!(labels("<span x-show=\"$wire.em"), ["email", "save"]);
+        assert_eq!(labels("<input wire:click=\"$wire."), ["email", "save"]);
+        assert!(labels("<span class=\"$wire.").is_empty());
+        // Without a paired view file there is nothing to offer.
+        assert!(items(r, None, "<button @click=\"$wire.").is_empty());
     }
 
     #[test]
