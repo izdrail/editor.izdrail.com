@@ -76,13 +76,18 @@ impl Extension {
 
     /// Explicit developer load only. No marketplace discovery or auto-activation.
     pub fn load(root: &Path) -> Result<Self, String> {
-        let root = root.canonicalize().map_err(|e| e.to_string())?;
+        let root = root
+            .canonicalize()
+            .map_err(|e| format!("canonicalize {}: {e}", root.display()))?;
         let read = |path: &Path| -> Result<String, String> {
-            let path = path.canonicalize().map_err(|e| e.to_string())?;
+            let path = path
+                .canonicalize()
+                .map_err(|e| format!("canonicalize {}: {e}", path.display()))?;
             if !path.starts_with(&root) {
                 return Err("Extension entry escapes package".into());
             }
-            let file = fs::File::open(path).map_err(|e| e.to_string())?;
+            let file = fs::File::open(&path)
+                .map_err(|e| format!("open {}: {e}", path.display()))?;
             if !file.metadata().map_err(|e| e.to_string())?.is_file() {
                 return Err("Not a regular file".into());
             }
@@ -244,7 +249,7 @@ impl Extension {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("spawn worker {}: {e}", worker.display()))?;
         let mut stdin = child.stdin.take().ok_or("Missing worker stdin")?;
         let stdout = child.stdout.take().ok_or("Missing worker stdout")?;
         let writer = std::thread::spawn(move || stdin.write_all(&request));
