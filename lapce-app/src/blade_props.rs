@@ -180,7 +180,7 @@ pub fn ctor_line(source: &str, name: &str) -> Option<usize> {
 }
 
 /// `fooBar` -> `foo-bar` (how the attribute is typed in a tag).
-fn kebab(name: &str) -> String {
+pub(crate) fn kebab(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars() {
         if c.is_ascii_uppercase() {

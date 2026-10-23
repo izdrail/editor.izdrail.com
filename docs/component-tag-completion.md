@@ -73,3 +73,16 @@ the merge with snippets/words follows the normal value-position rules.
 Tests: `detects_blade_prop_context`, `offers_blade_component_props`
 (project_completion), `prop_names_keys_and_list_items`,
 `ctor_params_in_order` (blade_props).
+
+Livewire mount properties (item 376): the same attribute-name position
+inside a `<livewire:...>` tag offers the component's public properties
+(kebab-case, like the Blade prop completion), resolved through the
+component class (`app/Livewire/**` or `app/Http/Livewire/**`);
+anonymous components resolve to a view and offer nothing. The
+`:prop="..."` binding prefix completes (Livewire 3); wire: attribute
+names and @listeners keep their existing completions, which mount
+props defer to. Right after a closing
+quote, before the separating space, the popup stays shut - the item
+340 `<livewire:counter :n="1"` pin keeps its meaning.
+
+Tests: `detects_livewire_prop_context`, `offers_livewire_mount_props`.

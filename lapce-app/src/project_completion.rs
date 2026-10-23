@@ -84,6 +84,9 @@ pub enum Kind {
     /// `<x-forms.input ty`: an attribute (prop) name inside a Blade
     /// component tag, after the tag name.
     BladeProp,
+    /// `<livewire:user-profile em`: a mount property name inside a
+    /// Livewire component tag, after the tag name.
+    LivewireProp,
     /// Alpine `x-data="name"`: a component registered with
     /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
     AlpineData,
@@ -399,6 +402,10 @@ pub fn context(line: &str) -> Option<Kind> {
     // name itself.
     if blade_prop_position(line).is_some() {
         return Some(Kind::BladeProp);
+    }
+    // Livewire mount property: `<livewire:user-profile em`.
+    if livewire_prop_position(line).is_some() {
+        return Some(Kind::LivewireProp);
     }
     call_context(line)
 }
@@ -778,13 +785,25 @@ fn push_data_key(segment: &str, keys: &mut Vec<String>) {
     }
 }
 
-/// The component tag and attribute partial at the end of `line` when
-/// the caret sits at an attribute-name position inside an `<x-...` tag:
-/// the tag opened on this same line, has not closed, the caret is
-/// outside quotes, and not right after `=` or `/`. Attributes on later
-/// lines of a multi-line tag are not seen (v1).
+/// The caret at an attribute-name position inside an `<x-...` tag.
 fn blade_prop_position(line: &str) -> Option<(&str, &str)> {
-    let open = line.rfind("<x-")?;
+    tag_attr_position(line, "<x-")
+}
+
+/// The caret at an attribute-name position inside a `<livewire:...`
+/// tag.
+fn livewire_prop_position(line: &str) -> Option<(&str, &str)> {
+    tag_attr_position(line, "<livewire:")
+}
+
+/// The component tag and attribute partial at the end of `line` when
+/// the caret sits at an attribute-name position inside a component tag
+/// opened with `marker` (`<x-` or `<livewire:`): the tag opened on this
+/// same line, has not closed, the caret is outside quotes, and not
+/// right after `=`, `/` or a closing quote. Attributes on later lines
+/// of a multi-line tag are not seen (v1).
+fn tag_attr_position<'a>(line: &'a str, marker: &str) -> Option<(&'a str, &'a str)> {
+    let open = line.rfind(marker)?;
     // A name-ish char before `<` means a longer word (`foo<x-`).
     if line[..open]
         .chars()
@@ -793,14 +812,17 @@ fn blade_prop_position(line: &str) -> Option<(&str, &str)> {
     {
         return None;
     }
-    let after = &line[open + 3..];
+    let after = &line[open + marker.len()..];
     let name_end = after.find(|c: char| {
         !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
     })?;
     let tag = &after[..name_end];
     // Caret on the name (the tag-name context wins), and `<x-slot...`
     // takes no props.
-    if tag.is_empty() || tag == "slot" || after[name_end..].starts_with(':') {
+    if tag.is_empty()
+        || (tag == "slot" && marker == "<x-")
+        || after[name_end..].starts_with(':')
+    {
         return None;
     }
     let rest = &after[name_end..];
@@ -2321,6 +2343,38 @@ pub fn items(
     if kind == Kind::ComponentTag {
         return component_tags(root, file);
     }
+    if kind == Kind::LivewireProp {
+        let Some((tag, _)) = livewire_prop_position(line_before) else {
+            return Vec::new();
+        };
+        let Some(class) = crate::template_refs::livewire_component(root, tag)
+        else {
+            return Vec::new();
+        };
+        // Anonymous components resolve to a view and take no props.
+        if class.to_string_lossy().ends_with(".blade.php") {
+            return Vec::new();
+        }
+        let readable = std::fs::symlink_metadata(&class)
+            .ok()
+            .is_some_and(|m| m.is_file() && m.len() <= 1 << 20);
+        if !readable {
+            return Vec::new();
+        }
+        let Ok(text) = std::fs::read_to_string(&class) else {
+            return Vec::new();
+        };
+        return crate::livewire_handlers::public_props(&text)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: crate::blade_props::kebab(&n),
+                kind: Some(CompletionItemKind::PROPERTY),
+                detail: Some("Livewire mount property".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     if kind == Kind::BladeProp {
         let Some((tag, _)) = blade_prop_position(line_before) else {
             return Vec::new();
@@ -2497,6 +2551,8 @@ pub fn items(
         Kind::ComponentTag => (Vec::new(), "Blade component"),
         // Returned early above; the match must stay exhaustive.
         Kind::BladeProp => (Vec::new(), "Blade component prop"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireProp => (Vec::new(), "Livewire mount property"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireName => (Vec::new(), "Livewire component"),
         // Returned early above; the match must stay exhaustive.
@@ -3130,6 +3186,56 @@ mod tests {
         // Unknown components and value positions offer nothing.
         assert!(labels("<x-nope ").is_empty());
         assert!(labels("<x-forms.input type=").is_empty());
+    }
+
+    #[test]
+    fn detects_livewire_prop_context() {
+        let prop = Some(Kind::LivewireProp);
+        // After the tag name: empty and partial mount-property names.
+        assert_eq!(context("<livewire:counter "), prop);
+        assert_eq!(context(" <livewire:admin.user-profile em"), prop);
+        assert_eq!(context(r#"<livewire:counter count="5" st"#), prop);
+        // The `:prop` binding prefix completes too (Livewire 3).
+        assert_eq!(context("<livewire:counter :cou"), prop);
+        // The tag-name position stays the tag-name context.
+        assert_eq!(context("<livewire:admin.us"), Some(Kind::LivewireTag));
+        // Inside a quoted value, at a value position, after `/>`, the
+        // self-closing slash or a closing quote: no context.
+        assert_eq!(context(r#"<livewire:counter count="5"#), None);
+        assert_eq!(context("<livewire:counter count="), None);
+        assert_eq!(context(r#"<livewire:counter count="5" />"#), None);
+        assert_eq!(context(r#"<livewire:counter :n="1""#), None);
+        // wire: attribute names and @listeners keep their PRE-EXISTING
+        // contexts (checked earlier): mount props defer to them.
+        assert_eq!(
+            context("<livewire:counter wire:cl"),
+            Some(Kind::LivewireAttribute)
+        );
+        assert_eq!(context("<livewire:counter @"), Some(Kind::AlpineEvent));
+    }
+
+    #[test]
+    fn offers_livewire_mount_props() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Livewire/Counter.php",
+            "<?php\nclass Counter extends \\Livewire\\Component {\n    public $count = 0;\n    public $maxCount = 10;\n    private $secret = 1;\n    public function save() {}\n}\n",
+        );
+        put(r, "resources/views/livewire/counter.blade.php", "<div>\n");
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Public properties only, camelCase offered as kebab-case.
+        assert_eq!(labels("<livewire:counter "), ["count", "max-count"]);
+        assert_eq!(labels("<livewire:counter ma"), ["count", "max-count"]);
+        // Unknown components and value positions offer nothing.
+        assert!(labels("<livewire:nope ").is_empty());
+        assert!(labels("<livewire:counter count=").is_empty());
     }
 
     #[test]
