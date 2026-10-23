@@ -69,6 +69,9 @@ pub enum Kind {
     /// Livewire `$wire.<member>`: a property or method of the component
     /// class, inside an Alpine expression or `wire:` attribute value.
     LivewireMember,
+    /// Alpine `x-data="name"`: a component registered with
+    /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
+    AlpineData,
     /// Livewire event name: `$dispatch('...')`, `$this->dispatch('...')`,
     /// `Livewire.dispatch('...')`, `->emit('...')` (Livewire 2).
     LivewireEvent,
@@ -125,6 +128,34 @@ pub fn context(line: &str) -> Option<Kind> {
             if let Some(attr) = quoted_value_attr(line) {
                 if alpine_expression_attr(&attr) || attr.starts_with("wire:") {
                     return Some(Kind::LivewireMember);
+                }
+            }
+        }
+    }
+    // Alpine `x-data="dro"`: a component registered with
+    // `Alpine.data('dro', ...)`. The whole quoted value must be a
+    // partial name, so `x-data="dropdown({ cou` falls out of context
+    // once the call (or any expression) begins.
+    if let Some(at) = line.rfind("x-data=") {
+        // A name-ish char before means a longer attribute (`data-x-data=`).
+        if !line[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| {
+                c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.')
+            })
+        {
+            let after = line[at + "x-data=".len()..].trim_start();
+            if let Some(q) = after.chars().next() {
+                if q == '"' || q == '\'' {
+                    let value = &after[q.len_utf8()..];
+                    if !value.contains(q)
+                        && value.bytes().all(|b| {
+                            b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-')
+                        })
+                    {
+                        return Some(Kind::AlpineData);
+                    }
                 }
             }
         }
@@ -988,6 +1019,49 @@ fn store_names(root: &Path) -> Vec<String> {
         }
         if let Ok(text) = std::fs::read_to_string(&f) {
             stores_in(&text, &mut names);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names.truncate(MAX_STORES);
+    names
+}
+
+/// Component names from `Alpine.data('name', ...)` calls in `text`.
+fn data_names_in(text: &str, out: &mut Vec<String>) {
+    let mut hay = text;
+    while let Some(i) = hay.find("Alpine.data(") {
+        hay = &hay[i + "Alpine.data(".len()..];
+        let t = hay.trim_start();
+        let Some(q) = t.chars().next() else { break };
+        if q != '\'' && q != '"' {
+            continue;
+        }
+        let body = &t[q.len_utf8()..];
+        let Some(end) = body.find(q) else { break };
+        let name = &body[..end];
+        if !name.is_empty() && name.len() <= 80 && !name.contains('\\') {
+            out.push(name.to_string());
+        }
+        hay = &body[end..];
+    }
+}
+
+/// Alpine component names registered with `Alpine.data('name', ...)` in
+/// the project's JS/TS files and inline `<script>` in Blade views.
+/// Textual scan, like the store scan; nothing is executed.
+fn data_names(root: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    for base in ["resources/js", "resources/ts", "resources/views", "public/js"] {
+        walk_store_files(&root.join(base), 0, &mut files);
+    }
+    let mut names = Vec::new();
+    for f in files {
+        if names.len() >= MAX_STORES {
+            break;
+        }
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            data_names_in(&text, &mut names);
         }
     }
     names.sort();
@@ -1975,6 +2049,18 @@ pub fn items(
     if kind == Kind::AlpineMagic {
         return alpine_magic_items();
     }
+    if kind == Kind::AlpineData {
+        return data_names(root)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("Alpine.data component".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     if kind == Kind::LivewireMember {
         let props = livewire_props(root, file);
         let seen: std::collections::HashSet<String> =
@@ -2062,6 +2148,8 @@ pub fn items(
         Kind::AlpineMagic => (Vec::new(), "Alpine magic"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireMember => (Vec::new(), "Livewire member"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::AlpineData => (Vec::new(), "Alpine.data component"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireEvent => (Vec::new(), "Livewire event"),
         // Returned early above; the match must stay exhaustive.
@@ -2389,6 +2477,54 @@ mod tests {
         assert!(labels("<span class=\"$wire.").is_empty());
         // Without a paired view file there is nothing to offer.
         assert!(items(r, None, "<button @click=\"$wire.").is_empty());
+    }
+
+    #[test]
+    fn detects_alpine_data_context() {
+        let data = Some(Kind::AlpineData);
+        // A bare `x-data="` and partial component names, either quote.
+        assert_eq!(context(r#"<div x-data=""#), data);
+        assert_eq!(context(r#"<div x-data="dro"#), data);
+        assert_eq!(context(r#"<div x-data='sea"#), data);
+        assert_eq!(context(r#"<div x-data="search-fo"#), data);
+        // The whole value must be a partial name: a call or expression
+        // falls out of context.
+        assert_eq!(context(r#"<div x-data="dropdown({ cou"#), None);
+        assert_eq!(context(r#"<div x-data="{ open: fa"#), None);
+        // A closed x-data earlier on the line does not count.
+        assert_eq!(context(r#"<div x-data="dropdown" x-show="op"#), None);
+        // A longer attribute name containing `x-data=` is not x-data.
+        assert_eq!(context(r#"<div data-x-data="dro"#), None);
+        // Other attributes and expressions are untouched.
+        assert_eq!(context(r#"<div class="dro"#), None);
+        assert_eq!(context(r#"x-show="dro"#), None);
+        assert_eq!(context(r#"x-data="$"#), None);
+    }
+
+    #[test]
+    fn offers_alpine_data_names() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/js/components.js",
+            "Alpine.data('dropdown', () => ({ open: false }));\nAlpine.data(\"search-form\", () => ({}));\n",
+        );
+        put(
+            r,
+            "resources/views/layouts/app.blade.php",
+            "<script>Alpine.data('tabs', () => ({}));</script>\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let got = labels("<div x-data=\"");
+        assert_eq!(got, ["dropdown", "search-form", "tabs"]);
+        assert_eq!(labels("<div x-data=\"dro"), ["dropdown", "search-form", "tabs"]);
+        assert!(labels("<div class=\"dro").is_empty());
     }
 
     #[test]
