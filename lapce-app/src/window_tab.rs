@@ -2834,17 +2834,11 @@ impl WindowTabData {
                     - 5.0,
                 point_below.y - viewport.y0,
             );
-        // Flip against the bottom of the editor viewport, not the whole tab,
-        // so the popup does not open over the terminal or other panels.
-        let area_bottom = (window_origin.y + viewport.height()).min(tab_size.height);
-        if crate::completion::should_flip_above(
-            origin.y,
-            completion_size.height,
-            area_bottom,
-        ) {
-            origin.y = window_origin.y + (point_above.y - viewport.y0)
-                - completion_size.height;
-        }
+        let (origin_y, height_cap) = self.completion_vertical(
+            point_above.y - viewport.y0,
+            point_below.y - viewport.y0,
+        );
+        origin.y = origin_y;
         if origin.x + completion_size.width + 1.0 > tab_size.width {
             origin.x = tab_size.width - completion_size.width - 1.0;
         }
@@ -2852,11 +2846,71 @@ impl WindowTabData {
             origin.x = 0.0;
         }
 
+        // Clamp with the height the view will actually render at
+        // (`max_height` caps it), not the stale measured one.
+        let height = completion_size.height.min(height_cap);
         let (x, y) = crate::completion::clamp_popup_origin(
-            origin.x, origin.y, completion_size.width, completion_size.height,
+            origin.x, origin.y, completion_size.width, height,
             tab_size.width, tab_size.height,
         );
         Point::new(x, y)
+    }
+
+    /// Height cap for the completion popup: the room on the side of the
+    /// cursor line where `completion_origin` places it.
+    pub fn completion_max_height(&self) -> f64 {
+        let completion = self.common.completion.get();
+        if completion.status == CompletionStatus::Inactive {
+            return 0.0;
+        }
+        let editor_data =
+            if let Some(editor) = self.main_split.active_editor.get_untracked() {
+                editor
+            } else {
+                return 0.0;
+            };
+        let viewport = editor_data.viewport().get();
+        let (point_above, point_below) = editor_data
+            .editor
+            .points_of_offset(completion.offset, CursorAffinity::Forward);
+        self.completion_vertical(
+            point_above.y - viewport.y0,
+            point_below.y - viewport.y0,
+        )
+        .1
+    }
+
+    /// Shared vertical placement for the completion popup: (y, height cap),
+    /// in tab coordinates. See `completion::popup_vertical_placement`.
+    fn completion_vertical(&self, line_top: f64, line_bottom: f64) -> (f64, f64) {
+        let completion = self.common.completion.get_untracked();
+        let config = self.common.config.get_untracked();
+        let window_origin = self.common.window_origin.get_untracked();
+        let editor_data = self.main_split.active_editor.get_untracked();
+        let (editor_window_origin, viewport_height) = editor_data
+            .map(|e| {
+                (
+                    e.window_origin().get_untracked() - window_origin.to_vec2(),
+                    e.viewport().get_untracked().height(),
+                )
+            })
+            .unwrap_or_default();
+        let tab_size = self.layout_rect.get_untracked().size();
+        let area_top = editor_window_origin.y.max(0.0);
+        // Flip against the bottom of the editor viewport, not the whole tab,
+        // so the popup does not open over the terminal or other panels.
+        let area_bottom =
+            (editor_window_origin.y + viewport_height).min(tab_size.height);
+        let line_height = config.editor.line_height() as f64;
+        crate::completion::popup_vertical_placement(
+            editor_window_origin.y + line_top,
+            editor_window_origin.y + line_bottom,
+            completion.layout_rect.size().height,
+            area_top,
+            area_bottom,
+            400.0_f64.min(tab_size.height),
+            line_height,
+        )
     }
 
     pub fn code_action_origin(&self) -> Point {

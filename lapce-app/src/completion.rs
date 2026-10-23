@@ -670,6 +670,38 @@ pub fn should_flip_above(y: f64, height: f64, area_bottom: f64) -> bool {
     y + height > area_bottom
 }
 
+/// Vertical placement for a popup anchored to a text line: its `y` and a
+/// height cap. The popup goes below the line when it fits there or when
+/// below has at least as much room as above; otherwise it flips above the
+/// line. Either way it stays inside `area_top..area_bottom` and never
+/// covers the line itself: the cap shrinks the popup to the room on the
+/// chosen side (`min_height` keeps at least one row reachable), instead
+/// of the old behaviour that flipped above whenever below was full and
+/// then clamped a too-tall popup to the window top over the typed line.
+pub fn popup_vertical_placement(
+    line_top: f64,
+    line_bottom: f64,
+    height: f64,
+    area_top: f64,
+    area_bottom: f64,
+    max_height: f64,
+    min_height: f64,
+) -> (f64, f64) {
+    let space_below = (area_bottom - line_bottom).max(0.0);
+    let space_above = (line_top - area_top).max(0.0);
+    let fits_below = !should_flip_above(line_bottom, height, area_bottom);
+    let above = !fits_below && space_above > space_below;
+    let cap = max_height
+        .min(if above { space_above } else { space_below })
+        .max(min_height);
+    let y = if above {
+        (line_top - height.min(cap)).max(area_top)
+    } else {
+        line_bottom
+    };
+    (y, cap)
+}
+
 #[cfg(test)]
 mod popup_geometry_tests {
     #[test]
@@ -679,6 +711,39 @@ mod popup_geometry_tests {
         assert!(!flip(200.0, 200.0, 400.0));
         assert!(flip(201.0, 200.0, 400.0));
         assert!(flip(390.0, 20.0, 400.0));
+    }
+
+    #[test]
+    fn popup_vertical_prefers_below_when_it_fits() {
+        use super::popup_vertical_placement as place;
+        // Plenty of room below: same spot, cap is the usual maximum.
+        let (y, cap) = place(100.0, 120.0, 200.0, 0.0, 800.0, 400.0, 20.0);
+        assert_eq!((y, cap), (120.0, 400.0));
+    }
+
+    #[test]
+    fn popup_vertical_flips_above_only_when_above_has_more_room() {
+        use super::popup_vertical_placement as place;
+        // No room below (30), more above (300): flip, bottom touches the line.
+        let (y, cap) = place(300.0, 320.0, 200.0, 0.0, 350.0, 400.0, 20.0);
+        assert_eq!((y, cap), (100.0, 300.0));
+        // No room below and above is even tighter: stay below, shrink to fit.
+        let (y, cap) = place(50.0, 70.0, 200.0, 0.0, 130.0, 400.0, 20.0);
+        assert_eq!((y, cap), (70.0, 60.0));
+    }
+
+    #[test]
+    fn popup_vertical_never_covers_the_line() {
+        use super::popup_vertical_placement as place;
+        // Short viewport, more room above, tall popup: capped to the room
+        // above, so it ends at the line top instead of overlapping the
+        // line from the window edge.
+        let (y, cap) = place(90.0, 110.0, 400.0, 0.0, 140.0, 400.0, 20.0);
+        assert_eq!((y, cap), (0.0, 90.0));
+        assert!(y + cap <= 90.0);
+        // Degenerate no-room case: the min-height floor keeps a row usable.
+        let (_, cap) = place(10.0, 12.0, 400.0, 10.0, 12.0, 400.0, 20.0);
+        assert_eq!(cap, 20.0);
     }
 
     #[test]

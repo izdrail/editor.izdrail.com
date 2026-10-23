@@ -3347,7 +3347,7 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
             .position(Position::Absolute)
             .width((config.editor.completion_width as f64)
                 .max(1.0).min((tab_rect.get().width() - 1.0).max(0.0)) as f32)
-            .max_height(400.0_f64.min(tab_rect.get().height().max(0.0)) as f32)
+            .max_height(window_tab_data.completion_max_height().max(1.0) as f32)
             .set(PropagatePointerWheel, false)
             .margin_left(origin.x as f32)
             .margin_top(origin.y as f32)
