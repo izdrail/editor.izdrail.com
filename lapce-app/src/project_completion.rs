@@ -767,27 +767,35 @@ fn push_data_key(segment: &str, keys: &mut Vec<String>) {
 
 /// The context of an open quoted call argument at the end of `line`
 /// (`route('...`, `$dispatch('...`): the last `(` whose argument string
-/// is still open. Quote escapes are not read; `route('it\'s')` is rare
-/// and simply falls out of context.
+/// is still open, in the argument the helper actually takes the name in
+/// (almost always the first). Quote escapes are not read;
+/// `route('it\'s')` is rare and simply falls out of context.
 fn call_context(line: &str) -> Option<Kind> {
     let paren = line.rfind('(')?;
     let before = &line[..paren];
-    // Still inside the argument string: quote state at end of line is open.
+    // Still inside the argument string: quote state at end of line is
+    // open. Track which argument the cursor is in: commas separate
+    // arguments only at bracket depth zero, so the array in
+    // `@includeFirst(['one', 'two'])` stays inside its first argument.
     let mut in_str: Option<char> = None;
+    let mut depth: i32 = 0;
+    let mut arg = 0usize;
     for c in line[paren + 1..].chars() {
         match in_str {
-            None => {
-                if c == '\'' || c == '"' {
-                    in_str = Some(c);
-                } else if c == ')' {
-                    return None;
-                }
-            }
             Some(q) => {
                 if c == q {
                     in_str = None;
                 }
             }
+            None => match c {
+                '\'' | '"' => in_str = Some(c),
+                '[' | '(' | '{' => depth += 1,
+                ']' | '}' => depth -= 1,
+                ')' if depth == 0 => return None,
+                ')' => depth -= 1,
+                ',' if depth == 0 => arg += 1,
+                _ => {}
+            },
         }
     }
     in_str?;
@@ -800,40 +808,50 @@ fn call_context(line: &str) -> Option<Kind> {
     let blade = head[..word_start].ends_with('@');
     Some(match word {
         "route" | "to_route" | "routeIs" | "path" | "generateUrl"
-        | "redirectToRoute" | "generate" => Kind::Route,
+        | "redirectToRoute" | "generate" if arg == 0 => Kind::Route,
         // Route::has('...') - but not $collection->has('...').
-        "has" if head[..word_start].ends_with("Route::") => Kind::Route,
-        "config" => Kind::Config,
-        "env" | "getenv" => Kind::Env,
-        "view" => Kind::View,
-        "asset" | "secure_asset" | "mix" => Kind::Asset,
-        "can" | "cannot" | "canany" if blade => Kind::Gate,
-        "can" | "cannot" | "authorize" if head[..word_start].ends_with("->") => {
-            Kind::Gate
+        "has" if head[..word_start].ends_with("Route::") && arg == 0 => {
+            Kind::Route
         }
-        "allows" | "denies" | "any" | "authorize" | "check" | "none"
-            if head[..word_start].ends_with("Gate::") =>
+        "config" if arg == 0 => Kind::Config,
+        "env" | "getenv" if arg == 0 => Kind::Env,
+        "view" if arg == 0 => Kind::View,
+        "asset" | "secure_asset" | "mix" if arg == 0 => Kind::Asset,
+        "can" | "cannot" | "canany" if blade && arg == 0 => Kind::Gate,
+        "can" | "cannot" | "authorize"
+            if head[..word_start].ends_with("->") && arg == 0 =>
         {
             Kind::Gate
         }
-        // Blade directives take view names too.
-        "extends" | "include" | "includeIf" | "includeWhen" | "includeFirst"
-        | "each" if blade => Kind::View,
-        "section" | "yield" if blade => Kind::Section,
-        "push" | "pushOnce" | "stack" if blade => Kind::Stack,
-        "__" | "trans" | "trans_choice" => Kind::Lang,
-        "lang" | "choice" if blade => Kind::Lang,
-        "livewire" if blade => Kind::LivewireName,
+        "allows" | "denies" | "any" | "authorize" | "check" | "none"
+            if head[..word_start].ends_with("Gate::") && arg == 0 =>
+        {
+            Kind::Gate
+        }
+        // Blade directives take view names too - in the first argument,
+        // except `@includeWhen($cond, 'view')`, whose view is second.
+        "extends" | "include" | "includeIf" | "includeFirst" | "each"
+            if blade && arg == 0 => Kind::View,
+        "includeWhen" if blade && arg == 1 => Kind::View,
+        "section" | "yield" if blade && arg == 0 => Kind::Section,
+        "push" | "pushOnce" | "stack" if blade && arg == 0 => Kind::Stack,
+        "__" | "trans" | "trans_choice" if arg == 0 => Kind::Lang,
+        "lang" | "choice" if blade && arg == 0 => Kind::Lang,
+        "livewire" if blade && arg == 0 => Kind::LivewireName,
         // Livewire events: `$dispatch('...')`, `$this->dispatch('...')`,
         // `$wire.dispatch('...')`, `Livewire.dispatch('...')` and the
-        // Livewire 2 `->emit(...)` family.
-        "dispatch" | "emit" | "emitTo" | "dispatchBrowserEvent" => {
+        // Livewire 2 `->emit(...)` family. The event name is the first
+        // argument; a payload is not an event name.
+        "dispatch" | "emit" | "emitTo" | "dispatchBrowserEvent" if arg == 0 => {
             Kind::LivewireEvent
         }
         // Alpine/Livewire entanglement: `$entangle('...')`,
-        // `$wire.entangle('...')`.
-        "entangle" => Kind::LivewireEntangle,
-        "get" | "has" | "choice" if head[..word_start].ends_with("Lang::") => {
+        // `$wire.entangle('...')`. The property is the first argument;
+        // the live flag is not a property.
+        "entangle" if arg == 0 => Kind::LivewireEntangle,
+        "get" | "has" | "choice"
+            if head[..word_start].ends_with("Lang::") && arg == 0 =>
+        {
             Kind::Lang
         }
         _ => return None,
@@ -3212,6 +3230,37 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("route('x')"), None);
         assert_eq!(context("route('x', ["), None);
         assert_eq!(context("console.log('"), None);
+    }
+
+    #[test]
+    fn call_context_stays_in_the_name_argument() {
+        // A quoted string in a LATER argument is not a name position:
+        // `$entangle('count', '...` is the live flag, `route('x', '...`
+        // the parameters, `$dispatch('x', '...` the payload.
+        assert_eq!(context("$entangle('count', '"), None);
+        assert_eq!(context("<button @click=\"$entangle('count', '"), None);
+        assert_eq!(context("route('home', '"), None);
+        assert_eq!(context("$dispatch('post', '"), None);
+        assert_eq!(context("__('messages.w', '"), None);
+        assert_eq!(context("@include('a', '"), None);
+        assert_eq!(context("view('a', '"), None);
+        // Nested calls keep their own argument counting.
+        assert_eq!(context("route('a', foo('"), None);
+        // `@each`'s third argument is the item variable, not a view.
+        assert_eq!(context("@each('row', $rows, 'it"), None);
+        // First-argument behavior is preserved.
+        assert_eq!(context("$entangle('co"), Some(Kind::LivewireEntangle));
+        assert_eq!(context("route('"), Some(Kind::Route));
+        assert_eq!(context("config('app."), Some(Kind::Config));
+        assert_eq!(context("$dispatch('"), Some(Kind::LivewireEvent));
+        assert_eq!(context("@include('partials."), Some(Kind::View));
+        // `@includeWhen($cond, 'view')` takes the view SECOND, and the
+        // `@includeFirst(['a', 'b'])` array stays argument zero.
+        assert_eq!(context("@includeWhen($ok, 'par"), Some(Kind::View));
+        assert_eq!(context("@includeWhen('v"), None);
+        assert_eq!(context("@includeWhen($ok, 'v', '"), None);
+        assert_eq!(context("@includeFirst(['one', 'tw"), Some(Kind::View));
+        assert_eq!(context("@includeFirst(['one', 'two'], '"), None);
     }
 
     #[test]

@@ -30,6 +30,14 @@ palettes - nothing is executed. Results are cached for 30 seconds per
 workspace so completion stays cheap on every keystroke; new routes, keys or
 views appear within that window.
 
+Only the argument that actually takes the name completes - almost
+always the first: `route('home', '...` (parameters), `$dispatch('evt',
+'...` (payload) and `$entangle('count', '...` (live flag) offer
+nothing. `@includeWhen($cond, 'view')` is the exception, taking its
+view second; `@includeFirst(['a', 'b'])` keeps its array inside the
+first argument. `@each`'s third argument (the item variable) is not a
+view position.
+
 Limits: Laravel route names come from explicit `->name('...')` calls only
 (resource implicit names and group `->name('prefix.')` assembly are not
 offered, matching the go-to limits). Symfony route names are not offered
