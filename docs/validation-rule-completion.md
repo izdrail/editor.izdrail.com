@@ -29,18 +29,22 @@ builders are PHP code and stay out.
 The `exists:` and `unique:` rules take a database table as their first
 parameter, so that position offers the project's tables harvested from
 migrations (see database-table-completion): `'required|exists:us`
-narrows to `users` and friends. The column position after the comma
-(`exists:users,em`) stays silent, as does every other rule parameter.
+narrows to `users` and friends. The column positions after the comma
+offer that table's columns (item 390, see
+database-column-completion for the exact `exists:` / `unique:`
+parameter grammar): `'required|unique:users,em` narrows to `email`,
+while value positions like the `unique:` except stay silent.
 
 ## What stays silent
 
 Field names (the array keys), the custom-messages argument, rule
-parameters other than the `exists:` / `unique:` table (e.g. `max:10`),
-a bare string argument to `validate(...)`, and calls unrelated to
-validation. FormRequest `rules()` methods return a plain array with no
+parameters other than the `exists:` / `unique:` table and column
+positions (e.g. `max:10`, the `unique:` except value, condition
+values), a bare string argument to `validate(...)`, and calls
+unrelated to validation. FormRequest `rules()` methods return a plain array with no
 call on the line, so they are not detected. Quote escapes are not
 read; a connection prefix (`exists:mysql.users`) is not special-cased.
 
 Tests: `detects_validation_rule_context`, `offers_validation_rules`,
-`offers_validation_rule_tables`,
+`offers_validation_rule_tables`, `offers_validation_rule_columns`,
 `validation_rules::tests::rules_are_sorted_unique_and_bare_names`.

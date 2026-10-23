@@ -114,6 +114,10 @@ pub enum Kind {
     /// `->constrained('...')` and friends, and the table parameter of
     /// the `exists:` / `unique:` validation rules (item 388).
     DbTable,
+    /// Database column: after the comma in the `exists:` / `unique:`
+    /// validation rules (item 390). The table named before the comma
+    /// decides which columns are offered.
+    DbColumn,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1036,19 +1040,56 @@ const BLUEPRINT_METHODS: &[(&str, &str)] = &[
 fn validation_rule_context(line: &str) -> Option<Kind> {
     let q = line.rfind(|c| c == '\'' || c == '"')?;
     let token = line[q + 1..].rsplit('|').next()?;
-    // `exists:` / `unique:` take a table name first (item 388): the
-    // parameter up to the first comma is a database table. The column
-    // position after the comma stays silent.
-    if let Some(param) = token
+    // `exists:` / `unique:` parameters (items 388, 390), grammar from
+    // Laravel 12.x ValidatesAttributes: exists takes
+    // `table,column,column,value,...` (condition pairs from index 2);
+    // unique takes `table,column,except,idColumn,column,value,...`
+    // (pairs from index 4). Index 0 is the table; columns are offered
+    // at the column positions only - value positions (the unique
+    // except, the condition values) and an empty table stay silent.
+    let stripped = token
         .strip_prefix("exists:")
-        .or_else(|| token.strip_prefix("unique:"))
-    {
-        return if param.contains(',') { None } else { Some(Kind::DbTable) };
+        .map(|p| (true, p))
+        .or_else(|| token.strip_prefix("unique:").map(|p| (false, p)));
+    if let Some((is_exists, param)) = stripped {
+        let index = param.matches(',').count();
+        if index == 0 {
+            return Some(Kind::DbTable);
+        }
+        if param.starts_with(',') {
+            return None;
+        }
+        let column_position = if is_exists {
+            index == 1 || index % 2 == 0
+        } else {
+            index == 1 || index == 3 || (index >= 4 && index % 2 == 0)
+        };
+        return if column_position {
+            Some(Kind::DbColumn)
+        } else {
+            None
+        };
     }
     if token.contains(':') {
         return None;
     }
     Some(Kind::ValidationRule)
+}
+
+/// The table named by an open `exists:TABLE,` / `unique:TABLE,` rule
+/// segment at the end of `line` (caret after the first comma).
+fn rule_param_table(line: &str) -> Option<&str> {
+    let q = line.rfind(|c| c == '\'' || c == '"')?;
+    let token = line[q + 1..].rsplit('|').next()?;
+    let param = token
+        .strip_prefix("exists:")
+        .or_else(|| token.strip_prefix("unique:"))?;
+    let (table, _) = param.split_once(',')?;
+    if table.is_empty() {
+        None
+    } else {
+        Some(table)
+    }
 }
 
 /// The context of an open quoted call argument at the end of `line`
@@ -1258,6 +1299,7 @@ struct Lists {
     assets: Vec<String>,
     gates: Vec<String>,
     tables: Vec<String>,
+    columns: Vec<(String, String)>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1303,6 +1345,273 @@ fn table_names(root: &Path) -> Vec<String> {
     }
     out.sort();
     out
+}
+
+/// `(table, column)` pairs from `Schema::create/table` closures in
+/// database/migrations (item 390): column-type Blueprint methods with
+/// an explicit first name argument, plus the implicit columns of
+/// `id()`, `timestamps()`, `softDeletes()`, `rememberToken()` and the
+/// `morphs` family. Index, foreign, drop and rename commands are not
+/// harvested, so a dropped column can linger. Sorted, deduped.
+fn table_columns(root: &Path) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let Ok(rd) = std::fs::read_dir(root.join("database/migrations"))
+    else {
+        return out;
+    };
+    let mut files: Vec<PathBuf> = rd
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "php"))
+        .collect();
+    files.sort();
+    files.truncate(MAX_ROUTE_FILES);
+    for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        harvest_columns(&text, &mut out);
+        if out.len() >= MAX_NAMES {
+            out.truncate(MAX_NAMES);
+            break;
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Column-harvesting pass over one migration's text: comments are
+/// blanked and string literals mapped first, so commented-out or
+/// in-string `$table->` / `Schema::` text is ignored (item 390c).
+/// Each `$table->` call is attributed to the enclosing
+/// `Schema::create/table` closure - block (`function ... { ... }`)
+/// or arrow (`fn (...) => ...`) - and another `Schema::` operation
+/// (drop / dropIfExists / rename) ends the attribution. Text scan,
+/// nothing is executed; a closure parameter named other than `$table`
+/// is not seen (the Laravel convention, same as item 382), and
+/// heredoc/nowdoc strings are not masked.
+fn harvest_columns(text: &str, out: &mut Vec<(String, String)>) {
+    let (masked, strings) = mask_comments(text);
+    let in_string = |pos: usize| {
+        let i = strings.partition_point(|&(_, end)| pos > end);
+        i < strings.len() && strings[i].0 <= pos
+    };
+    // 0 = `$table->`, 1 = Schema::create/table (opens a scope),
+    // 2 = another Schema:: operation (ends the attribution).
+    let mut events: Vec<(usize, u8)> = Vec::new();
+    for marker in ["Schema::create(", "Schema::table("] {
+        events.extend(masked.match_indices(marker).map(|(i, _)| (i, 1)));
+    }
+    for marker in ["Schema::dropIfExists(", "Schema::drop(", "Schema::rename("]
+    {
+        events.extend(masked.match_indices(marker).map(|(i, _)| (i, 2)));
+    }
+    events.extend(masked.match_indices("$table->").map(|(i, _)| (i, 0)));
+    events.sort_unstable();
+    let mut table: Option<(String, usize)> = None; // (name, scope end)
+    for (pos, kind) in events {
+        if in_string(pos) {
+            continue;
+        }
+        let rest = &masked[pos..];
+        if kind == 2 {
+            table = None;
+            continue;
+        }
+        if kind == 1 {
+            // Both markers end at their '('.
+            let Some(open) = rest.find('(') else { continue };
+            let Some(name) = quoted_word(rest[open + 1..].trim_start())
+            else {
+                continue;
+            };
+            table = closure_scope(&masked, pos + open + 1, &strings)
+                .map(|end| (name.to_string(), end));
+            continue;
+        }
+        let Some((table, end)) = table.as_ref() else { continue };
+        if pos > *end {
+            continue;
+        }
+        let after = &rest["$table->".len()..];
+        let end_word = after
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(after.len());
+        let method = &after[..end_word];
+        let after = after[end_word..].trim_start();
+        if !after.starts_with('(') {
+            continue;
+        }
+        let name = quoted_word(after[1..].trim_start());
+        let mut push = |col: &str| out.push((table.clone(), col.to_string()));
+        match method {
+            "id" => push(name.unwrap_or("id")),
+            "timestamps" | "timestampsTz" | "nullableTimestamps" => {
+                push("created_at");
+                push("updated_at");
+            }
+            "softDeletes" | "softDeletesTz" => {
+                push(name.unwrap_or("deleted_at"))
+            }
+            "rememberToken" => push("remember_token"),
+            "morphs" | "nullableMorphs" | "uuidMorphs"
+            | "nullableUuidMorphs" | "ulidMorphs" | "nullableUlidMorphs" => {
+                if let Some(n) = name {
+                    push(&format!("{n}_id"));
+                    push(&format!("{n}_type"));
+                }
+            }
+            m if BLUEPRINT_METHODS
+                .iter()
+                .any(|(b, d)| *b == m && *d == "Blueprint column type") =>
+            {
+                if let Some(n) = name {
+                    push(n);
+                }
+            }
+            _ => {}
+        }
+        if out.len() >= MAX_NAMES {
+            return;
+        }
+    }
+}
+
+/// Comments blanked to spaces (offsets preserved), string literals
+/// kept verbatim with their (start, end) byte spans returned, so
+/// commented text can never produce events and events inside a string
+/// literal can be skipped. `//`, `#` (but not the `#[` attribute
+/// opener) and `/* ... */` are comments; `'` / `"` strings honor
+/// backslash escapes. Heredoc/nowdoc is not special-cased.
+fn mask_comments(text: &str) -> (String, Vec<(usize, usize)>) {
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    out[i] = b' ';
+                    i += 1;
+                }
+            }
+            b'#' if bytes.get(i + 1) != Some(&b'[') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    out[i] = b' ';
+                    i += 1;
+                }
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                out[i] = b' ';
+                out[i + 1] = b' ';
+                i += 2;
+                while i < bytes.len()
+                    && !(bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/'))
+                {
+                    if bytes[i] != b'\n' {
+                        out[i] = b' ';
+                    }
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    out[i] = b' ';
+                    out[i + 1] = b' ';
+                    i += 2;
+                }
+            }
+            q @ (b'\'' | b'"') => {
+                let start = i;
+                i += 1;
+                while i < bytes.len() && bytes[i] != q {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                spans.push((start, i.min(bytes.len())));
+                i = (i + 1).min(bytes.len());
+            }
+            _ => i += 1,
+        }
+    }
+    (String::from_utf8(out).unwrap_or_default(), spans)
+}
+
+/// The end offset of the body a `Schema::create/table` call passes to
+/// its closure: the matching `}` of the first block closure, or the
+/// call's own closing `)` when no block appears (arrow functions).
+/// String spans are skipped so braces and parens inside string
+/// literals do not count. `args_start` is just past the call's `(`.
+fn closure_scope(
+    masked: &str,
+    args_start: usize,
+    strings: &[(usize, usize)],
+) -> Option<usize> {
+    let bytes = masked.as_bytes();
+    let mut span = strings.partition_point(|&(start, _)| start < args_start);
+    let mut i = args_start;
+    let mut paren = 1usize; // the call's own '('
+    while i < bytes.len() {
+        if span < strings.len() && i == strings[span].0 {
+            i = strings[span].1 + 1;
+            span += 1;
+            continue;
+        }
+        match bytes[i] {
+            b'(' => paren += 1,
+            b')' => {
+                paren -= 1;
+                if paren == 0 {
+                    return Some(i);
+                }
+            }
+            b'{' => {
+                let mut depth = 1usize;
+                let mut j = i + 1;
+                while j < bytes.len() {
+                    if span < strings.len() && j == strings[span].0 {
+                        j = strings[span].1 + 1;
+                        span += 1;
+                        continue;
+                    }
+                    match bytes[j] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(j);
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                return None;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// A `'name'` or `"name"` at the start of `text`: nonempty, at most
+/// 100 chars, ascii alphanumeric or underscore (table/column shape).
+fn quoted_word(text: &str) -> Option<&str> {
+    let q = text.chars().next().filter(|c| *c == '\'' || *c == '"')?;
+    let end = text[1..].find(q)?;
+    let word = &text[1..1 + end];
+    if !word.is_empty()
+        && word.len() <= 100
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        Some(word)
+    } else {
+        None
+    }
 }
 
 /// `->name('...')` values in routes/*.php (Laravel).
@@ -1868,6 +2177,7 @@ fn lists(root: &Path) -> Lists {
     let assets = asset_paths(root);
     let gates = ability_names(root);
     let tables = table_names(root);
+    let columns = table_columns(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -1882,6 +2192,7 @@ fn lists(root: &Path) -> Lists {
         assets,
         gates,
         tables,
+        columns,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -2885,6 +3196,24 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::DbColumn {
+        let Some(table) = rule_param_table(line_before) else {
+            return Vec::new();
+        };
+        let lists = lists(root);
+        return lists
+            .columns
+            .iter()
+            .filter(|(t, _)| t == table)
+            .take(MAX_ITEMS)
+            .map(|(_, c)| CompletionItem {
+                label: c.clone(),
+                kind: Some(CompletionItemKind::PROPERTY),
+                detail: Some(format!("{table} column")),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -2939,6 +3268,8 @@ pub fn items(
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
         Kind::DbTable => (lists.tables, "database table"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::DbColumn => (Vec::new(), "database column"),
         // Returned early above; the match must stay exhaustive.
         Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
@@ -3697,10 +4028,11 @@ mod tests {
         assert_eq!(context("$this->validate(['name' => 'required'], ['na"), None);
         assert_eq!(context("$this->validate(['name' => 'max:1"), None);
         assert_eq!(context("$this->validate(['name' => 'min:2|max:5"), None);
-        // `exists:` / `unique:` table parameter (item 388): the table
-        // position offers tables; the column position after the comma
-        // stays silent.
+        // `exists:` / `unique:` parameters (items 388, 389): the
+        // table position offers tables, the position after the comma
+        // offers that table's columns, an empty table stays silent.
         let table = Some(Kind::DbTable);
+        let column = Some(Kind::DbColumn);
         assert_eq!(context("$this->validate(['email' => 'exists:us"), table);
         assert_eq!(
             context("$this->validate(['email' => 'required|unique:us"),
@@ -3708,8 +4040,34 @@ mod tests {
         );
         assert_eq!(context("#[Validate('exists:us"), table);
         assert_eq!(context("Validator::make($data, ['email' => 'unique:us"), table);
-        assert_eq!(context("$this->validate(['email' => 'exists:users,em"), None);
-        assert_eq!(context("$this->validate(['email' => 'unique:users,em"), None);
+        assert_eq!(context("$this->validate(['email' => 'exists:users,em"), column);
+        assert_eq!(context("$this->validate(['email' => 'unique:users,"), column);
+        assert_eq!(context("$this->validate(['email' => 'exists:,em"), None);
+        // Grounded parameter grammar (item 390b): value positions -
+        // the unique except value and both rules' condition values -
+        // stay silent; the unique idColumn and the condition columns
+        // of both rules offer columns.
+        assert_eq!(context("$this->validate(['e' => 'unique:users,email,1"), None);
+        assert_eq!(
+            context("$this->validate(['e' => 'unique:users,email,1,id"),
+            column
+        );
+        assert_eq!(
+            context("$this->validate(['e' => 'unique:users,email,1,id,acc"),
+            column
+        );
+        assert_eq!(
+            context("$this->validate(['e' => 'unique:users,email,1,id,account_id,1"),
+            None
+        );
+        assert_eq!(
+            context("$this->validate(['e' => 'exists:users,email,acc"),
+            column
+        );
+        assert_eq!(
+            context("$this->validate(['e' => 'exists:users,email,account_id,1"),
+            None
+        );
         assert_eq!(context("$this->validate('req|ma"), None);
         assert_eq!(context("$this->check(['name' => 'req"), None);
     }
@@ -3817,9 +4175,108 @@ mod tests {
         );
         assert_eq!(labels("#[Validate('exists:u"), tables);
         assert_eq!(labels("Validator::make($data, ['email' => 'unique:"), tables);
-        // The column position after the comma stays silent.
-        assert!(labels("$this->validate(['email' => 'exists:users,em").is_empty());
-        assert!(labels("$this->validate(['email' => 'unique:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_validation_rule_columns() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $table) {\n    $table->id();\n    $table->string('name');\n    $table->string('email')->unique();\n    $table->timestamp('email_verified_at')->nullable();\n    $table->rememberToken();\n    $table->timestamps();\n});\n",
+        );
+        put(
+            r,
+            "database/migrations/2024_02_01_000000_create_posts_table.php",
+            "<?php\nSchema::create(\"posts\", function (Blueprint $table) {\n    $table->id();\n    $table->foreignId('user_id');\n    $table->string('title');\n    $table->morphs('imageable');\n    $table->softDeletes();\n});\n",
+        );
+        // A later `Schema::table` adds columns to the same table.
+        put(
+            r,
+            "database/migrations/2024_03_01_000000_add_bio_to_users.php",
+            "<?php\nSchema::table('users', function (Blueprint $table) {\n    $table->text('bio')->nullable();\n});\n",
+        );
+        // A `$table->` call after another Schema:: operation is not
+        // attributed anywhere: `stray` must not appear for any table.
+        put(
+            r,
+            "database/migrations/2024_04_01_000000_drop_legacy.php",
+            "<?php\nSchema::dropIfExists('legacy');\n$table->string('stray');\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let users = labels("$this->validate(['email' => 'exists:users,");
+        assert_eq!(
+            users,
+            [
+                "bio",
+                "created_at",
+                "email",
+                "email_verified_at",
+                "id",
+                "name",
+                "remember_token",
+                "updated_at"
+            ]
+        );
+        // `unique:` behaves the same, in every rules-string form.
+        assert_eq!(labels("#[Validate('unique:users,"), users);
+        assert_eq!(
+            labels("Validator::make($data, ['e' => 'exists:users,a|unique:users,"),
+            users
+        );
+        assert_eq!(
+            labels("$this->validate(['key' => 'unique:posts,"),
+            [
+                "deleted_at",
+                "id",
+                "imageable_id",
+                "imageable_type",
+                "title",
+                "user_id"
+            ]
+        );
+        // The unique idColumn and the condition columns of both rules
+        // offer columns; the except and condition values stay silent.
+        assert_eq!(labels("$this->validate(['e' => 'unique:users,email,1,"), users);
+        assert_eq!(labels("$this->validate(['e' => 'exists:users,email,"), users);
+        assert!(labels("$this->validate(['e' => 'unique:users,email,").is_empty());
+        assert!(
+            labels("$this->validate(['e' => 'exists:users,email,bio,").is_empty()
+        );
+        // An unknown or empty table offers no columns; the table
+        // position still offers tables.
+        assert!(labels("$this->validate(['email' => 'exists:nope,").is_empty());
+        assert!(labels("$this->validate(['email' => 'exists:,em").is_empty());
+        assert!(!labels("$this->validate(['email' => 'exists:us").is_empty());
+    }
+
+    #[test]
+    fn harvest_ignores_comments_strings_and_stray_calls() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $table) {\n    $table->id();\n    // $table->string('ghost_line');\n    /* $table->string('ghost_block'); */\n    # $table->string('ghost_hash');\n    $table->string('name');\n    $table->string('note')->default('$table->string(\\'ghost_str\\')');\n});\nSchema::table('users', fn (Blueprint $table) => $table->string('arrow_col'));\n$fn = function () { $table->string('stray_closure'); };\n// $table->string('ghost_outside');\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only real closure-body columns: commented-out, in-string and
+        // out-of-scope `$table->` calls contribute nothing.
+        assert_eq!(
+            labels("$this->validate(['e' => 'exists:users,"),
+            ["arrow_col", "id", "name", "note"]
+        );
     }
 
     #[test]
