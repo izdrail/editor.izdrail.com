@@ -113,6 +113,8 @@ pub enum Kind {
     /// Database table: `Schema::table('...')`, `DB::table('...')`,
     /// `->constrained('...')` and friends.
     DbTable,
+    /// Migration Blueprint method: `$table->str` in a schema closure.
+    BlueprintMethod,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -140,6 +142,21 @@ pub fn context(line: &str) -> Option<Kind> {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
         {
             return Some(Kind::AlpineRef);
+        }
+    }
+    // Migration Blueprint methods: `$table->` inside a
+    // Schema::create / Schema::table closure (item 382). Line-local:
+    // the `$table->` prefix is the convention. Arguments
+    // (`$table->string('na`) and chains (`$table->string('x')->nul`)
+    // are not name positions; `$this->table->` does not contain the
+    // `$table->` marker.
+    if let Some(i) = line.rfind("$table->") {
+        let rest = &line[i + "$table->".len()..];
+        if rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Some(Kind::BlueprintMethod);
         }
     }
     // Livewire `$wire.$js.<name>`: a function registered with
@@ -919,6 +936,97 @@ fn tag_attr_position<'a>(line: &'a str, marker: &str) -> Option<(&'a str, &'a st
     }
     Some((tag, partial))
 }
+
+/// Blueprint methods offered at `$table->` (item 382): the Laravel
+/// 12.x migration column types, plus the index and table command
+/// methods, cross-checked against `Illuminate\Database\Schema\Blueprint`.
+/// Chain modifiers (`->nullable()`, `->default()`, `->change()`)
+/// attach after a column call, not at the `$table->` position.
+const BLUEPRINT_METHODS: &[(&str, &str)] = &[
+    ("bigIncrements", "Blueprint column type"),
+    ("bigInteger", "Blueprint column type"),
+    ("binary", "Blueprint column type"),
+    ("boolean", "Blueprint column type"),
+    ("char", "Blueprint column type"),
+    ("date", "Blueprint column type"),
+    ("dateTime", "Blueprint column type"),
+    ("dateTimeTz", "Blueprint column type"),
+    ("decimal", "Blueprint column type"),
+    ("double", "Blueprint column type"),
+    ("dropColumn", "Blueprint command"),
+    ("dropForeign", "Blueprint command"),
+    ("dropFullText", "Blueprint command"),
+    ("dropIndex", "Blueprint command"),
+    ("dropMorphs", "Blueprint command"),
+    ("dropPrimary", "Blueprint command"),
+    ("dropRememberToken", "Blueprint command"),
+    ("dropSoftDeletes", "Blueprint command"),
+    ("dropSoftDeletesTz", "Blueprint command"),
+    ("dropSpatialIndex", "Blueprint command"),
+    ("dropTimestamps", "Blueprint command"),
+    ("dropTimestampsTz", "Blueprint command"),
+    ("dropUnique", "Blueprint command"),
+    ("enum", "Blueprint column type"),
+    ("float", "Blueprint column type"),
+    ("foreign", "Blueprint index"),
+    ("foreignId", "Blueprint column type"),
+    ("foreignIdFor", "Blueprint column type"),
+    ("foreignUlid", "Blueprint column type"),
+    ("foreignUuid", "Blueprint column type"),
+    ("fullText", "Blueprint index"),
+    ("geography", "Blueprint column type"),
+    ("geometry", "Blueprint column type"),
+    ("id", "Blueprint column type"),
+    ("increments", "Blueprint column type"),
+    ("index", "Blueprint index"),
+    ("integer", "Blueprint column type"),
+    ("ipAddress", "Blueprint column type"),
+    ("json", "Blueprint column type"),
+    ("jsonb", "Blueprint column type"),
+    ("longText", "Blueprint column type"),
+    ("macAddress", "Blueprint column type"),
+    ("mediumIncrements", "Blueprint column type"),
+    ("mediumInteger", "Blueprint column type"),
+    ("mediumText", "Blueprint column type"),
+    ("morphs", "Blueprint column type"),
+    ("nullableMorphs", "Blueprint column type"),
+    ("nullableTimestamps", "Blueprint column type"),
+    ("nullableUlidMorphs", "Blueprint column type"),
+    ("nullableUuidMorphs", "Blueprint column type"),
+    ("primary", "Blueprint index"),
+    ("rememberToken", "Blueprint column type"),
+    ("renameColumn", "Blueprint command"),
+    ("renameIndex", "Blueprint command"),
+    ("set", "Blueprint column type"),
+    ("smallIncrements", "Blueprint column type"),
+    ("smallInteger", "Blueprint column type"),
+    ("softDeletes", "Blueprint column type"),
+    ("softDeletesTz", "Blueprint column type"),
+    ("spatialIndex", "Blueprint index"),
+    ("string", "Blueprint column type"),
+    ("text", "Blueprint column type"),
+    ("time", "Blueprint column type"),
+    ("timeTz", "Blueprint column type"),
+    ("timestamp", "Blueprint column type"),
+    ("timestampTz", "Blueprint column type"),
+    ("timestamps", "Blueprint column type"),
+    ("timestampsTz", "Blueprint column type"),
+    ("tinyIncrements", "Blueprint column type"),
+    ("tinyInteger", "Blueprint column type"),
+    ("tinyText", "Blueprint column type"),
+    ("ulid", "Blueprint column type"),
+    ("ulidMorphs", "Blueprint column type"),
+    ("unique", "Blueprint index"),
+    ("unsignedBigInteger", "Blueprint column type"),
+    ("unsignedInteger", "Blueprint column type"),
+    ("unsignedMediumInteger", "Blueprint column type"),
+    ("unsignedSmallInteger", "Blueprint column type"),
+    ("unsignedTinyInteger", "Blueprint column type"),
+    ("uuid", "Blueprint column type"),
+    ("uuidMorphs", "Blueprint column type"),
+    ("vector", "Blueprint column type"),
+    ("year", "Blueprint column type"),
+];
 
 /// Some(Kind::ValidationRule) when the caret is at a rule-name
 /// position inside the open rules string: the current `|`-separated
@@ -2747,6 +2855,26 @@ pub fn items(
     if kind == Kind::ValidationRule {
         return crate::validation_rules::items();
     }
+    if kind == Kind::BlueprintMethod {
+        // `$table->` is a convention, not a type: only migration
+        // files get Blueprint methods, so an unrelated `$table`
+        // variable elsewhere sees nothing.
+        let in_migration = file
+            .and_then(|f| f.strip_prefix(root).ok())
+            .is_some_and(|rel| rel.starts_with("database/migrations/"));
+        if !in_migration {
+            return Vec::new();
+        }
+        return BLUEPRINT_METHODS
+            .iter()
+            .map(|(n, d)| CompletionItem {
+                label: (*n).to_string(),
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some((*d).to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -2801,6 +2929,8 @@ pub fn items(
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
         Kind::DbTable => (lists.tables, "database table"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
         Kind::ValidationRule => (Vec::new(), "validation rule"),
     };
@@ -2870,6 +3000,17 @@ mod tests {
         assert_eq!(context("->leftJoin('us"), Some(Kind::DbTable));
         assert_eq!(context("Schema::create('us"), None);
         assert_eq!(context("table('us"), None);
+        // Blueprint methods (item 382): the `$table->` name position,
+        // with argument, chain and `$this->table->` negatives.
+        assert_eq!(context("$table->str"), Some(Kind::BlueprintMethod));
+        assert_eq!(context("$table->"), Some(Kind::BlueprintMethod));
+        assert_eq!(
+            context("Schema::table('users', function (Blueprint $table) { $table->str"),
+            Some(Kind::BlueprintMethod)
+        );
+        assert_eq!(context("$table->string('na"), None);
+        assert_eq!(context("$table->string('x')->nul"), None);
+        assert_eq!(context("$this->table->str"), None);
         assert_eq!(context("@push('scr"), Some(Kind::Stack));
         assert_eq!(context("@stack('mod"), Some(Kind::Stack));
         // Without the @, these are ordinary calls.
@@ -3623,6 +3764,41 @@ mod tests {
             ["password_resets", "posts", "users"]
         );
         assert!(labels("Schema::create('").is_empty());
+    }
+
+    #[test]
+    fn offers_blueprint_methods() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\n",
+        );
+        let migration = r.join("database/migrations/2024_01_01_000000_create_users_table.php");
+        let other = r.join("app/Http/Controllers/ReportController.php");
+        let labels = |line: &str| {
+            items(r, Some(migration.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let got = labels("$table->");
+        assert_eq!(got.len(), BLUEPRINT_METHODS.len());
+        assert!(got.contains(&"string".to_string()));
+        assert!(got.contains(&"foreignId".to_string()));
+        assert!(got.contains(&"timestamps".to_string()));
+        assert!(got.contains(&"nullableTimestamps".to_string()));
+        assert!(got.contains(&"primary".to_string()));
+        assert!(got.contains(&"dropColumn".to_string()));
+        assert!(got.contains(&"renameColumn".to_string()));
+        assert_eq!(labels("$table->str"), got);
+        assert!(labels("$table->string('na").is_empty());
+        assert!(labels("$this->table->str").is_empty());
+        // `$table->` is a convention, not a type: outside
+        // database/migrations the same text offers nothing.
+        assert!(items(r, Some(other.as_path()), "$table->str").is_empty());
+        assert!(items(r, None, "$table->str").is_empty());
     }
 
     #[test]
