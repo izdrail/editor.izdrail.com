@@ -253,6 +253,288 @@ pub fn context(line: &str) -> Option<Kind> {
     call_context(line)
 }
 
+/// Completion items for the properties of the nearest enclosing
+/// `x-data` object, offered inside Alpine expression attribute values
+/// (`x-show="op`, `@click="to`, `:class="op`). `before_cursor` is the
+/// buffer up to the cursor (only its last 16k characters are read);
+/// `line_before` confirms the cursor sits inside an Alpine expression
+/// value. Attribute values that started on an earlier line are not
+/// recognised.
+pub fn alpine_data_property_items(
+    before_cursor: &str,
+    line_before: &str,
+) -> Vec<CompletionItem> {
+    let Some(attr) = quoted_value_attr(line_before) else {
+        return Vec::new();
+    };
+    if !alpine_expression_attr(&attr) {
+        return Vec::new();
+    }
+    x_data_keys_at(before_cursor)
+        .into_iter()
+        .take(MAX_ITEMS)
+        .map(|n| CompletionItem {
+            label: n,
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("Alpine x-data property".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// The attribute name when `line` ends inside its quoted value
+/// (`<div x-show="op` -> `x-show`). Quotes are not escaped inside HTML
+/// attribute values, so a plain state machine is exact.
+fn quoted_value_attr(line: &str) -> Option<String> {
+    let mut in_quote: Option<u8> = None;
+    let mut attr: Option<String> = None;
+    for (i, &b) in line.as_bytes().iter().enumerate() {
+        match in_quote {
+            Some(q) => {
+                if b == q {
+                    in_quote = None;
+                }
+            }
+            None if b == b'"' || b == b'\'' => {
+                in_quote = Some(b);
+                attr = attr_name_before(&line[..i]);
+            }
+            _ => {}
+        }
+    }
+    in_quote?;
+    attr
+}
+
+/// The `name` in `name="` right before a quote: letters, digits and the
+/// attribute punctuation `@ : . - _` (`@click`, `x-on:click`, `:class`).
+fn attr_name_before(before_quote: &str) -> Option<String> {
+    let b = before_quote.trim_end().strip_suffix('=')?.trim_end();
+    let name: String = b
+        .chars()
+        .rev()
+        .take_while(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '@' | ':' | '.' | '-' | '_')
+        })
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// Attributes whose values are Alpine expressions (as opposed to
+/// selectors, transition classes or plain strings).
+fn alpine_expression_attr(attr: &str) -> bool {
+    attr.starts_with('@')
+        || attr.starts_with("x-on:")
+        || attr.starts_with("x-bind:")
+        || (attr.starts_with(':') && attr.len() > 1)
+        || matches!(
+            attr,
+            "x-show"
+                | "x-if"
+                | "x-text"
+                | "x-html"
+                | "x-init"
+                | "x-effect"
+                | "x-model"
+                | "x-modelable"
+                | "x-for"
+                | "x-id"
+                | "x-intersect"
+                | "x-trap"
+        )
+}
+
+/// Keys of the innermost open tag's `x-data` object. A naive tag stack
+/// over the last 16k characters before the cursor: quoted attribute
+/// values hide `>`, `</name` pops up to and including the matching open
+/// tag, void and unclosed tags simply stay on the stack.
+fn x_data_keys_at(before_cursor: &str) -> Vec<String> {
+    let tail_start = before_cursor
+        .char_indices()
+        .rev()
+        .nth(16_384)
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let text = &before_cursor[tail_start..];
+    let b = text.as_bytes();
+    let mut stack: Vec<(String, String)> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] != b'<' || i + 1 >= b.len() {
+            i += 1;
+            continue;
+        }
+        if b[i + 1] == b'/' {
+            let name_end = text[i + 2..]
+                .find(|c: char| {
+                    !(c.is_ascii_alphanumeric() || matches!(c, '-' | ':' | '.'))
+                })
+                .map(|n| i + 2 + n)
+                .unwrap_or(text.len());
+            let name = &text[i + 2..name_end];
+            if let Some(pos) = stack.iter().rposition(|(n, _)| n == name) {
+                stack.truncate(pos);
+            }
+            i = text[i + 2..]
+                .find('>')
+                .map(|n| i + 2 + n + 1)
+                .unwrap_or(text.len());
+            continue;
+        }
+        if !b[i + 1].is_ascii_alphabetic() {
+            i += 1;
+            continue;
+        }
+        let name_end = text[i + 1..]
+            .find(|c: char| {
+                !(c.is_ascii_alphanumeric() || matches!(c, '-' | ':' | '.'))
+            })
+            .map(|n| i + 1 + n)
+            .unwrap_or(text.len());
+        let name = text[i + 1..name_end].to_string();
+        // Tag text runs to the `>` outside quoted values, or to the
+        // cursor when the tag is still open (it is being typed).
+        let mut in_quote: Option<u8> = None;
+        let mut j = name_end;
+        while j < b.len() {
+            match in_quote {
+                Some(q) => {
+                    if b[j] == q {
+                        in_quote = None;
+                    }
+                }
+                None if b[j] == b'"' || b[j] == b'\'' => in_quote = Some(b[j]),
+                None if b[j] == b'>' => break,
+                _ => {}
+            }
+            j += 1;
+        }
+        let tag_text = &text[i..j.min(b.len())];
+        stack.push((name, tag_text.to_string()));
+        i = j;
+    }
+    for (_, tag_text) in stack.iter().rev() {
+        if let Some(value) = x_data_value(tag_text) {
+            return parse_data_keys(value);
+        }
+    }
+    Vec::new()
+}
+
+/// The quoted value of the first `x-data` attribute in `tag_text`.
+fn x_data_value(tag_text: &str) -> Option<&str> {
+    let at = tag_text.find("x-data=")? + "x-data=".len();
+    let after = tag_text[at..].trim_start();
+    let q = after.chars().next()?;
+    if q != '"' && q != '\'' {
+        return None;
+    }
+    let rest = &after[q.len_utf8()..];
+    let end = rest.find(q)?;
+    Some(&rest[..end])
+}
+
+/// Top-level keys of an `x-data` object literal: identifiers and quoted
+/// keys before a top-level `:`, method names (`toggle() { ... }`), and
+/// shorthand idents. Spread entries are skipped. A truncated object
+/// (still being typed) yields the keys completed so far.
+fn parse_data_keys(value: &str) -> Vec<String> {
+    let Some(body) = value.trim().strip_prefix('{') else {
+        return Vec::new();
+    };
+    let mut keys: Vec<String> = Vec::new();
+    let mut seg_start = 0;
+    let mut end = body.len();
+    let mut depth = 0i32;
+    let mut in_str: Option<char> = None;
+    let mut escaped = false;
+    for (idx, c) in body.char_indices() {
+        if let Some(q) = in_str {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                in_str = None;
+            }
+            continue;
+        }
+        match c {
+            '\'' | '"' | '`' => in_str = Some(c),
+            '{' | '[' | '(' => depth += 1,
+            '}' if depth == 0 => {
+                end = idx;
+                break;
+            }
+            '}' | ']' | ')' => depth -= 1,
+            ',' if depth == 0 => {
+                push_data_key(&body[seg_start..idx], &mut keys);
+                seg_start = idx + 1;
+            }
+            _ => {}
+        }
+    }
+    push_data_key(&body[seg_start..end], &mut keys);
+    keys
+}
+
+fn push_data_key(segment: &str, keys: &mut Vec<String>) {
+    let seg = segment.trim();
+    if seg.is_empty() || seg.starts_with("...") {
+        return;
+    }
+    // The key is what precedes the first top-level `:`.
+    let mut depth = 0i32;
+    let mut in_str: Option<char> = None;
+    let mut colon = None;
+    for (idx, c) in seg.char_indices() {
+        if let Some(q) = in_str {
+            if c == q {
+                in_str = None;
+            }
+            continue;
+        }
+        match c {
+            '\'' | '"' | '`' => in_str = Some(c),
+            '{' | '[' | '(' => depth += 1,
+            '}' | ']' | ')' => depth -= 1,
+            ':' if depth == 0 => {
+                colon = Some(idx);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let key = match colon {
+        Some(idx) => seg[..idx].trim(),
+        None => seg,
+    };
+    let key = if key.len() >= 2
+        && ((key.starts_with('\'') && key.ends_with('\''))
+            || (key.starts_with('"') && key.ends_with('"')))
+    {
+        &key[1..key.len() - 1]
+    } else if let Some(paren) = key.find('(') {
+        key[..paren].trim()
+    } else {
+        key
+    };
+    let valid = !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '-'));
+    if valid && !keys.iter().any(|k| k == key) {
+        keys.push(key.to_string());
+    }
+}
+
 /// The context of an open quoted call argument at the end of `line`
 /// (`route('...`, `$dispatch('...`): the last `(` whose argument string
 /// is still open. Quote escapes are not read; `route('it\'s')` is rare
@@ -2277,6 +2559,90 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert!(!labels.iter().any(|l| l.starts_with("delay")));
         // Loading is not an action event: its value completes nothing.
         assert_eq!(context("<div wire:loading=\""), None);
+    }
+
+    #[test]
+    fn parses_x_data_keys() {
+        let keys = |v: &str| parse_data_keys(v);
+        assert_eq!(keys("{ open: false, count: 0 }"), ["open", "count"]);
+        // Nested objects and commas inside strings do not split.
+        assert_eq!(keys("{ user: { name: 'a,b' }, ok: true }"), ["user", "ok"]);
+        // Methods, function values and arrow functions.
+        assert_eq!(
+            keys("{ open: false, toggle() { this.open = !this.open } }"),
+            ["open", "toggle"]
+        );
+        assert_eq!(keys("{ cb: function() { return 1; }, x: 2 }"), ["cb", "x"]);
+        assert_eq!(keys("{ a: () => 1, b: 2 }"), ["a", "b"]);
+        // Quoted keys, shorthand, spread, ternary values.
+        assert_eq!(keys("{ 'foo-bar': 1, open: true }"), ["foo-bar", "open"]);
+        assert_eq!(keys("{ ...base, open }"), ["open"]);
+        assert_eq!(keys("{ open: cond ? 'a' : 'b', x: 1 }"), ["open", "x"]);
+        // A call or a truncated object is not an object literal.
+        assert!(keys("dropdown()").is_empty());
+        assert_eq!(keys("{ open: false, second: 1"), ["open", "second"]);
+    }
+
+    #[test]
+    fn finds_x_data_on_the_innermost_open_tag() {
+        // Parent tag provides the properties for child expressions.
+        assert_eq!(
+            x_data_keys_at(r#"<div x-data="{ open: false }"><span x-show=""#),
+            ["open"]
+        );
+        // Same tag.
+        assert_eq!(
+            x_data_keys_at(r#"<div x-data="{ open: false }" x-show=""#),
+            ["open"]
+        );
+        // A `>` inside a quoted value does not close the tag early.
+        assert_eq!(
+            x_data_keys_at(r#"<div x-data="{ open: count > 0 }"><span x-show=""#),
+            ["open"]
+        );
+        // Closed scopes no longer apply.
+        assert!(
+            x_data_keys_at(r#"<div x-data="{ open: false }"></div><p x-text=""#)
+                .is_empty()
+        );
+        // The innermost x-data wins.
+        assert_eq!(
+            x_data_keys_at(
+                r#"<div x-data="{ a: 1 }"><div x-data="{ b: 2 }"><span x-show=""#
+            ),
+            ["b"]
+        );
+        // An unclosed sibling tag does not hide the provider.
+        assert_eq!(
+            x_data_keys_at(
+                r#"<div x-data="{ open: false }"><input value="x"><span x-show=""#
+            ),
+            ["open"]
+        );
+    }
+
+    #[test]
+    fn offers_x_data_properties_in_expression_values() {
+        let labels = |before: &str, line: &str| {
+            alpine_data_property_items(before, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let doc = r#"<div x-data="{ open: false, count: 0 }"><span x-show="op"#;
+        assert_eq!(labels(doc, r#"<span x-show="op"#), ["open", "count"]);
+        let doc = r#"<div x-data="{ open: false }"><span @click="to"#;
+        assert_eq!(labels(doc, r#"<span @click="to"#), ["open"]);
+        let doc = r#"<div x-data="{ open: false }"><span :class="op"#;
+        assert_eq!(labels(doc, r#"<span :class="op"#), ["open"]);
+        // Plain attributes and closed values are not expression contexts.
+        let doc = r#"<div x-data="{ open: false }"><span class="op"#;
+        assert!(labels(doc, r#"<span class="op"#).is_empty());
+        let doc = r#"<div x-data="{ open: false }"><span title="op"#;
+        assert!(labels(doc, r#"<span title="op"#).is_empty());
+        // wire: values stay Livewire contexts, not Alpine ones.
+        let doc = r#"<div x-data="{ open: false }"><input wire:model="em"#;
+        assert!(labels(doc, r#"<input wire:model="em"#).is_empty());
     }
 
     #[test]

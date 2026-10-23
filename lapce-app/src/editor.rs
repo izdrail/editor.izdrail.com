@@ -2954,7 +2954,7 @@ impl EditorData {
             },
         };
         let doc = self.doc();
-        let (words, snippets, keywords, line_before, blade_vars) =
+        let (words, snippets, keywords, line_before, blade_vars, alpine_props) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
                 let len = buffer.len();
@@ -3029,7 +3029,14 @@ impl EditorData {
                 } else {
                     Vec::new()
                 };
-                (words, snippets, keywords, line_before, blade_vars)
+                // Alpine: properties of the nearest enclosing x-data,
+                // inside an Alpine expression attribute value.
+                let alpine_props =
+                    crate::project_completion::alpine_data_property_items(
+                        &before_cursor,
+                        &line_before,
+                    );
+                (words, snippets, keywords, line_before, blade_vars, alpine_props)
             });
         let wrap = |item, source| ScoredCompletionItem {
             item,
@@ -3091,6 +3098,11 @@ impl EditorData {
             }))
             .chain(
                 blade_vars
+                    .into_iter()
+                    .map(|i| wrap(i, CompletionSource::Project)),
+            )
+            .chain(
+                alpine_props
                     .into_iter()
                     .map(|i| wrap(i, CompletionSource::Project)),
             )
