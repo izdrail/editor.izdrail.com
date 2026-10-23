@@ -130,6 +130,9 @@ pub enum Kind {
     /// Filesystem disk: the first argument of `Storage::disk('...')`
     /// / `Storage::drive('...')` (item 397).
     StorageDisk,
+    /// Vite entry point: `Vite::asset('...')` / `@vite('...')` /
+    /// `@vite(['...'])` (item 398).
+    ViteEntry,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1301,6 +1304,33 @@ fn call_context(line: &str) -> Option<Kind> {
         "config" if arg == 0 => Kind::Config,
         "env" | "getenv" if arg == 0 => Kind::Env,
         "view" if arg == 0 => Kind::View,
+        // Vite entry points (item 398): `Vite::asset('...')` takes
+        // one root-relative source path (Laravel 12.x
+        // Foundation\Vite::asset($asset, ...)). Must come before the
+        // bare `asset(...)` arm, whose public-dir list is a
+        // different set.
+        "asset"
+            if static_head(&head[..word_start], "Vite")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::ViteEntry
+        }
+        // `@vite('resources/js/app.js')` /
+        // `@vite(['resources/css/app.css', ...])`: the directive
+        // takes one entry or a list (Foundation\Vite::__invoke).
+        // `blade` here is only the preceding-@ shape; items() gates
+        // the directive on the file being `*.blade.php` (item 398).
+        "vite"
+            if blade
+                && arg == 0
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::ViteEntry
+        }
         "asset" | "secure_asset" | "mix" if arg == 0 => Kind::Asset,
         "can" | "cannot" | "canany" if blade && arg == 0 => Kind::Gate,
         "can" | "cannot" | "authorize"
@@ -1584,6 +1614,7 @@ struct Lists {
     columns: Vec<(String, String)>,
     middleware_aliases: Vec<String>,
     disks: Vec<String>,
+    vite_entries: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -2652,6 +2683,7 @@ fn lists(root: &Path) -> Lists {
     let columns = table_columns(root);
     let middleware_aliases = middleware_aliases(root);
     let disks = filesystem_disks(root);
+    let vite_entries = vite_entries(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2669,6 +2701,7 @@ fn lists(root: &Path) -> Lists {
         columns,
         middleware_aliases,
         disks,
+        vite_entries,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3059,45 +3092,60 @@ fn ability_names(root: &Path) -> Vec<String> {
 /// Files under `public/` as `asset()`-ready paths (`css/app.css`).
 /// Symlinks (common for `public/storage`) and hidden directories are
 /// skipped; the walk is bounded like the other static scans.
-fn asset_paths(root: &Path) -> Vec<String> {
-    fn walk(dir: &Path, depth: usize, base: &Path, out: &mut Vec<String>) {
-        if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
-            return;
+/// All non-hidden files under `dir`, as `/`-joined paths relative
+/// to `base`; symlinks skipped, capped at MAX_VIEW_FILES.
+fn walk_files(dir: &Path, depth: usize, base: &Path, out: &mut Vec<String>) {
+    if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
+        return;
+    }
+    if depth == 0
+        && std::fs::symlink_metadata(dir)
+            .map_or(true, |m| m.file_type().is_symlink())
+    {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.filter_map(Result::ok) {
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
         }
-        if depth == 0
-            && std::fs::symlink_metadata(dir)
-                .map_or(true, |m| m.file_type().is_symlink())
-        {
-            return;
+        let p = e.path();
+        let hidden =
+            e.file_name().to_str().is_some_and(|n| n.starts_with('.'));
+        if hidden {
+            continue;
         }
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
-        for e in rd.filter_map(Result::ok) {
-            let Ok(ft) = e.file_type() else { continue };
-            if ft.is_symlink() {
-                continue;
-            }
-            let p = e.path();
-            let hidden = e
-                .file_name()
-                .to_str()
-                .is_some_and(|n| n.starts_with('.'));
-            if hidden {
-                continue;
-            }
-            if ft.is_dir() {
-                walk(&p, depth + 1, base, out);
-            } else if ft.is_file() {
-                let Ok(rel) = p.strip_prefix(base) else { continue };
-                let path = rel.to_string_lossy().replace('\\', "/");
-                if out.len() < MAX_VIEW_FILES && !out.contains(&path) {
-                    out.push(path);
-                }
+        if ft.is_dir() {
+            walk_files(&p, depth + 1, base, out);
+        } else if ft.is_file() {
+            let Ok(rel) = p.strip_prefix(base) else { continue };
+            let path = rel.to_string_lossy().replace('\\', "/");
+            if out.len() < MAX_VIEW_FILES && !out.contains(&path) {
+                out.push(path);
             }
         }
     }
+}
+
+fn asset_paths(root: &Path) -> Vec<String> {
     let base = root.join("public");
     let mut out = Vec::new();
-    walk(&base, 0, &base, &mut out);
+    walk_files(&base, 0, &base, &mut out);
+    out
+}
+
+/// Vite entry points (item 398): files under `resources/js` and
+/// `resources/css`, as root-relative paths (`resources/js/app.js`) -
+/// the strings `Vite::asset('...')` and `@vite(...)` take. Sorted,
+/// deduped; the public-dir assets of `asset()` are a different set.
+fn vite_entries(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for sub in ["resources/js", "resources/css"] {
+        walk_files(&root.join(sub), 0, root, &mut out);
+    }
+    out.sort();
+    out.dedup();
     out
 }
 
@@ -3424,6 +3472,26 @@ pub fn wire_modifiers_for(line: &str) -> Vec<CompletionItem> {
             ..Default::default()
         })
         .collect()
+}
+
+/// Is the current call the `@vite(` directive shape - method word
+/// `vite` right after a `@`?
+fn vite_directive(line: &str) -> bool {
+    let Some(paren) = line.rfind('(') else {
+        return false;
+    };
+    let head = line[..paren].trim_end();
+    let word_start = head
+        .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .map(|x| x + 1)
+        .unwrap_or(0);
+    &head[word_start..] == "vite" && head[..word_start].ends_with('@')
+}
+
+/// A Blade template file (`*.blade.php`).
+fn is_blade_file(file: &Path) -> bool {
+    file.file_name()
+        .is_some_and(|n| n.to_string_lossy().ends_with(".blade.php"))
 }
 
 /// The harvested columns of `table` (items 390, 392).
@@ -3778,6 +3846,20 @@ pub fn items(
             (lists.middleware_aliases, "middleware alias")
         }
         Kind::StorageDisk => (lists.disks, "filesystem disk"),
+        // The `@vite` directive exists only in Blade files; the
+        // `blade` flag in context() is just the preceding-@ shape,
+        // so gate the directive form on the file here (item 398).
+        // In a plain PHP file `@vite(...)` is the error-suppression
+        // operator and offers nothing. `Vite::asset('...')` is plain
+        // PHP and ungated.
+        Kind::ViteEntry => {
+            if vite_directive(line_before)
+                && !file.is_some_and(is_blade_file)
+            {
+                return Vec::new();
+            }
+            (lists.vite_entries, "Vite entry point")
+        }
         // Returned early above; the match must stay exhaustive.
         Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
@@ -4617,6 +4699,34 @@ mod tests {
     }
 
     #[test]
+    fn detects_vite_entry_context() {
+        let ve = Some(Kind::ViteEntry);
+        assert_eq!(context("Vite::asset('resources/js/ap"), ve);
+        assert_eq!(context("@vite('resources/js/ap"), ve);
+        assert_eq!(context("@vite(['resources/css/ap"), ve);
+        assert_eq!(context("@vite(['resources/css/a.css', 're"), ve);
+        // The bare helper keeps the public-dir list.
+        assert_eq!(context("asset('logo.pn"), Some(Kind::Asset));
+        // The build-directory argument stays silent (both arms need
+        // arg 0).
+        assert_eq!(
+            context("Vite::asset('resources/js/app.js', 'bu"),
+            None
+        );
+        // The landed bare `asset(...)` arm is head-agnostic, so
+        // look-alike, commented and string-contained `...::asset('`
+        // lines still get the public-dir list - pre-existing
+        // behavior this item does not change; the Vite list claims
+        // only the exact `Vite::` receiver.
+        assert_eq!(context("MyVite::asset('resources/js/ap"), Some(Kind::Asset));
+        assert_eq!(context("// Vite::asset('resources/js/ap"), Some(Kind::Asset));
+        assert_eq!(
+            context("$h = \"Vite::asset('resources/js/ap"),
+            Some(Kind::Asset)
+        );
+    }
+
+    #[test]
     fn detects_storage_disk_context() {
         let dsk = Some(Kind::StorageDisk);
         assert_eq!(context("Storage::disk('s"), dsk);
@@ -4956,6 +5066,54 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_vite_entries() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/js/app.js", "import './bootstrap';\n");
+        put(r, "resources/js/Pages/Home.vue", "<template/>\n");
+        put(r, "resources/css/app.css", "@tailwind base;\n");
+        put(r, "public/logo.png", "png");
+        let blade = std::path::Path::new("probe.blade.php");
+        let php = std::path::Path::new("probe.php");
+        let labels = |file: &std::path::Path, line: &str| {
+            items(r, Some(file), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let entries = [
+            "resources/css/app.css",
+            "resources/js/Pages/Home.vue",
+            "resources/js/app.js",
+        ];
+        // Source files only - the public-dir asset stays with
+        // `asset()`.
+        assert_eq!(labels(php, "Vite::asset('"), entries);
+        assert_eq!(labels(blade, "@vite('"), entries);
+        assert_eq!(
+            labels(blade, "@vite(['resources/css/app.css', '"),
+            entries
+        );
+        assert_eq!(labels(php, "asset('"), ["logo.png"]);
+        assert!(
+            labels(php, "Vite::asset('resources/js/app.js', '").is_empty()
+        );
+        // The directive is Blade-file-only: in a plain PHP file
+        // `@vite(...)` is the error-suppression operator, and an
+        // unknown file type fails closed. `Vite::asset` is plain
+        // PHP and ungated.
+        assert!(labels(php, "@vite('").is_empty());
+        assert!(items(r, None, "@vite('").is_empty());
+        assert_eq!(
+            items(r, None, "Vite::asset('")
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>(),
+            entries
+        );
     }
 
     #[test]
