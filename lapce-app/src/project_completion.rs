@@ -98,6 +98,9 @@ pub enum Kind {
     /// Livewire attribute name: `wire:<partial>` inside a tag, before any
     /// modifier dot or value.
     LivewireAttribute,
+    /// Livewire `wire:target="..."`: an action or property the
+    /// loading/dirty state is scoped to.
+    LivewireTarget,
     /// `asset('...')` / `secure_asset('...')` / `mix('...')`: a path
     /// under `public/`.
     Asset,
@@ -310,6 +313,12 @@ pub fn context(line: &str) -> Option<Kind> {
                 }
                 if event == "model" {
                     return Some(Kind::LivewireModel);
+                }
+                // `wire:target="save, qu"`: the actions (and
+                // wire:model properties) a wire:loading / wire:dirty
+                // state is scoped to; comma-separated.
+                if event == "target" {
+                    return Some(Kind::LivewireTarget);
                 }
                 if crate::livewire_handlers::EVENTS.contains(&event) {
                     return Some(Kind::LivewireAction);
@@ -2448,6 +2457,13 @@ pub fn items(
     if kind == Kind::LivewireAction {
         return livewire_methods(root, file);
     }
+    if kind == Kind::LivewireTarget {
+        // Actions first, then the wire:model-able properties.
+        let mut targets = livewire_methods(root, file);
+        targets.extend(livewire_props(root, file));
+        targets.truncate(MAX_ITEMS);
+        return targets;
+    }
     if kind == Kind::ComponentTag {
         return component_tags(root, file);
     }
@@ -2703,6 +2719,8 @@ pub fn items(
         Kind::AlpineEvent => (Vec::new(), "Alpine event"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireAttribute => (Vec::new(), "Livewire attribute"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::LivewireTarget => (Vec::new(), "Livewire target"),
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
@@ -2805,6 +2823,14 @@ mod tests {
             Some(Kind::LivewireModifier)
         );
         assert_eq!(context("<div wire:loading=\"cl"), None);
+        // wire:target values are actions or properties (item 379).
+        assert_eq!(context("<div wire:target=\"sa"), Some(Kind::LivewireTarget));
+        assert_eq!(
+            context("<div wire:loading wire:target=\"save, de"),
+            Some(Kind::LivewireTarget)
+        );
+        assert_eq!(context("<div wire:target=\"save\""), None);
+        assert_eq!(context("<div data-wire:target=\"sa"), None);
         assert_eq!(context("<div wire:key=\"it"), None);
         assert_eq!(context("<button wire:click=\"sa\""), None);
         assert_eq!(context("<button data-wire:click=\"sa"), None);
@@ -3604,6 +3630,31 @@ mod tests {
         let props = labels("<input wire:model=\"");
         assert!(props.contains(&"email".to_string()));
         assert!(!props.contains(&"save".to_string()));
+    }
+
+    #[test]
+    fn offers_livewire_targets() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/livewire/user-profile.blade.php", "<div></div>\n");
+        put(r, "app/Livewire/UserProfile.php", "<?php\nclass UserProfile extends \\Livewire\\Component {\n    public $username = '';\n    public function save() {}\n    public function remove() {}\n}\n");
+        let view = r.join("resources/views/livewire/user-profile.blade.php");
+        let labels = |line: &str| {
+            items(r, Some(view.as_path()), line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Actions and properties both complete; no other members.
+        let got = labels("<div wire:loading wire:target=\"");
+        assert!(got.contains(&"save".to_string()));
+        assert!(got.contains(&"remove".to_string()));
+        assert!(got.contains(&"username".to_string()));
+        assert_eq!(got.len(), 3);
+        // Comma-separated continuation keeps the context.
+        assert_eq!(labels("<div wire:target=\"save, u"), got);
+        // A view with no paired class offers nothing.
+        assert!(items(r, None, "<div wire:target=\"").is_empty());
     }
     fn labels(items: Vec<CompletionItem>) -> Vec<String> {
         items.into_iter().map(|i| i.label).collect()
