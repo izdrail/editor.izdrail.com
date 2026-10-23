@@ -111,7 +111,8 @@ pub enum Kind {
     /// `Validator::make(..., [...])` and `#[Validate('...')]`.
     ValidationRule,
     /// Database table: `Schema::table('...')`, `DB::table('...')`,
-    /// `->constrained('...')` and friends.
+    /// `->constrained('...')` and friends, and the table parameter of
+    /// the `exists:` / `unique:` validation rules (item 388).
     DbTable,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
@@ -1035,6 +1036,15 @@ const BLUEPRINT_METHODS: &[(&str, &str)] = &[
 fn validation_rule_context(line: &str) -> Option<Kind> {
     let q = line.rfind(|c| c == '\'' || c == '"')?;
     let token = line[q + 1..].rsplit('|').next()?;
+    // `exists:` / `unique:` take a table name first (item 388): the
+    // parameter up to the first comma is a database table. The column
+    // position after the comma stays silent.
+    if let Some(param) = token
+        .strip_prefix("exists:")
+        .or_else(|| token.strip_prefix("unique:"))
+    {
+        return if param.contains(',') { None } else { Some(Kind::DbTable) };
+    }
     if token.contains(':') {
         return None;
     }
@@ -3687,6 +3697,19 @@ mod tests {
         assert_eq!(context("$this->validate(['name' => 'required'], ['na"), None);
         assert_eq!(context("$this->validate(['name' => 'max:1"), None);
         assert_eq!(context("$this->validate(['name' => 'min:2|max:5"), None);
+        // `exists:` / `unique:` table parameter (item 388): the table
+        // position offers tables; the column position after the comma
+        // stays silent.
+        let table = Some(Kind::DbTable);
+        assert_eq!(context("$this->validate(['email' => 'exists:us"), table);
+        assert_eq!(
+            context("$this->validate(['email' => 'required|unique:us"),
+            table
+        );
+        assert_eq!(context("#[Validate('exists:us"), table);
+        assert_eq!(context("Validator::make($data, ['email' => 'unique:us"), table);
+        assert_eq!(context("$this->validate(['email' => 'exists:users,em"), None);
+        assert_eq!(context("$this->validate(['email' => 'unique:users,em"), None);
         assert_eq!(context("$this->validate('req|ma"), None);
         assert_eq!(context("$this->check(['name' => 'req"), None);
     }
@@ -3764,6 +3787,39 @@ mod tests {
             ["password_resets", "posts", "users"]
         );
         assert!(labels("Schema::create('").is_empty());
+    }
+
+    #[test]
+    fn offers_validation_rule_tables() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $t) {});\nSchema::create('password_resets', function (Blueprint $t) {});\n",
+        );
+        put(
+            r,
+            "database/migrations/2024_02_01_000000_create_posts_table.php",
+            "<?php\nSchema::create(\"posts\", function (Blueprint $t) {});\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let tables = ["password_resets", "posts", "users"];
+        assert_eq!(labels("$this->validate(['email' => 'exists:"), tables);
+        assert_eq!(
+            labels("$this->validate(['email' => 'required|unique:us"),
+            tables
+        );
+        assert_eq!(labels("#[Validate('exists:u"), tables);
+        assert_eq!(labels("Validator::make($data, ['email' => 'unique:"), tables);
+        // The column position after the comma stays silent.
+        assert!(labels("$this->validate(['email' => 'exists:users,em").is_empty());
+        assert!(labels("$this->validate(['email' => 'unique:users,").is_empty());
     }
 
     #[test]

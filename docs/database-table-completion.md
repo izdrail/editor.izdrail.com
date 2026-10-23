@@ -12,6 +12,9 @@ route scan, 30 s cache):
   `->on('...')`
 - query joins: `->join('...')`, `->leftJoin('...')`,
   `->rightJoin('...')`, `->crossJoin('...')`
+- validation rules: the table parameter of `exists:` and `unique:` in
+  rules strings (item 388); the column position after the comma stays
+  silent
 
 `Schema::create('...')` names a NEW table, so it stays silent, as do
 bare `table('...')` calls. `Schema::connection(...)->create(...)` is
