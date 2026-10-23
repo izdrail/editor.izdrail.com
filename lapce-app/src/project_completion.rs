@@ -354,6 +354,7 @@ pub fn context(line: &str) -> Option<Kind> {
 pub fn alpine_data_property_items(
     before_cursor: &str,
     line_before: &str,
+    root: Option<&Path>,
 ) -> Vec<CompletionItem> {
     let Some(attr) = quoted_value_attr(line_before) else {
         return Vec::new();
@@ -361,8 +362,27 @@ pub fn alpine_data_property_items(
     if !alpine_expression_attr(&attr) {
         return Vec::new();
     }
-    x_data_keys_at(before_cursor)
-        .into_iter()
+    let Some(value) = enclosing_x_data_value(before_cursor) else {
+        return Vec::new();
+    };
+    let keys = if value.trim_start().starts_with('{') {
+        parse_data_keys(&value)
+    } else {
+        // A bare component name: resolve its `Alpine.data('name', ...)`
+        // factory in the project (item 370).
+        let name = value.trim();
+        let is_name = !name.is_empty()
+            && name.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$' | b'-')
+            });
+        if is_name {
+            root.map(|r| data_component_keys(r, name))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+    keys.into_iter()
         .take(MAX_ITEMS)
         .map(|n| CompletionItem {
             label: n,
@@ -484,11 +504,18 @@ fn alpine_expression_attr(attr: &str) -> bool {
         )
 }
 
-/// Keys of the innermost open tag's `x-data` object. A naive tag stack
-/// over the last 16k characters before the cursor: quoted attribute
-/// values hide `>`, `</name` pops up to and including the matching open
-/// tag, void and unclosed tags simply stay on the stack.
+/// Keys of the innermost open tag's `x-data` object.
 fn x_data_keys_at(before_cursor: &str) -> Vec<String> {
+    enclosing_x_data_value(before_cursor)
+        .map(|v| parse_data_keys(&v))
+        .unwrap_or_default()
+}
+
+/// The `x-data` value of the innermost open tag carrying one. A naive
+/// tag stack over the last 16k characters before the cursor: quoted
+/// attribute values hide `>`, `</name` pops up to and including the
+/// matching open tag, void and unclosed tags simply stay on the stack.
+fn enclosing_x_data_value(before_cursor: &str) -> Option<String> {
     let tail_start = before_cursor
         .char_indices()
         .rev()
@@ -555,10 +582,10 @@ fn x_data_keys_at(before_cursor: &str) -> Vec<String> {
     }
     for (_, tag_text) in stack.iter().rev() {
         if let Some(value) = x_data_value(tag_text) {
-            return parse_data_keys(value);
+            return Some(value.to_string());
         }
     }
-    Vec::new()
+    None
 }
 
 /// The quoted value of the first `x-data` attribute in `tag_text`.
@@ -1068,6 +1095,57 @@ fn data_names(root: &Path) -> Vec<String> {
     names.dedup();
     names.truncate(MAX_STORES);
     names
+}
+
+/// Keys of the object returned by the `Alpine.data('name', ...)`
+/// factory registered in the project's JS/TS files or inline Blade
+/// scripts (item 370). Only the `=> ({ ... })` factory shape is read;
+/// a block body or a shared function reference is not resolved. The
+/// first registration found wins.
+fn data_component_keys(root: &Path, name: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    for base in ["resources/js", "resources/ts", "resources/views", "public/js"] {
+        walk_store_files(&root.join(base), 0, &mut files);
+    }
+    for f in files {
+        let Ok(text) = std::fs::read_to_string(&f) else {
+            continue;
+        };
+        if let Some(keys) = data_factory_keys(&text, name) {
+            return keys;
+        }
+    }
+    Vec::new()
+}
+
+/// The returned object's keys when `text` registers `name` with
+/// `Alpine.data('name', () => ({ ... }))`.
+fn data_factory_keys(text: &str, name: &str) -> Option<Vec<String>> {
+    let mut hay = text;
+    while let Some(i) = hay.find("Alpine.data(") {
+        hay = &hay[i + "Alpine.data(".len()..];
+        let t = hay.trim_start();
+        let Some(q) = t.chars().next() else { break };
+        if q != '\'' && q != '"' {
+            continue;
+        }
+        let body = &t[q.len_utf8()..];
+        let Some(end) = body.find(q) else { break };
+        let found = &body[..end];
+        let after_name = &body[end + q.len_utf8()..];
+        hay = after_name;
+        if found != name {
+            continue;
+        }
+        let arrow = after_name.find("=>")?;
+        let expr = after_name[arrow + 2..].trim_start();
+        let object = expr
+            .strip_prefix('(')
+            .map(str::trim_start)
+            .unwrap_or(expr);
+        return Some(parse_data_keys(object));
+    }
+    None
 }
 
 /// `x-ref="name"` values in `text` (Alpine refs, read via `$refs.name`).
@@ -2998,7 +3076,7 @@ Gate::define(\"buy-cd\", 'shop.buy');
     #[test]
     fn offers_x_data_properties_in_expression_values() {
         let labels = |before: &str, line: &str| {
-            alpine_data_property_items(before, line)
+            alpine_data_property_items(before, line, None)
                 .into_iter()
                 .map(|i| i.label)
                 .collect::<Vec<_>>()
@@ -3033,7 +3111,7 @@ Gate::define(\"buy-cd\", 'shop.buy');
             "    <span x-text=\"inn",
         );
         let line = "    <span x-text=\"inn";
-        let labels: Vec<_> = alpine_data_property_items(before, line)
+        let labels: Vec<_> = alpine_data_property_items(before, line, None)
             .into_iter()
             .map(|i| i.label)
             .collect();
@@ -3052,7 +3130,7 @@ Gate::define(\"buy-cd\", 'shop.buy');
             "<div x-data=\"{ caf\u{e9}: 1, na\u{ef}ve: 2 }\" x-text=\"ca",
         );
         let line = "<div x-data=\"{ caf\u{e9}: 1, na\u{ef}ve: 2 }\" x-text=\"ca";
-        let labels: Vec<_> = alpine_data_property_items(before, line)
+        let labels: Vec<_> = alpine_data_property_items(before, line, None)
             .into_iter()
             .map(|i| i.label)
             .collect();
@@ -3072,11 +3150,80 @@ Gate::define(\"buy-cd\", 'shop.buy');
             "<div x-data=\"{ caf\u{e9}: 1, naive: 2 }\" x-text=\"caf",
         );
         let line = "<div x-data=\"{ caf\u{e9}: 1, naive: 2 }\" x-text=\"caf";
-        let labels: Vec<_> = alpine_data_property_items(before, line)
+        let labels: Vec<_> = alpine_data_property_items(before, line, None)
             .into_iter()
             .map(|i| i.label)
             .collect();
         assert_eq!(labels, ["caf\u{e9}", "naive"]);
+    }
+
+    /// Item 370: a named `x-data` component resolves to the keys of its
+    /// registered `Alpine.data` factory.
+    #[test]
+    fn resolves_named_x_data_component_properties() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/js/components.js",
+            "Alpine.data('accordion', () => ({ section: 0 }));\n\
+             Alpine.data('dropdown', () => ({ open: false, items: [], toggle() { this.open = !this.open } }));\n",
+        );
+        let labels = |before: &str, line: &str| {
+            alpine_data_property_items(before, line, Some(r))
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Properties of the named component in scope.
+        assert_eq!(
+            labels(
+                r#"<div x-data="dropdown"><span x-show="op"#,
+                r#"<span x-show="op"#
+            ),
+            ["open", "items", "toggle"]
+        );
+        // The first registration wins; other names are not mixed in.
+        assert_eq!(
+            labels(
+                r#"<div x-data="accordion"><span x-show="sec"#,
+                r#"<span x-show="sec"#
+            ),
+            ["section"]
+        );
+        // An inner inline object still shadows the outer named scope.
+        assert_eq!(
+            labels(
+                r#"<div x-data="dropdown"><div x-data="{ local: 1 }"><span x-show=""#,
+                r#"<span x-show=""#
+            ),
+            ["local"]
+        );
+        // Unknown names and block-body factories offer nothing.
+        assert!(labels(
+            r#"<div x-data="missing"><span x-show="op"#,
+            r#"<span x-show="op"#
+        )
+        .is_empty());
+        // Without a project root there is nothing to resolve against.
+        assert!(alpine_data_property_items(
+            r#"<div x-data="dropdown"><span x-show="op"#,
+            r#"<span x-show="op"#,
+            None,
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn parses_data_factory_keys() {
+        let js = "Alpine.data('tabs', () => ({ tab: 'a', select(t) { this.tab = t } }));";
+        assert_eq!(data_factory_keys(js, "tabs"), Some(vec!["tab".to_string(), "select".to_string()]));
+        // Different quote styles and several registrations in one file.
+        let js = "Alpine.data(\"a\", () => ({ x: 1 })); Alpine.data('b', () => ({ y: 2 }));";
+        assert_eq!(data_factory_keys(js, "b"), Some(vec!["y".to_string()]));
+        // A shared function reference or a missing name resolves to nothing.
+        assert_eq!(data_factory_keys("Alpine.data('c', shared);", "c"), None);
+        assert_eq!(data_factory_keys("Alpine.data('c', () => ({ x: 1 }));", "d"), None);
     }
 
     #[test]

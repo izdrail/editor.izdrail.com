@@ -3035,6 +3035,7 @@ impl EditorData {
                     crate::project_completion::alpine_data_property_items(
                         &before_cursor,
                         &line_before,
+                        self.common.workspace.path.as_deref(),
                     );
                 (words, snippets, keywords, line_before, blade_vars, alpine_props)
             });

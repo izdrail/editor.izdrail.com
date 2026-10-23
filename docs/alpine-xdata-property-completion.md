@@ -21,13 +21,23 @@ How it works:
   completed so far. Non-ASCII identifier keys (`caf\u{e9}`, `na\u{ef}ve`)
   are valid JavaScript and are offered too.
 
+Named components (item 370): when the innermost `x-data` value is a
+bare component name (`x-data="dropdown"`), the keys come from the
+`Alpine.data('dropdown', () => ({ ... }))` factory registered in the
+project's `resources/js`, `resources/ts`, `public/js` or inline Blade
+scripts (same bounds as the store scan). Only the `=> ({ ... })`
+factory shape is read; a block body or a shared function reference is
+not resolved, and the first registration found wins. An inner inline
+object still shadows an outer named scope.
+
 Limits: attribute values that started on a previous line are not
-recognised, and `x-data="fn()"` component references are not resolved.
+recognised, and `x-data="fn()"` call-form references are not resolved.
 Items blend as Project priority (item 358) from the first typed
 character (item 359).
 
 Tests: `parses_x_data_keys`, `finds_x_data_on_the_innermost_open_tag`,
 `offers_x_data_properties_in_expression_values`,
+`resolves_named_x_data_component_properties`, `parses_data_factory_keys`,
 `offers_x_data_properties_from_an_ancestor_tag`,
 `offers_unicode_x_data_keys`,
 `recovers_x_data_scope_after_malformed_prior_markup`.

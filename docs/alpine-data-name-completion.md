@@ -15,7 +15,7 @@ A longer attribute containing `x-data=` (`data-x-data=`) and values
 with spaces around `=` are not recognised.
 
 Related: the x-data property completion (item 365) reads inline object
-literals; resolving the keys of a registered component referenced by
-name is still open.
+literals and, for a component referenced by name, resolves the keys of
+its registered factory (item 370).
 
 Tests: `detects_alpine_data_context`, `offers_alpine_data_names`.
