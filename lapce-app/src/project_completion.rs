@@ -264,39 +264,13 @@ pub fn alpine_data_property_items(
     before_cursor: &str,
     line_before: &str,
 ) -> Vec<CompletionItem> {
-    // TEMPORARY diagnosis for the host ancestor-scope loss (item 365b):
-    // LAPCE_ALPINE_COMPLETION_DEBUG=1 logs what the parser saw in-app.
-    let debug = std::env::var_os("LAPCE_ALPINE_COMPLETION_DEBUG").is_some();
-    if debug {
-        let tail: String = before_cursor
-            .chars()
-            .rev()
-            .take(400)
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect();
-        eprintln!(
-            "alpine-completion: line_before={line_before:?} before_cursor_tail={tail:?}"
-        );
-    }
     let Some(attr) = quoted_value_attr(line_before) else {
-        if debug {
-            eprintln!("alpine-completion: no open quoted value on the line");
-        }
         return Vec::new();
     };
     if !alpine_expression_attr(&attr) {
-        if debug {
-            eprintln!("alpine-completion: {attr:?} is not an expression attribute");
-        }
         return Vec::new();
     }
-    let keys = x_data_keys_at(before_cursor);
-    if debug {
-        eprintln!("alpine-completion: attr={attr:?} keys={keys:?}");
-    }
-    keys
+    x_data_keys_at(before_cursor)
         .into_iter()
         .take(MAX_ITEMS)
         .map(|n| CompletionItem {
