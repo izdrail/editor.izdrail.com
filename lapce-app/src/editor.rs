@@ -49,7 +49,7 @@ use lapce_core::{
     selection::{InsertDrift, SelRegion, Selection},
 };
 use lapce_rpc::{buffer::BufferId, plugin::PluginId, proxy::ProxyResponse};
-use lapce_xi_rope::{Rope, RopeDelta, Transformer};
+use lapce_xi_rope::{Rope, RopeDelta, Transformer, spans::Spans};
 use lsp_types::{
     CodeActionResponse, CompletionItem, CompletionTextEdit, GotoDefinitionResponse,
     HoverContents, InlayHint, InlayHintLabel, InlineCompletionTriggerKind, Location,
@@ -248,6 +248,24 @@ impl PartialEq for EditorData {
 /// (`<x-forms.in`, `<livewire:admin.us`). Every consumer of the word start
 /// (filter input, snippet range, apply path, snippet origin) uses this so
 /// the replace range and the inserted text agree.
+/// Spans containing `offset`, boundary-inclusive, for the codeAction
+/// request context: servers match quick fixes to the diagnostics sent
+/// with the request, so the caret on a warning must send that warning.
+/// The chunk scan is widened by one byte on each side because
+/// `iter_chunks` over an empty `offset..offset` range yields nothing at
+/// all - the request context used to go out empty every time.
+pub(crate) fn containing_spans<T: Clone>(
+    spans: &Spans<T>,
+    offset: usize,
+) -> Vec<T> {
+    spans
+        .iter_chunks(offset.saturating_sub(1)..offset + 1)
+        .filter(|(iv, _)| iv.start <= offset && iv.end >= offset)
+        .map(|(_, item)| item)
+        .cloned()
+        .collect()
+}
+
 pub(crate) fn completion_word_start(
     buffer: &lapce_core::buffer::Buffer,
     path: Option<&std::path::Path>,
@@ -3647,17 +3665,12 @@ impl EditorData {
             let position = buffer.offset_to_position(offset);
             let rev = doc.rev();
 
-            // Get the diagnostics for the current line, which the LSP might use to inform
-            // what code actions are available (such as fixes for the diagnostics).
-            let diagnostics = doc
-                .diagnostics()
-                .diagnostics_span
-                .get_untracked()
-                .iter_chunks(offset..offset)
-                .filter(|(iv, _diag)| iv.start <= offset && iv.end >= offset)
-                .map(|(_iv, diag)| diag)
-                .cloned()
-                .collect();
+            // Diagnostics touching the caret, sent with the request so
+            // the server can offer their quick fixes.
+            let diagnostics = containing_spans(
+                &doc.diagnostics().diagnostics_span.get_untracked(),
+                offset,
+            );
 
             (position, rev, diagnostics)
         });
@@ -5844,5 +5857,42 @@ fn find_hint(mut pre_hint_len: u32, index: u32, hint: &InlayHint) -> FindHintRs 
             }
             NoMatchContinue { pre_hint_len }
         }
+    }
+}
+
+#[cfg(test)]
+mod code_action_context_tests {
+    use super::containing_spans;
+    use lapce_xi_rope::{Interval, spans::Spans, spans::SpansBuilder};
+
+    fn spans(entries: &[(usize, usize, u32)]) -> Spans<u32> {
+        let mut b = SpansBuilder::new(100);
+        for (start, end, value) in entries {
+            b.add_span(Interval::new(*start, *end), *value);
+        }
+        b.build()
+    }
+
+    #[test]
+    fn collects_spans_touching_the_caret() {
+        let sp = spans(&[(10, 20, 1), (40, 50, 2)]);
+        assert_eq!(containing_spans(&sp, 15), vec![1]);
+        // Boundaries are inclusive: the caret at either edge of the
+        // underline still sends that diagnostic with the request.
+        assert_eq!(containing_spans(&sp, 10), vec![1]);
+        assert_eq!(containing_spans(&sp, 20), vec![1]);
+        assert_eq!(containing_spans(&sp, 45), vec![2]);
+        assert!(containing_spans(&sp, 9).is_empty());
+        assert!(containing_spans(&sp, 21).is_empty());
+        assert!(containing_spans(&sp, 30).is_empty());
+    }
+
+    #[test]
+    fn handles_empty_spans_and_edge_offsets() {
+        let sp = spans(&[(0, 5, 1)]);
+        assert_eq!(containing_spans(&sp, 0), vec![1]);
+        assert_eq!(containing_spans(&sp, 5), vec![1]);
+        let empty = spans(&[]);
+        assert!(containing_spans(&empty, 10).is_empty());
     }
 }
