@@ -123,6 +123,10 @@ pub enum Kind {
     /// names the base table earlier with `DB::table('...')`
     /// (item 392).
     QueryColumn,
+    /// Middleware alias: a quoted string in the first argument of
+    /// `->middleware('...')` / `Route::middleware('...')` /
+    /// `->withoutMiddleware('...')` (item 393).
+    MiddlewareAlias,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1375,6 +1379,38 @@ fn call_context(line: &str) -> Option<Kind> {
                 return None;
             }
         }
+        // Middleware aliases (item 393): a quoted string in the
+        // first argument of `->middleware(...)` /
+        // `Route::middleware(...)` / `->withoutMiddleware(...)`,
+        // including `['auth', '...']` array entries (the bracket
+        // comma reads as depth, not the next argument). Only inside
+        // an open string - class constants stay with normal
+        // completion - and the `alias:parameter` suffix is a value,
+        // not an alias.
+        "middleware" | "withoutMiddleware" if arg == 0 => {
+            let h = head[..word_start].trim_end();
+            let route_static = h.ends_with("::") && {
+                let pre = h[..h.len() - 2].trim_end();
+                pre.ends_with("Route")
+                    && (pre.len() == 5 || {
+                        let c = pre.as_bytes()[pre.len() - 6];
+                        !c.is_ascii_alphanumeric() && c != b'_'
+                    })
+            };
+            if !(h.ends_with("->") || route_static) {
+                return None;
+            }
+            let Some(q) = in_str else {
+                return None;
+            };
+            let Some(open) = line.rfind(q) else {
+                return None;
+            };
+            if line[open + 1..].contains(':') {
+                return None;
+            }
+            Kind::MiddlewareAlias
+        }
         _ => return None,
     })
 }
@@ -1395,6 +1431,7 @@ struct Lists {
     gates: Vec<String>,
     tables: Vec<String>,
     columns: Vec<(String, String)>,
+    middleware_aliases: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1482,6 +1519,143 @@ fn table_columns(root: &Path) -> Vec<(String, String)> {
     out.sort();
     out.dedup();
     out
+}
+
+/// Middleware alias and group names (item 393): the top-level string
+/// keys of the declaration arrays in `bootstrap/app.php` (Laravel 11+
+/// `->alias([...])`) and `app/Http/Kernel.php` (`$middlewareAliases`,
+/// `$routeMiddleware`, `$middlewareGroups`). Only those arrays are
+/// scanned - an unrelated `'name' => ...` config entry elsewhere in
+/// the file is not an alias. Sorted, deduped; aliases the framework
+/// or a package registers itself are not offered.
+fn middleware_aliases(root: &Path) -> Vec<String> {
+    const FILES: &[&str] = &["bootstrap/app.php", "app/Http/Kernel.php"];
+    const KERNEL_PROPS: &[&str] =
+        &["$middlewareAliases", "$routeMiddleware", "$middlewareGroups"];
+    let mut out = Vec::new();
+    for f in FILES {
+        let p = root.join(f);
+        let Ok(meta) = std::fs::metadata(&p) else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        // The `[` opening each declaration array.
+        let mut regions: Vec<usize> = Vec::new();
+        for (i, _) in masked.match_indices("->alias(") {
+            if in_string(i) {
+                continue;
+            }
+            let mut j = i + "->alias(".len();
+            while j < b.len() && b[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if b.get(j) == Some(&b'[') {
+                regions.push(j);
+            }
+        }
+        for prop in KERNEL_PROPS {
+            for (i, _) in masked.match_indices(prop) {
+                if in_string(i) {
+                    continue;
+                }
+                let mut j = i + prop.len();
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                // Only the `= [` definition; a `$this->...` usage or
+                // a non-array default declares nothing.
+                if b.get(j) != Some(&b'=') {
+                    continue;
+                }
+                j += 1;
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if b.get(j) == Some(&b'[') {
+                    regions.push(j);
+                }
+            }
+        }
+        for open in regions {
+            harvest_alias_keys(&masked, &text, &strings, open, &mut out);
+            if out.len() >= MAX_NAMES {
+                break;
+            }
+        }
+        if out.len() >= MAX_NAMES {
+            break;
+        }
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
+}
+
+/// The top-level `'name' =>` keys of the array opened at `open`
+/// (item 393). String spans are jumped whole, so a quote inside a
+/// value cannot be misread as a key, and keys of nested arrays sit
+/// at depth two and are skipped.
+fn harvest_alias_keys(
+    masked: &str,
+    text: &str,
+    strings: &[(usize, usize)],
+    open: usize,
+    out: &mut Vec<String>,
+) {
+    let b = masked.as_bytes();
+    let mut i = open + 1;
+    let mut depth = 1usize;
+    while i < b.len() && depth > 0 {
+        match b[i] {
+            b'[' | b'(' | b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b']' | b')' | b'}' => {
+                depth -= 1;
+                i += 1;
+            }
+            q if q == b'\'' || q == b'"' => {
+                let Ok(si) = strings.binary_search_by_key(&i, |s| s.0)
+                else {
+                    i += 1;
+                    continue;
+                };
+                let (start, end) = strings[si];
+                if depth == 1 {
+                    let name = &text[start + 1..end];
+                    if !name.is_empty()
+                        && name.len() <= 60
+                        && name.chars().all(|c| {
+                            c.is_ascii_alphanumeric()
+                                || matches!(c, '_' | '-' | '.')
+                        })
+                        && masked[end + 1..].trim_start().starts_with("=>")
+                    {
+                        out.push(name.to_string());
+                    }
+                }
+                i = end + 1;
+            }
+            _ => i += 1,
+        }
+    }
 }
 
 /// Column-harvesting pass over one migration's text: comments are
@@ -2280,6 +2454,7 @@ fn lists(root: &Path) -> Lists {
     let gates = ability_names(root);
     let tables = table_names(root);
     let columns = table_columns(root);
+    let middleware_aliases = middleware_aliases(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2295,6 +2470,7 @@ fn lists(root: &Path) -> Lists {
         gates,
         tables,
         columns,
+        middleware_aliases,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -2902,7 +3078,8 @@ fn livewire_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
 
 /// Does the completion context at the end of `line_before_cursor` offer
 /// dotted names (routes, config keys, views, sections, stacks, translation
-/// keys, Gate abilities)? Used to extend the completion word start over
+/// keys, Gate abilities, middleware aliases)? Used to extend the
+/// completion word start over
 /// `.`-joined segments so accepting replaces the whole name.
 pub fn dotted_name_context(line_before_cursor: &str) -> bool {
     matches!(
@@ -2919,6 +3096,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::Gate
                 | Kind::LivewireName
                 | Kind::LivewireEvent
+                | Kind::MiddlewareAlias
         )
     )
 }
@@ -3395,6 +3573,9 @@ pub fn items(
         Kind::DbColumn => (Vec::new(), "database column"),
         // Returned early above; the match must stay exhaustive.
         Kind::QueryColumn => (Vec::new(), "database column"),
+        Kind::MiddlewareAlias => {
+            (lists.middleware_aliases, "middleware alias")
+        }
         // Returned early above; the match must stay exhaustive.
         Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
@@ -4234,6 +4415,25 @@ mod tests {
     }
 
     #[test]
+    fn detects_middleware_alias_context() {
+        let mw = Some(Kind::MiddlewareAlias);
+        assert_eq!(context("Route::get('/a', $c)->middleware('au"), mw);
+        assert_eq!(context("Route::middleware('au"), mw);
+        assert_eq!(context("->withoutMiddleware('ve"), mw);
+        assert_eq!(
+            context("Route::middleware(['auth', 've"),
+            mw
+        );
+        // Alias parameters, class constants, closed strings and
+        // non-middleware receivers stay silent.
+        assert_eq!(context("->middleware('throttle:6"), None);
+        assert_eq!(context("->middleware(['auth'], 've"), None);
+        assert_eq!(context("->middleware(Authenticate::class"), None);
+        assert_eq!(context("MyRoute::middleware('au"), None);
+        assert_eq!(context("->name('au"), None);
+    }
+
+    #[test]
     fn offers_validation_rules() {
         let d = tempfile::tempdir().unwrap();
         let labels = |line: &str| {
@@ -4458,6 +4658,61 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_middleware_aliases() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "bootstrap/app.php",
+            concat!(
+                "<?php\nreturn Application::configure()\n",
+                "    ->withMiddleware(function ($m) {\n",
+                "        $m->alias(['admin' => AdminOnly::class]);\n",
+                "        $m->alias($shared);\n",
+                "    })\n",
+                "    ->withExceptions(function ($e) {\n",
+                "        $e->render(fn () => ['message' => 'nope']);\n",
+                "    });\n",
+                "$x = \"->alias(['fake' => Y::class]);\";\n",
+            ),
+        );
+        put(
+            r,
+            "app/Http/Kernel.php",
+            concat!(
+                "<?php\nclass Kernel {\n",
+                "    protected $middlewareGroups = [\n",
+                "        'web' => [],\n",
+                "        'api' => ['inner' => \\App\\X::class],\n",
+                "    ];\n",
+                "    protected $middlewareAliases = [\n",
+                "        'auth' => \\App\\Http\\Middleware\\Authenticate::class,\n",
+                "        // 'ghost' => Ghost::class,\n",
+                "    ];\n",
+                "    protected $custom = ['driver' => 'redis'];\n",
+                "}\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let all = ["admin", "api", "auth", "web"];
+        assert_eq!(labels("Route::get('/a', $c)->middleware('"), all);
+        assert_eq!(labels("Route::middleware('"), all);
+        // The exact-equality asserts above are the scope negatives:
+        // only declaration arrays are harvested, so the unrelated
+        // 'message' => render array, the in-string "->alias([" text,
+        // the ->alias($shared) non-array call, the commented-out
+        // 'ghost', the nested group key 'inner' and the unrelated
+        // $custom property key 'driver' invent nothing.
+        assert!(labels("->middleware('throttle:6").is_empty());
+        assert!(labels("->middleware(Authenticate::class").is_empty());
     }
 
     #[test]
