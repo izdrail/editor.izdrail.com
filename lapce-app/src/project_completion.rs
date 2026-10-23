@@ -1372,6 +1372,12 @@ fn table_columns(root: &Path) -> Vec<(String, String)> {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Heredoc/nowdoc strings are not masked (item 390): fail
+            // closed - omit this file's columns rather than risk
+            // inventing phantom ones from heredoc content.
+            continue;
+        }
         harvest_columns(&text, &mut out);
         if out.len() >= MAX_NAMES {
             out.truncate(MAX_NAMES);
@@ -1391,8 +1397,9 @@ fn table_columns(root: &Path) -> Vec<(String, String)> {
 /// or arrow (`fn (...) => ...`) - and another `Schema::` operation
 /// (drop / dropIfExists / rename) ends the attribution. Text scan,
 /// nothing is executed; a closure parameter named other than `$table`
-/// is not seen (the Laravel convention, same as item 382), and
-/// heredoc/nowdoc strings are not masked.
+/// is not seen (the Laravel convention, same as item 382), and files
+/// containing heredoc/nowdoc (`<<<`) are skipped entirely - the scan
+/// does not mask them, so it fails closed instead.
 fn harvest_columns(text: &str, out: &mut Vec<(String, String)>) {
     let (masked, strings) = mask_comments(text);
     let in_string = |pos: usize| {
@@ -4277,6 +4284,26 @@ mod tests {
             labels("$this->validate(['e' => 'exists:users,"),
             ["arrow_col", "id", "name", "note"]
         );
+    }
+
+    #[test]
+    fn harvest_fails_closed_on_heredoc() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "database/migrations/2024_01_01_000000_create_users_table.php",
+            "<?php\nSchema::create('users', function (Blueprint $table) {\n    $table->string('name');\n});\n$sql = <<<SQL\n$table->string('phantom');\nSQL;\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The file is skipped whole: neither the phantom nor the real
+        // column is offered.
+        assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
     }
 
     #[test]

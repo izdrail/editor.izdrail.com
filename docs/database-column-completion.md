@@ -31,8 +31,9 @@ enclosing `Schema::create/table` closure body - a block
 call outside any schema closure is ignored, and another `Schema::`
 operation (`dropIfExists` / `drop` / `rename`) ends the attribution.
 A closure parameter named other than `$table` is not seen (the
-Laravel convention, same as item 382), and heredoc/nowdoc strings are
-not masked.
+Laravel convention, same as item 382). A file containing heredoc/nowdoc
+(`<<<`) is skipped whole: the scan does not mask those strings, so it
+fails closed - missing suggestions, never invented columns.
 
 Harvested: column-type Blueprint methods (the item 382 list) with an
 explicit first name argument (`$table->string('name')` -> `name`),
@@ -49,5 +50,6 @@ later migration can linger. `Rule::exists(...)` / `Rule::unique(...)`
 are fluent PHP calls, not rule strings, and stay out.
 
 Tests: `offers_validation_rule_columns`,
-`harvest_ignores_comments_strings_and_stray_calls`, plus the
+`harvest_ignores_comments_strings_and_stray_calls`,
+`harvest_fails_closed_on_heredoc`, plus the
 `detects_validation_rule_context` DbColumn pins.
