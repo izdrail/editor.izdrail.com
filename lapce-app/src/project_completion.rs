@@ -104,6 +104,9 @@ pub enum Kind {
     /// Gate ability: `@can('...')`, `$user->can('...')`,
     /// `Gate::allows('...')` and friends.
     Gate,
+    /// Validation rule: the rules string of `->validate([...])`,
+    /// `Validator::make(..., [...])` and `#[Validate('...')]`.
+    ValidationRule,
 }
 
 /// The context at the end of `line` (the text before the cursor): the last
@@ -905,6 +908,19 @@ fn tag_attr_position<'a>(line: &'a str, marker: &str) -> Option<(&'a str, &'a st
     Some((tag, partial))
 }
 
+/// Some(Kind::ValidationRule) when the caret is at a rule-name
+/// position inside the open rules string: the current `|`-separated
+/// segment must not contain `:` - a rule parameter (`max:10`) takes
+/// no completion. `line` is already known to end inside a string.
+fn validation_rule_context(line: &str) -> Option<Kind> {
+    let q = line.rfind(|c| c == '\'' || c == '"')?;
+    let token = line[q + 1..].rsplit('|').next()?;
+    if token.contains(':') {
+        return None;
+    }
+    Some(Kind::ValidationRule)
+}
+
 /// The context of an open quoted call argument at the end of `line`
 /// (`route('...`, `$dispatch('...`): the last `(` whose argument string
 /// is still open, in the argument the helper actually takes the name in
@@ -1004,6 +1020,45 @@ fn call_context(line: &str) -> Option<Kind> {
                     || matches!(str_opener, Some((b',', d)) if d >= 1)) =>
         {
             Kind::LivewireProp
+        }
+        // Validation rules (item 378): a rule-name position inside the
+        // rules string of `->validate([...])` - a value after `=>` in
+        // the rules array (pipe form), or an entry of a nested
+        // `['required', '...']` rule array one level deeper.
+        "validate"
+            if arg == 0
+                && (matches!(str_opener, Some((b'>', d)) if d >= 1)
+                    || matches!(str_opener, Some((b'[', d)) if d >= 2)
+                    || matches!(str_opener, Some((b',', d)) if d >= 2)) =>
+        {
+            return validation_rule_context(line);
+        }
+        // The Livewire `#[Validate('...')]` attribute takes the rules
+        // directly: a string right after the paren (no character in
+        // between, so no recorded opener), or an entry of a rules
+        // array at depth one.
+        "Validate"
+            if arg == 0
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            return validation_rule_context(line);
+        }
+        // `Validator::make($data, [...])`: the rules array is second.
+        "make"
+            if head[..word_start].ends_with("Validator::")
+                && arg == 1
+                && (matches!(str_opener, Some((b'>', d)) if d >= 1)
+                    || matches!(str_opener, Some((b'[', d)) if d >= 2)
+                    || matches!(str_opener, Some((b',', d)) if d >= 2)) =>
+        {
+            return validation_rule_context(line);
+        }
+        // `$validator->sometimes('reason', 'required|...')`: the rules
+        // string is the second argument, a bare string.
+        "sometimes" if arg == 1 && matches!(str_opener, Some((b',', 0))) => {
+            return validation_rule_context(line);
         }
         // Livewire events: `$dispatch('...')`, `$this->dispatch('...')`,
         // `$wire.dispatch('...')`, `Livewire.dispatch('...')` and the
@@ -2597,6 +2652,9 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::ValidationRule {
+        return crate::validation_rules::items();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -2648,6 +2706,8 @@ pub fn items(
         Kind::LivewireTag => (Vec::new(), "Livewire component"),
         Kind::Asset => (lists.assets, "asset path"),
         Kind::Gate => (lists.gates, "Gate ability"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::ValidationRule => (Vec::new(), "validation rule"),
     };
     names
         .into_iter()
@@ -3334,6 +3394,50 @@ mod tests {
         assert_eq!(labels("@livewire('counter', ['cou"), ["count", "maxCount"]);
         assert!(labels("@livewire('nope', ['").is_empty());
         assert!(labels("@livewire('counter', ['count' => '").is_empty());
+    }
+
+    #[test]
+    fn detects_validation_rule_context() {
+        let rules = Some(Kind::ValidationRule);
+        // `->validate([...])`: pipe form and nested array form.
+        assert_eq!(context("$this->validate(['name' => 'req|mai"), rules);
+        assert_eq!(context("$request->validate(['email' => 'ema"), rules);
+        assert_eq!(context("$this->validate(['name' => ['required', 'ma"), rules);
+        // `Validator::make($data, [...])`: rules are the second argument.
+        assert_eq!(context("Validator::make($data, ['name' => 'mi"), rules);
+        // Livewire attribute and conditional rules.
+        assert_eq!(context("#[Validate('req|mi"), rules);
+        assert_eq!(context("#[Validate(['required', 'mi"), rules);
+        assert_eq!(
+            context("$validator->sometimes('reason', 'required|ma"),
+            rules
+        );
+        // Field names, custom messages, rule parameters, a bare string
+        // argument and unrelated calls stay silent.
+        assert_eq!(context("$this->validate(['na"), None);
+        assert_eq!(context("$this->validate(['name' => 'required'], ['na"), None);
+        assert_eq!(context("$this->validate(['name' => 'max:1"), None);
+        assert_eq!(context("$this->validate(['name' => 'min:2|max:5"), None);
+        assert_eq!(context("$this->validate('req|ma"), None);
+        assert_eq!(context("$this->check(['name' => 'req"), None);
+    }
+
+    #[test]
+    fn offers_validation_rules() {
+        let d = tempfile::tempdir().unwrap();
+        let labels = |line: &str| {
+            items(d.path(), None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let got = labels("$this->validate(['name' => 'req|mai");
+        assert_eq!(got.len(), crate::validation_rules::RULES.len());
+        assert!(got.contains(&"required".to_string()));
+        assert!(got.contains(&"email".to_string()));
+        assert!(got.contains(&"sometimes".to_string()));
+        assert!(labels("$this->validate(['name' => 'max:1").is_empty());
+        assert!(labels("$this->validate(['na").is_empty());
     }
 
     #[test]
