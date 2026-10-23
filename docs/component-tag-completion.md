@@ -49,3 +49,27 @@ snippets still complete. The empty-input gate also opens on `<x-` even
 though `-` is not a trigger char.
 
 Tests: `tag_name_context_distinguishes_tag_from_attribute`.
+
+Component prop completion (item 375): inside a component tag, after the
+tag name, attribute-name positions offer the component's declared props
+- `@props([...])` keys and list items of a view component, constructor
+parameters of a class component, in declaration order, camelCase keys
+offered as kebab-case (`maxLength` -> `max-length`, matching the go-to
+mapping). The caret must be outside quotes and not at a value position
+(`foo=`, `foo="..."`, the self-closing `/` or right after a closing quote
+before the separating space); the tag-name position
+keeps the item 340 tag-name context. Framework attribute positions keep
+their existing completions: `@cl` still offers Alpine events and
+`wire:cl` wire: attribute names (both checked earlier, so props defer);
+only `x-*` positions offer nothing of their own, while the `:disabled`
+binding prefix completes props. Accepting a kebab
+prop replaces the whole hyphenated partial via the existing Blade
+hyphen word range.
+
+Limits (v1): the tag must open on the same line (multi-line tags are
+not seen); `<x-slot>` takes no props; unknown components offer nothing;
+the merge with snippets/words follows the normal value-position rules.
+
+Tests: `detects_blade_prop_context`, `offers_blade_component_props`
+(project_completion), `prop_names_keys_and_list_items`,
+`ctor_params_in_order` (blade_props).

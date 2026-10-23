@@ -81,6 +81,9 @@ pub enum Kind {
     /// `$wire.$watch('...')`: a public property of the Livewire
     /// component paired with the current view.
     LivewireWatch,
+    /// `<x-forms.input ty`: an attribute (prop) name inside a Blade
+    /// component tag, after the tag name.
+    BladeProp,
     /// Alpine `x-data="name"`: a component registered with
     /// `Alpine.data('name', ...)` in project JS/TS or inline scripts.
     AlpineData,
@@ -389,6 +392,13 @@ pub fn context(line: &str) -> Option<Kind> {
                 return Some(Kind::ComponentTag);
             }
         }
+    }
+    // Blade component attribute (prop) name: inside an `<x-...` tag
+    // after its name, outside quotes, not at a value position. Runs
+    // after the tag-name context, which wins while the caret is on the
+    // name itself.
+    if blade_prop_position(line).is_some() {
+        return Some(Kind::BladeProp);
     }
     call_context(line)
 }
@@ -766,6 +776,85 @@ fn push_data_key(segment: &str, keys: &mut Vec<String>) {
     if valid && !keys.iter().any(|k| k == key) {
         keys.push(key.to_string());
     }
+}
+
+/// The component tag and attribute partial at the end of `line` when
+/// the caret sits at an attribute-name position inside an `<x-...` tag:
+/// the tag opened on this same line, has not closed, the caret is
+/// outside quotes, and not right after `=` or `/`. Attributes on later
+/// lines of a multi-line tag are not seen (v1).
+fn blade_prop_position(line: &str) -> Option<(&str, &str)> {
+    let open = line.rfind("<x-")?;
+    // A name-ish char before `<` means a longer word (`foo<x-`).
+    if line[..open]
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return None;
+    }
+    let after = &line[open + 3..];
+    let name_end = after.find(|c: char| {
+        !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+    })?;
+    let tag = &after[..name_end];
+    // Caret on the name (the tag-name context wins), and `<x-slot...`
+    // takes no props.
+    if tag.is_empty() || tag == "slot" || after[name_end..].starts_with(':') {
+        return None;
+    }
+    let rest = &after[name_end..];
+    // The tag must not have closed, and the caret must be outside
+    // quotes. A `>` inside a quoted value stays hidden.
+    let mut quote: Option<u8> = None;
+    for &b in rest.as_bytes() {
+        match quote {
+            Some(q) => {
+                if b == q {
+                    quote = None;
+                }
+            }
+            None => match b {
+                b'"' | b'\'' => quote = Some(b),
+                b'>' => return None,
+                _ => {}
+            },
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    // The partial attribute name at the end of the line.
+    let b = line.as_bytes();
+    let mut i = b.len();
+    while i > 0 && (b[i - 1].is_ascii_alphanumeric() || matches!(b[i - 1], b'-' | b'_')) {
+        i -= 1;
+    }
+    // A value position (`foo=`, `foo="..."`) or a self-closing `/` is
+    // not an attribute-name position, and right after a closing quote
+    // (before the separating space) the popup stays shut.
+    let before = &line[..i];
+    if before.ends_with('"') || before.ends_with('\'') {
+        return None;
+    }
+    let head = before.trim_end();
+    if head.ends_with('=') || head.ends_with('/') {
+        return None;
+    }
+    let partial = &line[i..];
+    let before = head.as_bytes();
+    let prev = |n: usize| before.get(before.len().wrapping_sub(n)).copied();
+    // `@click` is an event listener and `x-data` an Alpine attribute,
+    // not props; `wire:click` is a directive suffix (a `:` straight
+    // after a name), unlike the `:disabled` binding prefix.
+    if partial.starts_with("x-")
+        || prev(1) == Some(b'@')
+        || (prev(1) == Some(b':')
+            && prev(2).is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
+    {
+        return None;
+    }
+    Some((tag, partial))
 }
 
 /// The context of an open quoted call argument at the end of `line`
@@ -2232,6 +2321,21 @@ pub fn items(
     if kind == Kind::ComponentTag {
         return component_tags(root, file);
     }
+    if kind == Kind::BladeProp {
+        let Some((tag, _)) = blade_prop_position(line_before) else {
+            return Vec::new();
+        };
+        return crate::blade_props::component_prop_names(root, tag)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::PROPERTY),
+                detail: Some("Blade component prop".to_string()),
+                ..Default::default()
+            })
+            .collect();
+    }
     if kind == Kind::LivewireTag {
         return livewire_tags(root, file);
     }
@@ -2391,6 +2495,8 @@ pub fn items(
         Kind::LivewireAction => (Vec::new(), "Livewire method"),
         // Returned early above; the match must stay exhaustive.
         Kind::ComponentTag => (Vec::new(), "Blade component"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::BladeProp => (Vec::new(), "Blade component prop"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireName => (Vec::new(), "Livewire component"),
         // Returned early above; the match must stay exhaustive.
@@ -2965,6 +3071,68 @@ mod tests {
     }
 
     #[test]
+    fn detects_blade_prop_context() {
+        let prop = Some(Kind::BladeProp);
+        // After the tag name: empty and partial attribute names.
+        assert_eq!(context("<x-input "), prop);
+        assert_eq!(context(" <x-forms.input ty"), prop);
+        assert_eq!(context(r#"<x-input type="email" di"#), prop);
+        // The tag-name position stays the tag-name context.
+        assert_eq!(context("<x-forms.in"), Some(Kind::ComponentTag));
+        // Inside a quoted value, at a value position, after `/>` or the
+        // self-closing slash: no context.
+        assert_eq!(context(r#"<x-input type="em"#), None);
+        assert_eq!(context("<x-input type="), None);
+        // Right after a closing quote, before the space: no popup.
+        assert_eq!(context(r#"<x-input type="email""#), None);
+        assert_eq!(context(r#"<x-input type="email" />"#), None);
+        assert_eq!(context("<x-input /"), None);
+        // Slots take no props; a name-ish char before `<x-` is a word.
+        assert_eq!(context("<x-slot:name ti"), None);
+        assert_eq!(context("<x-slot "), None);
+        assert_eq!(context("foo<x-input "), None);
+        // Framework attribute positions keep their PRE-EXISTING
+        // contexts (checked earlier): props defer to them.
+        assert_eq!(context("<x-input @"), Some(Kind::AlpineEvent));
+        assert_eq!(context("<x-input @cl"), Some(Kind::AlpineEvent));
+        assert_eq!(context("<x-input wire:cl"), Some(Kind::LivewireAttribute));
+        // `x-data` has no name context of its own; the `:disabled`
+        // binding prefix completes props.
+        assert_eq!(context("<x-input x-da"), None);
+        assert_eq!(context("<x-input :di"), Some(Kind::BladeProp));
+    }
+
+    #[test]
+    fn offers_blade_component_props() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "resources/views/components/forms/input.blade.php",
+            "@props([\n    'type' => 'text',\n    'label',\n    'maxLength' => 20,\n])\n<input />\n",
+        );
+        put(
+            r,
+            "app/View/Components/Alert.php",
+            "<?php\nclass Alert {\n    public function __construct(\n        public string $type,\n        public bool $dismissible = false,\n    ) {}\n}\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Declaration order; camelCase keys are offered as kebab-case.
+        assert_eq!(labels("<x-forms.input "), ["type", "label", "max-length"]);
+        assert_eq!(labels("<x-forms.input la"), ["type", "label", "max-length"]);
+        // A class component offers its constructor parameters.
+        assert_eq!(labels("<x-alert "), ["type", "dismissible"]);
+        // Unknown components and value positions offer nothing.
+        assert!(labels("<x-nope ").is_empty());
+        assert!(labels("<x-forms.input type=").is_empty());
+    }
+
+    #[test]
     fn detects_livewire_event_context() {
         assert_eq!(context("$dispatch('"), Some(Kind::LivewireEvent));
         assert_eq!(context("$this->dispatch('"), Some(Kind::LivewireEvent));
@@ -3249,7 +3417,9 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("x_<x-a"), None);
         assert_eq!(context("<x-slot"), None);
         assert_eq!(context("<x-slot:na"), None);
-        assert_eq!(context("<x-alert "), None);
+        // Since item 375 the attribute position after the tag name is
+        // the prop-name context (previously no context fired here).
+        assert_eq!(context("<x-alert "), Some(Kind::BladeProp));
         assert_eq!(context("<div class=\"x-foo"), None);
         assert_eq!(context("<x"), None);
     }
