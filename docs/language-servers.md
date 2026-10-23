@@ -34,6 +34,9 @@ packages = []
 The seeded registry covers npm-managed TypeScript/JavaScript, Python (Pyright),
 HTML, CSS/SCSS/Less and JSON/JSONC. Rust (rust-analyzer), Go (gopls) and PHP
 (phpactor language-server) are command-managed and must already be installed.
+An entry for the stock `phpactor` command that omits `args` is backfilled to
+`["language-server"]` on load: a bare `phpactor` invocation prints usage and
+exits instead of serving LSP (item 384). Custom commands keep their own args.
 Custom commands/languages/options are supported. If multiple entries claim a
 language, the enabled alphabetically-first server wins; disable duplicates.
 It is one server per language, not multi-server aggregation.

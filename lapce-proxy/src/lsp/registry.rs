@@ -253,7 +253,26 @@ impl Registry {
             std::fs::write(&path, toml::to_string_pretty(&config)?)?;
             return Ok(config);
         }
-        Ok(toml::from_str(&std::fs::read_to_string(path)?)?)
+        let mut registry: Self = toml::from_str(&std::fs::read_to_string(path)?)?;
+        registry.normalize_stock_args();
+        Ok(registry)
+    }
+    /// A config entry for the stock command-managed phpactor can omit `args`
+    /// (the struct-level serde default fills `Vec::new`), and a bare
+    /// `phpactor` invocation prints usage and exits instead of serving LSP
+    /// (item 384). Backfill the canonical subcommand so an incomplete entry
+    /// cannot silently break the spawn; custom commands are untouched. The
+    /// match is on the stock command alone: `is_phpactor_default` pins
+    /// `args == ["language-server"]`, which is exactly what is missing here.
+    fn normalize_stock_args(&mut self) {
+        for server in self.servers.values_mut() {
+            if server.command == "phpactor"
+                && server.packages.is_empty()
+                && server.args.is_empty()
+            {
+                server.args = vec!["language-server".to_string()];
+            }
+        }
     }
     /// First enabled server claiming the language, alphabetically. Servers
     /// with `requires-laravel` are skipped outside a detected Laravel project
@@ -602,6 +621,30 @@ mod tests {
         if cfg!(unix) {
             assert!(!registry.is_missing(&sh));
         }
+    }
+    #[test]
+    fn stock_phpactor_entry_without_args_is_backfilled() {
+        let mut registry: Registry = toml::from_str(
+            r#"
+[servers.php]
+languages = ["php"]
+command = "phpactor"
+
+[servers.custom]
+languages = ["php"]
+command = "/opt/my-phpactor"
+"#,
+        )
+        .unwrap();
+        assert!(registry.servers["php"].args.is_empty());
+        registry.normalize_stock_args();
+        assert_eq!(registry.servers["php"].args, vec!["language-server"]);
+        // Not the stock command: left alone.
+        assert!(registry.servers["custom"].args.is_empty());
+        // The seeded default never needs backfilling.
+        let mut seeded = Registry::default();
+        seeded.normalize_stock_args();
+        assert_eq!(seeded.servers["php"].args, vec!["language-server"]);
     }
 
     #[test]
