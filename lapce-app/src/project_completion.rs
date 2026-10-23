@@ -63,6 +63,9 @@ pub enum Kind {
     AlpineStore,
     /// Alpine `$refs.<name>`: an `x-ref="name"` in the current file.
     AlpineRef,
+    /// Alpine/Livewire magic property: `$el`, `$store`, `$wire`, ...
+    /// typed inside an Alpine expression or `wire:` attribute value.
+    AlpineMagic,
     /// Livewire event name: `$dispatch('...')`, `$this->dispatch('...')`,
     /// `Livewire.dispatch('...')`, `->emit('...')` (Livewire 2).
     LivewireEvent,
@@ -104,6 +107,39 @@ pub fn context(line: &str) -> Option<Kind> {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
         {
             return Some(Kind::AlpineRef);
+        }
+    }
+    // Alpine/Livewire magic property (`$el`, `$store`, `$wire`, ...):
+    // the line ends with `$` plus an optional partial identifier inside
+    // an Alpine expression attribute value or a `wire:` attribute value.
+    // Runs after `$store.` / `$refs.` so those keep their more specific
+    // contexts, and before the `wire:` scan so `wire:click="$di` is not
+    // read as a component method.
+    {
+        let b = line.as_bytes();
+        let mut i = b.len();
+        while i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_') {
+            i -= 1;
+        }
+        // `i` is a char boundary: the scan only consumed ASCII bytes.
+        if let Some(dollar) = line[..i].strip_suffix('$') {
+            // `foo$`, `$$` and `$this->` are not magic starts.
+            let preceded = dollar
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$'));
+            // The partial must be empty or start a known magic name, so
+            // an unrelated `$foo` does not raise an irrelevant list.
+            let known_prefix = ALPINE_MAGICS
+                .iter()
+                .any(|(name, _)| name[1..].starts_with(&line[i..]));
+            if !preceded && known_prefix {
+                if let Some(attr) = quoted_value_attr(line) {
+                    if alpine_expression_attr(&attr) || attr.starts_with("wire:") {
+                        return Some(Kind::AlpineMagic);
+                    }
+                }
+            }
         }
     }
     // Inside a real open tag (`<` after the last `>`)? Attribute-name
@@ -277,6 +313,48 @@ pub fn alpine_data_property_items(
             label: n,
             kind: Some(CompletionItemKind::PROPERTY),
             detail: Some("Alpine x-data property".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// The Alpine and Livewire magic properties offered after `$` inside
+/// Alpine expression attribute values and `wire:` attribute values
+/// (item 367).
+const ALPINE_MAGICS: &[(&str, &str)] = &[
+    ("$el", "Alpine magic: the element the expression is on"),
+    ("$refs", "Alpine magic: elements tagged with x-ref"),
+    ("$store", "Alpine magic: a global Alpine.store(...) value"),
+    ("$watch", "Alpine magic: run a callback when a property changes"),
+    ("$dispatch", "Alpine magic: dispatch a bubbling CustomEvent"),
+    ("$nextTick", "Alpine magic: run after the pending DOM updates"),
+    ("$root", "Alpine magic: the component root element"),
+    ("$id", "Alpine magic: a page-unique id inside an x-id scope"),
+    ("$data", "Alpine magic: the component's merged x-data object"),
+    (
+        "$wire",
+        "Livewire magic: the component (properties, methods, $set/$toggle/$refresh/$parent)",
+    ),
+    (
+        "$js",
+        "Livewire magic: a function registered with $js('name', fn) in @script",
+    ),
+    (
+        "$entangle",
+        "Livewire magic: two-way bind an Alpine and a Livewire property",
+    ),
+];
+
+/// The Alpine and Livewire magic properties, offered after `$` inside
+/// Alpine expression attribute values and `wire:` attribute values
+/// (item 367). Inline `<script>` bodies are not a magic context.
+pub fn alpine_magic_items() -> Vec<CompletionItem> {
+    ALPINE_MAGICS
+        .iter()
+        .map(|(label, detail)| CompletionItem {
+            label: label.to_string(),
+            kind: Some(CompletionItemKind::VARIABLE),
+            detail: Some(detail.to_string()),
             ..Default::default()
         })
         .collect()
@@ -1870,6 +1948,9 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::AlpineMagic {
+        return alpine_magic_items();
+    }
     if kind == Kind::LivewireEvent {
         return event_names(root)
             .into_iter()
@@ -1941,6 +2022,8 @@ pub fn items(
         Kind::AlpineStore => (Vec::new(), "Alpine store"),
         // Returned early above; the match must stay exhaustive.
         Kind::AlpineRef => (Vec::new(), "Alpine x-ref"),
+        // Returned early above; the match must stay exhaustive.
+        Kind::AlpineMagic => (Vec::new(), "Alpine magic"),
         // Returned early above; the match must stay exhaustive.
         Kind::LivewireEvent => (Vec::new(), "Livewire event"),
         // Returned early above; the match must stay exhaustive.
@@ -2151,6 +2234,68 @@ mod tests {
         assert!(got.contains(&"email".to_string()), "{got:?}");
         assert!(got.contains(&"feedback".to_string()), "{got:?}");
         assert!(items(r, None, "x-on:click=\"$refs.").is_empty());
+    }
+
+    #[test]
+    fn detects_alpine_magic_context() {
+        let magic = Some(Kind::AlpineMagic);
+        // A bare `$` and partial names in Alpine expression values.
+        assert_eq!(context(r#"x-show="$"#), magic);
+        assert_eq!(context(r#"x-show="$ne"#), magic);
+        assert_eq!(context(r#"<button @click="$"#), magic);
+        assert_eq!(context(r#"<span :class="$ro"#), magic);
+        assert_eq!(context(r#"x-on:click="$st"#), magic);
+        // Mid-expression, after another operator.
+        assert_eq!(context(r#"x-show="open && $"#), magic);
+        // `wire:` attribute values too: `$dispatch`/`$wire` belong there.
+        assert_eq!(context(r#"wire:click="$di"#), magic);
+        assert_eq!(context(r#"wire:model="$"#), magic);
+        // Plain attributes and x-data are not magic contexts.
+        assert_eq!(context(r#"class="$"#), None);
+        assert_eq!(context(r#"x-data="$"#), None);
+        assert_eq!(context(r#"href="$"#), None);
+        // A partial that starts no known magic is not a magic context:
+        // the line falls back to whatever it otherwise is.
+        assert_eq!(context(r#"x-show="$foo"#), None);
+        assert_eq!(context(r#"x-on:click="$xyz"#), None);
+        assert_eq!(
+            context(r#"wire:click="$foo"#),
+            Some(Kind::LivewireAction)
+        );
+        // `foo$`, `$$` and `$this->` are not magic starts.
+        assert_eq!(context(r#"x-show="count$"#), None);
+        assert_eq!(context(r#"x-show="$$"#), None);
+        assert_eq!(context(r#"x-show="$this->di"#), None);
+        // The more specific `$store.` / `$refs.` contexts still win.
+        assert_eq!(
+            context(r#"x-on:click="$store."#),
+            Some(Kind::AlpineStore)
+        );
+        assert_eq!(context(r#"x-on:click="$refs."#), Some(Kind::AlpineRef));
+        // A helper call keeps its own context.
+        assert_eq!(
+            context(r#"@click="$dispatch('"#),
+            Some(Kind::LivewireEvent)
+        );
+    }
+
+    #[test]
+    fn offers_alpine_magics() {
+        let r = std::path::Path::new("/nonexistent-project-root-367");
+        let labels: Vec<_> = items(r, None, r#"x-show="$"#)
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "$el", "$refs", "$store", "$watch", "$dispatch", "$nextTick",
+                "$root", "$id", "$data", "$wire", "$js", "$entangle",
+            ]
+        );
+        // The same list in a `wire:` value; nothing outside the context.
+        assert_eq!(items(r, None, r#"wire:click="$"#).len(), 12);
+        assert!(items(r, None, r#"class="$"#).is_empty());
     }
 
     #[test]
