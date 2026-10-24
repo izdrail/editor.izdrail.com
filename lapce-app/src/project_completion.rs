@@ -160,6 +160,9 @@ pub enum Kind {
     /// Session key: `session('...')` and the key-first `Session::`
     /// methods - `get`, `put`, `flash`, ... (item 414).
     SessionKey,
+    /// Cache key: `cache('...')` and the key-first `Cache::`
+    /// methods - `get`, `put`, `remember`, ... (item 415).
+    CacheKey,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1517,6 +1520,40 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::SessionKey
         }
+        // Cache keys (item 415): `cache('...')` reads a key
+        // (Laravel 12.x helpers.php:281 - a string gets, an array
+        // puts its FIRST pair only), and the Cache facade methods
+        // take the key first (Cache\Repository: get :115, put :347
+        // - an array key delegates to putMany :398 -, remember
+        // :553, forget :704, ...). Scalar-only methods reject an
+        // array first argument; put/many/getMultiple/
+        // deleteMultiple/putMany/setMultiple accept the array
+        // form, where a string after `[` or `,` at depth exactly
+        // 1 is a key. `cache()->get(...)` / `->cache()->get(...)`
+        // chains stay silent - only the helper and the exact
+        // `Cache::` receiver complete.
+        "cache" if arg == 0 => Kind::CacheKey,
+        "get" | "pull" | "has" | "missing" | "add" | "forever"
+        | "remember" | "rememberForever" | "sear" | "flexible"
+        | "increment" | "decrement" | "set" | "delete" | "forget"
+            if static_head(&head[..word_start], "Cache")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::CacheKey
+        }
+        "put" | "many" | "getMultiple" | "deleteMultiple"
+        | "putMany" | "setMultiple"
+            if static_head(&head[..word_start], "Cache")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::CacheKey
+        }
         // Scheduled artisan commands (item 413):
         // `Schedule::command('...')` takes the command name as the
         // scalar first argument (Laravel 12.x Facades\Schedule
@@ -1816,6 +1853,7 @@ struct Lists {
     broadcast_connections: Vec<String>,
     artisan_commands: Vec<String>,
     session_keys: Vec<String>,
+    cache_keys: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3050,6 +3088,7 @@ fn lists(root: &Path) -> Lists {
     let broadcast_connections = broadcast_connections(root);
     let artisan_commands = artisan_commands(root);
     let session_keys = session_keys(root);
+    let cache_keys = cache_keys(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3078,6 +3117,7 @@ fn lists(root: &Path) -> Lists {
         broadcast_connections,
         artisan_commands,
         session_keys,
+        cache_keys,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3463,6 +3503,175 @@ fn ability_names(root: &Path) -> Vec<String> {
     }
     names.truncate(2000);
     names
+}
+
+/// Cache keys (item 415): the names written by
+/// `Cache::put/forever/add/set/remember/rememberForever/sear/
+/// flexible('key', ...)`, the `cache()->...` / `->cache()->...`
+/// chain puts, the assoc keys of `Cache::put([...])` /
+/// `putMany([...])` / `setMultiple([...])` (Repository::put :347
+/// delegates an array key to putMany), and the FIRST assoc key of
+/// `cache(['key' => ...])` - the helper stores only the first
+/// pair (helpers.php:281 key($key)). Scanned in app/ and routes/
+/// (bounded walk, comments and string literals masked, heredoc
+/// fail-closed). Reads declare nothing. Sorted, deduped.
+fn cache_keys(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        if depth > 3 || out.len() >= 500 {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, out);
+            } else if ft.is_file()
+                && p.extension().is_some_and(|x| x == "php")
+            {
+                out.push(p);
+            }
+            if out.len() >= 500 {
+                return;
+            }
+        }
+    }
+    const SCALAR: &[&str] = &[
+        "Cache::put(",
+        "Cache::forever(",
+        "Cache::add(",
+        "Cache::set(",
+        "Cache::remember(",
+        "Cache::rememberForever(",
+        "Cache::sear(",
+        "Cache::flexible(",
+        "->cache()->put(",
+        "->cache()->forever(",
+        "->cache()->add(",
+        "->cache()->set(",
+        "->cache()->remember(",
+        "->cache()->rememberForever(",
+        "cache()->put(",
+        "cache()->forever(",
+        "cache()->add(",
+        "cache()->set(",
+        "cache()->remember(",
+        "cache()->rememberForever(",
+    ];
+    let mut files = Vec::new();
+    walk(&root.join("app"), 0, &mut files);
+    walk(&root.join("routes"), 0, &mut files);
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        // Scalar puts: the first string after the marker is a key.
+        for marker in SCALAR {
+            for (i, _) in masked.match_indices(marker) {
+                if in_string(i) {
+                    continue;
+                }
+                let mut j = i + marker.len();
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if b.get(j) != Some(&b'\'') && b.get(j) != Some(&b'"')
+                {
+                    continue;
+                }
+                let Ok(si) = strings.binary_search_by_key(&j, |s| s.0)
+                else {
+                    continue;
+                };
+                let (start, end) = strings[si];
+                let name = &text[start + 1..end];
+                if !name.is_empty()
+                    && name.len() <= 100
+                    && name.chars().all(|c| {
+                        c.is_ascii_alphanumeric()
+                            || matches!(c, '_' | '-' | '.')
+                    })
+                    && !out.iter().any(|n: &String| n == name)
+                {
+                    out.push(name.to_string());
+                    if out.len() >= MAX_NAMES {
+                        break 'files;
+                    }
+                }
+            }
+        }
+        // Array puts: `Cache::put([...])` delegates to putMany, so
+        // every assoc key of those arrays is written.
+        for marker in
+            ["Cache::put(", "Cache::putMany(", "Cache::setMultiple("]
+        {
+            for (i, _) in masked.match_indices(marker) {
+                if in_string(i) {
+                    continue;
+                }
+                let mut j = i + marker.len();
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if b.get(j) == Some(&b'[') {
+                    harvest_alias_keys(
+                        &masked, &text, &strings, j, &mut out,
+                    );
+                    if out.len() >= MAX_NAMES {
+                        break 'files;
+                    }
+                }
+            }
+        }
+        // The cache([...]) helper stores only the FIRST pair
+        // (helpers.php:281 key($key)); later pairs are dead code
+        // and name nothing.
+        for (i, _) in masked.match_indices("cache(") {
+            if in_string(i) {
+                continue;
+            }
+            let mut j = i + "cache(".len();
+            while j < b.len() && b[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if b.get(j) == Some(&b'[') {
+                let before = out.len();
+                harvest_alias_keys(&masked, &text, &strings, j, &mut out);
+                out.truncate(
+                    if out.len() > before { before + 1 } else { before },
+                );
+                if out.len() >= MAX_NAMES {
+                    break 'files;
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
 }
 
 /// Session keys (item 414): the names written by
@@ -3867,6 +4076,7 @@ fn dotted_name_kind(kind: &Kind) -> bool {
             | Kind::BroadcastConnection
             | Kind::ArtisanCommand
             | Kind::SessionKey
+            | Kind::CacheKey
     )
 }
 
@@ -4465,6 +4675,7 @@ pub fn items(
             (lists.artisan_commands, "artisan command")
         }
         Kind::SessionKey => (lists.session_keys, "session key"),
+        Kind::CacheKey => (lists.cache_keys, "cache key"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -5402,6 +5613,98 @@ mod tests {
         assert_eq!(
             items(r, None, "session('")[0].detail.as_deref(),
             Some("session key")
+        );
+    }
+
+    #[test]
+    fn detects_cache_key_context() {
+        let cs = Some(Kind::CacheKey);
+        assert_eq!(context("cache('us"), cs);
+        assert_eq!(context("cache(['us"), cs);
+        assert_eq!(context("Cache::get('us"), cs);
+        assert_eq!(context("Cache::pull('us"), cs);
+        assert_eq!(context("Cache::has('us"), cs);
+        assert_eq!(context("Cache::missing('us"), cs);
+        assert_eq!(context("Cache::add('us"), cs);
+        assert_eq!(context("Cache::forever('us"), cs);
+        assert_eq!(context("Cache::remember('us"), cs);
+        assert_eq!(context("Cache::rememberForever('us"), cs);
+        assert_eq!(context("Cache::sear('us"), cs);
+        assert_eq!(context("Cache::flexible('us"), cs);
+        assert_eq!(context("Cache::increment('us"), cs);
+        assert_eq!(context("Cache::set('us"), cs);
+        assert_eq!(context("Cache::delete('us"), cs);
+        assert_eq!(context("Cache::forget('us"), cs);
+        // The array forms of put/many/getMultiple/deleteMultiple/
+        // putMany/setMultiple name keys at depth exactly 1
+        // (Laravel 12.x Repository: put :347 -> putMany :398); a
+        // scalar-only method rejects the array.
+        assert_eq!(context("Cache::put(['us"), cs);
+        assert_eq!(context("Cache::many(['us"), cs);
+        assert_eq!(context("Cache::getMultiple(['us"), cs);
+        assert_eq!(context("Cache::deleteMultiple(['us"), cs);
+        assert_eq!(context("Cache::putMany(['us"), cs);
+        assert_eq!(context("Cache::setMultiple(['us"), cs);
+        assert_eq!(context("Cache::get(['us"), None);
+        // A second argument is a value or default, not a key.
+        assert_eq!(context("cache('k', 60"), None);
+        assert_eq!(context("Cache::put('k', 'va"), None);
+        // Look-alike receivers, object calls, chains and comment
+        // or string-contained calls stay silent.
+        assert_eq!(context("MyCache::get('us"), None);
+        assert_eq!(context("$cache->get('us"), None);
+        assert_eq!(context("cache()->get('us"), None);
+        assert_eq!(context("Cache::store('redis')->get('us"), None);
+        assert_eq!(context("// Cache::get('us"), None);
+        assert_eq!(context("$h = \"use Cache::get('us"), None);
+    }
+
+    #[test]
+    fn offers_cache_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Http/Controllers/ReportController.php",
+            concat!(
+                "<?php\n",
+                "Cache::put('reports.daily', $r, 300);\n",
+                "Cache::remember('reports.weekly', 300, $cb);\n",
+                "cache()->forever('settings.theme', 'dark');\n",
+                "Cache::add('lock.job', 1, 10);\n",
+                "cache(['ui.sidebar' => 'open'], 300);\n",
+                "cache(['first.only' => 1, 'not.stored' => 2]);\n",
+                "Cache::putMany(['a.one' => 1, 'a.two' => 2]);\n",
+                "// Cache::put('ghosted', 1);\n",
+                "$h = \"Cache::put('instr', 1)\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted`, the in-string `instr` and the
+        // helper array's never-stored second pair `not.stored`
+        // name nothing.
+        let want = [
+            "a.one",
+            "a.two",
+            "first.only",
+            "lock.job",
+            "reports.daily",
+            "reports.weekly",
+            "settings.theme",
+            "ui.sidebar",
+        ];
+        assert_eq!(labels("cache('"), want);
+        assert_eq!(labels("Cache::get('"), want);
+        assert_eq!(labels("Cache::remember('"), want);
+        assert!(labels("Cache::get('k', 'de").is_empty());
+        assert_eq!(
+            items(r, None, "cache('")[0].detail.as_deref(),
+            Some("cache key")
         );
     }
 
@@ -6930,6 +7233,11 @@ Gate::define(\"buy-cd\", 'shop.buy');
         );
         put(
             r,
+            "routes/web.php",
+            "<?php Cache::put('reports.daily', 1, 60);\n",
+        );
+        put(
+            r,
             "database/migrations/01_create_users.php",
             "<?php Schema::create('users', fn ($t) => 0);",
         );
@@ -6949,6 +7257,10 @@ Gate::define(\"buy-cd\", 'shop.buy');
             .iter()
             .any(|l| l == "cart.items"));
         assert!(labels(Some(txt), "Session::get('ca").is_empty());
+        assert!(labels(Some(php), "Cache::get('re")
+            .iter()
+            .any(|l| l == "reports.daily"));
+        assert!(labels(Some(txt), "Cache::get('re").is_empty());
         assert!(labels(Some(txt), "route('ad").is_empty());
         // An absent file keeps the test-only PHP default.
         assert!(labels(None, "Artisan::call('re")
