@@ -338,6 +338,7 @@ impl CommonAction for TextDocument {
                     EditConf {
                         modal,
                         comment_token: "",
+                        comment_token_end: "",
                         smart_tab,
                         keep_indent: self.keep_indent.get(),
                         auto_indent: self.auto_indent.get(),

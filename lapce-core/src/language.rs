@@ -549,7 +549,7 @@ const LANGUAGES: &[SyntaxProperties] = &[
         indent: Indent::tab(),
         files: &[],
         extensions: &[],
-        comment: comment_properties!(),
+        comment: comment_properties!("{{--", "--}}"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
@@ -1197,7 +1197,7 @@ const LANGUAGES: &[SyntaxProperties] = &[
         indent: Indent::space(4),
         files: &[],
         extensions: &["md", "markdown", "mdown"],
-        comment: comment_properties!(),
+        comment: comment_properties!("<!--", "-->"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
@@ -1630,7 +1630,7 @@ const LANGUAGES: &[SyntaxProperties] = &[
         indent: Indent::space(4),
         files: &[],
         extensions: &["twig"],
-        comment: comment_properties!(),
+        comment: comment_properties!("{#", "#}"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
@@ -1807,10 +1807,17 @@ impl LapceLanguage {
     }
 
     pub fn comment_token(&self) -> &'static str {
-        self.properties()
-            .comment
-            .single_line_start
-            .unwrap_or_default()
+        self.comment_tokens().0
+    }
+
+    /// Opening and closing comment delimiters (`<!--` / `-->` for HTML; the
+    /// closing delimiter is empty for line-comment languages).
+    pub fn comment_tokens(&self) -> (&'static str, &'static str) {
+        let comment = &self.properties().comment;
+        (
+            comment.single_line_start.unwrap_or_default(),
+            comment.single_line_end.unwrap_or_default(),
+        )
     }
 
     pub fn indent_unit(&self) -> &str {
@@ -2174,6 +2181,23 @@ mod tests {
             (LapceLanguage::Json5, "//"),
         ] {
             assert_eq!(language.comment_token(), token, "{language:?}");
+        }
+    }
+
+    #[test]
+    fn block_comment_languages_have_closing_delimiters() {
+        // Blade/Twig/Markdown declared no token at all, so toggle-comment did
+        // nothing. Vue deliberately still has no block token: an SFC mixes an
+        // HTML template with JS/CSS regions and one global token would be
+        // invalid in at least one of them; that needs region-aware tokens.
+        for (language, start, end) in [
+            (LapceLanguage::Blade, "{{--", "--}}"),
+            (LapceLanguage::Twig, "{#", "#}"),
+            (LapceLanguage::Markdown, "<!--", "-->"),
+            (LapceLanguage::Html, "<!--", "-->"),
+            (LapceLanguage::Xml, "<!--", "-->"),
+        ] {
+            assert_eq!(language.comment_tokens(), (start, end), "{language:?}");
         }
     }
 

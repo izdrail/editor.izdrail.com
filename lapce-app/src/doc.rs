@@ -712,7 +712,8 @@ impl Doc {
                         &mut clipboard,
                         register,
                         EditConf {
-                            comment_token: syntax.language.comment_token(),
+                            comment_token: syntax.language.comment_tokens().0,
+                            comment_token_end: syntax.language.comment_tokens().1,
                             modal,
                             smart_tab,
                             keep_indent: true,
@@ -2593,4 +2594,125 @@ fn extra_styles_for_range(
                 wave_line,
             })
         })
+}
+
+#[cfg(test)]
+mod toggle_comment_tests {
+    use lapce_core::{
+        buffer::{Buffer, rope_text::RopeText},
+        command::EditCommand,
+        cursor::{Cursor, CursorMode},
+        editor::{Action, EditConf},
+        register::{Clipboard, Register},
+        selection::Selection,
+    };
+
+    struct NoClipboard;
+    impl Clipboard for NoClipboard {
+        fn get_string(&mut self) -> Option<String> {
+            None
+        }
+        fn put_string(&mut self, _s: impl AsRef<str>) {}
+    }
+
+    fn toggle(text: &str, start: &'static str, end: &'static str) -> String {
+        let mut buffer = Buffer::new(text);
+        let len = buffer.len();
+        let mut cursor =
+            Cursor::new(CursorMode::Insert(Selection::region(0, len)), None, None);
+        let mut register = Register::default();
+        Action::do_edit(
+            &mut cursor,
+            &mut buffer,
+            &EditCommand::ToggleLineComment,
+            &mut NoClipboard,
+            &mut register,
+            EditConf {
+                comment_token: start,
+                comment_token_end: end,
+                modal: false,
+                smart_tab: false,
+                keep_indent: true,
+                auto_indent: true,
+            },
+        );
+        buffer.text().to_string()
+    }
+
+    #[test]
+    fn toggle_wraps_and_unwraps_block_delimiters() {
+        // Full delimiter pair through the real consumer: insert writes both
+        // `<!--` and `-->`, toggle-back strips both and restores the input.
+        let text = "<div>hi</div>\n  <p>x</p>\n";
+        let commented = toggle(text, "<!--", "-->");
+        assert_eq!(commented, "<!-- <div>hi</div> -->\n<!--   <p>x</p> -->\n");
+        assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+
+    #[test]
+    fn toggle_keeps_prefix_only_languages_unchanged() {
+        let text = "let a = 1;\nlet b = 2;\n";
+        let commented = toggle(text, "//", "");
+        assert_eq!(commented, "// let a = 1;\n// let b = 2;\n");
+        assert_eq!(toggle(&commented, "//", ""), text);
+    }
+
+    #[test]
+    fn toggle_is_noop_for_tokenless_languages() {
+        let text = "{\"a\": 1}\n";
+        assert_eq!(toggle(text, "", ""), text);
+    }
+
+    #[test]
+    fn toggle_blade_pair_round_trips() {
+        let text = "<p>{{ $x }}</p>\n";
+        let commented = toggle(text, "{{--", "--}}");
+        assert_eq!(commented, "{{-- <p>{{ $x }}</p> --}}\n");
+        assert_eq!(toggle(&commented, "{{--", "--}}"), text);
+    }
+
+    #[test]
+    fn toggle_strips_degenerate_empty_comment() {
+        let text = "<!-- -->\n";
+        assert_eq!(toggle(text, "<!--", "-->"), "\n");
+    }
+
+    #[test]
+    fn toggle_block_delimiters_on_multiline_after_first_line() {
+        // Regression: the closing delimiter used to land one byte early on
+        // every line after the first because line starts were summed from
+        // newline-stripped content lengths.
+        let text = "a\nb\nc\n";
+        let commented = toggle(text, "<!--", "-->");
+        assert_eq!(commented, "<!-- a -->\n<!-- b -->\n<!-- c -->\n");
+        assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+
+    #[test]
+    fn toggle_block_delimiters_with_multibyte_text() {
+        // Offsets are bytes: the closing delimiter must land after multi-byte
+        // characters, not inside them.
+        let text = "\u{3bb} = 1\n\u{1f642}\n";
+        let commented = toggle(text, "<!--", "-->");
+        assert_eq!(commented, "<!-- \u{3bb} = 1 -->\n<!-- \u{1f642} -->\n");
+        assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+
+    #[test]
+    fn toggle_block_delimiters_with_crlf() {
+        // The closing delimiter belongs before the line ending, not after the
+        // `\r` and not one byte into the next line.
+        let text = "a\r\nb\r\n";
+        let commented = toggle(text, "<!--", "-->");
+        assert_eq!(commented, "<!-- a -->\r\n<!-- b -->\r\n");
+        assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+
+    #[test]
+    fn toggle_block_delimiters_at_eof_without_newline() {
+        let text = "a\nb";
+        let commented = toggle(text, "<!--", "-->");
+        assert_eq!(commented, "<!-- a -->\n<!-- b -->");
+        assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
 }

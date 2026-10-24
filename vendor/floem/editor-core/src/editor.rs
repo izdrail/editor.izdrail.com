@@ -77,6 +77,9 @@ impl EditType {
 
 pub struct EditConf<'a> {
     pub comment_token: &'a str,
+    /// Closing delimiter for block comments (`-->` for HTML/XML). Empty for
+    /// line-comment languages.
+    pub comment_token_end: &'a str,
     pub modal: bool,
     pub smart_tab: bool,
     pub keep_indent: bool,
@@ -754,6 +757,7 @@ impl Action {
         register: &mut Register,
         EditConf {
             comment_token,
+            comment_token_end,
             modal,
             smart_tab,
             keep_indent,
@@ -902,6 +906,12 @@ impl Action {
                 vec![(text, delta, inval_lines)]
             }
             ToggleLineComment => {
+                if comment_token.is_empty() {
+                    // Languages with no comment syntax (e.g. strict JSON):
+                    // toggling must be a no-op, not an edit.
+                    return Vec::new();
+                }
+                // (line, indent, prefix strip len, suffix strip len, trimmed end offset)
                 let mut lines = HashSet::new();
                 let selection = cursor.edit_selection(buffer);
                 let mut had_comment = true;
@@ -926,39 +936,96 @@ impl Action {
                         if indent < smallest_indent {
                             smallest_indent = indent;
                         }
-                        if !trimmed_content.starts_with(comment_token) {
+                        let trimmed = trimmed_content.trim_end();
+                        // Line starts come from the buffer, never from summing
+                        // content lengths: the rope lines iterator strips line
+                        // endings, so accumulated lengths drift one byte per
+                        // line and the closing delimiter lands early.
+                        let trimmed_end =
+                            buffer.offset_of_line(line) + content.trim_end().len();
+                        let has_start = trimmed_content.starts_with(comment_token);
+                        let has_end = comment_token_end.is_empty()
+                            || (trimmed.len() > comment_token.len() + comment_token_end.len()
+                                && trimmed.ends_with(comment_token_end));
+                        if !(has_start && has_end) {
                             had_comment = false;
-                            lines.insert((line, indent, 0));
+                            lines.insert((line, indent, 0usize, 0usize, trimmed_end));
                         } else {
                             let had_space_after_comment =
                                 trimmed_content.chars().nth(comment_token.len()) == Some(' ');
-                            lines.insert((
-                                line,
-                                indent,
-                                comment_token.len() + usize::from(had_space_after_comment),
-                            ));
+                            let prefix_len =
+                                comment_token.len() + usize::from(had_space_after_comment);
+                            let suffix_len = if comment_token_end.is_empty() {
+                                0
+                            } else {
+                                let before = trimmed.len() - comment_token_end.len();
+                                let had_space_before_comment =
+                                    before > 0 && trimmed.as_bytes()[before - 1] == b' ';
+                                comment_token_end.len() + usize::from(had_space_before_comment)
+                            };
+                            lines.insert((line, indent, prefix_len, suffix_len, trimmed_end));
                         }
                         line += 1;
                     }
                 }
 
                 let (text, delta, inval_lines) = if had_comment {
+                    // Strip start and end delimiters from every line; collapse
+                    // to one span when they would overlap (`<!-- -->`).
+                    let mut spans = Vec::new();
+                    for &(line, indent, prefix_len, suffix_len, trimmed_end) in lines.iter() {
+                        let prefix_start = buffer.offset_of_line(line) + indent;
+                        let prefix_end = prefix_start + prefix_len;
+                        let suffix_start = trimmed_end - suffix_len;
+                        if suffix_len > 0 && prefix_end > suffix_start {
+                            spans.push((prefix_start, trimmed_end));
+                        } else {
+                            spans.push((prefix_start, prefix_end));
+                            if suffix_len > 0 {
+                                spans.push((suffix_start, trimmed_end));
+                            }
+                        }
+                    }
+                    spans.sort_unstable();
                     let mut selection = Selection::new();
-                    for (line, indent, len) in lines.iter() {
-                        let start = buffer.offset_of_line(*line) + indent;
-                        selection.add_region(SelRegion::new(start, start + len, None))
+                    for (start, end) in spans {
+                        selection.add_region(SelRegion::new(start, end, None))
                     }
                     buffer.edit([(&selection, "")], EditType::ToggleComment)
                 } else {
-                    let mut selection = Selection::new();
-                    for (line, _, _) in lines.iter() {
-                        let start = buffer.offset_of_line(*line) + smallest_indent;
-                        selection.add_region(SelRegion::new(start, start, None))
+                    // Wrap every line with the start and end delimiters.
+                    let mut prefix_points = Vec::new();
+                    let mut suffix_points = Vec::new();
+                    for (line, _, _, _, trimmed_end) in lines.iter() {
+                        prefix_points.push(buffer.offset_of_line(*line) + smallest_indent);
+                        if !comment_token_end.is_empty() {
+                            suffix_points.push(*trimmed_end);
+                        }
                     }
-                    buffer.edit(
-                        [(&selection, format!("{comment_token} ").as_str())],
-                        EditType::ToggleComment,
-                    )
+                    prefix_points.sort_unstable();
+                    suffix_points.sort_unstable();
+                    let mut prefix_sel = Selection::new();
+                    for start in prefix_points {
+                        prefix_sel.add_region(SelRegion::new(start, start, None))
+                    }
+                    if comment_token_end.is_empty() {
+                        buffer.edit(
+                            [(&prefix_sel, format!("{comment_token} ").as_str())],
+                            EditType::ToggleComment,
+                        )
+                    } else {
+                        let mut suffix_sel = Selection::new();
+                        for end in suffix_points {
+                            suffix_sel.add_region(SelRegion::new(end, end, None))
+                        }
+                        buffer.edit(
+                            [
+                                (&prefix_sel, format!("{comment_token} ").as_str()),
+                                (&suffix_sel, format!(" {comment_token_end}").as_str()),
+                            ],
+                            EditType::ToggleComment,
+                        )
+                    }
                 };
                 cursor.apply_delta(&delta);
                 vec![(text, delta, inval_lines)]
