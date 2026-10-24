@@ -1041,7 +1041,7 @@ const LANGUAGES: &[SyntaxProperties] = &[
         id: LapceLanguage::Json5,
         indent: Indent::tab(),
         files: &[],
-        extensions: &[],
+        extensions: &["json5"],
         comment: comment_properties!(),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
@@ -2090,6 +2090,18 @@ mod tests {
     use std::path::PathBuf;
 
     use super::LapceLanguage;
+
+    #[test]
+    fn json5_extension_selects_json5_not_strict_json() {
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("package.json5")),
+            LapceLanguage::Json5,
+        );
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("package.json")),
+            LapceLanguage::Json,
+        );
+    }
 
     #[test]
     fn test_language_from_path() {
