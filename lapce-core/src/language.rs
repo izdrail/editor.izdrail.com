@@ -627,7 +627,7 @@ const LANGUAGES: &[SyntaxProperties] = &[
         indent: Indent::space(2),
         files: &[],
         extensions: &["cs", "csx"],
-        comment: comment_properties!("#"),
+        comment: comment_properties!("//"),
         tree_sitter: TreeSitterProperties {
             grammar: None,
             grammar_fn: None,
@@ -1051,7 +1051,7 @@ const LANGUAGES: &[SyntaxProperties] = &[
         indent: Indent::tab(),
         files: &[],
         extensions: &["json5"],
-        comment: comment_properties!(),
+        comment: comment_properties!("//"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
@@ -2162,6 +2162,19 @@ mod tests {
         // The entry once declared `//`, so toggle-comment produced invalid XML.
         assert_eq!(LapceLanguage::Xml.comment_token(), "<!--");
         assert_eq!(LapceLanguage::Html.comment_token(), "<!--");
+    }
+
+    #[test]
+    fn comment_tokens_match_each_language_syntax() {
+        // C# used "#" (a preprocessor directive prefix, not a comment), and
+        // Json5 had no token even though the JSON5 spec explicitly allows
+        // comments (strict JSON correctly stays tokenless).
+        for (language, token) in [
+            (LapceLanguage::Csharp, "//"),
+            (LapceLanguage::Json5, "//"),
+        ] {
+            assert_eq!(language.comment_token(), token, "{language:?}");
+        }
     }
 
     #[test]
