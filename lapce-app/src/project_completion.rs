@@ -163,6 +163,9 @@ pub enum Kind {
     /// Cache key: `cache('...')` and the key-first `Cache::`
     /// methods - `get`, `put`, `remember`, ... (item 415).
     CacheKey,
+    /// Broadcast channel name: `new PrivateChannel('...')`,
+    /// `Broadcast::on('...')` and friends (item 416).
+    BroadcastChannel,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1554,6 +1557,63 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::CacheKey
         }
+        // Broadcast channel names (item 416): the channels an
+        // event broadcasts to - `new Channel('...')` /
+        // `new PrivateChannel('...')` / `new PresenceChannel('...')`
+        // in a broadcastOn() return (Laravel 12.x
+        // Broadcasting\Channel::__construct($name) :22), and
+        // `Broadcast::on(...)` / `private(...)` / `presence(...)` /
+        // `broadcast([...], ...)` (BroadcastManager: private :148,
+        // presence :156; facade @method on/broadcast accept
+        // arrays). `Broadcast::channel('...')` REGISTERS a channel
+        // and stays silent (the item 381 declaration doctrine);
+        // `->on(...)` stays with the item 381 table arm.
+        "Channel" | "PrivateChannel" | "PresenceChannel"
+            if arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            let h = head[..word_start].trim_end();
+            let new_head = h.ends_with("new") && {
+                let pre = &h[..h.len() - 3];
+                pre.is_empty() || {
+                    let c = pre.as_bytes()[pre.len() - 1];
+                    !c.is_ascii_alphanumeric() && c != b'_'
+                }
+            };
+            if new_head {
+                Kind::BroadcastChannel
+            } else {
+                return None;
+            }
+        }
+        "on"
+            if static_head(&head[..word_start], "Broadcast")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::BroadcastChannel
+        }
+        "private" | "presence"
+            if static_head(&head[..word_start], "Broadcast")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::BroadcastChannel
+        }
+        "broadcast"
+            if static_head(&head[..word_start], "Broadcast")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::BroadcastChannel
+        }
         // Scheduled artisan commands (item 413):
         // `Schedule::command('...')` takes the command name as the
         // scalar first argument (Laravel 12.x Facades\Schedule
@@ -1854,6 +1914,7 @@ struct Lists {
     artisan_commands: Vec<String>,
     session_keys: Vec<String>,
     cache_keys: Vec<String>,
+    broadcast_channels: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3089,6 +3150,7 @@ fn lists(root: &Path) -> Lists {
     let artisan_commands = artisan_commands(root);
     let session_keys = session_keys(root);
     let cache_keys = cache_keys(root);
+    let broadcast_channels = broadcast_channels(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3118,6 +3180,7 @@ fn lists(root: &Path) -> Lists {
         artisan_commands,
         session_keys,
         cache_keys,
+        broadcast_channels,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3503,6 +3566,99 @@ fn ability_names(root: &Path) -> Vec<String> {
     }
     names.truncate(2000);
     names
+}
+
+/// Broadcast channel names (item 416): the names registered by
+/// `Broadcast::channel('name', ...)`, scanned in app/ and routes/
+/// (conventionally routes/channels.php; bounded walk, comments and
+/// string literals masked, heredoc fail-closed). `{param}`
+/// wildcards are part of the name. Sorted, deduped.
+fn broadcast_channels(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        if depth > 3 || out.len() >= 500 {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, out);
+            } else if ft.is_file()
+                && p.extension().is_some_and(|x| x == "php")
+            {
+                out.push(p);
+            }
+            if out.len() >= 500 {
+                return;
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(&root.join("app"), 0, &mut files);
+    walk(&root.join("routes"), 0, &mut files);
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        for (i, _) in masked.match_indices("Broadcast::channel(") {
+            if in_string(i) {
+                continue;
+            }
+            let mut j = i + "Broadcast::channel(".len();
+            while j < b.len() && b[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if b.get(j) != Some(&b'\'') && b.get(j) != Some(&b'"') {
+                continue;
+            }
+            let Ok(si) = strings.binary_search_by_key(&j, |s| s.0)
+            else {
+                continue;
+            };
+            let (start, end) = strings[si];
+            let name = &text[start + 1..end];
+            if !name.is_empty()
+                && name.len() <= 100
+                && name.chars().all(|c| {
+                    c.is_ascii_alphanumeric()
+                        || matches!(c, '_' | '-' | '.' | '{' | '}')
+                })
+                && !out.iter().any(|n: &String| n == name)
+            {
+                out.push(name.to_string());
+                if out.len() >= MAX_NAMES {
+                    break 'files;
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
 }
 
 /// Cache keys (item 415): the names written by
@@ -4077,6 +4233,7 @@ fn dotted_name_kind(kind: &Kind) -> bool {
             | Kind::ArtisanCommand
             | Kind::SessionKey
             | Kind::CacheKey
+            | Kind::BroadcastChannel
     )
 }
 
@@ -4676,6 +4833,9 @@ pub fn items(
         }
         Kind::SessionKey => (lists.session_keys, "session key"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
+        Kind::BroadcastChannel => {
+            (lists.broadcast_channels, "broadcast channel")
+        }
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -5705,6 +5865,69 @@ mod tests {
         assert_eq!(
             items(r, None, "cache('")[0].detail.as_deref(),
             Some("cache key")
+        );
+    }
+
+    #[test]
+    fn detects_broadcast_channel_context() {
+        let cs = Some(Kind::BroadcastChannel);
+        assert_eq!(context("new Channel('or"), cs);
+        assert_eq!(context("new PrivateChannel('or"), cs);
+        assert_eq!(context("new PresenceChannel('or"), cs);
+        assert_eq!(context("return [new PrivateChannel('or"), cs);
+        assert_eq!(context("Broadcast::on('or"), cs);
+        assert_eq!(context("Broadcast::on(['or"), cs);
+        assert_eq!(context("Broadcast::on(['a', 'or"), cs);
+        assert_eq!(context("Broadcast::on('a', 'or"), None);
+        assert_eq!(context("Broadcast::private('or"), cs);
+        assert_eq!(context("Broadcast::presence('or"), cs);
+        assert_eq!(context("Broadcast::broadcast(['or"), cs);
+        // private/presence take a string, broadcast an array.
+        assert_eq!(context("Broadcast::private(['or"), None);
+        assert_eq!(context("Broadcast::broadcast('or"), None);
+        // Broadcast::channel REGISTERS a channel and stays silent
+        // (the item 381 declaration doctrine), as do a second
+        // constructor argument, look-alike and `new`-less words,
+        // and comment or string-contained calls.
+        assert_eq!(context("Broadcast::channel('or"), None);
+        assert_eq!(context("new PrivateChannel('a', 'b"), None);
+        assert_eq!(context("new MyChannel('or"), None);
+        assert_eq!(context("renew Channel('or"), None);
+        assert_eq!(context("MyBroadcast::on('or"), None);
+        assert_eq!(context("// new PrivateChannel('or"), None);
+        assert_eq!(context("$h = \"new PrivateChannel('or"), None);
+    }
+
+    #[test]
+    fn offers_broadcast_channels() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "routes/channels.php",
+            concat!(
+                "<?php\n",
+                "Broadcast::channel('orders.{order}', $cb);\n",
+                "Broadcast::channel('chat.{roomId}', $cb2);\n",
+                "// Broadcast::channel('ghosted', $cb3);\n",
+                "$h = \"Broadcast::channel('instr', $cb4)\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr`
+        // registrations declare nothing.
+        let want = ["chat.{roomId}", "orders.{order}"];
+        assert_eq!(labels("new PrivateChannel('"), want);
+        assert_eq!(labels("Broadcast::on('"), want);
+        assert!(labels("Broadcast::channel('").is_empty());
+        assert_eq!(
+            items(r, None, "new PrivateChannel('")[0].detail.as_deref(),
+            Some("broadcast channel")
         );
     }
 
@@ -7238,6 +7461,11 @@ Gate::define(\"buy-cd\", 'shop.buy');
         );
         put(
             r,
+            "routes/channels.php",
+            "<?php Broadcast::channel('orders.{order}', $cb);\n",
+        );
+        put(
+            r,
             "database/migrations/01_create_users.php",
             "<?php Schema::create('users', fn ($t) => 0);",
         );
@@ -7261,6 +7489,10 @@ Gate::define(\"buy-cd\", 'shop.buy');
             .iter()
             .any(|l| l == "reports.daily"));
         assert!(labels(Some(txt), "Cache::get('re").is_empty());
+        assert!(labels(Some(php), "new PrivateChannel('or")
+            .iter()
+            .any(|l| l == "orders.{order}"));
+        assert!(labels(Some(txt), "new PrivateChannel('or").is_empty());
         assert!(labels(Some(txt), "route('ad").is_empty());
         // An absent file keeps the test-only PHP default.
         assert!(labels(None, "Artisan::call('re")
