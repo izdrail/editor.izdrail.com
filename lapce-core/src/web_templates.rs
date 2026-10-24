@@ -63,8 +63,7 @@ pub fn jsx(source: &str, typescript: bool) -> Option<Snapshot> {
     }
     let masked = String::from_utf8(masked).ok()?;
     let js_words = "async await break case catch class const continue debugger default delete do else enum export extends false finally for from function if implements import in instanceof interface let new null of package private protected public return static super switch this throw true try typeof var void while with yield";
-    let ts_words = "abstract accessor any as asserts async await bigint boolean break case catch class const constructor continue debugger declare default delete do else enum export extends false finally for from function get if implements import in infer instanceof interface intrinsic is keyof let module namespace never new null number object of override package private protected public readonly require return satisfies set static string super switch symbol this throw true try type typeof undefined unique unknown var void while with yield";
-    let words: &[&str] = if typescript { &[ts_words] } else { &[js_words] };
+    let words: &[&str] = if typescript { &[crate::lexilla::TYPESCRIPT_KEYWORDS] } else { &[js_words] };
     let mut host =
         Snapshot::lex_with_properties("cpp", &masked, words, &[Property::Javascript(true)])
             .ok()?;

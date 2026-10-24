@@ -42,6 +42,9 @@ pub const PHP_WORD_LISTS: &[&str] = &[
     "__CLASS__ __DIR__ __FILE__ __FUNCTION__ __LINE__ __METHOD__ __NAMESPACE__ __TRAIT__ PHP_EOL PHP_INT_MAX PHP_VERSION E_ALL",
 ];
 
+/// Shared by plain TypeScript and the TSX host-code pass.
+pub const TYPESCRIPT_KEYWORDS: &str = "abstract accessor any as asserts async await bigint boolean break case catch class const constructor continue debugger declare default delete do else enum export extends false finally for from function get if implements import in infer instanceof interface intrinsic is keyof let module namespace never new null number object of override package private protected public readonly require return satisfies set static string super switch symbol this throw true try type typeof undefined unique unknown var void while with yield";
+
 pub fn highlight(language: LapceLanguage, text: &Rope) -> Option<Arc<Snapshot>> {
     highlight_in(language, text, false)
 }
@@ -83,7 +86,8 @@ pub fn highlight_profile(
                 "alignas alignof asm auto bool break case catch char class const constexpr continue default delete do double else enum explicit export extern false float for friend if inline int long namespace new noexcept nullptr operator private protected public register return short signed sizeof static struct switch template this throw true try typedef typename union unsigned using virtual void volatile wchar_t while",
             ],
         ),
-        Javascript | Typescript => (
+        Typescript => ("cpp", &[TYPESCRIPT_KEYWORDS]),
+        Javascript => (
             "cpp",
             &[
                 "async await break case catch class const continue debugger default delete do else enum export extends false finally for from function if implements import in instanceof interface let new null of package private protected public return static super switch this throw true try typeof var void while with yield",
@@ -309,6 +313,27 @@ mod tests {
             assert_eq!(snapshot.scope(snapshot.styles()[at]), None, "{text} {needle}");
         }
     }
+    #[test]
+    fn typescript_keywords_match_tsx_without_leaking_to_javascript() {
+        let text = "type Row = { readonly id: number }; declare const key: keyof Row;";
+        for language in [LapceLanguage::Typescript, LapceLanguage::Tsx] {
+            let snapshot = highlight(language, &Rope::from(text)).unwrap();
+            for needle in ["type", "readonly", "number", "declare", "keyof"] {
+                let at = text.find(needle).unwrap();
+                assert_eq!(snapshot.scope(snapshot.styles()[at]), Some("keyword"),
+                    "{language:?} {needle}");
+            }
+        }
+        for language in [LapceLanguage::Javascript, LapceLanguage::Jsx] {
+            let snapshot = highlight(language, &Rope::from(text)).unwrap();
+            for needle in ["type", "readonly", "number", "declare", "keyof"] {
+                let at = text.find(needle).unwrap();
+                assert_ne!(snapshot.scope(snapshot.styles()[at]), Some("keyword"),
+                    "{language:?} {needle}");
+            }
+        }
+    }
+
     #[test]
     fn prose_and_patch_languages_have_theme_scopes() {
         // markdown/diff/props shipped with no usable lexical classes; makefile
