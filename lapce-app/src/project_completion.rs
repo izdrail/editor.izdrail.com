@@ -142,6 +142,9 @@ pub enum Kind {
     /// Mailer: `Mail::mailer('...')` / `Mail::driver('...')`
     /// (item 401).
     MailMailer,
+    /// Auth guard: `Auth::guard('...')` / `Auth::shouldUse('...')`
+    /// (item 402).
+    AuthGuard,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1468,6 +1471,18 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Auth guards (item 402): `Auth::guard('...')` and
+        // `Auth::shouldUse('...')` take the guard name as the
+        // scalar first argument (Laravel 12.x AuthManager:
+        // guard($name = null), shouldUse($name)).
+        "guard" | "shouldUse"
+            if static_head(&head[..word_start], "Auth")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::AuthGuard
+        }
         // Mailers (item 401): `Mail::mailer('...')` /
         // `Mail::driver('...')` take the mailer name as the scalar
         // first argument (Laravel 12.x MailManager:
@@ -1676,6 +1691,7 @@ struct Lists {
     log_channels: Vec<String>,
     cache_stores: Vec<String>,
     mail_mailers: Vec<String>,
+    auth_guards: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1912,6 +1928,11 @@ fn cache_stores(root: &Path) -> Vec<String> {
 /// Mailer names (item 401).
 fn mail_mailers(root: &Path) -> Vec<String> {
     config_named_keys(root, "mail", "mailers")
+}
+
+/// Auth guard names (item 402).
+fn auth_guards(root: &Path) -> Vec<String> {
+    config_named_keys(root, "auth", "guards")
 }
 
 /// The top-level `'name' =>` keys of the array opened at `open`
@@ -2767,6 +2788,7 @@ fn lists(root: &Path) -> Lists {
     let log_channels = log_channels(root);
     let cache_stores = cache_stores(root);
     let mail_mailers = mail_mailers(root);
+    let auth_guards = auth_guards(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2788,6 +2810,7 @@ fn lists(root: &Path) -> Lists {
         log_channels,
         cache_stores,
         mail_mailers,
+        auth_guards,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3433,6 +3456,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::LogChannel
                 | Kind::CacheStore
                 | Kind::MailMailer
+                | Kind::AuthGuard
         )
     )
 }
@@ -3938,6 +3962,7 @@ pub fn items(
         Kind::LogChannel => (lists.log_channels, "log channel"),
         Kind::CacheStore => (lists.cache_stores, "cache store"),
         Kind::MailMailer => (lists.mail_mailers, "mail mailer"),
+        Kind::AuthGuard => (lists.auth_guards, "auth guard"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -4791,6 +4816,22 @@ mod tests {
     }
 
     #[test]
+    fn detects_auth_guard_context() {
+        let cs = Some(Kind::AuthGuard);
+        assert_eq!(context("Auth::guard('we"), cs);
+        assert_eq!(context("Auth::shouldUse('we"), cs);
+        // A scalar name only; look-alike receivers, object calls, a
+        // second argument and comment or string-contained calls
+        // stay silent.
+        assert_eq!(context("Auth::guard(['we"), None);
+        assert_eq!(context("MyAuth::guard('we"), None);
+        assert_eq!(context("$auth->guard('we"), None);
+        assert_eq!(context("Auth::guard('web', 'x"), None);
+        assert_eq!(context("// Auth::guard('we"), None);
+        assert_eq!(context("$h = \"use Auth::guard('we"), None);
+    }
+
+    #[test]
     fn detects_mailer_context() {
         let cs = Some(Kind::MailMailer);
         assert_eq!(context("Mail::mailer('sm"), cs);
@@ -5208,6 +5249,38 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_auth_guards() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/auth.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'defaults' => ['guard' => 'web'],\n",
+                "    'guards' => [\n",
+                "        'web' => ['driver' => 'session'],\n",
+                "        'api' => ['driver' => 'token'],\n",
+                "        // 'admin' => ['driver' => 'session'],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the guards array's top-level keys: not the nested
+        // 'defaults' -> 'guard' key, the per-guard 'driver'
+        // settings one level deeper, or the commented 'admin'.
+        assert_eq!(labels("Auth::guard('"), ["api", "web"]);
+        assert_eq!(labels("Auth::shouldUse('"), ["api", "web"]);
+        assert!(labels("Auth::guard(['").is_empty());
     }
 
     #[test]
