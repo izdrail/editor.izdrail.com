@@ -147,6 +147,8 @@ pub enum Kind {
     AuthGuard,
     /// Database connection: `DB::connection('...')` (item 404).
     DbConnection,
+    /// Redis connection: `Redis::connection('...')` (item 405).
+    RedisConnection,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1473,6 +1475,18 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Redis connections (item 405): `Redis::connection('...')`
+        // takes the connection or cluster name as the scalar first
+        // argument (Laravel 12.x RedisManager: connection($name =
+        // null), resolve($name) also answering cluster names).
+        "connection"
+            if static_head(&head[..word_start], "Redis")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::RedisConnection
+        }
         // Database connections (item 404): `DB::connection('...')`
         // takes the connection name as the scalar first argument
         // (Laravel 12.x DatabaseManager: connection($name = null)).
@@ -1706,6 +1720,7 @@ struct Lists {
     mail_mailers: Vec<String>,
     auth_guards: Vec<String>,
     db_connections: Vec<String>,
+    redis_connections: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1903,7 +1918,33 @@ fn config_named_keys(root: &Path, file: &str, key: &str) -> Vec<String> {
     }
     let (masked, strings) = mask_comments(&text);
     let mut out = Vec::new();
-    for (start, end) in &strings {
+    if let Some(open) =
+        find_region(&masked, &text, &strings, key, 0, masked.len())
+    {
+        harvest_alias_keys(&masked, &text, &strings, open, &mut out);
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
+}
+
+/// Find the open bracket of the first `'key' => [` region whose key
+/// string starts in [`from`, `before`). Returns the masked-text offset
+/// of the `[`. Key strings are matched on their real text; the `=> [`
+/// check runs on the comment-masked text (item 405).
+fn find_region(
+    masked: &str,
+    text: &str,
+    strings: &[(usize, usize)],
+    key: &str,
+    from: usize,
+    before: usize,
+) -> Option<usize> {
+    for (start, end) in strings {
+        if *start < from || *start >= before {
+            continue;
+        }
         if &text[start + 1..*end] != key {
             continue;
         }
@@ -1914,14 +1955,45 @@ fn config_named_keys(root: &Path, file: &str, key: &str) -> Vec<String> {
         if !rest.trim_start().starts_with('[') {
             continue;
         }
-        let open = masked.len() - rest.trim_start().len();
-        harvest_alias_keys(&masked, &text, &strings, open, &mut out);
-        break;
+        return Some(masked.len() - rest.trim_start().len());
     }
-    out.sort();
-    out.dedup();
-    out.truncate(MAX_NAMES);
-    out
+    None
+}
+
+/// The offset just past the `]` closing the array opened at `open`
+/// (item 405). Bracket depth walk on the comment-masked text; quoted
+/// strings inside are skipped via the recorded spans.
+fn region_end(
+    masked: &str,
+    strings: &[(usize, usize)],
+    open: usize,
+) -> usize {
+    let b = masked.as_bytes();
+    let mut i = open + 1;
+    let mut depth = 1usize;
+    while i < b.len() && depth > 0 {
+        match b[i] {
+            b'[' | b'(' | b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b']' | b')' | b'}' => {
+                depth -= 1;
+                i += 1;
+            }
+            q if q == b'\'' || q == b'"' => {
+                if let Ok(si) =
+                    strings.binary_search_by_key(&i, |s| s.0)
+                {
+                    i = strings[si].1 + 1;
+                } else {
+                    i += 1;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    i
 }
 
 /// Filesystem disk names (item 397).
@@ -1952,6 +2024,59 @@ fn auth_guards(root: &Path) -> Vec<String> {
 /// Database connection names (item 404).
 fn db_connections(root: &Path) -> Vec<String> {
     config_named_keys(root, "database", "connections")
+}
+
+/// Redis connection names (item 405). Laravel 12.x
+/// `RedisManager::resolve` answers `Redis::connection($name)` from
+/// two places: a top-level key of the `'redis'` region of
+/// `config/database.php`, or a name inside its `'clusters'`
+/// sub-region (`resolveCluster`). The region's metadata keys are not
+/// connections: `'client'` (a scalar), `'options'` (an array of
+/// defaults) and `'clusters'` itself are excluded, as is the
+/// `'options'` metadata inside `'clusters'`.
+fn redis_connections(root: &Path) -> Vec<String> {
+    let p = root.join("config").join("database.php");
+    let Ok(meta) = std::fs::metadata(&p) else {
+        return Vec::new();
+    };
+    if !meta.is_file() || meta.len() > MAX_FILE {
+        return Vec::new();
+    }
+    let Ok(text) = std::fs::read_to_string(&p) else {
+        return Vec::new();
+    };
+    if text.contains("<<<") {
+        // Same heredoc/nowdoc fail-closed guard as item 390d.
+        return Vec::new();
+    }
+    let (masked, strings) = mask_comments(&text);
+    let mut out = Vec::new();
+    let Some(redis_open) =
+        find_region(&masked, &text, &strings, "redis", 0, masked.len())
+    else {
+        return out;
+    };
+    let redis_close = region_end(&masked, &strings, redis_open);
+    harvest_alias_keys(&masked, &text, &strings, redis_open, &mut out);
+    if let Some(clusters_open) = find_region(
+        &masked,
+        &text,
+        &strings,
+        "clusters",
+        redis_open,
+        redis_close,
+    ) {
+        harvest_alias_keys(
+            &masked, &text, &strings, clusters_open, &mut out,
+        );
+    }
+    out.retain(|k| {
+        !matches!(k.as_str(), "client" | "options" | "clusters")
+    });
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
 }
 
 /// The top-level `'name' =>` keys of the array opened at `open`
@@ -2809,6 +2934,7 @@ fn lists(root: &Path) -> Lists {
     let mail_mailers = mail_mailers(root);
     let auth_guards = auth_guards(root);
     let db_connections = db_connections(root);
+    let redis_connections = redis_connections(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2832,6 +2958,7 @@ fn lists(root: &Path) -> Lists {
         mail_mailers,
         auth_guards,
         db_connections,
+        redis_connections,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3479,6 +3606,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::MailMailer
                 | Kind::AuthGuard
                 | Kind::DbConnection
+                | Kind::RedisConnection
         )
     )
 }
@@ -3987,6 +4115,9 @@ pub fn items(
         Kind::AuthGuard => (lists.auth_guards, "auth guard"),
         Kind::DbConnection => {
             (lists.db_connections, "database connection")
+        }
+        Kind::RedisConnection => {
+            (lists.redis_connections, "redis connection")
         }
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
@@ -4841,6 +4972,26 @@ mod tests {
     }
 
     #[test]
+    fn detects_redis_connection_context() {
+        let cs = Some(Kind::RedisConnection);
+        assert_eq!(context("Redis::connection('de"), cs);
+        // A scalar name only; the DB arm does not steal the Redis
+        // receiver; look-alike receivers, object calls, a second
+        // argument and comment or string-contained calls stay
+        // silent.
+        assert_eq!(context("Redis::connection(['de"), None);
+        assert_eq!(context("MyRedis::connection('de"), None);
+        assert_eq!(context("$redis->connection('de"), None);
+        assert_eq!(context("Redis::connection('default', 'x"), None);
+        assert_eq!(context("// Redis::connection('de"), None);
+        assert_eq!(context("$h = \"use Redis::connection('de"), None);
+        assert_ne!(
+            context("Redis::connection('de"),
+            Some(Kind::DbConnection)
+        );
+    }
+
+    #[test]
     fn detects_db_connection_context() {
         let cs = Some(Kind::DbConnection);
         assert_eq!(context("DB::connection('my"), cs);
@@ -5290,6 +5441,49 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_redis_connections() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/database.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'connections' => [\n",
+                "        'mysql' => ['clusters' => ['x' => []]],\n",
+                "    ],\n",
+                "    'redis' => [\n",
+                "        'client' => env('REDIS_CLIENT', 'phpredis'),\n",
+                "        'options' => [\n",
+                "            'cluster' => env('REDIS_CLUSTER'),\n",
+                "        ],\n",
+                "        'default' => ['host' => '127.0.0.1'],\n",
+                "        'cache' => ['host' => '127.0.0.1'],\n",
+                "        // 'sessions' => ['host' => '127.0.0.1'],\n",
+                "        'clusters' => [\n",
+                "            'options' => ['prefix' => 'x'],\n",
+                "            'nodes' => [['host' => '10.0.0.1']],\n",
+                "        ],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Region-verified 12.x shape: direct connections 'default'
+        // and 'cache' plus the 'nodes' cluster, excluding the
+        // 'client' scalar, both 'options' metadata regions, the
+        // 'clusters' key itself, the commented 'sessions', and the
+        // unrelated 'clusters' key inside the mysql connection.
+        assert_eq!(labels("Redis::connection('"), ["cache", "default", "nodes"]);
+        assert!(labels("Redis::connection(['").is_empty());
     }
 
     #[test]
