@@ -4172,6 +4172,33 @@ pub fn items(
         };
         return column_items(&lists(root), table);
     }
+    if kind == Kind::ArtisanCommand {
+        // Item 412: name provenance in the detail - built-in
+        // (Laravel) vs project custom. The list itself is unchanged.
+        return lists(root)
+            .artisan_commands
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| {
+                let builtin = crate::artisan_index::BUILTIN_COMMANDS
+                    .binary_search(&n.as_str())
+                    .is_ok();
+                CompletionItem {
+                    label: n,
+                    kind: Some(CompletionItemKind::VALUE),
+                    detail: Some(
+                        if builtin {
+                            "artisan command (built-in)"
+                        } else {
+                            "artisan command (project)"
+                        }
+                        .to_string(),
+                    ),
+                    ..Default::default()
+                }
+            })
+            .collect();
+    }
     let lists = lists(root);
     let (names, detail) = match kind {
         Kind::Route => (lists.routes, "route name"),
@@ -4250,6 +4277,8 @@ pub fn items(
         Kind::BroadcastConnection => {
             (lists.broadcast_connections, "broadcast connection")
         }
+        // Returned early above (provenance detail, item 412); the
+        // match must stay exhaustive.
         Kind::ArtisanCommand => {
             (lists.artisan_commands, "artisan command")
         }
@@ -5673,6 +5702,30 @@ mod tests {
         assert!(queued.iter().any(|l| l == "reports:send"));
         assert!(queued.iter().any(|l| l == "migrate"));
         assert!(labels("Artisan::call(['").is_empty());
+        // Item 412: the detail carries the provenance - built-in vs
+        // project custom.
+        let detail_of = |name: &str| {
+            items(r, None, "Artisan::call('")
+                .into_iter()
+                .find(|i| i.label == name)
+                .and_then(|i| i.detail)
+        };
+        assert_eq!(
+            detail_of("migrate").as_deref(),
+            Some("artisan command (built-in)")
+        );
+        assert_eq!(
+            detail_of("queue:work").as_deref(),
+            Some("artisan command (built-in)")
+        );
+        assert_eq!(
+            detail_of("reports:send").as_deref(),
+            Some("artisan command (project)")
+        );
+        assert_eq!(
+            detail_of("inspire:me").as_deref(),
+            Some("artisan command (project)")
+        );
     }
 
     #[test]
