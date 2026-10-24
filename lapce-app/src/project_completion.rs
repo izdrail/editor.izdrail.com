@@ -151,6 +151,9 @@ pub enum Kind {
     RedisConnection,
     /// Queue connection: `Queue::connection('...')` (item 406).
     QueueConnection,
+    /// Broadcast connection: `Broadcast::connection('...')` /
+    /// `Broadcast::driver('...')` (item 407).
+    BroadcastConnection,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1477,6 +1480,19 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Broadcast connections (item 407):
+        // `Broadcast::connection('...')` / `Broadcast::driver('...')`
+        // take the connection name as the scalar first argument
+        // (Laravel 12.x BroadcastManager: connection($driver =
+        // null), driver($name = null) alias).
+        "connection" | "driver"
+            if static_head(&head[..word_start], "Broadcast")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::BroadcastConnection
+        }
         // Queue connections (item 406): `Queue::connection('...')`
         // takes the connection name as the scalar first argument
         // (Laravel 12.x QueueManager: connection($name = null)).
@@ -1735,6 +1751,7 @@ struct Lists {
     db_connections: Vec<String>,
     redis_connections: Vec<String>,
     queue_connections: Vec<String>,
+    broadcast_connections: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -2043,6 +2060,11 @@ fn db_connections(root: &Path) -> Vec<String> {
 /// Queue connection names (item 406).
 fn queue_connections(root: &Path) -> Vec<String> {
     config_named_keys(root, "queue", "connections")
+}
+
+/// Broadcast connection names (item 407).
+fn broadcast_connections(root: &Path) -> Vec<String> {
+    config_named_keys(root, "broadcasting", "connections")
 }
 
 /// Redis connection names (item 405). Laravel 12.x
@@ -2955,6 +2977,7 @@ fn lists(root: &Path) -> Lists {
     let db_connections = db_connections(root);
     let redis_connections = redis_connections(root);
     let queue_connections = queue_connections(root);
+    let broadcast_connections = broadcast_connections(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2980,6 +3003,7 @@ fn lists(root: &Path) -> Lists {
         db_connections,
         redis_connections,
         queue_connections,
+        broadcast_connections,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3629,6 +3653,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::DbConnection
                 | Kind::RedisConnection
                 | Kind::QueueConnection
+                | Kind::BroadcastConnection
         )
     )
 }
@@ -4143,6 +4168,9 @@ pub fn items(
         }
         Kind::QueueConnection => {
             (lists.queue_connections, "queue connection")
+        }
+        Kind::BroadcastConnection => {
+            (lists.broadcast_connections, "broadcast connection")
         }
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
@@ -4997,6 +5025,26 @@ mod tests {
     }
 
     #[test]
+    fn detects_broadcast_connection_context() {
+        let cs = Some(Kind::BroadcastConnection);
+        assert_eq!(context("Broadcast::connection('pu"), cs);
+        assert_eq!(context("Broadcast::driver('pu"), cs);
+        // A scalar name only; the other connection and driver arms
+        // do not steal the Broadcast receiver; look-alike
+        // receivers, object calls, a second argument and comment
+        // or string-contained calls stay silent.
+        assert_eq!(context("Broadcast::connection(['pu"), None);
+        assert_eq!(context("MyBroadcast::connection('pu"), None);
+        assert_eq!(context("$broadcast->connection('pu"), None);
+        assert_eq!(context("Broadcast::driver('pusher', 'x"), None);
+        assert_eq!(context("// Broadcast::connection('pu"), None);
+        assert_eq!(
+            context("$h = \"use Broadcast::connection('pu"),
+            None
+        );
+    }
+
+    #[test]
     fn detects_queue_connection_context() {
         let cs = Some(Kind::QueueConnection);
         assert_eq!(context("Queue::connection('re"), cs);
@@ -5482,6 +5530,45 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_broadcast_connections() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/broadcasting.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('BROADCAST_CONNECTION'),\n",
+                "    'connections' => [\n",
+                "        'pusher' => ['driver' => 'pusher'],\n",
+                "        'reverb' => ['driver' => 'reverb'],\n",
+                "        'log' => ['driver' => 'log'],\n",
+                "        // 'ably' => ['driver' => 'ably'],\n",
+                "    ],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the connections array's top-level keys: not the
+        // 'default' key, per-connection 'driver' settings one
+        // level deeper, or the commented 'ably'.
+        assert_eq!(
+            labels("Broadcast::connection('"),
+            ["log", "pusher", "reverb"]
+        );
+        assert_eq!(
+            labels("Broadcast::driver('"),
+            ["log", "pusher", "reverb"]
+        );
+        assert!(labels("Broadcast::connection(['").is_empty());
     }
 
     #[test]
