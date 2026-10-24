@@ -257,6 +257,12 @@ mod tests {
             (Sql, "SELECT id FROM users", "id", ""),
             // rust tags lifetimes as "annotation"; the theme's nearest key is attribute.
             (Rust, "fn f<'a>(x: &'a str)", "'a", "attribute"),
+            // bash scalars/params were tagged "identifier" upstream and rendered
+            // uncoloured; they map to the variable scope. Command names
+            // (SCE_SH_IDENTIFIER) intentionally stay uncoloured.
+            (Bash, "echo $HOME\n", "$HOME", "variable"),
+            (Bash, "y=$1\n", "$1", "variable"),
+            (Bash, "echo done\n", "echo", ""),
             // enum (PHP 8.1) in both the pure-php lexer and the templated
             // hypertext routing; the two keyword lists must agree.
             (Php, "<?php enum Suit {}", "enum", "keyword"),
