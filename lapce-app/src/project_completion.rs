@@ -5602,17 +5602,23 @@ mod tests {
                 .map(|i| i.label)
                 .collect::<Vec<_>>()
         };
-        // The $signature first word and the closure command name:
-        // not the signature argument, not the commented-out legacy
-        // command.
-        assert_eq!(
-            labels("Artisan::call('"),
-            ["inspire:me", "reports:send"]
-        );
-        assert_eq!(
-            labels("Artisan::queue('"),
-            ["inspire:me", "reports:send"]
-        );
+        // The $signature first word, the closure command name and
+        // the built-in commands (item 409): not the signature
+        // argument, not the commented-out legacy command.
+        let got = labels("Artisan::call('");
+        assert!(got.iter().any(|l| l == "reports:send"));
+        assert!(got.iter().any(|l| l == "inspire:me"));
+        assert!(got.iter().any(|l| l == "migrate"));
+        assert!(got.iter().any(|l| l == "queue:work"));
+        // Real non-hidden hyphenated command (host respin catch).
+        assert!(got.iter().any(|l| l == "clear-compiled"));
+        // Hidden commands are not offered.
+        assert!(!got.iter().any(|l| l == "invoke-serialized-closure"));
+        assert!(!got.iter().any(|l| l == "reports:legacy"));
+        assert!(!got.iter().any(|l| l == "{user}"));
+        let queued = labels("Artisan::queue('");
+        assert!(queued.iter().any(|l| l == "reports:send"));
+        assert!(queued.iter().any(|l| l == "migrate"));
         assert!(labels("Artisan::call(['").is_empty());
     }
 

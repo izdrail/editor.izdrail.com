@@ -11,7 +11,9 @@ first word of each class in `app/Console/Commands/**.php`, and
 same depth, file-count, byte and entry bounds as the palette index
 apply, and signature arguments (`reports:send {user}` offers
 `reports:send`) and commented-out commands invent nothing. Built-in
-Laravel commands (`migrate`, `queue:work`, ...) are not offered yet.
+Laravel commands (`migrate`, `queue:work`, ...) are also offered,
+from a static list harvested from the laravel/framework 12.x tree
+(item 409, `BUILTIN_COMMANDS`).
 
 Only a scalar name completes; the array argument form stays silent.
 The receiver must be exactly `Artisan::` - `MyArtisan::call(...)`,

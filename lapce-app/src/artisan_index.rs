@@ -165,6 +165,44 @@ pub fn discover(root: &Path) -> Vec<RouteTarget> {
     out
 }
 
+/// Built-in Laravel command names (item 409), harvested from the
+/// laravel/framework 12.x tree (12.x @ 3f732656, checked
+/// 2026-10-24): the first word of every `$signature` / `$name` in
+/// `src/Illuminate/**/Console/**`, filtered to command-name shape
+/// (hyphenated names such as `clear-compiled` included) and
+/// excluding non-command `$name` values and hidden commands
+/// (`invoke-serialized-closure`). Sorted, deduped; not versioned
+/// with the app, so treat as a best-effort static list, not a live
+/// vendor read.
+pub const BUILTIN_COMMANDS: &[&str] = &[
+    "about", "auth:clear-resets", "cache:clear", "cache:forget",
+    "cache:prune-stale-tags", "channel:list", "clear-compiled",
+    "config:cache", "config:clear",
+    "config:publish", "config:show", "db", "db:monitor", "db:seed", "db:show",
+    "db:table", "db:wipe", "docs", "down", "env", "env:decrypt", "env:encrypt",
+    "event:cache", "event:clear", "event:generate", "event:list", "install:api",
+    "install:broadcasting", "key:generate", "lang:publish", "make:cache-table",
+    "make:cast", "make:channel", "make:class", "make:command", "make:component",
+    "make:config", "make:controller", "make:enum", "make:event", "make:exception",
+    "make:factory", "make:interface", "make:job", "make:job-middleware",
+    "make:listener", "make:mail", "make:middleware", "make:migration", "make:model",
+    "make:notification", "make:notifications-table", "make:observer", "make:policy",
+    "make:provider", "make:queue-batches-table", "make:queue-failed-table",
+    "make:queue-table", "make:request", "make:resource", "make:rule", "make:scope",
+    "make:seeder", "make:session-table", "make:test", "make:trait", "make:view",
+    "migrate", "migrate:fresh", "migrate:install", "migrate:refresh",
+    "migrate:reset", "migrate:rollback", "migrate:status", "model:prune",
+    "model:show", "optimize", "optimize:clear", "package:discover", "queue:clear",
+    "queue:failed", "queue:flush", "queue:forget", "queue:listen", "queue:monitor",
+    "queue:pause", "queue:prune-batches", "queue:prune-failed", "queue:restart",
+    "queue:resume", "queue:retry", "queue:retry-batch", "queue:work", "reload",
+    "route:cache", "route:clear", "route:list", "schedule:clear-cache",
+    "schedule:finish", "schedule:interrupt", "schedule:list", "schedule:run",
+    "schedule:test", "schedule:work", "schema:dump", "serve", "storage:link",
+    "storage:unlink", "stub:publish", "up", "vendor:publish", "view:cache",
+    "view:clear",
+];
+
 /// Bare command names for completion (item 408): the same sources as
 /// `discover` (`$signature` / `#[AsCommand]` / `$name` first words in
 /// `app/Console/Commands/**.php`, `Artisan::command('name ...')` in
@@ -195,6 +233,7 @@ pub fn names(root: &Path) -> Vec<String> {
             }
         }
     }
+    out.extend(BUILTIN_COMMANDS.iter().map(|c| (*c).to_string()));
     out.sort();
     out.dedup();
     out
