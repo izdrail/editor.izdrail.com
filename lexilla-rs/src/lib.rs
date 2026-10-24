@@ -41,6 +41,7 @@ pub enum Property {
     Scss(bool),
     Javascript(bool),
     MarkdownHeaderFill(bool),
+    Json5(bool),
 }
 impl Property {
     fn pairs(self) -> &'static [(&'static str, &'static str)] {
@@ -59,6 +60,8 @@ impl Property {
             ],
             Self::MarkdownHeaderFill(true) => &[("lexer.markdown.header.eolfill", "1")],
             Self::MarkdownHeaderFill(false) => &[("lexer.markdown.header.eolfill", "0")],
+            Self::Json5(true) => &[("lexer.json.json5", "1")],
+            Self::Json5(false) => &[("lexer.json.json5", "0")],
         }
     }
 }
@@ -95,6 +98,7 @@ impl Snapshot {
                 ("css", Property::Scss(_))
                     | ("cpp", Property::Javascript(_))
                     | ("markdown", Property::MarkdownHeaderFill(_))
+                    | ("json", Property::Json5(_))
             )
         }) {
             return Err(Error::Property);
@@ -400,6 +404,83 @@ mod web_regressions {
             Some("string")
         );
     }
+    #[test]
+    fn json5_valid_fixtures_and_session_isolation() {
+        mod upstream {
+            include!("../test-fixtures/json5/upstream_valid.rs");
+        }
+        let real = include_str!("../test-fixtures/json5/package.json5");
+        let features = include_str!("../test-fixtures/json5/features.json5");
+        for text in upstream::VALID.iter().copied().chain([real, features]) {
+            let strict = Snapshot::lex("json", text, &["false null true"]).unwrap();
+            let json5 = Snapshot::lex_with_properties(
+                "json", text, &["false null true"], &[Property::Json5(true)],
+            ).unwrap();
+            for (at, style) in json5.styles().iter().copied().enumerate() {
+                // Upstream numeric IDs: 3 = STRINGEOL, 13 = ERROR.
+                assert!(!matches!(style, 3 | 13), "error at {at}: {text:?}");
+            }
+            assert_eq!(strict.styles(), Snapshot::lex("json", text, &["false null true"])
+                .unwrap().styles());
+            let disabled = Snapshot::lex_with_properties(
+                "json", text, &["false null true"], &[Property::Json5(false)],
+            ).unwrap();
+            assert_eq!(strict.styles(), disabled.styles());
+        }
+        assert_eq!(
+            Snapshot::lex_with_properties("cpp", "", &[], &[Property::Json5(true)])
+                .unwrap_err(),
+            Error::Property,
+        );
+    }
+
+    #[test]
+    fn json5_truncated_utf8_and_escape_prefixes_are_safe() {
+        let text = include_str!("../test-fixtures/json5/features.json5");
+        for end in (0..=text.len()).filter(|end| text.is_char_boundary(*end)) {
+            let prefix = &text[..end];
+            let snapshot = Snapshot::lex_with_properties(
+                "json", prefix, &["false null true"], &[Property::Json5(true)],
+            ).unwrap();
+            assert_eq!(snapshot.len(), prefix.len());
+        }
+        for text in ["{\\u", "{\\u00", "{a: 'x\\", "{a: '\\x", "/*", "//"] {
+            assert_eq!(Snapshot::lex_with_properties(
+                "json", text, &[], &[Property::Json5(true)],
+            ).unwrap().len(), text.len());
+        }
+    }
+
+    #[test]
+    fn json5_tokens_have_complete_theme_spans() {
+        for (text, needle, expected) in [
+            ("{bare: 1}", "bare", "property"),
+            ("{\\u0061: 1}", "\\u0061", "property"),
+            ("{ùńîċõďë: 1}", "ùńîċõďë", "property"),
+            ("{꟝: 1}", "꟝", "property"),
+            ("{a /* c */ : 1}", "a", "property"),
+            ("{a /* c */ : 1}", "/* c */", "comment"),
+            ("{a: 'it\\'s'}", "'it\\'s'", "string"),
+            ("{a: 'a\\\r\nb'}", "'a\\\r\nb'", "string"),
+            ("{a: 0xA2}", "0xA2", "constant"),
+            ("{a: -0Xff}", "-0Xff", "constant"),
+            ("{a: +.5}", "+.5", "constant"),
+            ("{a: 5.e-2}", "5.e-2", "constant"),
+            ("{a: -Infinity}", "-Infinity", "constant"),
+            ("{a: +NaN}", "+NaN", "constant"),
+            ("{a: true}", "true", "keyword"),
+        ] {
+            let snapshot = Snapshot::lex_with_properties(
+                "json", text, &["false null true"], &[Property::Json5(true)],
+            ).unwrap();
+            let start = text.find(needle).unwrap();
+            for at in start..start + needle.len() {
+                assert_eq!(snapshot.scope(snapshot.styles()[at]), Some(expected),
+                    "{text:?} byte {at}");
+            }
+        }
+    }
+
     #[test]
     fn php_scanners_share_comment_and_function_fixes() {
         for lexer in ["php", "laravel"] {

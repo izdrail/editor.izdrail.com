@@ -1,0 +1,66 @@
+// This is a generated file. Do not edit.
+{
+  name: 'json5',
+  version: '2.2.3',
+  type: 'module',
+  description: 'JSON for Humans',
+  main: './lib/index.js',
+  exports: {
+    '.': {
+      types: './lib/index.d.ts',
+      default: './lib/index.js',
+    },
+    './package.json': './package.json',
+    './package.json5': './package.json5',
+  },
+  bin: 'lib/cli.js',
+  files: [
+    'lib/',
+    'package.json5',
+  ],
+  engines: {
+    node: '>=22.12',
+  },
+  scripts: {
+    'build-package': 'node build/package.js',
+    'build-unicode': 'node build/unicode.js',
+    lint: 'eslint .',
+    test: "node --test --experimental-test-coverage --test-coverage-include='lib/**' --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 test/*.test.js",
+    'test-types': 'tsc',
+    production: 'npm test && npm run test-types',
+    prepublishOnly: 'npm run production',
+    preversion: 'npm run production',
+    version: 'npm run build-package && git add package.json5',
+  },
+  repository: {
+    type: 'git',
+    url: 'git+https://github.com/json5/json5.git',
+  },
+  keywords: [
+    'json',
+    'json5',
+    'es5',
+    'es2015',
+    'ecmascript',
+  ],
+  author: 'Aseem Kishore <aseem.kishore@gmail.com>',
+  contributors: [
+    'Max Nanasy <max.nanasy@gmail.com>',
+    'Andrew Eisenberg <andrew@eisenberg.as>',
+    'Jordan Tucker <jordanbtucker@gmail.com>',
+  ],
+  license: 'MIT',
+  bugs: {
+    url: 'https://github.com/json5/json5/issues',
+  },
+  homepage: 'http://json5.org/',
+  devDependencies: {
+    '@eslint/js': '^10.0.1',
+    '@types/node': '^20.14.0',
+    '@unicode/unicode-18.0.0': '^2.0.7',
+    eslint: '^10.12.0',
+    'eslint-plugin-n': '^18.4.1',
+    regenerate: '^1.4.0',
+    typescript: '^5.5.0',
+  },
+}

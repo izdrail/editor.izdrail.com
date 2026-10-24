@@ -155,6 +155,7 @@ pub fn highlight_profile(
     };
     let properties = match language {
         Scss => vec![lexilla_rs::Property::Scss(true)],
+        Json5 => vec![lexilla_rs::Property::Json5(true)],
         Javascript | Typescript => vec![lexilla_rs::Property::Javascript(true)],
         Markdown => vec![lexilla_rs::Property::MarkdownHeaderFill(true)],
         _ => Vec::new(),
@@ -274,6 +275,13 @@ mod tests {
             (Yaml, "flag: true\n", "true", "keyword"),
             (Yaml, "- one\n", "one", "string"),
             (Yaml, "- name: Run\n", "name", "property"),
+            // JSON5 mode (routed for .json5): comments, unquoted keys,
+            // single-quoted strings, trailing commas and extended numbers.
+            (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "// c", "comment"),
+            (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "a", "property"),
+            (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "'x'", "string"),
+            (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "0xA", "constant"),
+            (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "Infinity", "constant"),
         ] {
             let snapshot = highlight(language, &Rope::from(text)).unwrap();
             let at = text.find(needle).unwrap();
@@ -283,6 +291,22 @@ mod tests {
             } else {
                 assert_eq!(got, Some(scope), "{language:?} {needle}");
             }
+        }
+    }
+    #[test]
+    fn json_strict_mode_rejects_json5_constructs() {
+        // The strict JSON routing must not adopt JSON5 semantics: comments,
+        // unquoted keys and single-quoted strings stay unscoped (the lexer's
+        // error style maps to no theme scope).
+        use LapceLanguage::*;
+        for (text, needle) in [
+            ("// c\n{\"a\": 1}\n", "// c"),
+            ("{a: 1}\n", "a"),
+            ("{a: 'x'}\n", "'x'"),
+        ] {
+            let snapshot = highlight(Json, &Rope::from(text)).unwrap();
+            let at = text.find(needle).unwrap();
+            assert_eq!(snapshot.scope(snapshot.styles()[at]), None, "{text} {needle}");
         }
     }
     #[test]

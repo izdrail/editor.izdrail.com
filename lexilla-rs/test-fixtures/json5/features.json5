@@ -1,0 +1,25 @@
+// synthetic JSON5 coverage fixture (hand-written, representative)
+/* block
+   comment */
+{
+  unquoted: 'single',
+  "double": "ok",
+  'sqkey': 'it\'s escaped',
+  nested: { a: 1, b: [1, 2, 3,], },
+  hex: 0xdecaf,
+  pos: +42,
+  neg: -42,
+  lead: .5,
+  trail: 5.,
+  signedLead: +.5,
+  inf: Infinity,
+  ninf: -Infinity,
+  nan: NaN,
+  trueval: true,
+  nul: null,
+  multi: 'line one \
+line two',
+  $dollar: 1,
+  _under: 2,
+  true: 'reserved word key',
+}
