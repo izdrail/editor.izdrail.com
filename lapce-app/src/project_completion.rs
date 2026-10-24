@@ -3654,32 +3654,37 @@ fn livewire_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
 /// completion word start over
 /// `.`-joined segments so accepting replaces the whole name.
 pub fn dotted_name_context(line_before_cursor: &str) -> bool {
+    context(line_before_cursor)
+        .is_some_and(|kind| dotted_name_kind(&kind))
+}
+
+/// Kinds whose accept-path replacement extends over the whole typed
+/// name (`.`- or `:`-joined segments) - and only in PHP files
+/// (items 381, 409, 410). The single source of truth for both the
+/// replacement extension and the item 411 offering gate.
+fn dotted_name_kind(kind: &Kind) -> bool {
     matches!(
-        context(line_before_cursor),
-        Some(
-            Kind::Route
-                | Kind::Config
-                | Kind::View
-                | Kind::Section
-                | Kind::Stack
-                | Kind::Lang
-                | Kind::Gate
-                | Kind::Lang
-                | Kind::Gate
-                | Kind::LivewireName
-                | Kind::LivewireEvent
-                | Kind::MiddlewareAlias
-                | Kind::StorageDisk
-                | Kind::LogChannel
-                | Kind::CacheStore
-                | Kind::MailMailer
-                | Kind::AuthGuard
-                | Kind::DbConnection
-                | Kind::RedisConnection
-                | Kind::QueueConnection
-                | Kind::BroadcastConnection
-                | Kind::ArtisanCommand
-        )
+        kind,
+        Kind::Route
+            | Kind::Config
+            | Kind::View
+            | Kind::Section
+            | Kind::Stack
+            | Kind::Lang
+            | Kind::Gate
+            | Kind::LivewireName
+            | Kind::LivewireEvent
+            | Kind::MiddlewareAlias
+            | Kind::StorageDisk
+            | Kind::LogChannel
+            | Kind::CacheStore
+            | Kind::MailMailer
+            | Kind::AuthGuard
+            | Kind::DbConnection
+            | Kind::RedisConnection
+            | Kind::QueueConnection
+            | Kind::BroadcastConnection
+            | Kind::ArtisanCommand
     )
 }
 
@@ -3891,6 +3896,17 @@ pub fn items(
         return Vec::new();
     }
     let Some(kind) = context(line_before) else { return Vec::new() };
+    // Whole-name replacements are extended only in PHP files (the
+    // item 410 gate), so offering these kinds in a non-PHP file
+    // would graft the accepted item onto the typed prefix - the
+    // item 411 offering/replacement mismatch. An absent file is
+    // treated as PHP (unit tests pass no file).
+    let is_php = file
+        .map(|p| p.to_string_lossy().ends_with(".php"))
+        .unwrap_or(true);
+    if !is_php && dotted_name_kind(&kind) {
+        return Vec::new();
+    }
     if kind == Kind::LivewireModel {
         return livewire_props(root, file);
     }
@@ -6559,6 +6575,57 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("<x-alert "), Some(Kind::BladeProp));
         assert_eq!(context("<div class=\"x-foo"), None);
         assert_eq!(context("<x"), None);
+    }
+
+    #[test]
+    fn name_replacement_kinds_are_php_file_only() {
+        // The item 411 mismatch: a .txt buffer used to offer the
+        // same whole-name items whose replacement is PHP-gated.
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        // Every fixture lands before the first `items` call: the
+        // completion lists are cached per root, so a fixture written
+        // after the first call would not be seen (the item 411b
+        // respin catch).
+        put(
+            r,
+            "app/Console/Commands/SendReports.php",
+            "<?php\nprotected $signature = 'reports:send';\n",
+        );
+        // The table fixture: `Schema::create('...')` names a NEW
+        // table and stays out of table completion by design (item
+        // 381), so it is the harvest fixture, not the input.
+        put(
+            r,
+            "database/migrations/01_create_users.php",
+            "<?php Schema::create('users', fn ($t) => 0);",
+        );
+        let php = std::path::Path::new("probe.php");
+        let txt = std::path::Path::new("notes.txt");
+        let labels = |file: Option<&std::path::Path>, line: &str| {
+            items(r, file, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert!(labels(Some(php), "Artisan::call('re")
+            .iter()
+            .any(|l| l == "reports:send"));
+        assert!(labels(Some(txt), "Artisan::call('re").is_empty());
+        assert!(labels(Some(txt), "route('ad").is_empty());
+        // An absent file keeps the test-only PHP default.
+        assert!(labels(None, "Artisan::call('re")
+            .iter()
+            .any(|l| l == "reports:send"));
+        // Kinds outside the whole-name set are unaffected: a plain
+        // table name has no join separators, so its replacement is
+        // boundary-safe in any file (`Schema::table('us` is the
+        // completion context).
+        for file in [Some(php), Some(txt), None] {
+            assert!(labels(file, "Schema::table('us")
+                .iter()
+                .any(|l| l == "users"));
+        }
     }
 
     #[test]
