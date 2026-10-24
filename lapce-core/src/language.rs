@@ -498,7 +498,16 @@ const LANGUAGES: &[SyntaxProperties] = &[
     SyntaxProperties {
         id: LapceLanguage::Bash,
         indent: Indent::space(2),
-        files: &[],
+        // Bash startup files have no extension; an exact filename match is
+        // needed for the same reason as the `.env*` entries under Ini.
+        files: &[
+            ".bashrc",
+            ".bash_profile",
+            ".bash_login",
+            ".bash_logout",
+            ".bash_aliases",
+            ".profile",
+        ],
         extensions: &["bash", "sh"],
         comment: comment_properties!("#"),
         tree_sitter: TreeSitterProperties::DEFAULT,
@@ -2101,6 +2110,26 @@ mod tests {
             LapceLanguage::from_path(&PathBuf::from("package.json")),
             LapceLanguage::Json,
         );
+    }
+
+    #[test]
+    fn bash_startup_files_route_to_bash() {
+        // Every Debian/Ubuntu user ships .bashrc and .profile; macOS users
+        // commonly have .bash_profile. They must not open as PlainText.
+        for name in [
+            ".bashrc",
+            ".bash_profile",
+            ".bash_login",
+            ".bash_logout",
+            ".bash_aliases",
+            ".profile",
+        ] {
+            assert_eq!(
+                LapceLanguage::from_path(&PathBuf::from(name)),
+                LapceLanguage::Bash,
+                "{name}"
+            );
+        }
     }
 
     #[test]
