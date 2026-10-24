@@ -149,6 +149,8 @@ pub enum Kind {
     DbConnection,
     /// Redis connection: `Redis::connection('...')` (item 405).
     RedisConnection,
+    /// Queue connection: `Queue::connection('...')` (item 406).
+    QueueConnection,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1475,6 +1477,17 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Queue connections (item 406): `Queue::connection('...')`
+        // takes the connection name as the scalar first argument
+        // (Laravel 12.x QueueManager: connection($name = null)).
+        "connection"
+            if static_head(&head[..word_start], "Queue")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::QueueConnection
+        }
         // Redis connections (item 405): `Redis::connection('...')`
         // takes the connection or cluster name as the scalar first
         // argument (Laravel 12.x RedisManager: connection($name =
@@ -1721,6 +1734,7 @@ struct Lists {
     auth_guards: Vec<String>,
     db_connections: Vec<String>,
     redis_connections: Vec<String>,
+    queue_connections: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -2024,6 +2038,11 @@ fn auth_guards(root: &Path) -> Vec<String> {
 /// Database connection names (item 404).
 fn db_connections(root: &Path) -> Vec<String> {
     config_named_keys(root, "database", "connections")
+}
+
+/// Queue connection names (item 406).
+fn queue_connections(root: &Path) -> Vec<String> {
+    config_named_keys(root, "queue", "connections")
 }
 
 /// Redis connection names (item 405). Laravel 12.x
@@ -2935,6 +2954,7 @@ fn lists(root: &Path) -> Lists {
     let auth_guards = auth_guards(root);
     let db_connections = db_connections(root);
     let redis_connections = redis_connections(root);
+    let queue_connections = queue_connections(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2959,6 +2979,7 @@ fn lists(root: &Path) -> Lists {
         auth_guards,
         db_connections,
         redis_connections,
+        queue_connections,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3607,6 +3628,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::AuthGuard
                 | Kind::DbConnection
                 | Kind::RedisConnection
+                | Kind::QueueConnection
         )
     )
 }
@@ -4118,6 +4140,9 @@ pub fn items(
         }
         Kind::RedisConnection => {
             (lists.redis_connections, "redis connection")
+        }
+        Kind::QueueConnection => {
+            (lists.queue_connections, "queue connection")
         }
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
@@ -4972,6 +4997,22 @@ mod tests {
     }
 
     #[test]
+    fn detects_queue_connection_context() {
+        let cs = Some(Kind::QueueConnection);
+        assert_eq!(context("Queue::connection('re"), cs);
+        // A scalar name only; the DB and Redis arms do not steal
+        // the Queue receiver; look-alike receivers, object calls, a
+        // second argument and comment or string-contained calls
+        // stay silent.
+        assert_eq!(context("Queue::connection(['re"), None);
+        assert_eq!(context("MyQueue::connection('re"), None);
+        assert_eq!(context("$queue->connection('re"), None);
+        assert_eq!(context("Queue::connection('redis', 'x"), None);
+        assert_eq!(context("// Queue::connection('re"), None);
+        assert_eq!(context("$h = \"use Queue::connection('re"), None);
+    }
+
+    #[test]
     fn detects_redis_connection_context() {
         let cs = Some(Kind::RedisConnection);
         assert_eq!(context("Redis::connection('de"), cs);
@@ -5441,6 +5482,43 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_queue_connections() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/queue.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('QUEUE_CONNECTION', 'sync'),\n",
+                "    'connections' => [\n",
+                "        'sync' => ['driver' => 'sync'],\n",
+                "        'database' => ['driver' => 'database'],\n",
+                "        'redis' => ['driver' => 'redis'],\n",
+                "        // 'sqs' => ['driver' => 'sqs'],\n",
+                "    ],\n",
+                "    'failed' => ['driver' => 'database-uuids'],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the connections array's top-level keys: not the
+        // 'default' key, the sibling 'failed' region, per-connection
+        // 'driver' settings one level deeper, or the commented
+        // 'sqs'.
+        assert_eq!(
+            labels("Queue::connection('"),
+            ["database", "redis", "sync"]
+        );
+        assert!(labels("Queue::connection(['").is_empty());
     }
 
     #[test]
