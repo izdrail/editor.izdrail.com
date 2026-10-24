@@ -157,6 +157,9 @@ pub enum Kind {
     /// Artisan command: `Artisan::call('...')` /
     /// `Artisan::queue('...')` (item 408).
     ArtisanCommand,
+    /// Session key: `session('...')` and the key-first `Session::`
+    /// methods - `get`, `put`, `flash`, ... (item 414).
+    SessionKey,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1483,6 +1486,37 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Session keys (item 414): `session('...')` reads a key
+        // (Laravel 12.x helpers.php:910 - an array first argument
+        // puts instead, whose assoc keys name keys), and the
+        // Session facade methods take the key first
+        // (Support\Facades\Session @method list; Session\Store:
+        // get :333, put :393, ...). Scalar-only methods reject an
+        // array first argument; put/forget/exists/missing/has/
+        // hasAny accept the array form, where a string after `[` or
+        // `,` at depth exactly 1 is a key. `session()->get(...)` /
+        // `->session()->get(...)` chains stay silent - only the
+        // helper and the exact `Session::` receiver complete.
+        "session" if arg == 0 => Kind::SessionKey,
+        "get" | "pull" | "remember" | "flash" | "now" | "push"
+        | "increment" | "decrement"
+            if static_head(&head[..word_start], "Session")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::SessionKey
+        }
+        "put" | "forget" | "exists" | "missing" | "has" | "hasAny"
+            if static_head(&head[..word_start], "Session")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::SessionKey
+        }
         // Scheduled artisan commands (item 413):
         // `Schedule::command('...')` takes the command name as the
         // scalar first argument (Laravel 12.x Facades\Schedule
@@ -1781,6 +1815,7 @@ struct Lists {
     queue_connections: Vec<String>,
     broadcast_connections: Vec<String>,
     artisan_commands: Vec<String>,
+    session_keys: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3014,6 +3049,7 @@ fn lists(root: &Path) -> Lists {
     let queue_connections = queue_connections(root);
     let broadcast_connections = broadcast_connections(root);
     let artisan_commands = artisan_commands(root);
+    let session_keys = session_keys(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3041,6 +3077,7 @@ fn lists(root: &Path) -> Lists {
         queue_connections,
         broadcast_connections,
         artisan_commands,
+        session_keys,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3428,6 +3465,137 @@ fn ability_names(root: &Path) -> Vec<String> {
     names
 }
 
+/// Session keys (item 414): the names written by
+/// `Session::put/flash/now/push('key', ...)`,
+/// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
+/// and the assoc keys of `session(['key' => ...])` /
+/// `Session::put(['key' => ...])`, scanned in app/ and routes/
+/// (bounded walk, comments and string literals masked, heredoc
+/// fail-closed). Reads (`Session::get('...')`, ...) declare nothing.
+/// Sorted, deduped.
+fn session_keys(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        if depth > 3 || out.len() >= 500 {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, out);
+            } else if ft.is_file()
+                && p.extension().is_some_and(|x| x == "php")
+            {
+                out.push(p);
+            }
+            if out.len() >= 500 {
+                return;
+            }
+        }
+    }
+    const SCALAR: &[&str] = &[
+        "Session::put(",
+        "Session::flash(",
+        "Session::now(",
+        "Session::push(",
+        "->session()->put(",
+        "->session()->flash(",
+        "session()->put(",
+        "session()->flash(",
+    ];
+    let mut files = Vec::new();
+    walk(&root.join("app"), 0, &mut files);
+    walk(&root.join("routes"), 0, &mut files);
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        // Scalar puts: the first string after the marker is a key.
+        for marker in SCALAR {
+            for (i, _) in masked.match_indices(marker) {
+                if in_string(i) {
+                    continue;
+                }
+                let mut j = i + marker.len();
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if b.get(j) != Some(&b'\'') && b.get(j) != Some(&b'"')
+                {
+                    continue;
+                }
+                let Ok(si) = strings.binary_search_by_key(&j, |s| s.0)
+                else {
+                    continue;
+                };
+                let (start, end) = strings[si];
+                let name = &text[start + 1..end];
+                if !name.is_empty()
+                    && name.len() <= 100
+                    && name.chars().all(|c| {
+                        c.is_ascii_alphanumeric()
+                            || matches!(c, '_' | '-' | '.')
+                    })
+                    && !out.iter().any(|n: &String| n == name)
+                {
+                    out.push(name.to_string());
+                    if out.len() >= MAX_NAMES {
+                        break 'files;
+                    }
+                }
+            }
+        }
+        // Array puts: the assoc keys of `session([...])` and
+        // `Session::put([...])`.
+        for marker in ["session(", "Session::put("] {
+            for (i, _) in masked.match_indices(marker) {
+                if in_string(i) {
+                    continue;
+                }
+                let mut j = i + marker.len();
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if b.get(j) == Some(&b'[') {
+                    harvest_alias_keys(
+                        &masked, &text, &strings, j, &mut out,
+                    );
+                    if out.len() >= MAX_NAMES {
+                        break 'files;
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(MAX_NAMES);
+    out
+}
+
 /// Files under `public/` as `asset()`-ready paths (`css/app.css`).
 /// Symlinks (common for `public/storage`) and hidden directories are
 /// skipped; the walk is bounded like the other static scans.
@@ -3698,6 +3866,7 @@ fn dotted_name_kind(kind: &Kind) -> bool {
             | Kind::QueueConnection
             | Kind::BroadcastConnection
             | Kind::ArtisanCommand
+            | Kind::SessionKey
     )
 }
 
@@ -4295,6 +4464,7 @@ pub fn items(
         Kind::ArtisanCommand => {
             (lists.artisan_commands, "artisan command")
         }
+        Kind::SessionKey => (lists.session_keys, "session key"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -5160,6 +5330,79 @@ mod tests {
         assert_eq!(context("Schedule::command('inspire', ['x"), None);
         assert_eq!(context("// Schedule::command('re"), None);
         assert_eq!(context("$h = \"use Schedule::command('re"), None);
+    }
+
+    #[test]
+    fn detects_session_key_context() {
+        let cs = Some(Kind::SessionKey);
+        assert_eq!(context("session('us"), cs);
+        assert_eq!(context("session(['us"), cs);
+        assert_eq!(context("Session::get('us"), cs);
+        assert_eq!(context("Session::pull('us"), cs);
+        assert_eq!(context("Session::remember('us"), cs);
+        assert_eq!(context("Session::flash('us"), cs);
+        assert_eq!(context("Session::put('us"), cs);
+        assert_eq!(context("Session::push('us"), cs);
+        assert_eq!(context("Session::increment('us"), cs);
+        assert_eq!(context("Session::forget('us"), cs);
+        assert_eq!(context("Session::exists('us"), cs);
+        assert_eq!(context("Session::has('us"), cs);
+        // The array forms of put/forget/exists/missing/has/hasAny
+        // name keys at depth exactly 1 (Laravel 12.x Store
+        // signatures); a scalar-only method rejects the array.
+        assert_eq!(context("Session::put(['us"), cs);
+        assert_eq!(context("Session::forget(['us"), cs);
+        assert_eq!(context("Session::hasAny(['us"), cs);
+        assert_eq!(context("Session::get(['us"), None);
+        // A second argument is a value or default, not a key.
+        assert_eq!(context("session('k', 'de"), None);
+        assert_eq!(context("Session::get('k', 'de"), None);
+        // Look-alike receivers, object calls, chains and comment
+        // or string-contained calls stay silent.
+        assert_eq!(context("MySession::get('us"), None);
+        assert_eq!(context("$session->get('us"), None);
+        assert_eq!(context("session()->get('us"), None);
+        assert_eq!(context("$request->session()->get('us"), None);
+        assert_eq!(context("// Session::get('us"), None);
+        assert_eq!(context("$h = \"use Session::get('us"), None);
+    }
+
+    #[test]
+    fn offers_session_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Http/Controllers/CartController.php",
+            concat!(
+                "<?php\n",
+                "Session::put('cart.items', $cart);\n",
+                "Session::flash('status', 'ok');\n",
+                "session(['theme' => 'dark']);\n",
+                "Session::put(['layout' => 'wide']);\n",
+                "$request->session()->put('wizard.step', 2);\n",
+                "// Session::put('ghosted', 1);\n",
+                "$h = \"Session::put('instr', 1)\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` puts
+        // declare nothing.
+        let want =
+            ["cart.items", "layout", "status", "theme", "wizard.step"];
+        assert_eq!(labels("session('"), want);
+        assert_eq!(labels("Session::get('"), want);
+        assert_eq!(labels("Session::put('"), want);
+        assert!(labels("Session::get('k', 'de").is_empty());
+        assert_eq!(
+            items(r, None, "session('")[0].detail.as_deref(),
+            Some("session key")
+        );
     }
 
     #[test]
@@ -6682,6 +6925,11 @@ Gate::define(\"buy-cd\", 'shop.buy');
         // 381), so it is the harvest fixture, not the input.
         put(
             r,
+            "app/Http/Controllers/CartController.php",
+            "<?php Session::put('cart.items', 1);\n",
+        );
+        put(
+            r,
             "database/migrations/01_create_users.php",
             "<?php Schema::create('users', fn ($t) => 0);",
         );
@@ -6697,6 +6945,10 @@ Gate::define(\"buy-cd\", 'shop.buy');
             .iter()
             .any(|l| l == "reports:send"));
         assert!(labels(Some(txt), "Artisan::call('re").is_empty());
+        assert!(labels(Some(php), "Session::get('ca")
+            .iter()
+            .any(|l| l == "cart.items"));
+        assert!(labels(Some(txt), "Session::get('ca").is_empty());
         assert!(labels(Some(txt), "route('ad").is_empty());
         // An absent file keeps the test-only PHP default.
         assert!(labels(None, "Artisan::call('re")
