@@ -1483,6 +1483,19 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Scheduled artisan commands (item 413):
+        // `Schedule::command('...')` takes the command name as the
+        // scalar first argument (Laravel 12.x Facades\Schedule
+        // @method command($command, ...) ->
+        // Scheduling\Schedule::command($command, ...) :157).
+        "command"
+            if static_head(&head[..word_start], "Schedule")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::ArtisanCommand
+        }
         // Artisan commands (item 408): `Artisan::call('...')` /
         // `Artisan::queue('...')` take the command name as the scalar
         // first argument (Laravel 12.x Console Kernel contract:
@@ -5135,6 +5148,21 @@ mod tests {
     }
 
     #[test]
+    fn detects_schedule_command_context() {
+        let cs = Some(Kind::ArtisanCommand);
+        assert_eq!(context("Schedule::command('re"), cs);
+        // Same kind as Artisan::call/queue; the object receiver,
+        // look-alike receivers, a second argument and comment or
+        // string-contained calls stay silent.
+        assert_eq!(context("Schedule::command(['re"), None);
+        assert_eq!(context("MySchedule::command('re"), None);
+        assert_eq!(context("$schedule->command('re"), None);
+        assert_eq!(context("Schedule::command('inspire', ['x"), None);
+        assert_eq!(context("// Schedule::command('re"), None);
+        assert_eq!(context("$h = \"use Schedule::command('re"), None);
+    }
+
+    #[test]
     fn detects_artisan_command_context() {
         let cs = Some(Kind::ArtisanCommand);
         assert_eq!(context("Artisan::call('re"), cs);
@@ -5702,6 +5730,10 @@ mod tests {
         assert!(queued.iter().any(|l| l == "reports:send"));
         assert!(queued.iter().any(|l| l == "migrate"));
         assert!(labels("Artisan::call(['").is_empty());
+        // Schedule::command (item 413) offers the same names.
+        let scheduled = labels("Schedule::command('");
+        assert!(scheduled.iter().any(|l| l == "reports:send"));
+        assert!(scheduled.iter().any(|l| l == "migrate"));
         // Item 412: the detail carries the provenance - built-in vs
         // project custom.
         let detail_of = |name: &str| {
