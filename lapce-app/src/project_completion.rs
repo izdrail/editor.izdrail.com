@@ -145,6 +145,8 @@ pub enum Kind {
     /// Auth guard: `Auth::guard('...')` / `Auth::shouldUse('...')`
     /// (item 402).
     AuthGuard,
+    /// Database connection: `DB::connection('...')` (item 404).
+    DbConnection,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1471,6 +1473,17 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Database connections (item 404): `DB::connection('...')`
+        // takes the connection name as the scalar first argument
+        // (Laravel 12.x DatabaseManager: connection($name = null)).
+        "connection"
+            if static_head(&head[..word_start], "DB")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::DbConnection
+        }
         // Auth guards (item 402): `Auth::guard('...')` and
         // `Auth::shouldUse('...')` take the guard name as the
         // scalar first argument (Laravel 12.x AuthManager:
@@ -1692,6 +1705,7 @@ struct Lists {
     cache_stores: Vec<String>,
     mail_mailers: Vec<String>,
     auth_guards: Vec<String>,
+    db_connections: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -1933,6 +1947,11 @@ fn mail_mailers(root: &Path) -> Vec<String> {
 /// Auth guard names (item 402).
 fn auth_guards(root: &Path) -> Vec<String> {
     config_named_keys(root, "auth", "guards")
+}
+
+/// Database connection names (item 404).
+fn db_connections(root: &Path) -> Vec<String> {
+    config_named_keys(root, "database", "connections")
 }
 
 /// The top-level `'name' =>` keys of the array opened at `open`
@@ -2789,6 +2808,7 @@ fn lists(root: &Path) -> Lists {
     let cache_stores = cache_stores(root);
     let mail_mailers = mail_mailers(root);
     let auth_guards = auth_guards(root);
+    let db_connections = db_connections(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -2811,6 +2831,7 @@ fn lists(root: &Path) -> Lists {
         cache_stores,
         mail_mailers,
         auth_guards,
+        db_connections,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3457,6 +3478,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::CacheStore
                 | Kind::MailMailer
                 | Kind::AuthGuard
+                | Kind::DbConnection
         )
     )
 }
@@ -3963,6 +3985,9 @@ pub fn items(
         Kind::CacheStore => (lists.cache_stores, "cache store"),
         Kind::MailMailer => (lists.mail_mailers, "mail mailer"),
         Kind::AuthGuard => (lists.auth_guards, "auth guard"),
+        Kind::DbConnection => {
+            (lists.db_connections, "database connection")
+        }
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -4816,6 +4841,22 @@ mod tests {
     }
 
     #[test]
+    fn detects_db_connection_context() {
+        let cs = Some(Kind::DbConnection);
+        assert_eq!(context("DB::connection('my"), cs);
+        // A scalar name only; look-alike receivers, object calls
+        // (including Schema::connection's chain), a second argument
+        // and comment or string-contained calls stay silent.
+        assert_eq!(context("DB::connection(['my"), None);
+        assert_eq!(context("MyDB::connection('my"), None);
+        assert_eq!(context("$db->connection('my"), None);
+        assert_eq!(context("Schema::connection('my"), None);
+        assert_eq!(context("DB::connection('mysql', 'x"), None);
+        assert_eq!(context("// DB::connection('my"), None);
+        assert_eq!(context("$h = \"use DB::connection('my"), None);
+    }
+
+    #[test]
     fn detects_auth_guard_context() {
         let cs = Some(Kind::AuthGuard);
         assert_eq!(context("Auth::guard('we"), cs);
@@ -5249,6 +5290,40 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_db_connections() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "config/database.php",
+            concat!(
+                "<?php\nreturn [\n",
+                "    'default' => env('DB_CONNECTION', 'sqlite'),\n",
+                "    'connections' => [\n",
+                "        'sqlite' => ['driver' => 'sqlite'],\n",
+                "        'mysql' => ['driver' => 'mysql'],\n",
+                "        // 'pgsql' => ['driver' => 'pgsql'],\n",
+                "    ],\n",
+                "    'redis' => ['client' => 'phpredis'],\n",
+                "];\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Only the connections array's top-level keys: not the
+        // 'default' key, the per-connection 'driver' settings one
+        // level deeper, the sibling 'redis' region, or the
+        // commented 'pgsql'.
+        assert_eq!(labels("DB::connection('"), ["mysql", "sqlite"]);
+        assert!(labels("DB::connection(['").is_empty());
+        assert!(labels("Schema::connection('").is_empty());
     }
 
     #[test]
