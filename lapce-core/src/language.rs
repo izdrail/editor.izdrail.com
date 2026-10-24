@@ -1699,8 +1699,14 @@ const LANGUAGES: &[SyntaxProperties] = &[
         id: LapceLanguage::Xml,
         indent: Indent::space(4),
         files: &[],
-        extensions: &["xml", "csproj"],
-        comment: comment_properties!("//"),
+        // fsproj/vbproj/props/targets are the same MSBuild XML format as the
+        // already-routed csproj; svg and plist are always XML; xaml is the
+        // .NET UI markup. `.config` is deliberately absent: too many non-XML
+        // formats use it.
+        extensions: &[
+            "xml", "csproj", "fsproj", "vbproj", "props", "targets", "svg", "plist", "xaml",
+        ],
+        comment: comment_properties!("<!--", "-->"),
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
@@ -2130,6 +2136,32 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn xml_family_extensions_route_to_xml() {
+        for name in [
+            "icon.svg",
+            "Library.fsproj",
+            "App.vbproj",
+            "Directory.Build.props",
+            "msbuild.targets",
+            "Info.plist",
+            "MainWindow.xaml",
+        ] {
+            assert_eq!(
+                LapceLanguage::from_path(&PathBuf::from(name)),
+                LapceLanguage::Xml,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn xml_comment_token_is_xml_not_cpp() {
+        // The entry once declared `//`, so toggle-comment produced invalid XML.
+        assert_eq!(LapceLanguage::Xml.comment_token(), "<!--");
+        assert_eq!(LapceLanguage::Html.comment_token(), "<!--");
     }
 
     #[test]
