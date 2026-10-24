@@ -165,6 +165,41 @@ pub fn discover(root: &Path) -> Vec<RouteTarget> {
     out
 }
 
+/// Bare command names for completion (item 408): the same sources as
+/// `discover` (`$signature` / `#[AsCommand]` / `$name` first words in
+/// `app/Console/Commands/**.php`, `Artisan::command('name ...')` in
+/// `routes/console.php`), without palette labels or jump targets.
+/// Sorted, deduped; the same depth/file/byte/entry bounds apply.
+pub fn names(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut files = Vec::new();
+    walk(&root.join("app/Console/Commands"), 0, &mut files);
+    for f in files {
+        let Some(c) = head(&f).and_then(|t| parse_class(&t)) else {
+            continue;
+        };
+        out.push(c.name);
+        if out.len() >= MAX_ENTRIES {
+            break;
+        }
+    }
+    let console = root.join("routes/console.php");
+    if std::fs::symlink_metadata(&console).map_or(false, |m| m.is_file())
+    {
+        if let Some(t) = head(&console) {
+            for c in parse_closures(&t) {
+                out.push(c.name);
+                if out.len() >= MAX_ENTRIES {
+                    break;
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

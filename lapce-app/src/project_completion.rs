@@ -154,6 +154,9 @@ pub enum Kind {
     /// Broadcast connection: `Broadcast::connection('...')` /
     /// `Broadcast::driver('...')` (item 407).
     BroadcastConnection,
+    /// Artisan command: `Artisan::call('...')` /
+    /// `Artisan::queue('...')` (item 408).
+    ArtisanCommand,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1480,6 +1483,18 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // Artisan commands (item 408): `Artisan::call('...')` /
+        // `Artisan::queue('...')` take the command name as the scalar
+        // first argument (Laravel 12.x Console Kernel contract:
+        // call($command, ...), queue($command, ...)).
+        "call" | "queue"
+            if static_head(&head[..word_start], "Artisan")
+                && arg == 0
+                && code_paren(line) == Some(paren)
+                && str_opener.is_none() =>
+        {
+            Kind::ArtisanCommand
+        }
         // Broadcast connections (item 407):
         // `Broadcast::connection('...')` / `Broadcast::driver('...')`
         // take the connection name as the scalar first argument
@@ -1752,6 +1767,7 @@ struct Lists {
     redis_connections: Vec<String>,
     queue_connections: Vec<String>,
     broadcast_connections: Vec<String>,
+    artisan_commands: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -2065,6 +2081,12 @@ fn queue_connections(root: &Path) -> Vec<String> {
 /// Broadcast connection names (item 407).
 fn broadcast_connections(root: &Path) -> Vec<String> {
     config_named_keys(root, "broadcasting", "connections")
+}
+
+/// Custom artisan command names (item 408), from the go-to palette's
+/// index sources.
+fn artisan_commands(root: &Path) -> Vec<String> {
+    crate::artisan_index::names(root)
 }
 
 /// Redis connection names (item 405). Laravel 12.x
@@ -2978,6 +3000,7 @@ fn lists(root: &Path) -> Lists {
     let redis_connections = redis_connections(root);
     let queue_connections = queue_connections(root);
     let broadcast_connections = broadcast_connections(root);
+    let artisan_commands = artisan_commands(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3004,6 +3027,7 @@ fn lists(root: &Path) -> Lists {
         redis_connections,
         queue_connections,
         broadcast_connections,
+        artisan_commands,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3654,6 +3678,7 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
                 | Kind::RedisConnection
                 | Kind::QueueConnection
                 | Kind::BroadcastConnection
+                | Kind::ArtisanCommand
         )
     )
 }
@@ -4171,6 +4196,9 @@ pub fn items(
         }
         Kind::BroadcastConnection => {
             (lists.broadcast_connections, "broadcast connection")
+        }
+        Kind::ArtisanCommand => {
+            (lists.artisan_commands, "artisan command")
         }
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
@@ -5025,6 +5053,23 @@ mod tests {
     }
 
     #[test]
+    fn detects_artisan_command_context() {
+        let cs = Some(Kind::ArtisanCommand);
+        assert_eq!(context("Artisan::call('re"), cs);
+        assert_eq!(context("Artisan::queue('re"), cs);
+        // A scalar name only; look-alike receivers, object calls
+        // ($schedule->command is a different, ungrounded receiver),
+        // a second argument and comment or string-contained calls
+        // stay silent.
+        assert_eq!(context("Artisan::call(['re"), None);
+        assert_eq!(context("MyArtisan::call('re"), None);
+        assert_eq!(context("$artisan->call('re"), None);
+        assert_eq!(context("Artisan::call('reports:send', ['x"), None);
+        assert_eq!(context("// Artisan::call('re"), None);
+        assert_eq!(context("$h = \"use Artisan::call('re"), None);
+    }
+
+    #[test]
     fn detects_broadcast_connection_context() {
         let cs = Some(Kind::BroadcastConnection);
         assert_eq!(context("Broadcast::connection('pu"), cs);
@@ -5530,6 +5575,45 @@ mod tests {
         // The file is skipped whole: neither the phantom nor the real
         // column is offered.
         assert!(labels("$this->validate(['e' => 'exists:users,").is_empty());
+    }
+
+    #[test]
+    fn offers_artisan_commands() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Console/Commands/SendReports.php",
+            concat!(
+                "<?php\nclass SendReports {\n",
+                "    protected $signature = 'reports:send {user}';\n",
+                "}\n",
+                "// protected $signature = 'reports:legacy';\n",
+            ),
+        );
+        put(
+            r,
+            "routes/console.php",
+            "<?php\nArtisan::command('inspire:me {name}', fn () => 0);\n",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The $signature first word and the closure command name:
+        // not the signature argument, not the commented-out legacy
+        // command.
+        assert_eq!(
+            labels("Artisan::call('"),
+            ["inspire:me", "reports:send"]
+        );
+        assert_eq!(
+            labels("Artisan::queue('"),
+            ["inspire:me", "reports:send"]
+        );
+        assert!(labels("Artisan::call(['").is_empty());
     }
 
     #[test]
