@@ -3015,11 +3015,11 @@ fn palette(window_tab_data: Rc<WindowTabData>) -> impl View {
 }
 
 fn window_message_view(
-    messages: RwSignal<Vec<(String, ShowMessageParams)>>,
+    messages: RwSignal<Vec<(u64, String, ShowMessageParams)>>,
     config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View {
     let view_fn =
-        move |(i, (title, message)): (usize, (String, ShowMessageParams))| {
+        move |(i, (_, title, message)): (usize, (u64, String, ShowMessageParams))| {
             stack((
                 svg(move || {
                     if let MessageType::ERROR = message.typ {

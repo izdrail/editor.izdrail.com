@@ -200,7 +200,7 @@ pub struct WindowTabData {
     pub proxy: ProxyData,
     pub set_config: WriteSignal<Arc<LapceConfig>>,
     pub progresses: RwSignal<IndexMap<ProgressToken, WorkProgress>>,
-    pub messages: RwSignal<Vec<(String, ShowMessageParams)>>,
+    pub messages: RwSignal<Vec<(u64, String, ShowMessageParams)>>,
     pub common: Rc<CommonData>,
 }
 
@@ -4505,29 +4505,72 @@ const MAX_TOASTS: usize = 3;
 /// such as phpactor repeat `window/showMessage` on every document event, which
 /// otherwise stacks dozens of identical cards. Blank messages are dropped.
 fn push_unique_message(
-    messages: &RwSignal<Vec<(String, ShowMessageParams)>>,
+    messages: &RwSignal<Vec<(u64, String, ShowMessageParams)>>,
     title: &str,
     message: &ShowMessageParams,
 ) {
     if message.message.trim().is_empty() {
         return;
     }
+    let id = next_toast_id();
     messages.update(|messages| {
-        add_toast(messages, title, message);
+        add_toast(messages, id, title, message);
     });
+    if let Some(ttl) = toast_ttl(message.typ) {
+        let messages = *messages;
+        floem::action::exec_after(ttl, move |_| {
+            messages.update(|messages| {
+                remove_toast(messages, id);
+            });
+        });
+    }
+}
+
+/// Allocate the instance identity of the next toast. Identity is per
+/// push, not per content: when a toast is dismissed early and an
+/// identical one is pushed again, the new push gets a fresh id so the
+/// old expiry timer cannot remove it (item 403).
+pub(crate) fn next_toast_id() -> u64 {
+    NEXT_TOAST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+static NEXT_TOAST_ID: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
+/// How long a toast stays before it dismisses itself. Only transient
+/// INFO toasts expire; warnings and errors stay until the user
+/// dismisses them so important notices are never silently lost
+/// (item 403).
+fn toast_ttl(typ: lsp_types::MessageType) -> Option<std::time::Duration> {
+    if typ == lsp_types::MessageType::INFO {
+        Some(std::time::Duration::from_secs(8))
+    } else {
+        None
+    }
+}
+
+/// Remove the toast instance with this exact id. A timer firing for
+/// an already-dismissed toast, or for one drained by the `MAX_TOASTS`
+/// cap, is a no-op - it must never remove a newer instance (item 403).
+fn remove_toast(
+    messages: &mut Vec<(u64, String, ShowMessageParams)>,
+    id: u64,
+) {
+    messages.retain(|(tid, _, _)| *tid != id);
 }
 
 fn add_toast(
-    messages: &mut Vec<(String, ShowMessageParams)>,
+    messages: &mut Vec<(u64, String, ShowMessageParams)>,
+    id: u64,
     title: &str,
     message: &ShowMessageParams,
 ) {
-    if messages.iter().any(|(t, m)| {
+    if messages.iter().any(|(_, t, m)| {
         t == title && m.typ == message.typ && m.message == message.message
     }) {
         return;
     }
-    messages.push((title.to_string(), message.clone()));
+    messages.push((id, title.to_string(), message.clone()));
     if messages.len() > MAX_TOASTS {
         let excess = messages.len() - MAX_TOASTS;
         messages.drain(..excess);
@@ -4549,8 +4592,8 @@ mod toast_tests {
     #[test]
     fn duplicates_are_collapsed() {
         let mut v = Vec::new();
-        for _ in 0..10 {
-            add_toast(&mut v, "php", &m("same"));
+        for i in 0..10 {
+            add_toast(&mut v, i, "php", &m("same"));
         }
         assert_eq!(v.len(), 1);
     }
@@ -4559,10 +4602,50 @@ mod toast_tests {
     fn stack_is_capped() {
         let mut v = Vec::new();
         for i in 0..10 {
-            add_toast(&mut v, "php", &m(&format!("msg {i}")));
+            add_toast(&mut v, i, "php", &m(&format!("msg {i}")));
         }
         assert_eq!(v.len(), MAX_TOASTS);
-        assert_eq!(v.last().unwrap().1.message, "msg 9");
+        assert_eq!(v.last().unwrap().2.message, "msg 9");
+    }
+
+    #[test]
+    fn only_info_toasts_expire() {
+        assert_eq!(
+            toast_ttl(MessageType::INFO),
+            Some(std::time::Duration::from_secs(8))
+        );
+        assert_eq!(toast_ttl(MessageType::WARNING), None);
+        assert_eq!(toast_ttl(MessageType::ERROR), None);
+    }
+
+    #[test]
+    fn dedup_keeps_the_original_instance_identity() {
+        let mut v = Vec::new();
+        add_toast(&mut v, 1, "php", &m("same"));
+        add_toast(&mut v, 2, "php", &m("same"));
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].0, 1);
+    }
+
+    #[test]
+    fn stale_timer_preserves_a_newer_identical_toast() {
+        // Push, dismiss early, re-push identical content: the first
+        // instance's expiry timer must not remove the new instance.
+        let mut v = Vec::new();
+        add_toast(&mut v, 1, "php", &m("same"));
+        remove_toast(&mut v, 1);
+        add_toast(&mut v, 2, "php", &m("same"));
+        remove_toast(&mut v, 1);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].0, 2);
+    }
+
+    #[test]
+    fn removing_an_absent_id_is_a_noop() {
+        let mut v = Vec::new();
+        add_toast(&mut v, 1, "php", &m("same"));
+        remove_toast(&mut v, 99);
+        assert_eq!(v.len(), 1);
     }
 }
 

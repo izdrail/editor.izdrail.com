@@ -37,7 +37,13 @@ pub fn run_demo(tab: &WindowTabData) {
                 messages.extend(
                     output
                         .into_iter()
-                        .map(|m| ("VS Code sandbox experiment".into(), m)),
+                        .map(|m| {
+                        (
+                            crate::window_tab::next_toast_id(),
+                            "VS Code sandbox experiment".into(),
+                            m,
+                        )
+                    }),
                 )
             });
         },
