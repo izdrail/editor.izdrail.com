@@ -245,9 +245,13 @@ impl PartialEq for EditorData {
 
 /// Word start for completion: the code boundary, extended in Blade files
 /// over hyphenated snippet prefixes (`x-da`) and dotted component tag names
-/// (`<x-forms.in`, `<livewire:admin.us`). Every consumer of the word start
-/// (filter input, snippet range, apply path, snippet origin) uses this so
-/// the replace range and the inserted text agree.
+/// (`<x-forms.in`, `<livewire:admin.us`), over `.`-joined segments in
+/// dotted-name contexts (`route('admin.us')`), and over `:`-joined
+/// segments in colon-name contexts (`Artisan::call('reports:r')`) so
+/// accepting a command completion replaces the whole typed name instead
+/// of grafting the item onto the typed prefix (item 410). Every consumer
+/// of the word start (filter input, snippet range, apply path, snippet
+/// origin) uses this so the replace range and the inserted text agree.
 /// Spans containing `offset`, boundary-inclusive, for the codeAction
 /// request context: servers match quick fixes to the diagnostics sent
 /// with the request, so the caret on a warning must send that warning.
@@ -292,7 +296,12 @@ pub(crate) fn completion_word_start(
         crate::builtin_snippets::tag_name_word_len(&before)
     } else {
         let before_cursor = buffer.slice_to_cow(line_start..offset);
-        if crate::project_completion::dotted_name_context(&before_cursor) {
+        if crate::project_completion::colon_name_context(&before_cursor)
+        {
+            crate::project_completion::colon_word_len(&before)
+        } else if crate::project_completion::dotted_name_context(
+            &before_cursor,
+        ) {
             crate::project_completion::dotted_word_len(&before)
         } else if blade {
             crate::builtin_snippets::hyphen_word_len(&before)
@@ -318,6 +327,52 @@ pub(crate) fn clamp_snippet_tabs(
     tabs.into_iter()
         .map(|(n, (a, b))| (n, (a.min(len), b.min(len))))
         .collect()
+}
+
+#[cfg(test)]
+mod completion_word_start_tests {
+    use super::completion_word_start;
+    use lapce_core::buffer::Buffer;
+    use std::path::Path;
+
+    fn php() -> Option<&'static Path> {
+        Some(Path::new("probe.php"))
+    }
+
+    #[test]
+    fn colon_context_covers_the_whole_typed_name() {
+        // The item 410 hybrid: accepting with `reports:r` typed must
+        // replace from the content start (index 15, right after the
+        // opening quote at 14), not just the `r` segment. Caret after
+        // the colon (23, before the final `r`) and after the final
+        // `r` (24) both cover the whole typed name.
+        let b = Buffer::new("Artisan::call('reports:r')");
+        assert_eq!(completion_word_start(&b, php(), 23), 15);
+        assert_eq!(completion_word_start(&b, php(), 24), 15);
+    }
+
+    #[test]
+    fn colon_context_without_colon_stays_at_the_boundary() {
+        let b = Buffer::new("Artisan::call('re')");
+        assert_eq!(completion_word_start(&b, php(), 17), 15);
+    }
+
+    #[test]
+    fn dotted_context_is_unchanged() {
+        let b = Buffer::new("route('admin.us')");
+        assert_eq!(completion_word_start(&b, php(), 15), 7);
+    }
+
+    #[test]
+    fn plain_code_and_non_php_keep_the_code_boundary() {
+        let b = Buffer::new("let repo = re");
+        assert_eq!(completion_word_start(&b, php(), 13), 11);
+        // Non-PHP: no colon extension, the boundary is the last
+        // segment's start (23, before the final `r` at index 23).
+        let b = Buffer::new("Artisan::call('reports:r')");
+        let txt = Some(Path::new("probe.txt"));
+        assert_eq!(completion_word_start(&b, txt, 24), 23);
+    }
 }
 
 #[cfg(test)]

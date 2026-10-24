@@ -3683,6 +3683,43 @@ pub fn dotted_name_context(line_before_cursor: &str) -> bool {
     )
 }
 
+/// Does the completion context at the end of `line_before_cursor` offer
+/// colon-joined names (artisan commands like `reports:send`)? Used to
+/// extend the completion word start over `:`-joined segments so
+/// accepting replaces the whole typed name instead of grafting the
+/// accepted item onto the typed prefix (item 410).
+pub fn colon_name_context(line_before_cursor: &str) -> bool {
+    matches!(context(line_before_cursor), Some(Kind::ArtisanCommand))
+}
+
+/// Bytes to extend a completion word start backwards over `:`- and
+/// `-`-joined segments of a quoted command name (`reports:send`,
+/// `queue:prune-failed`). Same suffix-walk shape as
+/// `dotted_word_len`: stops at anything else, such as the opening
+/// quote, and returns 0 when `before` does not end in a joined
+/// segment (item 410).
+pub fn colon_word_len(before: &str) -> usize {
+    let mut rest = before;
+    let mut total = 0;
+    while let Some(sep) =
+        rest.chars().next_back().filter(|c| matches!(c, ':' | '-'))
+    {
+        let r = &rest[..rest.len() - sep.len_utf8()];
+        let word: usize = r
+            .chars()
+            .rev()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .map(char::len_utf8)
+            .sum();
+        if word == 0 {
+            break;
+        }
+        total += sep.len_utf8() + word;
+        rest = &r[..r.len() - word];
+    }
+    total
+}
+
 /// Bytes to extend a completion word start backwards over `.`- and
 /// `-`-joined segments of a quoted name (`admin.us`,
 /// `messages.welcome-back`). Stops at anything else, such as the opening
@@ -6522,6 +6559,24 @@ Gate::define(\"buy-cd\", 'shop.buy');
         assert_eq!(context("<x-alert "), Some(Kind::BladeProp));
         assert_eq!(context("<div class=\"x-foo"), None);
         assert_eq!(context("<x"), None);
+    }
+
+    #[test]
+    fn colon_name_context_and_word_len() {
+        // Only the artisan command context extends over `:`.
+        assert!(colon_name_context("Artisan::call('reports:r"));
+        assert!(colon_name_context("Artisan::queue('queue:w"));
+        assert!(!colon_name_context("route('reports.r"));
+        assert!(!colon_name_context("config('app.n"));
+        assert!(!colon_name_context("DB::connection('my"));
+        // Suffix walk: the trailing separator plus the segment
+        // before it; stops at the opening quote, at a word char, or
+        // at `::` outside the quoted name.
+        assert_eq!(colon_word_len("Artisan::call('reports:"), 8);
+        assert_eq!(colon_word_len("Artisan::call('queue:prune-"), 12);
+        assert_eq!(colon_word_len("Artisan::call('"), 0);
+        assert_eq!(colon_word_len("Artisan::call('reports:send"), 0);
+        assert_eq!(colon_word_len("route('reports:"), 8);
     }
 
     #[test]
