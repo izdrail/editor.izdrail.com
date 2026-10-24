@@ -80,7 +80,18 @@ pub fn highlight_profile(
     let php_lists = crate::web_metadata::php_lists(project);
     let php_refs: Vec<&str> = php_lists.iter().map(String::as_str).collect();
     let (lexer, keywords): (&str, &[&str]) = match language {
-        C | Cpp => (
+        // C and C++ share the lexer but not the language: .c files must not
+        // paint C++-only keywords (real C code uses them as identifiers - redis
+        // src/sds.c 7.4.0 declares `sdstemplate(const char *template, ...)`), and
+        // modern C keywords (restrict, _Atomic, static_assert, typeof, ...)
+        // were missing entirely (CPython 3.13 and redis src/atomicvar.h).
+        C => (
+            "cpp",
+            &[
+                "_Alignas _Alignof _Atomic _BitInt _Bool _Complex _Decimal128 _Decimal32 _Decimal64 _Generic _Imaginary _Noreturn _Static_assert _Thread_local alignas alignof asm auto bool break case char const constexpr continue default do double else enum extern false float for goto if inline int long nullptr register restrict return short signed sizeof static static_assert struct switch thread_local true typedef typeof typeof_unqual union unsigned void volatile while",
+            ],
+        ),
+        Cpp => (
             "cpp",
             &[
                 "alignas alignof asm auto bool break case catch char class const constexpr continue default delete do double else enum explicit export extern false float for friend if inline int long namespace new noexcept nullptr operator private protected public register return short signed sizeof static struct switch template this throw true try typedef typename union unsigned using virtual void volatile wchar_t while",
@@ -332,6 +343,36 @@ mod tests {
                     "{language:?} {needle}");
             }
         }
+    }
+
+    #[test]
+    fn c_keywords_cover_modern_c_without_leaking_cpp_keywords() {
+        // redis src/sds.c (7.4.0) declares `sdstemplate(const char *template, ...)`;
+        // CPython 3.13 Objects/longobject.c uses `static_assert` and redis
+        // src/atomicvar.h uses `_Atomic`. .c files paint the C keyword set;
+        // C++-only words stay keyword-scoped only in .cpp files.
+        let code = "sds sdstemplate(const char *template, void *cb) {\n    const char *p = template;\n    static_assert(sizeof(long) >= 4, \"long\");\n    _Atomic int n = 0;\n    int *restrict r = &n;\n    return;\n}\n";
+        let c = highlight(LapceLanguage::C, &Rope::from(code)).unwrap();
+        for keyword in ["static_assert", "_Atomic", "restrict"] {
+            let at = code.find(keyword).unwrap();
+            assert_eq!(c.scope(c.styles()[at]), Some("keyword"), "C {keyword}");
+        }
+        let mut start = 0;
+        while let Some(at) = code[start..].find("template").map(|i| start + i) {
+            assert_ne!(
+                c.scope(c.styles()[at]),
+                Some("keyword"),
+                "C template at {at}"
+            );
+            start = at + 1;
+        }
+        // The standalone `template` parameter stays a keyword in C++; the
+        // substring inside the `sdstemplate` identifier never is.
+        let cpp = highlight(LapceLanguage::Cpp, &Rope::from(code)).unwrap();
+        let at = code.find("p = template").unwrap() + 4;
+        assert_eq!(cpp.scope(cpp.styles()[at]), Some("keyword"), "Cpp template");
+        let at = code.find("sdstemplate").unwrap() + 3;
+        assert_ne!(cpp.scope(cpp.styles()[at]), Some("keyword"), "Cpp sdstemplate");
     }
 
     #[test]
