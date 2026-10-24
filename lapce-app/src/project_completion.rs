@@ -166,6 +166,9 @@ pub enum Kind {
     /// Broadcast channel name: `new PrivateChannel('...')`,
     /// `Broadcast::on('...')` and friends (item 416).
     BroadcastChannel,
+    /// Route parameter: an assoc key of the parameters array in
+    /// `route('name', [...])` / `to_route('name', [...])` (item 417).
+    RouteParam,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1330,6 +1333,23 @@ fn call_context(line: &str) -> Option<Kind> {
     Some(match word {
         "route" | "to_route" | "routeIs" | "path" | "generateUrl"
         | "redirectToRoute" | "generate" if arg == 0 => Kind::Route,
+        // Route parameters (item 417): the assoc keys of the
+        // parameters array - `route('users.show', ['us` offers the
+        // `{...}` placeholders of the named route's URI (Laravel
+        // 12.x helpers.php: route($name, $parameters) :868,
+        // to_route($route, $parameters) :962). A positional list
+        // value has the same shape before the cursor (the `=>` is
+        // not written yet) - the config getMany arm accepts the
+        // same ambiguity. A `(` inside a comment or string is
+        // not a call (code_paren).
+        "route" | "to_route"
+            if arg == 1
+                && code_paren(line) == Some(paren)
+                && (matches!(str_opener, Some((b'[', 1)))
+                    || matches!(str_opener, Some((b',', 1)))) =>
+        {
+            Kind::RouteParam
+        }
         // Route::has('...') - but not $collection->has('...').
         "has" if head[..word_start].ends_with("Route::") && arg == 0 => {
             Kind::Route
@@ -1915,6 +1935,7 @@ struct Lists {
     session_keys: Vec<String>,
     cache_keys: Vec<String>,
     broadcast_channels: Vec<String>,
+    route_params: Vec<(String, Vec<String>)>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3151,6 +3172,7 @@ fn lists(root: &Path) -> Lists {
     let session_keys = session_keys(root);
     let cache_keys = cache_keys(root);
     let broadcast_channels = broadcast_channels(root);
+    let route_params = route_params(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3181,6 +3203,7 @@ fn lists(root: &Path) -> Lists {
         session_keys,
         cache_keys,
         broadcast_channels,
+        route_params,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -3566,6 +3589,112 @@ fn ability_names(root: &Path) -> Vec<String> {
     }
     names.truncate(2000);
     names
+}
+
+/// The route name literal of the enclosing `route('name', ...)` /
+/// `to_route('name', ...)` call: the first quoted string after the
+/// last `route(` before the cursor (context() already proved the
+/// array-argument shape). A variable name resolves nothing.
+fn route_call_name(line: &str) -> Option<String> {
+    let i = line.rfind("route(")?;
+    let rest = line[i + "route(".len()..].trim_start();
+    let q = rest.chars().next().filter(|c| *c == '\'' || *c == '"')?;
+    let end = rest[1..].find(q)?;
+    let name = &rest[1..1 + end];
+    (!name.is_empty() && name.len() <= 100).then(|| name.to_string())
+}
+
+/// Route parameters by route name (item 417): the `{...}`
+/// placeholders of the URI whose call carries each `->name('...')`.
+/// The enclosing call is the LAST `Route::` at or before the name
+/// (byte order, not just line order): the calls on its line pair
+/// with the line's parsed rows in order, so two route calls on one
+/// physical line each keep their own URI, and a line whose calls
+/// expand to a different number of rows (a resource) fails closed
+/// instead of borrowing a sibling call's URI (item 417c).
+/// `{item?}` and scoped `{post:slug}` both name the parameter.
+/// Group-assembled names are not resolved (the route hover/go-to
+/// limit).
+fn route_params(root: &Path) -> Vec<(String, Vec<String>)> {
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    let Ok(rd) = std::fs::read_dir(root.join("routes")) else {
+        return out;
+    };
+    let mut files: Vec<PathBuf> = rd
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "php"))
+        .collect();
+    files.sort();
+    files.truncate(MAX_ROUTE_FILES);
+    for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        let routes = crate::route_index::parse_routes(&text);
+        for (i, _) in text.match_indices("->name(") {
+            let rest = text[i + 7..].trim_start();
+            let Some(q) =
+                rest.chars().next().filter(|c| *c == '\'' || *c == '"')
+            else {
+                continue;
+            };
+            let Some(end) = rest[1..].find(q) else { continue };
+            let name = &rest[1..1 + end];
+            if name.is_empty()
+                || name.len() > 100
+                || out.iter().any(|(n, _)| n == name)
+            {
+                continue;
+            }
+            let Some(call) = text[..=i].rfind("Route::") else {
+                continue;
+            };
+            let call_line = text[..call].matches('\n').count();
+            let ls =
+                text[..call].rfind('\n').map(|x| x + 1).unwrap_or(0);
+            let le = text[call..]
+                .find('\n')
+                .map(|x| call + x)
+                .unwrap_or(text.len());
+            let calls: Vec<usize> = text[ls..le]
+                .match_indices("Route::")
+                .map(|(o, _)| ls + o)
+                .collect();
+            let Some(k) = calls.iter().position(|b| *b == call) else {
+                continue;
+            };
+            let rows: Vec<&crate::route_index::Route> =
+                routes.iter().filter(|r| r.line == call_line).collect();
+            if rows.len() != calls.len() || rows.is_empty() {
+                continue;
+            }
+            let row = rows[k];
+            let mut params: Vec<String> = Vec::new();
+            for (j, _) in row.uri.match_indices('{') {
+                let Some(off) = row.uri[j..].find('}') else { continue };
+                let inner = &row.uri[j + 1..j + off];
+                let Some(p) = inner.split([':', '?']).next() else {
+                    continue;
+                };
+                if !p.is_empty()
+                    && p.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && !params.iter().any(|x: &String| x == p)
+                {
+                    params.push(p.to_string());
+                }
+            }
+            params.sort();
+            out.push((name.to_string(), params));
+            if out.len() >= MAX_NAMES {
+                return out;
+            }
+        }
+    }
+    out
 }
 
 /// Broadcast channel names (item 416): the names registered by
@@ -4234,6 +4363,7 @@ fn dotted_name_kind(kind: &Kind) -> bool {
             | Kind::SessionKey
             | Kind::CacheKey
             | Kind::BroadcastChannel
+            | Kind::RouteParam
     )
 }
 
@@ -4468,6 +4598,27 @@ pub fn items(
         targets.extend(livewire_props(root, file));
         targets.truncate(MAX_ITEMS);
         return targets;
+    }
+    if kind == Kind::RouteParam {
+        let Some(name) = route_call_name(line_before) else {
+            return Vec::new();
+        };
+        let params = lists(root)
+            .route_params
+            .iter()
+            .find(|(n, _)| n == &name)
+            .map(|(_, p)| p.clone())
+            .unwrap_or_default();
+        return params
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|n| CompletionItem {
+                label: n,
+                kind: Some(CompletionItemKind::VALUE),
+                detail: Some("route parameter".to_string()),
+                ..Default::default()
+            })
+            .collect();
     }
     if kind == Kind::ComponentTag {
         return component_tags(root, file);
@@ -4836,6 +4987,8 @@ pub fn items(
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
         }
+        // Returned early above; the match must stay exhaustive.
+        Kind::RouteParam => (Vec::new(), "route parameter"),
         // The `@vite` directive exists only in Blade files; the
         // `blade` flag in context() is just the preceding-@ shape,
         // so gate the directive form on the file here (item 398).
@@ -5928,6 +6081,77 @@ mod tests {
         assert_eq!(
             items(r, None, "new PrivateChannel('")[0].detail.as_deref(),
             Some("broadcast channel")
+        );
+    }
+
+    #[test]
+    fn detects_route_param_context() {
+        let cs = Some(Kind::RouteParam);
+        assert_eq!(context("route('users.show', ['us"), cs);
+        assert_eq!(context("to_route('users.show', ['us"), cs);
+        assert_eq!(context("route('users.show', ['user' => 1, 'po"), cs);
+        // The first argument is the route name (item 386); a
+        // scalar second argument and a third argument stay silent.
+        assert_eq!(context("route('us"), Some(Kind::Route));
+        assert_eq!(context("route('users.show', 'us"), None);
+        assert_eq!(context("route('users.show', [], 'ab"), None);
+        // A call written inside a comment or a string is not a
+        // call (item 417b).
+        assert_eq!(context("// route('users.show', ['us"), None);
+        assert_eq!(context("/* route('users.show', ['us"), None);
+        assert_eq!(context("$h = \"route('users.show', ['us"), None);
+    }
+
+    #[test]
+    fn offers_route_params() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "routes/web.php",
+            concat!(
+                "<?php\n",
+                "Route::get('/users/{user}', $cb)->name('users.show');\n",
+                "Route::get('/teams/{team}/members/{member}', $cb);\n",
+                "Route::post('/orders/{order}/items/{item?}', $cb)\n",
+                "    ->name('orders.items.store');\n",
+                "Route::get('/reports', $cb)->name('reports.index');\n",
+                "Route::put('/posts/{post:slug}', $cb)\n",
+                "    ->name('posts.update');\n",
+                "Route::get('/posts/{post}', $cb)->name('posts.show');",
+                " Route::get('/', $cb)->name('home');\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The intervening unnamed route cannot lend its `{team}` /
+        // `{member}` placeholders to the named route before it
+        // (item 417b).
+        assert_eq!(labels("route('users.show', ['"), ["user"]);
+        // The optional `{item?}` names `item`; a name on its own
+        // line still finds the enclosing call.
+        assert_eq!(
+            labels("to_route('orders.items.store', ['"),
+            ["item", "order"]
+        );
+        // A parameter-less route and an unknown name offer
+        // nothing; the scoped `{post:slug}` names `post`.
+        assert!(labels("route('reports.index', ['").is_empty());
+        assert!(labels("route('nope', ['").is_empty());
+        assert_eq!(labels("route('posts.update', ['"), ["post"]);
+        // Two calls on one physical line keep their own URIs:
+        // home borrows no `{post}` from the adjacent call (417c).
+        assert_eq!(labels("route('posts.show', ['"), ["post"]);
+        assert!(labels("route('home', ['").is_empty());
+        assert_eq!(
+            items(r, None, "route('users.show', ['")[0]
+                .detail
+                .as_deref(),
+            Some("route parameter")
         );
     }
 
@@ -7466,6 +7690,11 @@ Gate::define(\"buy-cd\", 'shop.buy');
         );
         put(
             r,
+            "routes/api.php",
+            "<?php Route::get('/users/{user}', $cb)->name('users.show');\n",
+        );
+        put(
+            r,
             "database/migrations/01_create_users.php",
             "<?php Schema::create('users', fn ($t) => 0);",
         );
@@ -7493,6 +7722,10 @@ Gate::define(\"buy-cd\", 'shop.buy');
             .iter()
             .any(|l| l == "orders.{order}"));
         assert!(labels(Some(txt), "new PrivateChannel('or").is_empty());
+        assert!(labels(Some(php), "route('users.show', ['")
+            .iter()
+            .any(|l| l == "user"));
+        assert!(labels(Some(txt), "route('users.show', ['").is_empty());
         assert!(labels(Some(txt), "route('ad").is_empty());
         // An absent file keeps the test-only PHP default.
         assert!(labels(None, "Artisan::call('re")
