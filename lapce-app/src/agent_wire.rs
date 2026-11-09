@@ -143,6 +143,29 @@ mod tests {
         assert_eq!(r.calls[0].arguments["path"], "x");
     }
     #[test]
+    fn history_with_tool_calls_needs_schemas_for_the_final_turn() {
+        let tools = vec![
+            json!({"type":"function","function":{"name":"read_file","parameters":{"type":"object"}}}),
+        ];
+        let history = [
+            AgentMessage::User { content: "q".into() },
+            AgentMessage::Assistant {
+                content: String::new(),
+                tool_calls: vec![ToolCall {
+                    id: "a".into(),
+                    name: "read_file".into(),
+                    arguments: json!({"path":"x"}),
+                }],
+            },
+            AgentMessage::Tool { tool_call_id: "a".into(), content: "data".into(), error: false },
+            AgentMessage::User { content: "Step budget reached".into() },
+        ];
+        // An empty tool list cannot carry earlier tool calls (the real
+        // transport bug); keeping the schemas validates the history.
+        assert!(request("m", &history, &[], 512).is_err());
+        assert!(request("m", &history, &tools, 512).is_ok());
+    }
+    #[test]
     fn truncated_refused_unknown_and_bad_json_rejected() {
         for reason in ["length", "content_filter", ""] {
             assert!(reply(&json!({"choices":[{"finish_reason":reason,"message":{"content":"x"}}]}),&[]).is_err());

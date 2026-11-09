@@ -390,6 +390,9 @@ const TIME_LIMIT_NOTE: &str =
 
 /// What an overtime check does: finish with the pointer when tools
 /// already produced output, else error.
+const FINAL_TURN_NOTICE: &str = "Step budget reached. Do not call tools. Answer now using only what the tool results above showed. Say plainly what you could not verify or did not get to.";
+const FINAL_TURN_NOTICE_ACT: &str = "Step budget reached. Do not call tools. If you have read enough, reply with ONLY the changes JSON proposal (the owner reviews it before anything is applied). Otherwise reply in plain text: what you found, what you did not verify, and what you would do next.";
+pub(crate) const PARTIAL_PREFIX: &str = "Partial answer - the step budget ran out before every check finished. Based only on what was read:\n\n";
 fn overtime_outcome(executed_any: bool) -> Result<String, String> {
     if executed_any {
         Ok(TIME_LIMIT_NOTE.to_string())
@@ -513,7 +516,64 @@ pub fn run(
             }
         }
         emit(Event::Step(step + 1));
-        let mut reply = model(&messages, &tools)?;
+        // Last step after real tool work: spend it on an answer, not
+        // another read. Without this a model that keeps searching used
+        // all its steps and the owner got nothing. The notice forbids tools
+        // (the schemas stay in the request because the transport must
+        // validate the earlier tool calls; any call returned now is
+        // discarded) and the result is labeled partial, never a
+        // completed task. Approval, read bounds and call limits are
+        // unchanged.
+        let final_turn =
+            executed_any && limits.steps > 1 && step + 1 == limits.steps;
+        let mut reply = if final_turn {
+            messages.push(AgentMessage::User {
+                content: if mode == Mode::Act {
+                    FINAL_TURN_NOTICE_ACT.into()
+                } else {
+                    FINAL_TURN_NOTICE.into()
+                },
+            });
+            match model(&messages, &tools) {
+                Ok(r) if r.calls.is_empty() && !r.content.trim().is_empty() => {
+                    // Act: a valid non-empty proposal goes to the normal
+                    // owner review untouched; nothing is applied here.
+                    if mode == Mode::Act {
+                        if let Ok(json) = crate::agent_changes::extract_proposal_json(
+                            &r.content, act_target,
+                        ) {
+                            if !proposal_is_empty(&json) {
+                                emit(Event::Finished(json.clone()));
+                                return Ok(json);
+                            }
+                        }
+                    }
+                    let note = format!("{PARTIAL_PREFIX}{}", r.content.trim());
+                    emit(Event::Finished(note.clone()));
+                    return Ok(note);
+                }
+                Err(e) => {
+                    if cancelled.load(Ordering::Acquire) {
+                        return Err("Cancelled".into());
+                    }
+                    // Keep a real connection/auth cause visible.
+                    let low = e.to_ascii_lowercase();
+                    if ["401", "403", "unauthor", "connect", "timed out"]
+                        .iter()
+                        .any(|k| low.contains(k))
+                    {
+                        return Err(e);
+                    }
+                    return Err(format!(
+                        "Agent step limit reached; no completion claimed (the final answer request failed: {})",
+                        e.chars().take(160).collect::<String>()
+                    ));
+                }
+                _ => break,
+            }
+        } else {
+            model(&messages, &tools)?
+        };
         if cancelled.load(Ordering::Acquire) {
             return Err("Cancelled".into());
         }
@@ -645,8 +705,17 @@ pub fn run(
                     }
                 }
             }
-            emit(Event::Finished(reply.content.clone()));
-            return Ok(reply.content);
+            // Only the loop itself may produce the labeled partial
+            // report that the Act lane shows as text. A model answer
+            // that imitates the label is demoted so it still goes
+            // through normal proposal review (and fails closed there).
+            let content = if reply.content.trim_start().starts_with(PARTIAL_PREFIX.trim_end()) {
+                format!("Model text: {}", reply.content)
+            } else {
+                reply.content
+            };
+            emit(Event::Finished(content.clone()));
+            return Ok(content);
         }
         emit(Event::ProposedCalls(reply.calls.clone()));
         messages.push(AgentMessage::Assistant {
@@ -1375,6 +1444,135 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicU64::new(0)),
             |_, _| {
+                Ok(Reply {
+                    content: String::new(),
+                    calls: vec![ToolCall {
+                        id: "a".into(),
+                        name: "search".into(),
+                        arguments: json!({"literal":"needle"}),
+                    }],
+                })
+            },
+            |_| Ok("data".into()),
+            |_| {},
+            &[],
+            None,
+        );
+        assert!(result.unwrap_err().contains("step limit"));
+    }
+    fn final_notice(msgs: &[AgentMessage]) -> bool {
+        matches!(msgs.last(), Some(AgentMessage::User { content }) if content.starts_with("Step budget reached"))
+    }
+    #[test]
+    fn model_text_imitating_partial_label_is_demoted() {
+        let r = run(
+            Mode::Act, "edit it", Limits::default(),
+            Arc::new(AtomicBool::new(false)), Arc::new(AtomicU64::new(0)),
+            |_, _| Ok(Reply { content: format!("{PARTIAL_PREFIX}fake"), calls: Vec::new() }),
+            |_| Ok(String::new()), |_| {}, &[], None,
+        );
+        if let Ok(text) = r {
+            assert!(!text.starts_with(PARTIAL_PREFIX), "{text}");
+        }
+    }
+    #[test]
+    fn last_step_synthesizes_labeled_partial_answer() {
+        let mut turns = 0;
+        let mut tool_counts = Vec::new();
+        let result = run(
+            Mode::Ask,
+            "x",
+            Limits {
+                steps: 3,
+                ..Limits::default()
+            },
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |msgs, tools| {
+                turns += 1;
+                tool_counts.push(tools.len());
+                if final_notice(msgs) {
+                    return Ok(Reply {
+                        content: "found two uses".into(),
+                        calls: Vec::new(),
+                    });
+                }
+                Ok(Reply {
+                    content: String::new(),
+                    calls: vec![ToolCall {
+                        id: format!("c{turns}"),
+                        name: "search".into(),
+                        arguments: json!({"literal":"needle"}),
+                    }],
+                })
+            },
+            |_| Ok("data".into()),
+            |_| {},
+            &[],
+            None,
+        )
+        .unwrap();
+        assert!(result.starts_with("Partial answer"));
+        assert!(result.ends_with("found two uses"));
+        assert_eq!(turns, 3);
+        assert!(tool_counts.iter().all(|n| *n > 0));
+    }
+    #[test]
+    fn act_last_step_returns_report_without_applying_anything() {
+        let mut executed = 0;
+        let result = run(
+            Mode::Act,
+            "x",
+            Limits {
+                steps: 2,
+                ..Limits::default()
+            },
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |msgs, tools| {
+                let _ = tools;
+                if final_notice(msgs) {
+                    return Ok(Reply {
+                        content: "read two files, edit not decided".into(),
+                        calls: Vec::new(),
+                    });
+                }
+                Ok(Reply {
+                    content: String::new(),
+                    calls: vec![ToolCall {
+                        id: "a".into(),
+                        name: "search".into(),
+                        arguments: json!({"literal":"needle"}),
+                    }],
+                })
+            },
+            |_| {
+                executed += 1;
+                Ok("data".into())
+            },
+            |_| {},
+            &[],
+            None,
+        )
+        .unwrap();
+        assert!(result.starts_with("Partial answer"));
+        assert_eq!(executed, 1);
+    }
+    #[test]
+    fn last_step_without_answer_still_fails_closed() {
+        let result = run(
+            Mode::Ask,
+            "x",
+            Limits {
+                steps: 2,
+                ..Limits::default()
+            },
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+            |msgs, _| {
+                if final_notice(msgs) {
+                    return Err("provider rejected".into());
+                }
                 Ok(Reply {
                     content: String::new(),
                     calls: vec![ToolCall {

@@ -1023,7 +1023,11 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                     done.end_active_run();
                     done.pending_command.set(None);
                     done.state.set(RunState::Done);
-                    if mode == crate::agent_loop::Mode::Act {
+                    if mode == crate::agent_loop::Mode::Act
+                        && !text.starts_with(crate::agent_loop::PARTIAL_PREFIX)
+                    {
+                        // A labeled partial report is not a proposal: it
+                        // is shown as text and stages nothing.
                         // Hand the model's full-file proposal to the
                         // owner-review lane: prepare re-validates
                         // autosave, platform, open-buffer, path and
@@ -1332,7 +1336,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         crate::agent_loop::Event::Step(n) => {
                             journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
                                 title: format!("Step {n}"),
-                                detail: "Reading and reasoning - no files are changed."
+                                detail: "Thinking about the next step."
                                     .to_string(),
                                 error: false,
                             }));
@@ -2302,17 +2306,115 @@ fn dropdown_button_style(
         })
 }
 
+fn is_limit_error(error: &str) -> bool {
+    error.contains("step limit")
+        || error.contains("tool limit")
+        || error.contains("time limit")
+}
+
+/// Connection/auth failures are the only errors the settings shortcut and
+/// 401/403 hint help with; limit errors get a plain message instead.
+fn is_connection_error(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    !is_limit_error(&e)
+        && (e.contains("401")
+            || e.contains("403")
+            || e.contains("connect")
+            || e.contains("unauthor")
+            || e.contains("key")
+            || e.contains("endpoint")
+            || e.contains("http"))
+}
+
+fn chat_error_title(error: &str) -> &'static str {
+    if is_limit_error(error) {
+        "Stopped at the agent limit"
+    } else if is_connection_error(error) {
+        "Can't reach the AI endpoint"
+    } else {
+        "Chat needs attention"
+    }
+}
+
 /// Bounded error card keeps long server/transport feedback from pushing the
 /// composer outside its panel. Opening settings never retries a request.
+/// The original request when the last run stopped at its step budget:
+/// either the limit error is showing or the last answer is the loop's
+/// labeled partial report. None otherwise. Reads local run state only.
+fn resume_request(chat: &ChatData) -> Option<String> {
+    let limit = is_limit_error(&chat.error.get());
+    let turns = chat.turns.get();
+    let n = turns.len();
+    if n < 2 {
+        return None;
+    }
+    let partial = turns[n - 1]
+        .text
+        .get()
+        .starts_with(crate::agent_loop::PARTIAL_PREFIX);
+    if !(limit || partial) {
+        return None;
+    }
+    let original = turns[n - 2].text.get();
+    if turns[n - 2].role != "You" || original.trim().is_empty() {
+        return None;
+    }
+    Some(original)
+}
+
+fn resume_prefill(original: &str) -> String {
+    format!(
+        "Continue this request in a new run. Re-read the files you need; nothing from the previous run is carried over.\n\nOriginal request: {original}"
+    )
+}
+
+/// Resume in new request: fills the composer with the original request.
+/// It never sends, carries no permission, tool result or write, and the
+/// new run re-reads under the normal approvals.
+fn resume_card(tab: Rc<WindowTabData>) -> impl View {
+    let chat = tab.chat.clone();
+    let chat_vis = tab.chat.clone();
+    let config = tab.common.config;
+    let pending_selection = tab.chat.pending_selection;
+    label(|| "Resume in new request".to_string())
+        .keyboard_navigable()
+        .on_click_stop(move |_| {
+            if let Some(original) = resume_request(&chat) {
+                pending_selection.set(Some(resume_prefill(&original)));
+            }
+        })
+        .style(move |s| {
+            s.padding_horiz(10.0)
+                .padding_vert(4.0)
+                .border(1.0)
+                .border_radius(4.0)
+                .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                .cursor(CursorStyle::Pointer)
+                .selectable(false)
+                .apply_if(resume_request(&chat_vis).is_none(), |s| s.hide())
+        })
+}
+
 fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
     let error = tab.chat.error;
     let config = tab.common.config;
     let main_split = tab.main_split.clone();
     let settings_section = tab.common.settings_section;
     v_stack((
-        label(|| "Chat needs attention".to_string()).style(|s| s.font_bold()),
+        label(move || chat_error_title(&error.get()).to_string())
+            .style(|s| s.font_bold()),
         scroll(
-            label(move || error.get()).style(move |s| {
+            label(move || {
+                let e = error.get();
+                if is_limit_error(&e) {
+                    format!(
+                        "{e}. The steps it ran are listed above. Send a narrower question, or resume in a new request (nothing is carried over or sent automatically)."
+                    )
+                } else {
+                    e
+                }
+            })
+            .style(move |s| {
                 s.width_full().min_width(0.0)
                     .text_overflow(floem::style::TextOverflow::Wrap)
                     .color(config.get().color(LapceColor::LAPCE_ERROR))
@@ -2324,15 +2426,18 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
                 settings_section.set(Some("AI Chat".to_string()));
                 main_split.open_settings();
             })
-            .style(move |s| s.padding(6.0).border(1.0).border_radius(4.0)
+            .style(move |s| s.padding_horiz(10.0).padding_vert(4.0)
+                .border(1.0).border_radius(4.0)
                 .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                .cursor(CursorStyle::Pointer)),
-        label(|| "For connection or 401/403 errors: select AI Chat, check endpoint/model and key source, then Test connection. Retry only when ready.".to_string())
-            .style(|s| s.max_width_full().min_width(0.0)
-                .text_overflow(floem::style::TextOverflow::Wrap)),
+                .cursor(CursorStyle::Pointer)
+                .apply_if(!is_connection_error(&error.get()), |s| s.hide())),
+        label(|| "Select AI Chat, check endpoint, model and key source, then Test connection.".to_string())
+            .style(move |s| s.max_width_full().min_width(0.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)
+                .apply_if(!is_connection_error(&error.get()), |s| s.hide())),
     ))
     .style(move |s| s.width_full().min_width(0.0).flex_shrink(0.0)
-        .padding(8.0).gap(6.0).border(1.0).border_radius(6.0)
+        .padding(10.0).gap(6.0).border(1.0).border_radius(6.0)
         .border_color(config.get().color(LapceColor::LAPCE_BORDER))
         .apply_if(error.get().is_empty(), |s| s.hide()))
 }
@@ -3091,6 +3196,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             accept_mention_at(&doc, mention_popup, index)
         })
     };
+    v_stack((
     scroll(v_stack((
         // Antigravity-style header: pane title on the left, icon
         // actions on the right. The model indicator stays in this row
@@ -3433,7 +3539,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .width_full()
             }),
         ))
-        .style(|s| s.width_full().flex_col()),
+        .style(move |s| {
+            s.width_full()
+                .flex_col()
+                .apply_if(session_list.get().is_empty(), |s| s.hide())
+        }),
         // Plan artifacts (item 196): the workspace's newest plans as
         // clickable rows, hidden when there are none. Click opens the
         // plan as a normal editor buffer; the palette's Plans: Index
@@ -3729,11 +3839,20 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                     // first line plus
                                                     // "..." (host QA on
                                                     // 3562d6a).
-                                                    let lines: Vec<String> = row
+                                                    let is_result = row.title == "Result";
+                                                    let mut lines: Vec<String> = row
                                                         .detail
                                                         .lines()
                                                         .map(str::to_string)
                                                         .collect();
+                                                    // Tool output collapses to its
+                                                    // first lines: the card stays a
+                                                    // summary, not a log dump.
+                                                    if is_result && lines.len() > 4 {
+                                                        let extra = lines.len() - 4;
+                                                        lines.truncate(4);
+                                                        lines.push(format!("... {extra} more lines"));
+                                                    }
                                                     h_stack((
                                                         label(move || {
                                                             row_title.clone()
@@ -3741,6 +3860,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                         .style(move |s| {
                                                             s.font_size(11.0)
                                                                 .font_bold()
+                                                                .min_width(46.0)
                                                                 .color(
                                                                     config.get().color(
                                                                         if row_error {
@@ -3764,7 +3884,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                                     line.clone()
                                                                 })
                                                                 .style(move |s| {
+                                                                    let cfg = config.get();
                                                                     s.font_size(11.0)
+                                                                        .apply_if(is_result, |s| s.font_family(cfg.editor.font_family.clone()))
                                                                         .min_width(0.0)
                                                                         .text_ellipsis()
                                                                         .color(
@@ -3781,16 +3903,16 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                     ))
                                                     .style(|s| {
                                                         s.items_start()
-                                                            .gap(6.0)
-                                                            .width_full()
+                                                            .gap(8.0)
+                                                            .width_full().padding_vert(2.0)
                                                     })
                                                 },
                                             )
                                             .style(|s| {
                                                 s.flex_col()
-                                                    .gap(2.0)
+                                                    .gap(6.0)
                                                     .width_full()
-                                                    .margin_top(4.0)
+                                                    .margin_top(6.0)
                                             }),
                                         )
                                         .style(move |s| {
@@ -3894,11 +4016,25 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             // (host QA on 3562d6a).
             // Explicit bounded transcript inside the outer body scroll:
             // other cards can no longer push the composer offscreen.
-            s.width_full().height(240.0).flex_shrink(0.0)
+            // The transcript owns the free height: it grows to
+            // fill the panel and never drops below a readable floor;
+            // a short window falls back to the outer scroll.
+            s.width_full()
+                .min_height(160.0)
+                .flex_grow(1.0)
+                .flex_basis(160.0)
+                .flex_shrink(0.0)
         }),
         pending_command_card(tab.clone()),
         crate::agent_review_ui::panel(tab.clone()),
         chat_error_card(tab.clone()),
+    )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
+        .min_height_pct(100.0).padding_horiz(8.0).padding_top(8.0).gap(8.0)))
+    .style(|s| s.width_full().min_width(0.0).flex_grow(1.0).flex_basis(0.0).min_height(0.0)),
+    // Pinned bottom: approval, hint and composer stay visible while
+    // the transcript above shrinks and scrolls.
+    v_stack((
+        resume_card(tab.clone()),
         // Approval must follow a complete readable disclosure, including
         // endpoint. Never ellipsize the text that explains this permission.
         v_stack((
@@ -3975,11 +4111,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             }
         })
         .style(move |s| {
-            s.font_size(12.0)
+            s.font_size(11.0)
                 .line_height(1.4)
                 .max_width_full().min_width(0.0).flex_shrink(0.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)
-                .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
+                .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
         // Antigravity-style composer card: mode chips and the input live
         // inside one bordered card; send is a circular accent button.
@@ -4282,7 +4418,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
     )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
-        .padding(8.0).gap(8.0)))
+        .padding_horiz(8.0).padding_bottom(8.0).gap(8.0)),
+    ))
     .style(move |s| {
         // Absolute and sized to the panel, like the other panels, so the
         // chat can neither overflow its slot nor sit under a sibling.
@@ -4295,6 +4432,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             config.color(LapceColor::PANEL_BACKGROUND)
         };
         s.absolute()
+            .flex_col()
             .size_pct(100.0, 100.0)
             .set(PropagatePointerWheel, false)
             .border(1.0)
@@ -4764,5 +4902,16 @@ mod selection_range_tests {
     fn reversed_regions_are_ordered_and_empty_buffer_yields_nothing() {
         assert_eq!(selection_ranges([(4, 1)].into_iter(), 10), vec![(1, 4)]);
         assert!(selection_ranges([(0, 9), (3, 8)].into_iter(), 0).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+    #[test]
+    fn prefill_keeps_original_request_and_disclaims_carry_over() {
+        let p = resume_prefill("Add a comment to User.php");
+        assert!(p.contains("Original request: Add a comment to User.php"));
+        assert!(p.contains("nothing from the previous run is carried over"));
     }
 }
