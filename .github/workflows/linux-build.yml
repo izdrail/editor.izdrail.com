@@ -1,11 +1,11 @@
 name: Linux build
 
-# Builds the Linux x86_64 release binary on every branch push and publishes it
+# Builds the Linux x86_64 release binary on every push to main and publishes it
 # as a downloadable workflow artifact. Releases are created by linux-release.yml
 # when a version tag is pushed.
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -21,9 +21,9 @@ env:
 jobs:
   linux:
     name: Linux x86_64 release binary
-    # GitHub-hosted runner only; no self-hosted runners for this repo.
-    # Ubuntu 22.04 keeps the binary runnable on glibc >= 2.35.
-    runs-on: ubuntu-22.04
+    # Self-hosted runner only (owner policy: no GitHub-hosted minutes). Jobs stay
+    # queued until a runner with these labels is registered; there is no hosted fallback.
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4

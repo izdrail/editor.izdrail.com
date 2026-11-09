@@ -1,14 +1,7 @@
 on:
   push:
     branches:
-      - master
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - Cargo.toml
-      - Cargo.lock
-      - lapce-**
-      - .github/workflows/ci.yml
+      - main
   workflow_dispatch:
 
 name: CI
@@ -26,13 +19,12 @@ permissions: {}
 jobs:
   build:
     name: Build and doc tests
-    if: github.event.pull_request.draft == false
     needs: [fmt, clippy]
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
     steps:
@@ -60,7 +52,7 @@ jobs:
 
   fmt:
     name: Formatting and spellchecking
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
@@ -81,7 +73,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
