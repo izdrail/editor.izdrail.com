@@ -1081,12 +1081,11 @@ impl PaletteData {
 
     fn set_run_configs(&self, content: String) {
         let configs: Option<RunDebugConfigs> = toml::from_str(&content).ok();
-        let has_project_scripts = self
-            .workspace
-            .path
-            .as_deref()
-            .is_some_and(|root| !crate::project_scripts::discover(root).is_empty());
-        if configs.is_none() && !has_project_scripts {
+        // Saved run.toml entries, then project scripts, then Xdebug presets;
+        // a name already present wins.
+        let all_configs =
+            merged_run_configs(configs.map(|c| c.configs), self.workspace.path.as_deref());
+        if all_configs.is_empty() {
             if let Some(path) = self.workspace.path.as_ref() {
                 let path = path.join(".lapce").join("run.toml");
                 self.common
@@ -1097,36 +1096,29 @@ impl PaletteData {
 
         let executed_run_configs = self.executed_run_configs.borrow();
         let mut items = Vec::new();
-        // Project scripts (package.json, composer.json, artisan) after the
-        // user's own run.toml entries; a run.toml entry of the same name wins.
-        let mut all_configs = configs.map(|c| c.configs).unwrap_or_default();
-        if let Some(root) = self.workspace.path.as_deref() {
-            for found in crate::project_scripts::discover(root) {
-                if !all_configs.iter().any(|c| c.name == found.name) {
-                    all_configs.push(found);
-                }
-            }
-        }
         {
             for config in &all_configs {
-                items.push((
-                    executed_run_configs
-                        .get(&(RunDebugMode::Run, config.name.clone())),
-                    PaletteItem {
-                        content: PaletteItemContent::RunAndDebug {
-                            mode: RunDebugMode::Run,
-                            config: config.clone(),
+                // Listeners (empty program, e.g. wait-for-Xdebug) are Debug only.
+                if !config.program.trim().is_empty() {
+                    items.push((
+                        executed_run_configs
+                            .get(&(RunDebugMode::Run, config.name.clone())),
+                        PaletteItem {
+                            content: PaletteItemContent::RunAndDebug {
+                                mode: RunDebugMode::Run,
+                                config: config.clone(),
+                            },
+                            filter_text: format!(
+                                "Run {} {} {}",
+                                config.name,
+                                config.program,
+                                config.args.clone().unwrap_or_default().join(" ")
+                            ),
+                            score: 0,
+                            indices: vec![],
                         },
-                        filter_text: format!(
-                            "Run {} {} {}",
-                            config.name,
-                            config.program,
-                            config.args.clone().unwrap_or_default().join(" ")
-                        ),
-                        score: 0,
-                        indices: vec![],
-                    },
-                ));
+                    ));
+                }
                 if config.ty.is_some() {
                     items.push((
                         executed_run_configs
@@ -2379,5 +2371,100 @@ impl KeyPressFocus for PaletteData {
 
     fn receive_char(&self, c: &str) {
         self.input_editor.receive_char(c);
+    }
+}
+
+
+/// Merge saved run.toml configs with project-script and Xdebug preset
+/// discovery for the workspace. A saved entry wins on name, then a project
+/// script, then a preset. Xdebug presets are only produced for PHP
+/// workspaces (xdebug_configs is empty otherwise).
+fn merged_run_configs(
+    saved: Option<Vec<lapce_rpc::dap_types::RunDebugConfig>>,
+    root: Option<&std::path::Path>,
+) -> Vec<lapce_rpc::dap_types::RunDebugConfig> {
+    let mut all = saved.unwrap_or_default();
+    if let Some(root) = root {
+        for found in crate::project_scripts::discover(root) {
+            if !all.iter().any(|c| c.name == found.name) {
+                all.push(found);
+            }
+        }
+        for preset in lapce_proxy::php_debug::xdebug_configs(root) {
+            if !all.iter().any(|c| c.name == preset.name) {
+                all.push(preset);
+            }
+        }
+    }
+    all
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lapce_rpc::dap_types::{ConfigSource, DapId, RunDebugConfig};
+
+    fn saved_config(name: &str, program: &str) -> RunDebugConfig {
+        RunDebugConfig {
+            ty: None,
+            name: name.to_string(),
+            program: program.to_string(),
+            args: None,
+            cwd: None,
+            env: None,
+            prelaunch: None,
+            debug_command: None,
+            dap_id: DapId::default(),
+            tracing_output: false,
+            config_source: ConfigSource::Palette,
+        }
+    }
+
+    fn php_root(dir: &tempfile::TempDir) {
+        std::fs::write(dir.path().join("index.php"), "<?php\n").unwrap();
+    }
+
+    #[test]
+    fn xdebug_presets_appended_for_php_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        php_root(&dir);
+        let merged = merged_run_configs(None, Some(dir.path()));
+        assert!(merged.iter().any(|c| c.name == "Listen for Xdebug"));
+        assert!(merged.iter().any(|c| c.name == "Debug current PHP file"));
+    }
+
+    #[test]
+    fn saved_config_wins_over_xdebug_preset() {
+        let dir = tempfile::tempdir().unwrap();
+        php_root(&dir);
+        let merged = merged_run_configs(
+            Some(vec![saved_config("Listen for Xdebug", "php")]),
+            Some(dir.path()),
+        );
+        let matches: Vec<_> = merged
+            .iter()
+            .filter(|c| c.name == "Listen for Xdebug")
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].program, "php");
+        assert!(matches[0].ty.is_none());
+    }
+
+    #[test]
+    fn empty_program_listener_is_debug_only() {
+        let dir = tempfile::tempdir().unwrap();
+        php_root(&dir);
+        let merged = merged_run_configs(None, Some(dir.path()));
+        let listen = merged
+            .iter()
+            .find(|c| c.name == "Listen for Xdebug")
+            .expect("listen preset");
+        assert!(listen.program.trim().is_empty());
+        assert!(listen.ty.is_some());
+        let script = merged
+            .iter()
+            .find(|c| c.name == "Debug current PHP file")
+            .expect("script preset");
+        assert!(!script.program.trim().is_empty());
     }
 }
