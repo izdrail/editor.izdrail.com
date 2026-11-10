@@ -14,6 +14,7 @@
 //! (per component class for Livewire) so completion stays cheap on every
 //! keystroke.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
@@ -169,6 +170,10 @@ pub enum Kind {
     /// Route parameter: an assoc key of the parameters array in
     /// `route('name', [...])` / `to_route('name', [...])` (item 417).
     RouteParam,
+    /// Eloquent relation: the first argument of `->with('...')` /
+    /// `->load('...')` / `->withCount('...')` and friends on a line
+    /// that names the model class earlier with `Class::` (item 418).
+    EloquentRelation,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1353,6 +1358,25 @@ fn call_context(line: &str) -> Option<Kind> {
         // Route::has('...') - but not $collection->has('...').
         "has" if head[..word_start].ends_with("Route::") && arg == 0 => {
             Kind::Route
+        }
+        // Eloquent relation names (item 418): `Post::with('com`,
+        // `->load('...`, `->withCount('...`, `->loadMissing('...`
+        // and the with/load aggregate twins. Only a method or static
+        // call position (`->` / `::` before the word) - a bare
+        // `with(` is not one. The model class is bound in items()
+        // from the line's last `Class::` token; lines without one
+        // (and `Redirect::...->with('flash'` / `View::...->with(`,
+        // whose first argument is flash / view data) offer nothing.
+        // The array form `with(['com` keeps arg 0 (its commas sit
+        // at depth 1) and completes the same names.
+        "with" | "load" | "without" | "withCount" | "loadCount"
+        | "loadMissing" | "withSum" | "withAvg" | "withMin"
+        | "withMax" | "loadSum" | "loadAvg"
+            if arg == 0
+                && (head[..word_start].ends_with("->")
+                    || head[..word_start].ends_with("::")) =>
+        {
+            Kind::EloquentRelation
         }
         "config" if arg == 0 => Kind::Config,
         "env" | "getenv" if arg == 0 => Kind::Env,
@@ -3604,6 +3628,112 @@ fn route_call_name(line: &str) -> Option<String> {
     (!name.is_empty() && name.len() <= 100).then(|| name.to_string())
 }
 
+/// The model class named before the relation call on this line: the
+/// last `Class::` token before the open paren (byte order), so
+/// `Post::with('com')->get(); Comment::with('` binds Comment.
+/// Line-local convention, like the route-param pairing (item 418).
+fn relation_call_class(line: &str) -> Option<String> {
+    let paren = line.rfind('(')?;
+    let head = &line[..paren];
+    let mut out: Option<String> = None;
+    for (i, _) in head.match_indices("::") {
+        let before = &head[..i];
+        let start = before
+            .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .map(|x| x + 1)
+            .unwrap_or(0);
+        let name = &before[start..];
+        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            out = Some(name.to_string());
+        }
+    }
+    let name = out?;
+    (name.len() <= 100).then_some(name)
+}
+
+/// The model file for `class` under `app/Models` (or `app/` when
+/// that folder is missing), matched by file stem. Bounded like the
+/// model index: depth 6, 1500 files, symlinks skipped (item 418).
+fn relation_model_file(root: &Path, class: &str) -> Option<PathBuf> {
+    let target = format!("{class}.php");
+    let base = root.join("app").join("Models");
+    let base = if base.is_dir() { base } else { root.join("app") };
+    fn walk(dir: &Path, depth: usize, target: &str, seen: &mut usize) -> Option<PathBuf> {
+        if depth > 6 || *seen >= 1500 {
+            return None;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return None;
+        }
+        let rd = std::fs::read_dir(dir).ok()?;
+        for e in rd.filter_map(Result::ok) {
+            let ft = e.file_type().ok()?;
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                if let Some(hit) = walk(&p, depth + 1, target, seen) {
+                    return Some(hit);
+                }
+            } else if ft.is_file() {
+                *seen += 1;
+                if p.file_name().and_then(|n| n.to_str()) == Some(target) {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    }
+    walk(&base, 0, &target, &mut 0)
+}
+
+/// `(method, relation kind)` pairs of the named model, parsed with
+/// the model index (a method counts when its body starts with
+/// `return $this->hasOne|hasMany|belongsTo|...`). Cached 30 s per
+/// workspace + class, like the per-component Livewire scans
+/// (item 418).
+fn relation_names(root: &Path, class: &str) -> Vec<(String, String)> {
+    static REL_CACHE: OnceLock<
+        Mutex<HashMap<(PathBuf, String), (Instant, Vec<(String, String)>)>>,
+    > = OnceLock::new();
+    let key = (root.to_path_buf(), class.to_string());
+    let cache = REL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some((at, hit)) = cache.lock().unwrap().get(&key) {
+        if at.elapsed() < TTL {
+            return hit.clone();
+        }
+    }
+    let out = relation_model_file(root, class)
+        .and_then(|f| {
+            let m = std::fs::metadata(&f).ok()?;
+            if !m.is_file() || m.len() > MAX_FILE {
+                return None;
+            }
+            std::fs::read_to_string(&f).ok()
+        })
+        .and_then(|text| crate::model_index::parse(&text))
+        .map(|p| {
+            let mut rels = p
+                .relations
+                .into_iter()
+                .map(|(m, kind, _, _)| (m, kind))
+                .collect::<Vec<_>>();
+            rels.sort();
+            rels.truncate(MAX_NAMES);
+            rels
+        })
+        .unwrap_or_default();
+    cache
+        .lock()
+        .unwrap()
+        .insert(key, (Instant::now(), out.clone()));
+    out
+}
+
 /// Route parameters by route name (item 417): the `{...}`
 /// placeholders of the URI whose call carries each `->name('...')`.
 /// The enclosing call is the LAST `Route::` at or before the name
@@ -4620,6 +4750,27 @@ pub fn items(
             })
             .collect();
     }
+    if kind == Kind::EloquentRelation {
+        let Some(class) = relation_call_class(line_before) else {
+            return Vec::new();
+        };
+        // `Redirect::route(...)->with('flash'` and
+        // `View::make(...)->with('key'` take flash / view data, not
+        // relation names.
+        if matches!(class.as_str(), "Redirect" | "View") {
+            return Vec::new();
+        }
+        return relation_names(root, &class)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|(m, rel)| CompletionItem {
+                label: m,
+                kind: Some(CompletionItemKind::METHOD),
+                detail: Some(format!("Eloquent relation ({rel})")),
+                ..Default::default()
+            })
+            .collect();
+    }
     if kind == Kind::ComponentTag {
         return component_tags(root, file);
     }
@@ -5004,6 +5155,8 @@ pub fn items(
             (lists.vite_entries, "Vite entry point")
         }
         // Returned early above; the match must stay exhaustive.
+        Kind::EloquentRelation => (Vec::new(), "Eloquent relation"),
+        // Returned early above; the match must stay exhaustive.
         Kind::BlueprintMethod => (Vec::new(), "Blueprint method"),
         // Returned early above; the match must stay exhaustive.
         Kind::ValidationRule => (Vec::new(), "validation rule"),
@@ -5199,6 +5352,82 @@ mod tests {
         );
         assert_eq!(labels("trans('"), langs);
         assert_eq!(labels("@lang('"), langs);
+    }
+
+    #[test]
+    fn detects_eloquent_relation_context() {
+        let rel = Some(Kind::EloquentRelation);
+        assert_eq!(context("Post::with('com"), rel);
+        assert_eq!(context("Post::where('x', 1)->withCount('com"), rel);
+        assert_eq!(context("$query->load('au"), rel);
+        assert_eq!(context("Post::with(['com"), rel);
+        assert_eq!(context("Post::without('com"), rel);
+        assert_eq!(context("Post::loadMissing('au"), rel);
+        // A bare call, a second argument and a non-relation word
+        // stay silent.
+        assert_eq!(context("with('com"), None);
+        assert_eq!(context("Post::with('comments', 'x"), None);
+        assert_eq!(context("Post::withTrashed('com"), None);
+        assert_eq!(context("Post::withAttributes(['com"), None);
+    }
+
+    #[test]
+    fn offers_eloquent_relations() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "app/Models/Post.php",
+            "<?php
+class Post extends Model {
+    public function comments() {
+        return $this->hasMany(Comment::class);
+    }
+    public function author() {
+        return $this->belongsTo(User::class);
+    }
+    public function tags() {
+        return $this->belongsToMany(Tag::class);
+    }
+    public function scopeActive($q) {
+        return $q->where('active', 1);
+    }
+}
+",
+        );
+        put(
+            r,
+            "app/Models/Nested/Blog/Comment.php",
+            "<?php
+class Comment extends Model {
+    public function post() {
+        return $this->belongsTo(Post::class);
+    }
+}
+",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels("Post::with('"), ["author", "comments", "tags"]);
+        assert_eq!(
+            labels("Post::where('active', 1)->withCount('"),
+            ["author", "comments", "tags"]
+        );
+        assert_eq!(labels("Comment::load('"), ["post"]);
+        // The last Class:: token on the line binds the model.
+        assert_eq!(
+            labels("Post::with('comments')->get(); Comment::with('"),
+            ["post"]
+        );
+        // Unknown class, flash/view-data receivers and a missing
+        // model file offer nothing.
+        assert!(labels("Missing::with('").is_empty());
+        assert!(labels("Redirect::route('home')->with('").is_empty());
+        assert!(labels("View::make('x')->with('").is_empty());
     }
 
     #[test]
