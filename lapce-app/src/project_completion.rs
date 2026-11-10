@@ -1373,6 +1373,9 @@ fn call_context(line: &str) -> Option<Kind> {
         | "loadMissing" | "withSum" | "withAvg" | "withMin"
         | "withMax" | "loadSum" | "loadAvg"
             if arg == 0
+                && code_paren(line) == Some(paren)
+                && (str_opener.is_none()
+                    || matches!(str_opener, Some((b'[' | b',', 1))))
                 && (head[..word_start].ends_with("->")
                     || head[..word_start].ends_with("::")) =>
         {
@@ -3633,22 +3636,50 @@ fn route_call_name(line: &str) -> Option<String> {
 /// `Post::with('com')->get(); Comment::with('` binds Comment.
 /// Line-local convention, like the route-param pairing (item 418).
 fn relation_call_class(line: &str) -> Option<String> {
-    let paren = line.rfind('(')?;
-    let head = &line[..paren];
-    let mut out: Option<String> = None;
-    for (i, _) in head.match_indices("::") {
-        let before = &head[..i];
-        let start = before
-            .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .map(|x| x + 1)
-            .unwrap_or(0);
-        let name = &before[start..];
-        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-            out = Some(name.to_string());
+    let paren = code_paren(line)?;
+    let (masked, strings) = mask_comments(&line[..paren]);
+    let mut bytes = masked.into_bytes();
+    for (start, end) in strings {
+        let end = (end + 1).min(bytes.len());
+        bytes[start..end].fill(b' ');
+    }
+    let head = String::from_utf8(bytes).ok()?;
+    // Only the current statement's outer receiver can bind the model.
+    // A class in an argument or a previous statement cannot donate it.
+    let mut depth = 0i32;
+    let mut begin = 0usize;
+    let mut receiver = None;
+    let b = head.as_bytes();
+    for (i, &c) in b.iter().enumerate() {
+        match c {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b';' | b'=' if depth == 0 => {
+                begin = i + 1;
+                receiver = None;
+            }
+            b':' if depth == 0 && b.get(i + 1) == Some(&b':') => {
+                if receiver.is_none() {
+                    let token = head[begin..i].trim();
+                    let token = token.strip_prefix("return ").unwrap_or(token).trim();
+                    if token.is_empty() || !token.bytes().all(|c| {
+                        c.is_ascii_alphanumeric() || c == b'_' || c == 92
+                    }) {
+                        return None;
+                    }
+                    let name = token.rsplit(char::from(92)).next()?;
+                    if !name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+                        || name.len() > 100
+                    {
+                        return None;
+                    }
+                    receiver = Some(name.to_string());
+                }
+            }
+            _ => {}
         }
     }
-    let name = out?;
-    (name.len() <= 100).then_some(name)
+    receiver
 }
 
 /// The model file for `class` under `app/Models` (or `app/` when
@@ -3670,6 +3701,7 @@ fn relation_model_file(root: &Path, class: &str) -> Option<PathBuf> {
         }
         let rd = std::fs::read_dir(dir).ok()?;
         for e in rd.filter_map(Result::ok) {
+            if *seen >= 1500 { break; }
             let ft = e.file_type().ok()?;
             if ft.is_symlink() {
                 continue;
@@ -3716,6 +3748,7 @@ fn relation_names(root: &Path, class: &str) -> Vec<(String, String)> {
             std::fs::read_to_string(&f).ok()
         })
         .and_then(|text| crate::model_index::parse(&text))
+        .filter(|p| p.class == class)
         .map(|p| {
             let mut rels = p
                 .relations
@@ -3727,10 +3760,10 @@ fn relation_names(root: &Path, class: &str) -> Vec<(String, String)> {
             rels
         })
         .unwrap_or_default();
-    cache
-        .lock()
-        .unwrap()
-        .insert(key, (Instant::now(), out.clone()));
+    let mut guard = cache.lock().unwrap();
+    guard.retain(|_, (at, _)| at.elapsed() < TTL);
+    if guard.len() >= 128 { guard.clear(); }
+    guard.insert(key, (Instant::now(), out.clone()));
     out
 }
 
@@ -4494,6 +4527,7 @@ fn dotted_name_kind(kind: &Kind) -> bool {
             | Kind::CacheKey
             | Kind::BroadcastChannel
             | Kind::RouteParam
+            | Kind::EloquentRelation
     )
 }
 
@@ -5369,6 +5403,9 @@ mod tests {
         assert_eq!(context("Post::with('comments', 'x"), None);
         assert_eq!(context("Post::withTrashed('com"), None);
         assert_eq!(context("Post::withAttributes(['com"), None);
+        assert_eq!(context("// Post::with('com"), None);
+        assert_eq!(context("Post::with(['comments' => 'bad"), None);
+
     }
 
     #[test]
@@ -5426,6 +5463,11 @@ class Comment extends Model {
         // Unknown class, flash/view-data receivers and a missing
         // model file offer nothing.
         assert!(labels("Missing::with('").is_empty());
+        assert_eq!(labels("Post::where('id', User::class)->with('"), ["author", "comments", "tags"]);
+        assert!(labels("Post::first(); $other->with('").is_empty());
+        assert!(labels("$x = 'Post::'; $other->with('").is_empty());
+        assert!(items(r, Some(Path::new("example.js")), "Post::with('").is_empty());
+
         assert!(labels("Redirect::route('home')->with('").is_empty());
         assert!(labels("View::make('x')->with('").is_empty());
     }
