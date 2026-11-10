@@ -171,9 +171,9 @@ pub fn embed_web(source: &str, host: &mut Snapshot) {
             let Some((body, attrs)) = web_tag_attributes(&lower, after) else {
                 break;
             };
-            let Some(end) = web_end_tag(&lower, body, tag) else {
-                break;
-            };
+            // While typing, a completed opener owns the remaining raw-text
+            // body even before its closing tag exists.
+            let end = web_end_tag(&lower, body, tag).unwrap_or(source.len());
             let attribute = |name| attrs.iter().find(|(key, _)| *key == name).map(|(_, value)| *value);
             let supported = attribute("type").is_none_or(|value| {
                 if tag == "script" { web_script_type(value) }
@@ -241,6 +241,36 @@ mod tests {
         assert_eq!(web_end_tag("</scripture>", 0, "script"), None);
         // A genuine close tag is HTML syntax even when JS sees a quote.
         assert_eq!(web_end_tag("let s = '</script>';", 0, "script"), Some(9));
+    }
+
+    #[test]
+    fn unfinished_embedded_bodies_keep_styles_and_regions_until_eof() {
+        use crate::language::LapceLanguage;
+        use lapce_xi_rope::Rope;
+        for language in [LapceLanguage::Html, LapceLanguage::Blade, LapceLanguage::Php, LapceLanguage::Twig] {
+            for (open, body, close, token, kind) in [
+                ("<script>", "const value = 'λ🙂';\r\nconst after = 42;", "</script>", "after", lexilla_rs::Embed::Script),
+                ("<style>", ".card { color: green; gap: 12px; }", "</style>", "color", lexilla_rs::Embed::Style),
+            ] {
+                let unfinished = format!("<div>host</div>\r\n{open}{body}");
+                let snap = crate::lexilla::highlight(language, &Rope::from(unfinished.as_str())).unwrap();
+                let offset = unfinished.find(token).unwrap();
+                assert_eq!(snap.len(), unfinished.len());
+                assert_eq!(snap.embed_at(offset), Some(kind), "{language:?}: {open}");
+                assert_eq!(snap.embed_at(unfinished.len() - 1), Some(kind));
+                let closed = format!("{unfinished}{close}<p>end</p>");
+                let closed_snap = crate::lexilla::highlight(language, &Rope::from(closed.as_str())).unwrap();
+                assert_eq!(closed_snap.embed_at(offset), Some(kind));
+                assert_eq!(closed_snap.embed_at(closed.find("<p>").unwrap()), None);
+                assert_eq!(&snap.styles()[..], &closed_snap.styles()[..unfinished.len()]);
+                let undo = crate::lexilla::highlight(language, &Rope::from(unfinished.as_str())).unwrap();
+                assert_eq!(undo.styles(), snap.styles());
+            }
+        }
+        for text in ["<script type='importmap'>const value = 42;", "<script src='app.js'>const value = 42;", "<style type='text/less'>.card { color: green; }", "<style>.card { color: {{ value }}; }"] {
+            let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text)).unwrap();
+            assert_eq!(snap.embed_at(text.len() - 1), None, "{text}");
+        }
     }
 
     #[test]
