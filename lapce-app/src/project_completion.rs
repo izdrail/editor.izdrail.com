@@ -4730,6 +4730,17 @@ fn column_items(lists: &Lists, table: &str) -> Vec<CompletionItem> {
         .collect()
 }
 
+/// Keep project-item offering and whole-name replacement aligned with syntax
+/// routing, including conventional extensionless PHP framework entry scripts.
+/// Unknown extensionless names must not gain PHP completions.
+pub(crate) fn php_completion_path(path: &Path) -> bool {
+    matches!(
+        lapce_core::language::LapceLanguage::from_path_raw(path),
+        Some(lapce_core::language::LapceLanguage::Php
+            | lapce_core::language::LapceLanguage::Blade)
+    )
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -4744,9 +4755,7 @@ pub fn items(
     // would graft the accepted item onto the typed prefix - the
     // item 411 offering/replacement mismatch. An absent file is
     // treated as PHP (unit tests pass no file).
-    let is_php = file
-        .map(|p| p.to_string_lossy().ends_with(".php"))
-        .unwrap_or(true);
+    let is_php = file.map(php_completion_path).unwrap_or(true);
     if !is_php && dotted_name_kind(&kind) {
         return Vec::new();
     }
@@ -7981,6 +7990,16 @@ Gate::define(\"buy-cd\", 'shop.buy');
             .iter()
             .any(|l| l == "reports:send"));
         assert!(labels(Some(txt), "Artisan::call('re").is_empty());
+        // Syntax routing, popup offering and replacement must agree for CLI
+        // files too. Bare console names remain unrecognised and silent.
+        for path in ["artisan", "project/artisan", "bin/console", "project/bin/console", "view.blade.php"] {
+            assert!(labels(Some(Path::new(path)), "Artisan::call('reports:r")
+                .iter().any(|l| l == "reports:send"), "{path}");
+        }
+        for path in ["console", "scripts/console", "ARTISAN", "notes.txt"] {
+            assert!(labels(Some(Path::new(path)), "Artisan::call('reports:r").is_empty(), "{path}");
+        }
+
         assert!(labels(Some(php), "Session::get('ca")
             .iter()
             .any(|l| l == "cart.items"));

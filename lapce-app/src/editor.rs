@@ -282,7 +282,7 @@ pub(crate) fn completion_word_start(
     }
     let name = path.to_string_lossy();
     let blade = name.ends_with(".blade.php");
-    let php = name.ends_with(".php");
+    let php = crate::project_completion::php_completion_path(path);
     if !php {
         return start;
     }
@@ -349,6 +349,22 @@ mod completion_word_start_tests {
         let b = Buffer::new("Artisan::call('reports:r')");
         assert_eq!(completion_word_start(&b, php(), 23), 15);
         assert_eq!(completion_word_start(&b, php(), 24), 15);
+    }
+
+    #[test]
+    fn php_cli_whole_name_ranges_match_the_offering_gate() {
+        let command = Buffer::new("Artisan::call('reports:r')");
+        let config = Buffer::new("config('app.na')");
+        for name in ["artisan", "project/artisan", "bin/console", "project/bin/console", "probe.php", "view.blade.php"] {
+            let path = Some(Path::new(name));
+            assert_eq!(completion_word_start(&command, path, 24), 15, "{name}");
+            assert_eq!(completion_word_start(&config, path, 14), 8, "{name}");
+        }
+        for name in ["console", "scripts/console", "ARTISAN", "notes.txt"] {
+            let path = Some(Path::new(name));
+            assert_eq!(completion_word_start(&command, path, 24), 23, "{name}");
+            assert_eq!(completion_word_start(&config, path, 14), 12, "{name}");
+        }
     }
 
     #[test]
@@ -3212,7 +3228,7 @@ impl EditorData {
             // `route('`, `@include('`, `wire:model="..."` and friends: the
             // project has items for an empty quoted argument, so open on
             // the bare quote too.
-            let project_ctx = path.to_string_lossy().ends_with(".php") && {
+            let project_ctx = crate::project_completion::php_completion_path(&path) && {
                 let line_start =
                     buffer.offset_of_line(buffer.line_of_offset(offset));
                 crate::project_completion::context(
