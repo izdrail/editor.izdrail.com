@@ -123,6 +123,25 @@ fn web_script_type(value: &str) -> bool {
         | "text/javascript1.3" | "text/javascript1.4" | "text/javascript1.5")
 }
 
+/// HTML raw-text end tags need an exact tag-name boundary. A string such as
+/// </scripture> is body text, while a real </script> still ends the element
+/// even when it appears inside a JavaScript string.
+fn web_end_tag(source: &str, body: usize, tag: &str) -> Option<usize> {
+    let needle = format!("</{tag}");
+    let mut cursor = body;
+    while let Some(found) = source[cursor..].find(&needle) {
+        let start = cursor + found;
+        let after = start + needle.len();
+        if source.as_bytes().get(after).is_some_and(|b| {
+            b.is_ascii_whitespace() || matches!(b, b'>' | b'/')
+        }) {
+            return Some(start);
+        }
+        cursor = after;
+    }
+    None
+}
+
 /// Lexilla's HTML lexer handles script regions but not modern CSS. Delegate
 /// recognised inline JS/CSS bodies. Do not overwrite PHP/Blade/Twig constructs
 /// or non-JS scripts (JSON/import maps). Unknown MIME modes stay with the host.
@@ -152,10 +171,9 @@ pub fn embed_web(source: &str, host: &mut Snapshot) {
             let Some((body, attrs)) = web_tag_attributes(&lower, after) else {
                 break;
             };
-            let Some(close) = lower[body..].find(&format!("</{tag}")) else {
+            let Some(end) = web_end_tag(&lower, body, tag) else {
                 break;
             };
-            let end = body + close;
             let attribute = |name| attrs.iter().find(|(key, _)| *key == name).map(|(_, value)| *value);
             let supported = attribute("type").is_none_or(|value| {
                 if tag == "script" { web_script_type(value) }
@@ -205,6 +223,26 @@ mod tests {
     fn scope(s: &Snapshot, t: &str, word: &str) -> Option<&'static str> {
         s.scope(s.styles()[t.find(word).unwrap()])
     }
+    #[test]
+    fn embedded_bodies_require_exact_closing_tag_names() {
+        use crate::language::LapceLanguage;
+        use lapce_xi_rope::Rope;
+        for end in ["</script>", "</SCRIPT >", "</script\t>", "</script/>"] {
+            let text = format!("<script>const marker = '</scripture>'; const after = 42;{end}<p>end</p>");
+            let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text.as_str())).unwrap();
+            assert_eq!(snap.embed_at(text.find("after").unwrap()), Some(lexilla_rs::Embed::Script), "{end}");
+            assert_eq!(scope(&snap, &text, "42"), Some("constant"));
+            assert_eq!(snap.embed_at(text.find("<p>").unwrap()), None);
+        }
+        let text = "<style>body::after { content: '</styles>'; } .after { color: red; }</style>";
+        let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text)).unwrap();
+        assert_eq!(snap.embed_at(text.find("color").unwrap()), Some(lexilla_rs::Embed::Style));
+        assert_eq!(web_end_tag("</scripture></script-x></script_></script>", 0, "script"), Some(33));
+        assert_eq!(web_end_tag("</scripture>", 0, "script"), None);
+        // A genuine close tag is HTML syntax even when JS sees a quote.
+        assert_eq!(web_end_tag("let s = '</script>';", 0, "script"), Some(9));
+    }
+
     #[test]
     fn embedded_web_types_use_real_attributes_not_substrings() {
         use crate::language::LapceLanguage;
