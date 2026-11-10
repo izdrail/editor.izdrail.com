@@ -2,12 +2,12 @@
 # Build in a fixed ABI without host-path mounts. Works when the runner itself
 # is a Docker container talking to the host daemon through docker.sock.
 set -euo pipefail
-name="editor-abi-${GITHUB_RUN_ID:-local}-$$"
+name="editor-abi-${GITHUB_RUN_ID:-local}"
 container=''
 watchdog=''
 cleanup() { if [ -n "$watchdog" ]; then kill "$watchdog" 2>/dev/null || true; fi; if [ -n "$container" ]; then docker rm -f "$container" >/dev/null; fi; }
 trap cleanup EXIT INT TERM
-container=$(docker create --name "$name" --workdir /src ubuntu:22.04 sleep infinity)
+container=$(docker create --label "instinct.editor.build=${GITHUB_RUN_ID:-local}" --name "$name" --workdir /src ubuntu:22.04 sleep infinity)
 docker start "$container" >/dev/null
 # The runner filesystem is on dell root. Stop only this build if the
 # approved 30 GiB floor is crossed, even during a long compiler step.

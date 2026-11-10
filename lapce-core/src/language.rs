@@ -1810,6 +1810,92 @@ impl LapceLanguage {
         self.comment_tokens().0
     }
 
+    /// True for mixed-content languages whose comment delimiter depends on
+    /// the syntax region at the offset (files routed to the hypertext or
+    /// standalone PHP lexers). The edit layer uses this to spend region
+    /// resolution only where it can change the answer; for these languages a
+    /// missing or unusable snapshot is unresolvable rather than the
+    /// language-wide token, which would be unsafe on mixed content.
+    pub fn comment_tokens_are_regional(&self) -> bool {
+        matches!(
+            self,
+            LapceLanguage::Html | LapceLanguage::Vue | LapceLanguage::Php
+        )
+    }
+
+    /// Comment delimiters appropriate at `offset`, using the real syntax
+    /// region from the lexer's style at that byte. Files routed to the
+    /// hypertext lexer (HTML, Vue SFC, templated PHP) paint JavaScript bodies
+    /// with the SCE_HJ*/SCE_HJA* states and PHP bodies with SCE_HPHP*; both
+    /// take `//`, everything else takes the language's own token. `<style>`
+    /// bodies are not distinguishable from HTML by the vendored lexer, so
+    /// they keep the outer token. Other languages ignore the position.
+    ///
+    /// For the regional languages the snapshot must be lexed from the buffer
+    /// being edited. A missing or unusable snapshot (no lex yet, a lexer-less
+    /// profile, an offset past the highlighted bytes) resolves to ("", "") -
+    /// unresolvable, so the consumer vetoes the whole toggle - and never to
+    /// the language-wide token: on mixed content that guess would write one
+    /// region's delimiters into another region's code.
+    pub fn comment_tokens_at(
+        &self,
+        snapshot: Option<&lexilla_rs::Snapshot>,
+        offset: usize,
+    ) -> (&'static str, &'static str) {
+        if !self.comment_tokens_are_regional() {
+            return self.comment_tokens();
+        }
+        // Style numbers are per-lexer: the standalone PHP lexers use a
+        // different numbering scheme (SCE_PHP_*/SCE_LARAVEL_*) than
+        // hypertext. Pure-PHP snapshots are PHP code throughout.
+        if matches!(snapshot.map(|s| s.lexer()), Some("php" | "laravel")) {
+            return ("//", "");
+        }
+        // Embedded regions recorded while building the snapshot are the
+        // reliable signal: overlay() remaps sub-lexer styles into the
+        // host's shared theme-scope slots, so raw style bytes cannot
+        // distinguish CSS from markup after embedding.
+        if let Some(embed) = snapshot.and_then(|s| s.embed_at(offset)) {
+            return match embed {
+                lexilla_rs::Embed::Script => ("//", ""),
+                lexilla_rs::Embed::Style => ("/*", "*/"),
+            };
+        }
+        if let Some(style) = snapshot.and_then(|s| s.styles().get(offset)) {
+            return match style {
+                // SCE_HJ_* / SCE_HJA_* JavaScript and SCE_HPHP_* PHP
+                // (SciLexer.h): reliable embedded-region signals.
+                40..=53 | 55..=68 | 104 | 118..=127 => ("//", ""),
+                // SCE_H_QUESTION paints the `<?php`/`?>` tags themselves:
+                // PHP syntax in a .php file, but foreign in HTML/Vue where
+                // no delimiter is safe.
+                18 => {
+                    if matches!(self, LapceLanguage::Php) {
+                        ("//", "")
+                    } else {
+                        ("", "")
+                    }
+                }
+                // SCE_H markup styles: tags, attributes, strings,
+                // comments, CDATA, values, SGML. Unambiguous markup.
+                // Excludes SCE_H_ASP/ASPAT (15/16): VBScript islands use
+                // comment syntax we do not model.
+                1..=14 | 17 | 19..=31 => ("<!--", "-->"),
+                // SCE_H_DEFAULT (0) paints both plain text AND <style>
+                // CSS bodies - the hypertext lexer gives CSS no distinct
+                // style - and VB/Python embedded ranges use comment
+                // syntax we do not model. Ambiguous: leave the line
+                // unchanged rather than insert a wrong delimiter.
+                _ => ("", ""),
+            };
+        }
+        // Region resolution is required for this language but the snapshot
+        // is missing, lexer-less, or shorter than the buffer: report
+        // unresolvable (the consumer vetoes the whole toggle) instead of
+        // guessing with the language-wide token.
+        ("", "")
+    }
+
     /// Opening and closing comment delimiters (`<!--` / `-->` for HTML; the
     /// closing delimiter is empty for line-comment languages).
     pub fn comment_tokens(&self) -> (&'static str, &'static str) {
@@ -2199,6 +2285,106 @@ mod tests {
         ] {
             assert_eq!(language.comment_tokens(), (start, end), "{language:?}");
         }
+    }
+
+    #[test]
+    fn comment_tokens_follow_the_lexers_embedded_region() {
+        use crate::lexilla::highlight;
+        let vue = "<template>\n  <p>x</p>\n</template>\n<script>\nlet a = 1\n</script>\n";
+        let snapshot = highlight(LapceLanguage::Vue, &vue.into()).unwrap();
+        let off = |needle: &str| vue.find(needle).unwrap();
+        // The real lexer styles decide: template bytes keep the SFC token,
+        // the JavaScript body switches to `//`.
+        assert_eq!(
+            LapceLanguage::Vue.comment_tokens_at(Some(&snapshot), off("<p>")),
+            ("<!--", "-->")
+        );
+        assert_eq!(
+            LapceLanguage::Vue.comment_tokens_at(Some(&snapshot), off("let a")),
+            ("//", "")
+        );
+        // A `<script>` tag inside an HTML comment is comment-styled, not JS:
+        // no false region detection the way a tag-text scan would produce.
+        let commented = "<!-- <script> -->\n<p>x</p>\n";
+        let snapshot = highlight(LapceLanguage::Html, &commented.into()).unwrap();
+        let off = commented.find("<p>").unwrap();
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off),
+            ("<!--", "-->")
+        );
+        // Without a snapshot a regional language is unresolvable - no
+        // delimiter is provably safe on unseen mixed content - while plain
+        // languages always ignore both the position and the snapshot.
+        assert_eq!(LapceLanguage::Vue.comment_tokens_at(None, 0), ("", ""));
+        assert_eq!(
+            LapceLanguage::Rust.comment_tokens_at(Some(&snapshot), off),
+            ("//", "")
+        );
+        assert_eq!(LapceLanguage::Rust.comment_tokens_at(None, 0), ("//", ""));
+    }
+
+    #[test]
+    fn comment_tokens_leave_ambiguous_lines_unchanged() {
+        use crate::lexilla::highlight;
+        // <style> CSS bodies are covered by an embed_web span (recorded when
+        // the body was re-lexed as CSS), so they get real CSS block comments.
+        let doc = "<style>\np { color: red }\n</style>\nplain text\n<p>x</p>\n";
+        let snapshot = highlight(LapceLanguage::Html, &doc.into()).unwrap();
+        let off = |needle: &str| doc.find(needle).unwrap();
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off("p { color")),
+            ("/*", "*/")
+        );
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off("plain text")),
+            ("", "")
+        );
+        // The style tags themselves are markup and stay commentable.
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off("<style>")),
+            ("<!--", "-->")
+        );
+        // JS comment styles stay inside the script region on a second pass:
+        // a line already commented with `//` still resolves to `//`.
+        let js = "<script>\n// let a = 1\n/* b */\n</script>\n";
+        let snapshot = highlight(LapceLanguage::Html, &js.into()).unwrap();
+        let off = |needle: &str| js.find(needle).unwrap();
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off("// let a")),
+            ("//", "")
+        );
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off("/* b */")),
+            ("//", "")
+        );
+        // Pure PHP highlights with the STANDALONE php lexer (SCE_PHP_*
+        // numbering, not hypertext's SCE_HPHP_*): the whole file is code and
+        // every line toggles with `//`. The snapshot's recorded lexer, not a
+        // numeric style range, carries this.
+        let php = "<?php\necho 1;\n?>\n";
+        let snapshot = highlight(LapceLanguage::Php, &php.into()).unwrap();
+        assert_eq!(snapshot.lexer(), "php");
+        assert_eq!(
+            LapceLanguage::Php.comment_tokens_at(Some(&snapshot), 0),
+            ("//", "")
+        );
+        // Templated PHP goes through hypertext, where SCE_H_QUESTION (18)
+        // paints the php open/close tags: `//` in a .php file, but no safe
+        // delimiter inside HTML/Vue.
+        let templated = "<p>x</p>\n<?php echo 1; ?>\n";
+        let snapshot = highlight(LapceLanguage::Php, &templated.into()).unwrap();
+        assert_eq!(snapshot.lexer(), "hypertext");
+        let off = templated.find("<?php").unwrap();
+        assert_eq!(
+            LapceLanguage::Php.comment_tokens_at(Some(&snapshot), off),
+            ("//", "")
+        );
+        let snapshot = highlight(LapceLanguage::Html, &templated.into()).unwrap();
+        let off = templated.find("<?php").unwrap();
+        assert_eq!(
+            LapceLanguage::Html.comment_tokens_at(Some(&snapshot), off),
+            ("", "")
+        );
     }
 
     #[test]

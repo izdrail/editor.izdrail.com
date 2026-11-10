@@ -78,6 +78,19 @@ impl Drop for Session {
 pub struct Snapshot {
     styles: Vec<u8>,
     scopes: Vec<Option<&'static str>>,
+    embeds: Vec<(usize, usize, Embed)>,
+    lexer: String,
+}
+
+/// An embedded sub-language region recorded while a host snapshot was being
+/// built (e.g. `web_templates::embed_web` overlaying a `<script>` or `<style>`
+/// body). This is the reliable embedded-region signal: after `overlay` remaps
+/// sub-lexer styles into the host's shared theme-scope slots, raw style bytes
+/// can no longer distinguish CSS from markup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Embed {
+    Script,
+    Style,
 }
 impl Snapshot {
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
@@ -151,7 +164,12 @@ impl Snapshot {
                 );
             }
         }
-        Ok(Self { styles, scopes })
+        Ok(Self {
+            styles,
+            scopes,
+            embeds: Vec::new(),
+            lexer: name.to_str().map(str::to_owned).unwrap_or_default(),
+        })
     }
 
     /// Overlay a byte-aligned region, translating style IDs by theme scope.
@@ -184,6 +202,26 @@ impl Snapshot {
     pub fn scope(&self, style: u8) -> Option<&'static str> {
         self.scopes[style as usize]
     }
+    /// The lexer that produced this snapshot. Style numbers are only
+    /// meaningful per lexer: the standalone PHP lexer and the hypertext lexer
+    /// paint the same bytes with different numbering schemes.
+    pub fn lexer(&self) -> &str {
+        &self.lexer
+    }
+
+    /// Records an embedded sub-language region as `[start, end)` byte offsets.
+    pub fn record_embed(&mut self, start: usize, end: usize, kind: Embed) {
+        self.embeds.push((start, end, kind));
+    }
+
+    /// The embedded region covering `offset`, if one was recorded.
+    pub fn embed_at(&self, offset: usize) -> Option<Embed> {
+        self.embeds
+            .iter()
+            .find(|&&(start, end, _)| (start..end).contains(&offset))
+            .map(|&(_, _, kind)| kind)
+    }
+
     pub fn len(&self) -> usize {
         self.styles.len()
     }

@@ -705,6 +705,7 @@ impl Doc {
         let deltas = self.syntax.with_untracked(|syntax| {
             self.buffer
                 .try_update(|buffer| {
+                    let comment_tokens = Self::comment_token_resolver(cmd, syntax, buffer);
                     Action::do_edit(
                         cursor,
                         buffer,
@@ -712,8 +713,7 @@ impl Doc {
                         &mut clipboard,
                         register,
                         EditConf {
-                            comment_token: syntax.language.comment_tokens().0,
-                            comment_token_end: syntax.language.comment_tokens().1,
+                            comment_tokens: &comment_tokens,
                             modal,
                             smart_tab,
                             keep_indent: true,
@@ -2500,6 +2500,109 @@ impl Styling for DocStyling {
     }
 }
 
+impl Doc {
+    /// Largest buffer the edit path will lex synchronously for a comment
+    /// toggle when the async snapshot is stale. Past this, the toggle vetoes
+    /// (a no-op) rather than block the UI thread on an unbounded full-file
+    /// lex.
+    const MAX_SYNC_COMMENT_LEX_BYTES: usize = 1 << 20;
+
+    /// Builds the comment-delimiter resolver handed to the edit layer.
+    ///
+    /// Cost is matched to the command: every command except
+    /// ToggleLineComment - and toggles on single-syntax languages - gets a
+    /// zero-cost closure over the language-wide token, preserving the cost
+    /// profile ordinary edits (every keystroke) had before per-region
+    /// resolution existed. Only a toggle on a regional language
+    /// ([`LapceLanguage::comment_tokens_are_regional`]) pays for regions:
+    ///
+    /// * Reuse: the asynchronously maintained snapshot is valid for the
+    ///   current buffer revision (the common case - painting caught up), so
+    ///   it is reused with no new lexing;
+    /// * FreshLex: otherwise the CURRENT buffer is highlighted once,
+    ///   synchronously, bounded to `MAX_SYNC_COMMENT_LEX_BYTES`;
+    /// * Veto: a stale snapshot past that bound makes the toggle a no-op
+    ///   rather than risk stale region spans or an unbounded lex.
+    fn comment_token_resolver(
+        cmd: &EditCommand,
+        syntax: &Syntax,
+        buffer: &Buffer,
+    ) -> Box<dyn Fn(usize) -> (&'static str, &'static str)> {
+        let language = syntax.language;
+        let snapshot_current = syntax.rev == buffer.rev() && syntax.lexilla.is_some();
+        match Self::comment_token_source(cmd, language, snapshot_current, buffer.text().len())
+        {
+            CommentTokenSource::Global => {
+                let global = language.comment_tokens();
+                Box::new(move |_| global)
+            }
+            CommentTokenSource::ReuseSnapshot => {
+                let snapshot = syntax.lexilla.clone().expect("current implies present");
+                Box::new(move |offset| {
+                    language.comment_tokens_at(Some(snapshot.as_ref()), offset)
+                })
+            }
+            CommentTokenSource::FreshLex => {
+                Self::fresh_comment_token_resolver(language, buffer.text(), &syntax.project)
+            }
+            CommentTokenSource::Veto => Box::new(|_| ("", "")),
+        }
+    }
+
+    /// Picks how `comment_token_resolver` obtains region information. Kept
+    /// separate so the cost gating is directly testable.
+    fn comment_token_source(
+        cmd: &EditCommand,
+        language: LapceLanguage,
+        snapshot_current: bool,
+        text_len: usize,
+    ) -> CommentTokenSource {
+        if !matches!(cmd, EditCommand::ToggleLineComment)
+            || !language.comment_tokens_are_regional()
+        {
+            return CommentTokenSource::Global;
+        }
+        if snapshot_current {
+            return CommentTokenSource::ReuseSnapshot;
+        }
+        if text_len <= Self::MAX_SYNC_COMMENT_LEX_BYTES {
+            return CommentTokenSource::FreshLex;
+        }
+        CommentTokenSource::Veto
+    }
+
+    /// Comment-delimiter resolver from a FRESH highlight of the given text.
+    /// Region spans and style bytes are only valid for the exact text they
+    /// were lexed from, so this is the safe answer when the asynchronously
+    /// maintained `syntax.lexilla` snapshot may lag an edit or a language
+    /// switch.
+    fn fresh_comment_token_resolver(
+        language: LapceLanguage,
+        text: &Rope,
+        project: &lapce_core::project_profile::ProjectProfile,
+    ) -> Box<dyn Fn(usize) -> (&'static str, &'static str)> {
+        let snapshot = lapce_core::lexilla::highlight_profile(language, text, project);
+        Box::new(move |offset| {
+            language.comment_tokens_at(snapshot.as_deref(), offset)
+        })
+    }
+}
+
+/// How the comment-toggle resolver obtains region information; see
+/// `Doc::comment_token_source`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommentTokenSource {
+    /// Language-wide token; no snapshot consulted. Zero cost.
+    Global,
+    /// The async snapshot is valid for the current buffer revision: reuse it.
+    ReuseSnapshot,
+    /// Snapshot missing or stale, buffer within the synchronous-lex bound.
+    FreshLex,
+    /// Region resolution required but unavailable within the cost bound:
+    /// every line reports unresolvable, so the whole toggle is a no-op.
+    Veto,
+}
+
 impl std::fmt::Debug for Doc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&format!("Document {:?}", self.buffer_id))
@@ -2603,8 +2706,10 @@ mod toggle_comment_tests {
         command::EditCommand,
         cursor::{Cursor, CursorMode},
         editor::{Action, EditConf},
+        language::LapceLanguage,
         register::{Clipboard, Register},
         selection::Selection,
+        syntax::Syntax,
     };
 
     struct NoClipboard;
@@ -2615,11 +2720,17 @@ mod toggle_comment_tests {
         fn put_string(&mut self, _s: impl AsRef<str>) {}
     }
 
-    fn toggle(text: &str, start: &'static str, end: &'static str) -> String {
+    fn toggle_range(
+        text: &str,
+        sel: (usize, usize),
+        comment_tokens: &dyn Fn(usize) -> (&'static str, &'static str),
+    ) -> String {
         let mut buffer = Buffer::new(text);
-        let len = buffer.len();
-        let mut cursor =
-            Cursor::new(CursorMode::Insert(Selection::region(0, len)), None, None);
+        let mut cursor = Cursor::new(
+            CursorMode::Insert(Selection::region(sel.0, sel.1)),
+            None,
+            None,
+        );
         let mut register = Register::default();
         Action::do_edit(
             &mut cursor,
@@ -2628,8 +2739,7 @@ mod toggle_comment_tests {
             &mut NoClipboard,
             &mut register,
             EditConf {
-                comment_token: start,
-                comment_token_end: end,
+                comment_tokens,
                 modal: false,
                 smart_tab: false,
                 keep_indent: true,
@@ -2637,6 +2747,244 @@ mod toggle_comment_tests {
             },
         );
         buffer.text().to_string()
+    }
+
+    fn toggle(text: &str, start: &'static str, end: &'static str) -> String {
+        toggle_range(text, (0, text.len()), &move |_: usize| (start, end))
+    }
+
+    #[test]
+    fn toggle_leaves_region_crossing_selection_unchanged() {
+        // A selection covering template AND script lines resolves two token
+        // pairs. Wrapping each line with its region's delimiters cannot
+        // round-trip (commenting the boundary tags destroys the region on
+        // the fresh snapshot and strands the inner lines), so the whole
+        // toggle is a no-op: the user toggles one region at a time.
+        let vue = "<template>\n  <p>x</p>\n</template>\n<script>\nlet a = 1\n</script>\n";
+        let snapshot = lapce_core::lexilla::highlight(LapceLanguage::Vue, &vue.into()).unwrap();
+        let result = toggle_range(vue, (0, vue.len()), &|offset| {
+            LapceLanguage::Vue.comment_tokens_at(Some(snapshot.as_ref()), offset)
+        });
+        assert_eq!(result, vue);
+    }
+
+    #[test]
+    fn toggle_round_trips_homogeneous_region_selections() {
+        let vue = "<template>\n  <p>x</p>\n</template>\n<script>\nlet a = 1\n</script>\n";
+        let toggle = |text: &str, sel: (usize, usize)| -> String {
+            let snapshot =
+                lapce_core::lexilla::highlight(LapceLanguage::Vue, &text.into()).unwrap();
+            toggle_range(text, sel, &|offset| {
+                LapceLanguage::Vue.comment_tokens_at(Some(snapshot.as_ref()), offset)
+            })
+        };
+        // Template region only: markup pair, restored exactly by a second
+        // toggle (commented markup repaints SCE_H_COMMENT, still markup).
+        let template_end = vue.find("</template>").unwrap() + "</template>".len();
+        let commented = toggle(vue, (0, template_end));
+        assert_eq!(
+            commented,
+            "<!-- <template> -->\n<!--   <p>x</p> -->\n<!-- </template> -->\n<script>\nlet a = 1\n</script>\n"
+        );
+        assert_eq!(toggle(&commented, (0, template_end + 14)), vue);
+        // Script body only: "//", restored exactly on the fresh snapshot
+        // where the line paints SCE_HJ_COMMENTLINE (43), still the script
+        // region because the boundary tags were never touched.
+        let js_start = vue.find("let a").unwrap();
+        let js_end = js_start + "let a = 1".len();
+        let commented = toggle(vue, (js_start, js_end));
+        assert_eq!(
+            commented,
+            "<template>\n  <p>x</p>\n</template>\n<script>\n// let a = 1\n</script>\n"
+        );
+        assert_eq!(toggle(&commented, (js_start, js_end + 3)), vue);
+    }
+
+    #[test]
+    fn toggle_leaves_style_block_and_text_selections_unchanged() {
+        // A whole <style> block crosses regions (markup tags + CSS body) and
+        // plain text has no region: both selections are full no-ops, never
+        // partial edits.
+        let toggle = |text: &str| -> String {
+            let snapshot =
+                lapce_core::lexilla::highlight(LapceLanguage::Html, &text.into()).unwrap();
+            toggle_range(text, (0, text.len()), &|offset| {
+                LapceLanguage::Html.comment_tokens_at(Some(snapshot.as_ref()), offset)
+            })
+        };
+        let style_block = "<style>\np { color: red }\n</style>\n";
+        assert_eq!(toggle(style_block), style_block);
+        let with_text = "<p>x</p>\nplain text\n<p>y</p>\n";
+        assert_eq!(toggle(with_text), with_text);
+    }
+
+    #[test]
+    fn toggle_round_trips_css_body_with_css_block_comment() {
+        // The embed_web span is a reliable CSS signal: a CSS-body-only
+        // selection toggles with the CSS block comment and the second toggle
+        // (fresh snapshot, span re-detected from the tag structure) restores
+        // byte-for-byte.
+        let doc = "<style>\np { color: red }\n</style>\n";
+        let body_start = doc.find("p { color").unwrap();
+        let body_end = body_start + "p { color: red }".len();
+        let toggle = |text: &str| -> String {
+            let snapshot =
+                lapce_core::lexilla::highlight(LapceLanguage::Html, &text.into()).unwrap();
+            toggle_range(text, (body_start, body_end), &|offset| {
+                LapceLanguage::Html.comment_tokens_at(Some(snapshot.as_ref()), offset)
+            })
+        };
+        let commented = toggle(doc);
+        assert_eq!(commented, "<style>\n/* p { color: red } */\n</style>\n");
+        assert_eq!(toggle(&commented), doc);
+    }
+
+    #[test]
+    fn resolver_uses_fresh_text_when_buffer_edited_before_relex() {
+        // The asynchronously maintained syntax snapshot lags edits; the
+        // production resolver is rebuilt from the CURRENT buffer text at
+        // toggle time, so an edit-before-relex cannot strand stale regions.
+        let before = lapce_xi_rope::Rope::from("<p>x</p>\n");
+        let resolver =
+            super::Doc::fresh_comment_token_resolver(LapceLanguage::Html, &before, &Default::default());
+        assert_eq!(resolver(0), ("<!--", "-->"));
+        let after = lapce_xi_rope::Rope::from("<script>\nlet a = 1\n</script>\n");
+        let resolver =
+            super::Doc::fresh_comment_token_resolver(LapceLanguage::Html, &after, &Default::default());
+        let off = after.to_string().find("let a").unwrap();
+        assert_eq!(resolver(off), ("//", ""));
+    }
+
+    #[test]
+    fn resolver_follows_language_switch() {
+        // After a language switch the resolver uses the NEW language with a
+        // fresh snapshot: no stale old-language regions or lexer numbering.
+        let text = lapce_xi_rope::Rope::from("<?php echo 1; ?>\n");
+        let resolver =
+            super::Doc::fresh_comment_token_resolver(LapceLanguage::Php, &text, &Default::default());
+        assert_eq!(resolver(0), ("//", ""));
+        let resolver =
+            super::Doc::fresh_comment_token_resolver(LapceLanguage::Html, &text, &Default::default());
+        assert_eq!(resolver(0), ("", ""));
+    }
+
+    #[test]
+    fn comment_token_source_gates_region_resolution_cost() {
+        use super::CommentTokenSource::*;
+        // Ordinary edits (every keystroke) never lex, even on a regional
+        // language with a stale snapshot: only ToggleLineComment consults
+        // the resolver, so the keystroke path keeps its previous cost.
+        assert_eq!(
+            super::Doc::comment_token_source(
+                &EditCommand::InsertNewLine,
+                LapceLanguage::Html,
+                false,
+                10
+            ),
+            Global
+        );
+        // Toggles on single-syntax languages never need regions.
+        assert_eq!(
+            super::Doc::comment_token_source(
+                &EditCommand::ToggleLineComment,
+                LapceLanguage::Rust,
+                false,
+                10
+            ),
+            Global
+        );
+        // A revision-valid snapshot is reused with no new lexing, at any
+        // size.
+        assert_eq!(
+            super::Doc::comment_token_source(
+                &EditCommand::ToggleLineComment,
+                LapceLanguage::Html,
+                true,
+                usize::MAX
+            ),
+            ReuseSnapshot
+        );
+        // Stale snapshot: a bounded fresh lex for ordinary files...
+        assert_eq!(
+            super::Doc::comment_token_source(
+                &EditCommand::ToggleLineComment,
+                LapceLanguage::Html,
+                false,
+                10
+            ),
+            FreshLex
+        );
+        // ...and a bounded no-op veto past the size cap, never an unbounded
+        // synchronous lex.
+        assert_eq!(
+            super::Doc::comment_token_source(
+                &EditCommand::ToggleLineComment,
+                LapceLanguage::Html,
+                false,
+                (1 << 20) + 1
+            ),
+            Veto
+        );
+    }
+
+    #[test]
+    fn ordinary_edit_resolver_never_lexes() {
+        // Behavioral control for the keystroke path: with no current
+        // snapshot, a non-toggle command resolves with the language-wide
+        // token even where a fresh lex would say otherwise - proof that no
+        // full-file lex ran. The same buffer under ToggleLineComment lexes
+        // fresh and sees the script region.
+        let text = "<script>\nlet a = 1\n</script>\n";
+        let buffer = Buffer::new(text);
+        let mut syntax = Syntax::from_language(LapceLanguage::Html);
+        syntax.rev = buffer.rev().wrapping_add(1); // no snapshot is current
+        let off = text.find("let a").unwrap();
+        let resolver =
+            super::Doc::comment_token_resolver(&EditCommand::InsertNewLine, &syntax, &buffer);
+        assert_eq!(resolver(off), LapceLanguage::Html.comment_tokens());
+        let resolver = super::Doc::comment_token_resolver(
+            &EditCommand::ToggleLineComment,
+            &syntax,
+            &buffer,
+        );
+        assert_eq!(resolver(off), ("//", ""));
+    }
+
+    #[test]
+    fn toggle_reuses_revision_valid_snapshot_without_lexing() {
+        // A snapshot valid for the current buffer revision is reused as-is.
+        // The test deliberately pairs the buffer with a snapshot lexed from
+        // DIFFERENT text so a fresh lex is detectable: reused, offset 10 is
+        // markup (the `<span>` tag in `other`); freshly lexed, it would be
+        // the JavaScript body of the buffer and resolve to `//`.
+        let buffer = Buffer::new("<script>\nlet a = 1\n</script>\n");
+        let other = "<p>xx</p>\n<span>y</span>\n";
+        let mut syntax = Syntax::from_language(LapceLanguage::Html);
+        syntax.rev = buffer.rev();
+        syntax.lexilla = Some(
+            lapce_core::lexilla::highlight(LapceLanguage::Html, &other.into()).unwrap(),
+        );
+        let resolver = super::Doc::comment_token_resolver(
+            &EditCommand::ToggleLineComment,
+            &syntax,
+            &buffer,
+        );
+        assert_eq!(resolver(10), ("<!--", "-->"));
+    }
+
+    #[test]
+    fn toggle_resolves_unlexable_offset_to_veto_not_global() {
+        // A required region lookup that cannot be answered - here an offset
+        // past the highlighted text - must veto the toggle, never fall back
+        // to the language-wide token on mixed content.
+        let text = "<script>\nlet a = 1\n</script>\n";
+        let resolver = super::Doc::fresh_comment_token_resolver(
+            LapceLanguage::Html,
+            &text.into(),
+            &Default::default(),
+        );
+        assert_eq!(resolver(text.len() + 100), ("", ""));
+        assert_ne!(LapceLanguage::Html.comment_tokens().0, "");
     }
 
     #[test]

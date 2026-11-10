@@ -76,7 +76,10 @@ pub fn jsx(source: &str, typescript: bool) -> Option<Snapshot> {
 /// or non-JS scripts (JSON/import maps). Unknown MIME modes stay with the host.
 pub fn embed_web(source: &str, host: &mut Snapshot) {
     let lower = source.to_ascii_lowercase();
-    for (tag, lexer) in [("script", "cpp"), ("style", "css")] {
+    for (tag, lexer, kind) in [
+        ("script", "cpp", lexilla_rs::Embed::Script),
+        ("style", "css", lexilla_rs::Embed::Style),
+    ] {
         let mut cursor = 0;
         while let Some(found) = lower[cursor..].find(&format!("<{tag}")) {
             let start = cursor + found;
@@ -138,6 +141,7 @@ pub fn embed_web(source: &str, host: &mut Snapshot) {
             if let Ok(embedded) =
                 Snapshot::lex_with_properties(lexer, text, words, &properties)
             {
+                host.record_embed(body, end, kind);
                 host.overlay(body, &embedded, false);
             }
             cursor = end;

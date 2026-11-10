@@ -76,10 +76,17 @@ impl EditType {
 }
 
 pub struct EditConf<'a> {
-    pub comment_token: &'a str,
-    /// Closing delimiter for block comments (`-->` for HTML/XML). Empty for
-    /// line-comment languages.
-    pub comment_token_end: &'a str,
+    /// Resolves the comment delimiters (opening, closing) at a byte offset,
+    /// so mixed-content files (HTML/Vue/PHP with embedded JavaScript) toggle
+    /// each line with its own region's syntax. The closing delimiter is
+    /// empty for line-comment languages; an empty opening delimiter means
+    /// "no comment syntax here" and that line is left untouched. Only
+    /// ToggleLineComment consults this resolver, so providers must keep it
+    /// free of lexing work for every other command; for toggles on
+    /// mixed-content languages it must answer from the CURRENT buffer -
+    /// region information lexed from older text picks wrong delimiters for
+    /// an edited buffer.
+    pub comment_tokens: &'a dyn Fn(usize) -> (&'static str, &'static str),
     pub modal: bool,
     pub smart_tab: bool,
     pub keep_indent: bool,
@@ -756,8 +763,7 @@ impl Action {
         clipboard: &mut T,
         register: &mut Register,
         EditConf {
-            comment_token,
-            comment_token_end,
+            comment_tokens,
             modal,
             smart_tab,
             keep_indent,
@@ -906,16 +912,15 @@ impl Action {
                 vec![(text, delta, inval_lines)]
             }
             ToggleLineComment => {
-                if comment_token.is_empty() {
-                    // Languages with no comment syntax (e.g. strict JSON):
-                    // toggling must be a no-op, not an edit.
-                    return Vec::new();
-                }
                 // (line, indent, prefix strip len, suffix strip len, trimmed end offset)
                 let mut lines = HashSet::new();
                 let selection = cursor.edit_selection(buffer);
                 let mut had_comment = true;
                 let mut smallest_indent = usize::MAX;
+                // Set when a nonblank selected line resolves to no region.
+                let mut unresolvable = false;
+                // Distinct token pairs resolved across the selection.
+                let mut pairs = HashSet::new();
                 for region in selection.regions() {
                     let mut line = buffer.line_of_offset(region.min());
                     let end_line = buffer.line_of_offset(region.max());
@@ -933,6 +938,22 @@ impl Action {
                             continue;
                         }
                         let indent = content.len() - trimmed_content.len();
+                        let line_start = buffer.offset_of_line(line);
+                        // Mixed-content files resolve tokens per line, so a
+                        // selection crossing regions never applies one
+                        // region's comment syntax to another region's code.
+                        let (comment_token, comment_token_end) =
+                            comment_tokens(line_start + indent);
+                        if comment_token.is_empty() {
+                            // The lexer cannot place this nonblank line in a
+                            // region: no delimiter is provably safe, and a
+                            // partial edit would leave the buffer
+                            // half-commented, so the whole toggle is a no-op.
+                            unresolvable = true;
+                            line += 1;
+                            continue;
+                        }
+                        pairs.insert((comment_token, comment_token_end));
                         if indent < smallest_indent {
                             smallest_indent = indent;
                         }
@@ -941,8 +962,7 @@ impl Action {
                         // content lengths: the rope lines iterator strips line
                         // endings, so accumulated lengths drift one byte per
                         // line and the closing delimiter lands early.
-                        let trimmed_end =
-                            buffer.offset_of_line(line) + content.trim_end().len();
+                        let trimmed_end = line_start + content.trim_end().len();
                         let has_start = trimmed_content.starts_with(comment_token);
                         let has_end = comment_token_end.is_empty()
                             || (trimmed.len() > comment_token.len() + comment_token_end.len()
@@ -967,6 +987,19 @@ impl Action {
                         }
                         line += 1;
                     }
+                }
+                if unresolvable || pairs.len() != 1 {
+                    // No-op unless the selection is exactly one resolvable
+                    // region: blank-only selections (no pairs), tokenless
+                    // languages (strict JSON), lines the lexer cannot place
+                    // (plain text, <style> CSS bodies), and region-crossing
+                    // selections (e.g. template AND script lines of a Vue
+                    // SFC, where wrapping each line with its region's
+                    // delimiters cannot round-trip because commenting the
+                    // boundary tags destroys the region on the fresh
+                    // snapshot). Only homogeneous selections toggle; the
+                    // user toggles one region at a time.
+                    return Vec::new();
                 }
 
                 let (text, delta, inval_lines) = if had_comment {
@@ -993,39 +1026,41 @@ impl Action {
                     }
                     buffer.edit([(&selection, "")], EditType::ToggleComment)
                 } else {
-                    // Wrap every line with the start and end delimiters.
-                    let mut prefix_points = Vec::new();
-                    let mut suffix_points = Vec::new();
-                    for (line, _, _, _, trimmed_end) in lines.iter() {
-                        prefix_points.push(buffer.offset_of_line(*line) + smallest_indent);
-                        if !comment_token_end.is_empty() {
-                            suffix_points.push(*trimmed_end);
-                        }
-                    }
-                    prefix_points.sort_unstable();
-                    suffix_points.sort_unstable();
+                    // Homogeneous selection: one token pair wraps every
+                    // commentable line. Commented markup repaints as
+                    // SCE_H_COMMENT and commented JavaScript as SCE_HJ_COMMENT*
+                    // on the fresh snapshot, so the same selection resolves
+                    // the same pair again and the second toggle strips
+                    // exactly what the first inserted.
+                    let (start_tok, end_tok) = pairs.iter().next().copied().unwrap();
                     let mut prefix_sel = Selection::new();
+                    let mut prefix_points: Vec<usize> = lines
+                        .iter()
+                        .map(|&(line, _, _, _, _)| {
+                            buffer.offset_of_line(line) + smallest_indent
+                        })
+                        .collect();
+                    prefix_points.sort_unstable();
                     for start in prefix_points {
                         prefix_sel.add_region(SelRegion::new(start, start, None))
                     }
-                    if comment_token_end.is_empty() {
-                        buffer.edit(
-                            [(&prefix_sel, format!("{comment_token} ").as_str())],
-                            EditType::ToggleComment,
-                        )
-                    } else {
+                    let mut edits = vec![(prefix_sel, format!("{start_tok} "))];
+                    if !end_tok.is_empty() {
                         let mut suffix_sel = Selection::new();
+                        let mut suffix_points: Vec<usize> = lines
+                            .iter()
+                            .map(|&(_, _, _, _, trimmed_end)| trimmed_end)
+                            .collect();
+                        suffix_points.sort_unstable();
                         for end in suffix_points {
                             suffix_sel.add_region(SelRegion::new(end, end, None))
                         }
-                        buffer.edit(
-                            [
-                                (&prefix_sel, format!("{comment_token} ").as_str()),
-                                (&suffix_sel, format!(" {comment_token_end}").as_str()),
-                            ],
-                            EditType::ToggleComment,
-                        )
+                        edits.push((suffix_sel, format!(" {end_tok}")));
                     }
+                    buffer.edit(
+                        edits.iter().map(|(sel, text)| (sel, text.as_str())),
+                        EditType::ToggleComment,
+                    )
                 };
                 cursor.apply_delta(&delta);
                 vec![(text, delta, inval_lines)]
