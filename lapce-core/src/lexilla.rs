@@ -514,6 +514,36 @@ mod tests {
     }
 
     #[test]
+    fn php_base_words_are_ascii_case_insensitive_in_both_scanners() {
+        let text = "<?php IF (TRUE) { ECHO STRLEN('λ🙂'); ReTuRn NuLl; } FuNcTiOn test(InT $Value): VoId {} $IF = 'RETURN'; // ECHO\r\nPHP_VERSION; php_version;";
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            assert_eq!(snap.len(), text.len());
+            for needle in ["IF (", "ECHO STRLEN", "ReTuRn", "FuNcTiOn"] {
+                assert_eq!(php_scope_at(&snap, text, needle, 0), Some("keyword"), "{lexer}: {needle}");
+            }
+            assert_eq!(php_scope_at(&snap, text, "STRLEN", 0), Some("function"));
+            for needle in ["TRUE", "NuLl", "InT", "VoId"] {
+                assert_eq!(php_scope_at(&snap, text, needle, 0), Some("type"), "{lexer}: {needle}");
+            }
+            assert_ne!(php_scope_at(&snap, text, "$IF", 0), Some("keyword"));
+            assert_eq!(php_scope_at(&snap, text, "RETURN'", 0), Some("string"));
+            assert_eq!(php_scope_at(&snap, text, "ECHO\r", 0), Some("comment"));
+            let upper = text.find("PHP_VERSION").unwrap();
+            let lower = text.find("php_version").unwrap();
+            assert_ne!(snap.styles()[upper], snap.styles()[lower], "constants remain case-sensitive");
+            let mut custom = lists.to_vec();
+            custom[1] = "MixedCaseFunction";
+            custom[2] = "MixedCaseType";
+            let text = "<?php MIXEDCASEFUNCTION(); mixedcasetype $value;";
+            let snap = Snapshot::lex(lexer, text, &custom).unwrap();
+            assert_eq!(php_scope_at(&snap, text, "MIXEDCASEFUNCTION", 0), Some("function"));
+            assert_eq!(php_scope_at(&snap, text, "mixedcasetype", 0), Some("type"));
+        }
+    }
+
+    #[test]
     fn standalone_php_lexer_covers_modern_php() {
         let t = PHP_FIXTURE;
         let snap =

@@ -268,7 +268,7 @@ Sci_Position SCI_METHOD LexerLaravel::WordListSet(int n, const char *wl) {
 	Sci_Position firstModification = -1;
 	if (n < NUM_LARAVEL_KEYWORD_LISTS) {
 		WordList *wordListN = &keywords[n];
-		if (wordListN->Set(wl)) {
+		if (wordListN->Set(wl, n < 3)) {
 			firstModification = 0;
 		}
 	}
@@ -412,9 +412,11 @@ static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max
 	Sci_Position len = pos - start;
 	len = len > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : len;
 	GrabString(s, styler, start, len);
+	char lower[MAX_LARAVEL_IDENT_CHARS + 1];
+	for (Sci_Position i = 0; i <= len; i++) lower[i] = MakeLowerCase(s[i]);
 
 	for (int ii = 0; ii < NUM_LARAVEL_KEYWORD_LISTS; ii++) {
-		if (keywords[ii].InList(s)) {
+		if (keywords[ii].InList(ii < 3 ? lower : s)) {
 			styler.ColourTo(pos - 1, SCE_LARAVEL_WORD + ii);
 			return;
 		}
@@ -738,6 +740,8 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		Sci_Position len = identEnd - identStart;
 		len = len > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : len;
 		GrabString(s, styler, identStart, len);
+		char lower[MAX_LARAVEL_IDENT_CHARS + 1];
+		for (Sci_Position i = 0; i <= len; i++) lower[i] = MakeLowerCase(s[i]);
 
 		/* Look ahead for "(" (helper) or "::" (facade). */
 		Sci_Position la = identEnd;
@@ -787,7 +791,7 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		/* Fall back to the plain PHP word lists. */
 		bool keyword = false;
 		for (int ii = 0; ii < 4; ii++) {   /* WL_PHP_* */
-			if (keywords[ii].InList(s)) {
+			if (keywords[ii].InList(ii < 3 ? lower : s)) {
 				styler.ColourTo(identEnd - 1, SCE_LARAVEL_WORD + ii);
 				keyword = true;
 				break;

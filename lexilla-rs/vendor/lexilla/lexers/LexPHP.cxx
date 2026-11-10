@@ -199,7 +199,7 @@ Sci_Position SCI_METHOD LexerPHP::WordListSet(int n, const char *wl) {
 	Sci_Position firstModification = -1;
 	if (n < NUM_PHP_KEYWORD_LISTS) {
 		WordList *wordListN = &keywords[n];
-		if (wordListN->Set(wl)) {
+		if (wordListN->Set(wl, n < 3)) {
 			firstModification = 0;
 		}
 	}
@@ -366,9 +366,11 @@ static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max
 	Sci_Position len = pos - start;
 	len = len > MAX_PHP_IDENT_CHARS ? MAX_PHP_IDENT_CHARS : len;
 	GrabString(s, styler, start, len);
+	char lower[MAX_PHP_IDENT_CHARS + 1];
+	for (Sci_Position i = 0; i <= len; i++) lower[i] = MakeLowerCase(s[i]);
 
 	for (int ii = 0; ii < NUM_PHP_KEYWORD_LISTS; ii++) {
-		if (keywords[ii].InList(s)) {
+		if (keywords[ii].InList(ii < 3 ? lower : s)) {
 			styler.ColourTo(pos - 1, SCE_PHP_WORD + ii);
 			return;
 		}
