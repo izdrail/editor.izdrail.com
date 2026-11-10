@@ -1005,6 +1005,8 @@ const LANGUAGES: &[SyntaxProperties] = &[
             ".env.production",
             ".env.test",
             ".env.staging",
+            // INI format (editorconfig.org); shipped in the Laravel skeleton.
+            ".editorconfig",
         ],
         extensions: &["ini", "env", "properties"],
         comment: comment_properties!("#"),
@@ -2292,6 +2294,21 @@ mod tests {
         assert_eq!(
             LapceLanguage::from_path(&PathBuf::from("package.json")),
             LapceLanguage::Json,
+        );
+    }
+
+    #[test]
+    fn editorconfig_routes_to_ini() {
+        // editorconfig.org: "EditorConfig files use an INI format"; the
+        // Laravel skeleton ships one. A leading dot leaves no extension, so
+        // it needs the exact-filename match.
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from(".editorconfig")),
+            LapceLanguage::Ini,
+        );
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("app/.editorconfig")),
+            LapceLanguage::Ini,
         );
     }
 
