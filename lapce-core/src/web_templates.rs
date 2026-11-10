@@ -71,6 +71,58 @@ pub fn jsx(source: &str, typescript: bool) -> Option<Snapshot> {
     Some(host)
 }
 
+/// Read an opening tag without letting a quoted `>` end it early. Attribute
+/// names are exact tokens, not substring matches inside data-* or values.
+fn web_tag_attributes(source: &str, after: usize) -> Option<(usize, Vec<(&str, &str)>)> {
+    let bytes = source.as_bytes();
+    let mut i = after;
+    let mut attributes = Vec::new();
+    while i < bytes.len() {
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) { i += 1; }
+        match bytes.get(i)? {
+            b'>' => return Some((i + 1, attributes)),
+            b'/' => { i += 1; continue; }
+            _ => {}
+        }
+        let start = i;
+        while bytes.get(i).is_some_and(|b| !b.is_ascii_whitespace() && !matches!(b, b'=' | b'>' | b'/')) { i += 1; }
+        if i == start { return None; }
+        let name = &source[start..i];
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) { i += 1; }
+        let mut value = "";
+        if bytes.get(i) == Some(&b'=') {
+            i += 1;
+            while bytes.get(i).is_some_and(u8::is_ascii_whitespace) { i += 1; }
+            let quote = bytes.get(i).copied()?;
+            if matches!(quote, b'\'' | b'"') {
+                i += 1;
+                let start = i;
+                while bytes.get(i).is_some_and(|b| *b != quote) { i += 1; }
+                bytes.get(i)?;
+                value = &source[start..i];
+                i += 1;
+            } else {
+                let start = i;
+                while bytes.get(i).is_some_and(|b| !b.is_ascii_whitespace() && *b != b'>') { i += 1; }
+                value = &source[start..i];
+            }
+        }
+        // HTML keeps the first duplicate attribute.
+        if !attributes.iter().any(|(key, _)| *key == name) { attributes.push((name, value)); }
+    }
+    None
+}
+
+fn web_script_type(value: &str) -> bool {
+    matches!(value.trim_matches(|c: char| c.is_ascii_whitespace()),
+        "" | "module" | "text/javascript" | "application/javascript"
+        | "application/ecmascript" | "text/ecmascript" | "application/x-javascript"
+        | "application/x-ecmascript" | "text/jscript" | "text/livescript"
+        | "text/x-javascript" | "text/x-ecmascript"
+        | "text/javascript1.0" | "text/javascript1.1" | "text/javascript1.2"
+        | "text/javascript1.3" | "text/javascript1.4" | "text/javascript1.5")
+}
+
 /// Lexilla's HTML lexer handles script regions but not modern CSS. Delegate
 /// recognised inline JS/CSS bodies. Do not overwrite PHP/Blade/Twig constructs
 /// or non-JS scripts (JSON/import maps). Unknown MIME modes stay with the host.
@@ -97,21 +149,19 @@ pub fn embed_web(source: &str, host: &mut Snapshot) {
                 cursor = after;
                 continue;
             }
-            let Some(end_tag) = lower[after..].find('>') else {
+            let Some((body, attrs)) = web_tag_attributes(&lower, after) else {
                 break;
             };
-            let body = after + end_tag + 1;
             let Some(close) = lower[body..].find(&format!("</{tag}")) else {
                 break;
             };
             let end = body + close;
-            let attrs = &lower[after..body];
-            if attrs.contains("src=")
-                || (attrs.contains("type=")
-                    && !attrs.contains("javascript")
-                    && !attrs.contains("module")
-                    && !attrs.contains("text/css"))
-            {
+            let attribute = |name| attrs.iter().find(|(key, _)| *key == name).map(|(_, value)| *value);
+            let supported = attribute("type").is_none_or(|value| {
+                if tag == "script" { web_script_type(value) }
+                else { matches!(value.trim_matches(|c: char| c.is_ascii_whitespace()), "" | "text/css") }
+            });
+            if (tag == "script" && attribute("src").is_some()) || !supported {
                 cursor = end;
                 continue;
             }
@@ -155,6 +205,29 @@ mod tests {
     fn scope(s: &Snapshot, t: &str, word: &str) -> Option<&'static str> {
         s.scope(s.styles()[t.find(word).unwrap()])
     }
+    #[test]
+    fn embedded_web_types_use_real_attributes_not_substrings() {
+        use crate::language::LapceLanguage;
+        use lapce_xi_rope::Rope;
+        for attrs in ["type = 'application/ld+json'", "TYPE=importmap", "type = speculationrules", "type='application/not-javascript'", "type='text/javascript; charset=utf-8'", "src = 'external.js'"] {
+            let text = format!("<script {attrs}>const value = 42;</script>");
+            let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text.as_str())).unwrap();
+            assert_eq!(snap.embed_at(text.find("const").unwrap()), None, "{attrs}");
+        }
+        for attrs in ["type = 'module'", "TYPE = \"text/javascript\"", "data-type='importmap'", "data-src='external.js'", "title='a > b' type=module", "type=''", "type='module' type='importmap'"] {
+            let text = format!("<script {attrs}>const value = 42;</script>");
+            let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text.as_str())).unwrap();
+            assert_eq!(snap.embed_at(text.find("const").unwrap()), Some(lexilla_rs::Embed::Script), "{attrs}");
+            assert_eq!(scope(&snap, &text, "const"), Some("keyword"));
+        }
+        for (attrs, expected) in [("type = 'text/css'", Some(lexilla_rs::Embed::Style)), ("type='text/less'", None), ("type='text/css-module'", None)] {
+            let text = format!("<style {attrs}>body {{ color: red; }}</style>");
+            let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text.as_str())).unwrap();
+            assert_eq!(snap.embed_at(text.find("color").unwrap()), expected, "{attrs}");
+        }
+        assert!(web_tag_attributes("<script title='unfinished", 7).is_none());
+    }
+
     #[test]
     fn twig_regions_quotes_verbatim_and_embeddings() {
         let t = "<div>{{- user.name|upper -}}</div>{% if x is defined %}{# {{ hidden }} #}{% endif %}\n{{ {'x': '}}'} }}\n{% verbatim %}{{ untouched }}{% endverbatim %}\n<script>const x = `hi`;</script><style>body { color: red; }</style>";
