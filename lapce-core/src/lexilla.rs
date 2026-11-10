@@ -209,6 +209,8 @@ pub fn highlight_profile(
         Ok(mut snapshot) => {
             if matches!(language, Blade | Html | Php) {
                 crate::web_templates::embed_web(&source, &mut snapshot);
+            } else if language == Vue {
+                crate::web_templates::embed_vue(&source, &mut snapshot);
             }
             Some(Arc::new(snapshot))
         }

@@ -146,6 +146,16 @@ fn web_end_tag(source: &str, body: usize, tag: &str) -> Option<usize> {
 /// recognised inline JS/CSS bodies. Do not overwrite PHP/Blade/Twig constructs
 /// or non-JS scripts (JSON/import maps). Unknown MIME modes stay with the host.
 pub fn embed_web(source: &str, host: &mut Snapshot) {
+    embed_web_mode(source, host, false);
+}
+
+/// Vue SFC blocks opt into their declared JS/TS and CSS/SCSS preprocessors.
+/// Other preprocessors and externally sourced blocks stay with the host.
+pub fn embed_vue(source: &str, host: &mut Snapshot) {
+    embed_web_mode(source, host, true);
+}
+
+fn embed_web_mode(source: &str, host: &mut Snapshot, vue: bool) {
     let lower = source.to_ascii_lowercase();
     for (tag, lexer, kind) in [
         ("script", "cpp", lexilla_rs::Embed::Script),
@@ -179,7 +189,13 @@ pub fn embed_web(source: &str, host: &mut Snapshot) {
                 if tag == "script" { web_script_type(value) }
                 else { matches!(value.trim_matches(|c: char| c.is_ascii_whitespace()), "" | "text/css") }
             });
-            if (tag == "script" && attribute("src").is_some()) || !supported {
+            let lang = attribute("lang").unwrap_or("");
+            let typescript = vue && tag == "script" && matches!(lang, "ts" | "typescript");
+            let scss = vue && tag == "style" && lang == "scss";
+            let supported_lang = !vue || if tag == "script" {
+                matches!(lang, "" | "js" | "javascript" | "ts" | "typescript")
+            } else { matches!(lang, "" | "css" | "scss") };
+            if ((tag == "script" || vue) && attribute("src").is_some()) || !supported || !supported_lang {
                 cursor = end;
                 continue;
             }
@@ -189,17 +205,21 @@ pub fn embed_web(source: &str, host: &mut Snapshot) {
             if text.contains("{{")
                 || text.contains("{!!")
                 || text.contains("<?")
-                || (tag == "script" && text.contains('@'))
+                || (!vue && tag == "script" && text.contains('@'))
             {
                 cursor = end;
                 continue;
             }
             let properties = if lexer == "cpp" {
                 vec![Property::Javascript(true)]
+            } else if scss {
+                vec![Property::Scss(true)]
             } else {
                 Vec::new()
             };
-            let words: &[&str] = if lexer == "cpp" {
+            let words: &[&str] = if typescript {
+                &[crate::lexilla::TYPESCRIPT_KEYWORDS]
+            } else if lexer == "cpp" {
                 &[
                     "async await break case catch class const continue debugger default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof var void while with yield",
                 ]
@@ -241,6 +261,39 @@ mod tests {
         assert_eq!(web_end_tag("</scripture>", 0, "script"), None);
         // A genuine close tag is HTML syntax even when JS sees a quote.
         assert_eq!(web_end_tag("let s = '</script>';", 0, "script"), Some(9));
+    }
+
+    #[test]
+    fn vue_blocks_honor_typescript_scss_and_preprocessor_guards() {
+        use crate::language::LapceLanguage;
+        use lapce_xi_rope::Rope;
+        let text = "<template><div>{{ title }}</div></template>\r\n<script setup lang='ts'>import CardView from '@/Card.vue'; interface Card { title: string } const title: string = 'λ🙂';</script><style scoped lang='scss'>$accent: green; .card { color: $accent; &:hover { display: grid; } }</style>";
+        let snap = crate::lexilla::highlight(LapceLanguage::Vue, &Rope::from(text)).unwrap();
+        assert_eq!(snap.len(), text.len());
+        assert_eq!(scope(&snap, text, "interface"), Some("keyword"));
+        assert_eq!(scope(&snap, text, "string"), Some("keyword"));
+        assert_eq!(snap.embed_at(text.find("interface").unwrap()), Some(lexilla_rs::Embed::Script));
+        assert_eq!(snap.embed_at(text.find("color").unwrap()), Some(lexilla_rs::Embed::Style));
+        assert_eq!(LapceLanguage::Vue.comment_tokens_at(Some(&snap), text.find("color").unwrap()), ("/*", "*/"));
+        assert_eq!(LapceLanguage::Vue.comment_tokens_at(Some(&snap), text.find("interface").unwrap()), ("//", ""));
+        assert_eq!(snap.embed_at(text.find("{{ title").unwrap()), None);
+        let css_text = "$accent: green; .card { color: $accent; &:hover { display: grid; } }";
+        let css = Snapshot::lex_with_properties("css", css_text, &[], &[Property::Scss(true)]).unwrap();
+        let start = text.find("$accent").unwrap();
+        for i in 0..css_text.len() { assert_eq!(snap.scope(snap.styles()[start+i]), css.scope(css.styles()[i])); }
+        for text in ["<script lang='coffee'>const value = 42;</script>", "<style lang='sass'>.card { color: red; }</style>", "<style src='./card.css'>.card { color: red; }</style>", "<script src='./card.ts' lang='ts'>const value = 42;</script>"] {
+            let snap = crate::lexilla::highlight(LapceLanguage::Vue, &Rope::from(text)).unwrap();
+            assert_eq!(snap.embed_at(text.find('>').unwrap()+1), None, "{text}");
+        }
+        for lang in ["", "js", "javascript", "ts", "typescript"] {
+            let text = format!("<script setup lang='{lang}'>const value = 42;");
+            let snap = crate::lexilla::highlight(LapceLanguage::Vue, &Rope::from(text.as_str())).unwrap();
+            assert_eq!(snap.embed_at(text.find("const").unwrap()), Some(lexilla_rs::Embed::Script));
+        }
+        // HTML lang attributes are not Vue preprocessor declarations.
+        let text = "<script lang='ts'>interface Card {}</script>";
+        let html = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text)).unwrap();
+        assert_ne!(scope(&html, text, "interface"), Some("keyword"));
     }
 
     #[test]
