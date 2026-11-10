@@ -4,10 +4,24 @@
 set -euo pipefail
 name="editor-abi-${GITHUB_RUN_ID:-local}-$$"
 container=''
-cleanup() { if [ -n "$container" ]; then docker rm -f "$container" >/dev/null; fi; }
+watchdog=''
+cleanup() { if [ -n "$watchdog" ]; then kill "$watchdog" 2>/dev/null || true; fi; if [ -n "$container" ]; then docker rm -f "$container" >/dev/null; fi; }
 trap cleanup EXIT INT TERM
 container=$(docker create --name "$name" --workdir /src ubuntu:22.04 sleep infinity)
 docker start "$container" >/dev/null
+# The runner filesystem is on dell root. Stop only this build if the
+# approved 30 GiB floor is crossed, even during a long compiler step.
+(
+  while sleep 5; do
+    free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+    if [ "$free_kb" -lt 31457280 ]; then
+      echo "Disk floor crossed: stopping this build container" >&2
+      docker stop -t 5 "$container" >/dev/null
+      exit 1
+    fi
+  done
+) &
+watchdog=$!
 # git archive excludes local caches, credentials and .git.
 git archive HEAD | docker cp - "$container:/src"
 docker exec "$container" bash -euo pipefail -c '
@@ -16,7 +30,7 @@ docker exec "$container" bash -euo pipefail -c '
   curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0 --profile minimal
   export PATH=/root/.cargo/bin:$PATH
   cargo build --release --locked
-  ldd --version | head -n 1
+  ldd --version | sed -n "1p"
   target/release/lapce --version
   target/release/lapce-proxy --version
 '

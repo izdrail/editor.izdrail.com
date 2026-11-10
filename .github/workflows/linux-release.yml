@@ -50,3 +50,7 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" "$ARTIFACT" "$ARTIFACT.sha256" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
           fi
+
+      - name: Remove this build's copied binaries
+        if: always()
+        run: rm -rf -- target/ubuntu-22.04

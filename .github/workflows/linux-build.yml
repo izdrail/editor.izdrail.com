@@ -56,3 +56,7 @@ jobs:
             ${{ env.ARTIFACT }}.sha256
           if-no-files-found: error
           retention-days: 30
+
+      - name: Remove this build's copied binaries
+        if: always()
+        run: rm -rf -- target/ubuntu-22.04
