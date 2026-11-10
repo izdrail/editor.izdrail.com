@@ -7936,6 +7936,16 @@ Gate::define(\"buy-cd\", 'shop.buy');
     }
 
     #[test]
+    fn php_path_gate_for_cli_completion_and_local_hover() {
+        for path in ["artisan", "app/artisan", "bin/console", "app/bin/console", "probe.php", "probe.PHP", "index.blade.php"] {
+            assert!(php_completion_path(Path::new(path)), "{path}");
+        }
+        for path in ["console", "scripts/console", "artisan.txt", "ARTISAN", "bin/Console", "notes.txt", "page.twig"] {
+            assert!(!php_completion_path(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
     fn name_replacement_kinds_are_php_file_only() {
         // The item 411 mismatch: a .txt buffer used to offer the
         // same whole-name items whose replacement is PHP-gated.

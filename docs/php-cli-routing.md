@@ -9,3 +9,5 @@ Source examples checked: https://github.com/laravel/laravel/blob/12.x/artisan an
 Project completion follows the same PHP/Blade path routing. In `artisan` and `bin/console`, the popup can offer project names inside helper calls, including on an empty opening quote. Accepting `reports:send` over `reports:s` or `app.name` over `app.na` replaces the whole name, rather than adding a duplicate prefix. Bare `console`, `scripts/console` and other unknown extensionless files keep the non-PHP gate.
 
 Go to Definition also uses PHP path routing for local `view(...)`, Twig `render(...)` and `asset(...)` references in these CLI scripts. It keeps the existing bounded static resolver and path checks, without running PHP or requiring a language server. Unknown extensionless `console` files do not gain these lookups.
+
+Local hover for `config(...)` / translation keys and `Artisan::call(...)` / scheduled command names is also available in recognized PHP CLI files. It uses the existing static project index and the same PHP/Blade filename gate as completion. This does not start or require a PHP language server.

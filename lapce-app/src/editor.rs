@@ -4810,7 +4810,7 @@ impl EditorData {
         }
         // `config('app.name')` / `__('messages.welcome')` under the cursor:
         // the value from the config or lang file, no language server.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
@@ -4946,7 +4946,7 @@ impl EditorData {
         // A console command name under the cursor (`Artisan::call('...')`,
         // `$schedule->command('...')`): signature, description and source
         // line, no language server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
