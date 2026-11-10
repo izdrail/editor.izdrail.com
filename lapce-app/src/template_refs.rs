@@ -204,7 +204,11 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathB
     let name = file.file_name()?.to_str()?;
     let blade = name.ends_with(".blade.php");
     let twig = name.ends_with(".twig");
-    let php = name.ends_with(".php");
+    let php = matches!(
+        lapce_core::language::LapceLanguage::from_path_raw(file),
+        Some(lapce_core::language::LapceLanguage::Php
+            | lapce_core::language::LapceLanguage::Blade)
+    );
     if !(blade || twig || php) {
         return None;
     }
@@ -262,6 +266,23 @@ mod tests {
 
     fn at(line: &str, needle: &str) -> usize {
         line.find(needle).unwrap() + 1
+    }
+
+    #[test]
+    fn php_cli_templates_use_the_same_path_routing_as_syntax() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let view = touch(r, "resources/views/reports/index.blade.php");
+        let twig = touch(r, "templates/reports/index.html.twig");
+        let line = "view('reports.index')";
+        let render = "$twig->render('reports/index.html.twig')";
+        for name in ["artisan", "project/artisan", "bin/console", "project/bin/console"] {
+            assert_eq!(resolve(r, Path::new(name), line, at(line, "reports")), Some(view.clone()), "{name}");
+            assert_eq!(resolve(r, Path::new(name), render, at(render, "reports")), Some(twig.clone()), "{name}");
+        }
+        for name in ["console", "scripts/console", "ARTISAN", "notes.txt"] {
+            assert_eq!(resolve(r, Path::new(name), line, at(line, "reports")), None, "{name}");
+        }
     }
 
     #[test]

@@ -85,7 +85,12 @@ fn plain_file(root: &Path, rel: &str) -> Option<PathBuf> {
 /// The asset file named by the string under byte `col` of `line`.
 pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathBuf> {
     let name = file.file_name()?.to_str()?;
-    if !(name.ends_with(".php") || name.ends_with(".twig") || name.ends_with(".html")) {
+    let php = matches!(
+        lapce_core::language::LapceLanguage::from_path_raw(file),
+        Some(lapce_core::language::LapceLanguage::Php
+            | lapce_core::language::LapceLanguage::Blade)
+    );
+    if !(php || name.ends_with(".twig") || name.ends_with(".html")) {
         return None;
     }
     let col = clamp_col(line, col);
@@ -113,6 +118,20 @@ mod tests {
 
     fn at(line: &str, needle: &str) -> usize {
         line.find(needle).unwrap() + 1
+    }
+
+    #[test]
+    fn php_cli_assets_use_the_same_path_routing_as_syntax() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let css = touch(r, "public/css/app.css");
+        let line = "asset('css/app.css')";
+        for name in ["artisan", "project/artisan", "bin/console", "project/bin/console"] {
+            assert_eq!(resolve(r, Path::new(name), line, at(line, "css/")), Some(css.clone()), "{name}");
+        }
+        for name in ["console", "scripts/console", "ARTISAN", "notes.txt"] {
+            assert_eq!(resolve(r, Path::new(name), line, at(line, "css/")), None, "{name}");
+        }
     }
 
     #[test]
