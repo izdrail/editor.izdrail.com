@@ -5,10 +5,9 @@ use lapce_xi_rope::Rope;
 use lexilla_rs::Snapshot;
 use std::sync::Arc;
 
-/// Pure-PHP files (content starts with `<?php`, after optional BOM and
-/// whitespace) use the standalone `php` lexer (LexPHP.cxx). Everything else,
-/// including `.php` templates that start with HTML, keeps the `hypertext`
-/// lexer, because the standalone one colours inline HTML as a single style.
+/// PHP files starting with `<?php` (after optional BOM, whitespace and
+/// shebang) use the standalone lexer unless they emit non-whitespace inline
+/// HTML. Mixed templates use hypertext so HTML/script/style keep their scopes.
 pub fn is_pure_php(source: &str) -> bool {
     let s = source.trim_start_matches('\u{feff}').trim_start();
     // PHP CLI entry scripts (Laravel's artisan, Symfony's bin/console) start
@@ -18,7 +17,29 @@ pub fn is_pure_php(source: &str) -> bool {
         .and_then(|rest| rest.split_once('\n').map(|(_, after)| after))
         .map(str::trim_start)
         .unwrap_or(s);
-    s.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("<?php"))
+    if !s.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("<?php")) {
+        return false;
+    }
+    // Most source files never close PHP, so avoid a second lex there. A
+    // literal substring is not enough: strings, block comments and heredocs
+    // can contain ?> without leaving PHP. Reuse the standalone lexer's
+    // close-tag and inline-HTML states rather than another PHP scanner.
+    if !s.contains("?>") {
+        return true;
+    }
+    let Ok(snapshot) = Snapshot::lex("php", s, &[]) else {
+        return false;
+    };
+    let mut closed = false;
+    for (byte, style) in s.bytes().zip(snapshot.styles().iter().copied()) {
+        if style == 20 { // SCE_PHP_CLOSE_TAG
+            closed = true;
+        }
+        if closed && style == 21 && !byte.is_ascii_whitespace() {
+            return false;
+        }
+    }
+    true
 }
 
 /// Word lists for the `laravel` lexer: the four PHP lists, then facades, route
@@ -566,6 +587,35 @@ mod tests {
         // template: still highlighted through hypertext
         let tpl = "<p>x</p>\n<?php echo 1; ?>";
         assert!(highlight(LapceLanguage::Php, &Rope::from(tpl)).is_some());
+    }
+
+    #[test]
+    fn php_first_templates_route_by_real_inline_html_not_tag_substrings() {
+        for source in [
+            "<?php $x = 1; ?>\n<section class=\"content\">Hello</section>",
+            "#!/usr/bin/env php\n<?php echo 1; ?>\n<div>CLI output</div>",
+            "<?php // closes the PHP region ?>\n<div>Output</div>",
+            "<?php echo 1; ?>plain text",
+        ] {
+            assert!(!is_pure_php(source), "{source}");
+        }
+        for source in [
+            "<?php echo '?>';",
+            "<?php echo \"?>\";",
+            "<?php /* ?> */ echo 1;",
+            "<?php $x = <<<'END'\n?>\nEND;\n",
+            "<?php $x = <<<END\n?>\nEND;\n",
+            "<?php echo 1; ?>\r\n  ",
+            "<?php echo 1; ?>\n<?php echo 2;",
+        ] {
+            assert!(is_pure_php(source), "{source}");
+        }
+        let source = "<?php $title = 'Hello'; ?>\n<section class=\"content\">Hello</section>";
+        for laravel in [false, true] {
+            let snapshot = highlight_in(LapceLanguage::Php, &Rope::from(source), laravel).unwrap();
+            let tag = source.find("section").unwrap();
+            assert_eq!(snapshot.scope(snapshot.styles()[tag]), Some("tag"));
+        }
     }
 
     const LARAVEL_FIXTURE: &str = "<?php\nnamespace App\\Http;\n#[Middleware('auth')]\nRoute::middleware('auth')->get('/home', fn () => view('home'));\nRoute::get('/x', [UserController::class, 'index'])->middleware(['verified', 'throttle:60,1']);\n$users = User::where('active', 1)->get();\n$c = config('auth');\n$s = $this->guard('web');\n$h = <<<EOT\n  Hello {$name}\n  EOT;\nArtisan::call('migrate:fresh');\n// php artisan make:model Post\nmake:model;\n$a = $x ? a:b : 1;\n";
