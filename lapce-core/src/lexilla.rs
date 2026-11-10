@@ -136,7 +136,7 @@ pub fn highlight_profile(
             ],
         ),
         Css | Scss => ("css", &[]),
-        Json | Json5 => ("json", &["false null true"]),
+        Json | Json5 | Jsonc => ("json", &["false null true"]),
         Bash => (
             "bash",
             &[
@@ -171,6 +171,8 @@ pub fn highlight_profile(
     let properties = match language {
         Scss => vec![lexilla_rs::Property::Scss(true)],
         Json5 => vec![lexilla_rs::Property::Json5(true)],
+        // Comments without JSON5's unquoted keys / single quotes.
+        Jsonc => vec![lexilla_rs::Property::JsonComments(true)],
         Javascript | Typescript => vec![lexilla_rs::Property::Javascript(true)],
         Markdown => vec![lexilla_rs::Property::MarkdownHeaderFill(true)],
         _ => Vec::new(),
@@ -243,8 +245,8 @@ mod tests {
         use LapceLanguage::*;
         for language in [
             C, Cpp, Javascript, Typescript, Csharp, Java, Python, Html, Php, Css,
-            Scss, Json, Json5, Bash, Rust, Sql, Toml, Yaml, Xml, Blade, Jsx, Tsx,
-            Vue, Markdown, Diff, Make, Ini,
+            Scss, Json, Json5, Jsonc, Bash, Rust, Sql, Toml, Yaml, Xml, Blade, Jsx,
+            Tsx, Vue, Markdown, Diff, Make, Ini,
         ] {
             assert!(
                 highlight(language, &Rope::from("text\n")).is_some(),
@@ -297,6 +299,10 @@ mod tests {
             (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "'x'", "string"),
             (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "0xA", "constant"),
             (Json5, "// c\n{a: 'x', b: 0xA, c: Infinity,}\n", "Infinity", "constant"),
+            // JSONC mode: comments colour, but unquoted keys and
+            // single-quoted strings stay errors - it is not JSON5.
+            (Jsonc, "{// c\n\"a\": 1}\n", "// c", "comment"),
+            (Jsonc, "{// c\n\"a\": 1}\n", "\"a\"", "property"),
         ] {
             let snapshot = highlight(language, &Rope::from(text)).unwrap();
             let at = text.find(needle).unwrap();
@@ -324,6 +330,21 @@ mod tests {
             assert_eq!(snapshot.scope(snapshot.styles()[at]), None, "{text} {needle}");
         }
     }
+    #[test]
+    fn jsonc_accepts_comments_without_json5_strings_or_keys() {
+        for text in ["// line\n{\"key\": 1}\n", "/* block */\n{\"key\": 1}\n"] {
+            let snapshot = highlight(LapceLanguage::Jsonc, &Rope::from(text)).unwrap();
+            assert_eq!(snapshot.scope(snapshot.styles()[0]), Some("comment"));
+        }
+        for (text, needle) in [("{bare: 1}", "bare"), ("{\"key\": 'value'}", "'value'")] {
+            let snapshot = highlight(LapceLanguage::Jsonc, &Rope::from(text)).unwrap();
+            let at = text.find(needle).unwrap();
+            assert_eq!(snapshot.scope(snapshot.styles()[at]), None);
+        }
+        assert_eq!(LapceLanguage::Jsonc.comment_tokens(), ("//", ""));
+        assert_eq!(LapceLanguage::Json.comment_tokens(), ("", ""));
+    }
+
     #[test]
     fn typescript_keywords_match_tsx_without_leaking_to_javascript() {
         let text = "type Row = { readonly id: number }; declare const key: keyof Row;";

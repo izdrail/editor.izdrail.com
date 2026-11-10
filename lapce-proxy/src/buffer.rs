@@ -211,6 +211,13 @@ pub fn read_path_to_string<P: AsRef<Path>>(path: P) -> Result<String> {
 }
 
 pub fn language_id_from_path(path: &Path) -> Option<&'static str> {
+    // Keep diagnostics/completion mode aligned with the editor's exact-path
+    // JSONC routing. Sending json here would reject valid config comments.
+    if lapce_core::language::LapceLanguage::from_path_raw(path)
+        == Some(lapce_core::language::LapceLanguage::Jsonc)
+    {
+        return Some("jsonc");
+    }
     // recommended language_id values
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocumentItem
     Some(match path.extension() {
@@ -349,4 +356,18 @@ pub fn get_mod_time<P: AsRef<Path>>(path: P) -> Option<SystemTime> {
         .and_then(|f| f.metadata())
         .and_then(|meta| meta.modified())
         .ok()
+}
+
+#[cfg(test)]
+mod jsonc_language_tests {
+    use super::*;
+    #[test]
+    fn jsonc_lsp_mode_matches_editor_paths_without_changing_strict_json() {
+        for p in [".vscode/settings.json", "tsconfig.json", ".devcontainer/devcontainer.json", "demo.code-workspace"] {
+            assert_eq!(language_id_from_path(Path::new(p)), Some("jsonc"));
+        }
+        for p in ["package.json", "composer.json", "config/settings.json"] {
+            assert_eq!(language_id_from_path(Path::new(p)), Some("json"));
+        }
+    }
 }

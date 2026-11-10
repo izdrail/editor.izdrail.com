@@ -42,6 +42,7 @@ pub enum Property {
     Javascript(bool),
     MarkdownHeaderFill(bool),
     Json5(bool),
+    JsonComments(bool),
 }
 impl Property {
     fn pairs(self) -> &'static [(&'static str, &'static str)] {
@@ -62,6 +63,8 @@ impl Property {
             Self::MarkdownHeaderFill(false) => &[("lexer.markdown.header.eolfill", "0")],
             Self::Json5(true) => &[("lexer.json.json5", "1")],
             Self::Json5(false) => &[("lexer.json.json5", "0")],
+            Self::JsonComments(true) => &[("lexer.json.allow.comments", "1")],
+            Self::JsonComments(false) => &[("lexer.json.allow.comments", "0")],
         }
     }
 }
@@ -112,6 +115,7 @@ impl Snapshot {
                     | ("cpp", Property::Javascript(_))
                     | ("markdown", Property::MarkdownHeaderFill(_))
                     | ("json", Property::Json5(_))
+                    | ("json", Property::JsonComments(_))
             )
         }) {
             return Err(Error::Property);

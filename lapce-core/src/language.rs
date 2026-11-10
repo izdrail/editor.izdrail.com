@@ -314,6 +314,8 @@ pub enum LapceLanguage {
     Json,
     #[strum(message = "JSON5")]
     Json5,
+    #[strum(message = "JSON with Comments")]
+    Jsonc,
     #[strum(message = "Jsonnet")]
     Jsonnet,
     #[strum(message = "JavaScript React")]
@@ -1055,6 +1057,18 @@ const LANGUAGES: &[SyntaxProperties] = &[
         tree_sitter: TreeSitterProperties::DEFAULT,
     },
     SyntaxProperties {
+        id: LapceLanguage::Jsonc,
+        indent: Indent::space(4),
+        // Exact-name routing lives in from_path_raw: LANGUAGES order must
+        // match enum discriminants (properties() indexes by discriminant),
+        // so these filenames cannot win against Json's generic "json"
+        // extension here.
+        files: &[],
+        extensions: &["code-workspace"],
+        comment: comment_properties!("//"),
+        tree_sitter: TreeSitterProperties::DEFAULT,
+    },
+    SyntaxProperties {
         id: LapceLanguage::Jsonnet,
         indent: Indent::tab(),
         files: &[],
@@ -1741,6 +1755,46 @@ impl LapceLanguage {
         if filename.is_some_and(|f| f.to_lowercase().ends_with(".blade.php")) {
             return Some(LapceLanguage::Blade);
         }
+        // Editor-owned config locations whose documented grammar is JSON with
+        // Comments. Bare names like `settings.json` are NOT enough: the same
+        // name in another directory is ordinary strict JSON.
+        if let Some(name) = filename {
+            // Tool-owned files whose documented grammars allow comments:
+            // TypeScript's tsconfig/jsconfig and ESLint's .eslintrc.json
+            // (archive.eslint.org: "ESLint's JSON files also allow
+            // JavaScript-style comments"). Unambiguous anywhere.
+            if matches!(name, "tsconfig.json" | "jsconfig.json" | ".eslintrc.json") {
+                return Some(LapceLanguage::Jsonc);
+            }
+            let parent_dir = path.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str());
+            let grandparent_dir = path
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str());
+            // VS Code JSONC mode (code.visualstudio.com/docs/languages/json):
+            // the editor's configuration files accept comments and trailing
+            // commas.
+            if parent_dir == Some(".vscode")
+                && matches!(
+                    name,
+                    "settings.json" | "tasks.json" | "launch.json" | "keybindings.json"
+                        | "extensions.json"
+                )
+            {
+                return Some(LapceLanguage::Jsonc);
+            }
+            // devcontainer spec (containers.dev): "JSON with Comments" at
+            // .devcontainer/devcontainer.json, .devcontainer.json, or
+            // .devcontainer/<one-level-subfolder>/devcontainer.json.
+            if name == ".devcontainer.json"
+                || (name == "devcontainer.json"
+                    && (parent_dir == Some(".devcontainer")
+                        || grandparent_dir == Some(".devcontainer")))
+            {
+                return Some(LapceLanguage::Jsonc);
+            }
+        }
         let extension = path
             .extension()
             .and_then(|s| s.to_str().map(|s| s.to_lowercase()));
@@ -2198,6 +2252,36 @@ mod tests {
     use std::path::PathBuf;
 
     use super::LapceLanguage;
+
+    #[test]
+    fn jsonc_routing_is_scoped_to_documented_config_locations() {
+        let lang = |p: &str| LapceLanguage::from_path(&PathBuf::from(p));
+        // Tool-owned names route anywhere (TypeScript and ESLint document
+        // comments in these exact files).
+        assert_eq!(lang("tsconfig.json"), LapceLanguage::Jsonc);
+        assert_eq!(lang("app/web/tsconfig.json"), LapceLanguage::Jsonc);
+        assert_eq!(lang("jsconfig.json"), LapceLanguage::Jsonc);
+        assert_eq!(lang(".eslintrc.json"), LapceLanguage::Jsonc);
+        // VS Code's JSONC mode applies to its configuration files inside
+        // .vscode/ - the bare names elsewhere stay strict JSON.
+        assert_eq!(lang(".vscode/settings.json"), LapceLanguage::Jsonc);
+        assert_eq!(lang(".vscode/launch.json"), LapceLanguage::Jsonc);
+        assert_eq!(lang("settings.json"), LapceLanguage::Json);
+        assert_eq!(lang("config/settings.json"), LapceLanguage::Json);
+        // devcontainer spec locations.
+        assert_eq!(lang(".devcontainer.json"), LapceLanguage::Jsonc);
+        assert_eq!(lang(".devcontainer/devcontainer.json"), LapceLanguage::Jsonc);
+        assert_eq!(
+            lang(".devcontainer/database-dev/devcontainer.json"),
+            LapceLanguage::Jsonc
+        );
+        assert_eq!(lang("other/devcontainer.json"), LapceLanguage::Json);
+        // VS Code workspace files are JSONC by extension.
+        assert_eq!(lang("lapce.code-workspace"), LapceLanguage::Jsonc);
+        // Ordinary JSON stays strict.
+        assert_eq!(lang("package.json"), LapceLanguage::Json);
+        assert_eq!(lang("composer.json"), LapceLanguage::Json);
+    }
 
     #[test]
     fn json5_extension_selects_json5_not_strict_json() {
