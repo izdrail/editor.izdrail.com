@@ -24,48 +24,12 @@ jobs:
     # Self-hosted runner only (owner policy: no GitHub-hosted minutes). Jobs stay
     # queued until a runner with these labels is registered; there is no hosted fallback.
     runs-on: [self-hosted, linux, x64]
-    # Pin the userspace ABI, not only the runner labels.
-    container: ubuntu:22.04
-    defaults:
-      run:
-        shell: bash
     timeout-minutes: 90
     steps:
-      - name: Install system dependencies
-        run: |
-          apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git curl ca-certificates build-essential xz-utils zstd gh clang libxkbcommon-x11-dev pkg-config libvulkan-dev libwayland-dev xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev cmake
-
       - uses: actions/checkout@v4
 
-      - name: Bootstrap rustup
-        run: |
-          if ! command -v rustup >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0 --profile minimal
-            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          fi
-
-      - name: Install Rust 1.98.0
-        run: |
-          rustup toolchain install 1.98.0 --profile minimal
-          rustup default 1.98.0
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-ubuntu2204-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
-
-      - name: Build release binary
-        run: cargo build --release --locked --target-dir target/ubuntu-22.04
-
-      - name: Verify runtime ABI and command startup
-        run: |
-          ldd --version | head -n 1
-          target/ubuntu-22.04/release/lapce --version
-          target/ubuntu-22.04/release/lapce-proxy --version
+      - name: Build and verify Ubuntu 22.04 binaries
+        run: bash scripts/build-linux-portable.sh
 
       - name: Package
         run: |
