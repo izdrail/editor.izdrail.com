@@ -3837,6 +3837,7 @@ dependencies = [
  "lapce-vscode-experiment",
  "lapce-vsix",
  "lapce-xi-rope",
+ "libc",
  "lsp-types",
  "notify",
  "nucleo",

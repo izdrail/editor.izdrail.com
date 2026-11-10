@@ -16,8 +16,11 @@ use std::{
 const OUTPUT_CAP: usize = 64 * 1024;
 
 /// Kill the whole process group (the shell plus any grandchildren
-/// still holding the pipes), then reap the shell. Group-kill via the
-/// `kill` binary: lapce-app has no libc dep. On non-unix only the
+/// still holding the pipes), then reap the shell. Signals the group
+/// with libc::kill directly: the procps-ng `kill` binary can signal
+/// only the group leader, which orphans grandchildren holding the
+/// output pipes and blocks the reader joins until those grandchildren
+/// exit on their own. On non-unix only the
 /// shell itself is killed. If the group is already gone this is a
 /// no-op; the window for the pgid being recycled before this call is
 /// microseconds and the worst case is a failed kill we ignore.
@@ -25,12 +28,9 @@ fn teardown(child: &mut std::process::Child) {
     #[cfg(unix)]
     {
         let pgid = child.id();
-        let _ = Command::new("kill")
-            .args(["-KILL", &format!("-{pgid}")])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        unsafe {
+            libc::kill(-(pgid as libc::pid_t), libc::SIGKILL);
+        }
     }
     let _ = child.kill();
     let _ = child.wait();
