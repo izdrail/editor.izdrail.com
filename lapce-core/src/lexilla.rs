@@ -11,6 +11,13 @@ use std::sync::Arc;
 /// lexer, because the standalone one colours inline HTML as a single style.
 pub fn is_pure_php(source: &str) -> bool {
     let s = source.trim_start_matches('\u{feff}').trim_start();
+    // PHP CLI entry scripts (Laravel's artisan, Symfony's bin/console) start
+    // with a `#!` shebang line before the `<?php` open tag.
+    let s = s
+        .strip_prefix("#!")
+        .and_then(|rest| rest.split_once('\n').map(|(_, after)| after))
+        .map(str::trim_start)
+        .unwrap_or(s);
     s.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("<?php"))
 }
 
@@ -545,6 +552,13 @@ mod tests {
         assert!(!is_pure_php("<html>\n<?php echo 1; ?>"));
         assert!(!is_pure_php("<?= $x ?>"));
         assert!(!is_pure_php(""));
+        // PHP CLI entry scripts carry a shebang line before the open tag.
+        assert!(is_pure_php("#!/usr/bin/env php\n<?php\necho 1;"));
+        assert!(is_pure_php("#!/usr/bin/env php\r\n<?php\necho 1;"));
+        // A shebang does not make non-PHP pure, and PHP templates stay templated.
+        assert!(!is_pure_php("#!/bin/sh\necho hi"));
+        assert!(!is_pure_php("#!/usr/bin/env php"));
+        assert!(!is_pure_php("#!/usr/bin/env php\n<html>"));
         // pure PHP: standalone lexer (a nowdoc body is a string there)
         let pure = "<?php\n$a = <<<'X'\nbody\nX;\n";
         let snap = highlight(LapceLanguage::Php, &Rope::from(pure)).unwrap();

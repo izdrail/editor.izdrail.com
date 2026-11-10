@@ -1336,7 +1336,9 @@ const LANGUAGES: &[SyntaxProperties] = &[
     SyntaxProperties {
         id: LapceLanguage::Php,
         indent: Indent::space(2),
-        files: &[],
+        // Laravel's CLI entry script (`#!/usr/bin/env php` + `<?php`): no
+        // extension, so an exact filename is required.
+        files: &["artisan"],
         extensions: &["php"],
         comment: comment_properties!("//"),
         tree_sitter: TreeSitterProperties {
@@ -1813,6 +1815,16 @@ impl LapceLanguage {
             {
                 return Some(properties.id);
             }
+        }
+
+        // Symfony's console entry script is PHP (`#!/usr/bin/env php` +
+        // `<?php`) at its documented location; a bare "console" name elsewhere
+        // is not PHP, so it needs the parent directory.
+        if filename == Some("console")
+            && path.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str())
+                == Some("bin")
+        {
+            return Some(LapceLanguage::Php);
         }
 
         None
@@ -2309,6 +2321,29 @@ mod tests {
         assert_eq!(
             LapceLanguage::from_path(&PathBuf::from("app/.editorconfig")),
             LapceLanguage::Ini,
+        );
+    }
+
+    #[test]
+    fn php_cli_entry_scripts_route_to_php() {
+        // Laravel's artisan (laravel/laravel skeleton) is `#!/usr/bin/env php`
+        // + `<?php` with no extension; Symfony's console is PHP only at its
+        // documented bin/ location.
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("artisan")),
+            LapceLanguage::Php,
+        );
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("bin/console")),
+            LapceLanguage::Php,
+        );
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("console")),
+            LapceLanguage::PlainText,
+        );
+        assert_eq!(
+            LapceLanguage::from_path(&PathBuf::from("scripts/console")),
+            LapceLanguage::PlainText,
         );
     }
 

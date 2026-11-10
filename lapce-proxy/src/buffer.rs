@@ -220,6 +220,14 @@ pub fn language_id_from_path(path: &Path) -> Option<&'static str> {
     }
     // recommended language_id values
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocumentItem
+    // Extensionless framework entry scripts use the same bounded exact-path
+    // routing as syntax highlighting. Do not send unknown/empty language IDs.
+    if path.extension().is_none()
+        && lapce_core::language::LapceLanguage::from_path_raw(path)
+            == Some(lapce_core::language::LapceLanguage::Php)
+    {
+        return Some("php");
+    }
     Some(match path.extension() {
         Some(ext) => {
             match ext.to_str()? {
@@ -369,5 +377,18 @@ mod jsonc_language_tests {
         for p in ["package.json", "composer.json", "config/settings.json"] {
             assert_eq!(language_id_from_path(Path::new(p)), Some("json"));
         }
+    }
+}
+
+#[cfg(test)]
+mod php_cli_language_tests {
+    use super::*;
+    #[test]
+    fn framework_entry_scripts_have_php_lsp_ids_but_other_consoles_do_not() {
+        for p in ["artisan", "project/artisan", "bin/console", "project/bin/console"] {
+            assert_eq!(language_id_from_path(Path::new(p)), Some("php"));
+        }
+        assert_ne!(language_id_from_path(Path::new("console")), Some("php"));
+        assert_ne!(language_id_from_path(Path::new("scripts/console")), Some("php"));
     }
 }
