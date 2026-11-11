@@ -863,3 +863,23 @@ mod twig_exponent_tests {
         assert_eq!(snapshot.scope(snapshot.styles()[dots + 1]), Some("operator"));
     }
 }
+
+#[cfg(test)]
+mod twig_digit_separator_tests {
+    use super::*;
+    #[test]
+    fn twig_digit_separators_require_a_following_digit() {
+        for number in ["1_", "1__2", "1.2_", "1e2_", "1e2__3"] {
+            let text = format!("{{{{ {number} }}}}");
+            let snapshot = twig(&text).unwrap();
+            let invalid = text.find('_').unwrap();
+            assert_ne!(snapshot.scope(snapshot.styles()[invalid]), Some("constant"), "{number}");
+        }
+        let number = "1_000.2_5e+3_0";
+        let text = format!("{{{{ {number} }}}}");
+        let snapshot = twig(&text).unwrap();
+        for position in 3..3 + number.len() {
+            assert_eq!(snapshot.scope(snapshot.styles()[position]), Some("constant"));
+        }
+    }
+}

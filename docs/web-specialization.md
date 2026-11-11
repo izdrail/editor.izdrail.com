@@ -177,3 +177,6 @@ numeric operands. Decimal fractions and digit separators retain number styling.
 Twig numbers include complete e/E exponents with optional signs and digit
 separators. Incomplete exponent suffixes stay outside the numeric token, and
 range operators remain separate.
+
+Twig digit separators stay numeric only between digits. Trailing or repeated
+underscores are left outside integer, fraction and exponent tokens.

@@ -79,7 +79,13 @@ public:
                 } else if(std::isdigit(c)) {
                     size_t a=p++;
                     auto digits=[&]() {
-                        while(p<text.size() && (std::isdigit(static_cast<unsigned char>(text[p])) || text[p]=='_')) ++p;
+                        while(p<text.size()) {
+                            if(std::isdigit(static_cast<unsigned char>(text[p]))) { ++p; continue; }
+                            if(text[p]=='_' && p>0 && p+1<text.size()
+                                && std::isdigit(static_cast<unsigned char>(text[p-1]))
+                                && std::isdigit(static_cast<unsigned char>(text[p+1]))) { ++p; continue; }
+                            break;
+                        }
                     };
                     digits();
                     // A decimal point has a following digit. Never consume the
