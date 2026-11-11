@@ -13,3 +13,5 @@ PHP boundaries come from the shared PHP lexer, not a substring search for `?>`. 
 The shared scanners accept mixed-case long PHP tags such as `<?PHP`, matching PHP tokenization. Non-PHP processing instructions such as `<?xml` always advance the standalone scanner rather than looping without consuming input. Rename Tag keeps its existing processing-instruction skip and 1 MB file limit.
 
 PHP opener checks use the same long-tag and short-prefix whitespace boundaries as highlighting. Processing-instruction lookalikes (`<?phpx`, `<?php/**/`, vertical-tab/formfeed after `<?`) do not hide real HTML after their `?>`. Real PHP regions still shield quoted tag-like text.
+
+Saving a file whose line endings already match no longer adds an empty undo step. Rename Tag followed by Save can be undone with one Undo. Actual line-ending conversions still create an edit.
