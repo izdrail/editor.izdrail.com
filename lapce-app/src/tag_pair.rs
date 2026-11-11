@@ -154,8 +154,14 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
                 let pat = close.as_bytes();
                 i = b[end..]
                     .windows(pat.len())
-                    .position(|w| w.eq_ignore_ascii_case(pat))
-                    .map(|p| p + end)
+                    .enumerate()
+                    .find(|(p, w)| {
+                        w.eq_ignore_ascii_case(pat)
+                            && b.get(end + p + pat.len()).is_some_and(|c| {
+                                matches!(*c, b' ' | b'\t' | b'\r' | b'\n' | 0x0c | b'/' | b'>')
+                            })
+                    })
+                    .map(|(p, _)| p + end)
                     .unwrap_or(b.len());
                 // Re-enter at the closing tag so it pairs with this opener.
                 if stack.len() < MAX_DEPTH {
@@ -223,6 +229,19 @@ mod tests {
         assert_eq!(names(t, 2), Some(("div".into(), "div".into())));
         let at = t.find("<script>").unwrap() + 2;
         assert_eq!(names(t, at), Some(("script".into(), "script".into())));
+    }
+
+    #[test]
+    fn raw_text_closing_prefixes_do_not_expose_fake_elements() {
+        for (tag, prefix) in [("script", "scripture"), ("style", "styles")] {
+            let text = format!("<{tag}>let s = '</{prefix}><div>fake</div>';</{tag}><p>real</p>");
+            assert_eq!(names(&text, text.find("<div>").unwrap()+2), None);
+            assert_eq!(names(&text, 2), Some((tag.into(), tag.into())));
+            assert_eq!(names(&text, text.find("<p>").unwrap()+1), Some(("p".into(), "p".into())));
+        }
+        let text = "<script>let s = '</script-x><div>fake</div>';</SCRIPT><p>real</p>";
+        assert_eq!(names(text, text.find("<div>").unwrap()+2), None);
+        assert_eq!(names(text, text.find("<p>").unwrap()+1), Some(("p".into(), "p".into())));
     }
 
     #[test]
