@@ -514,6 +514,28 @@ mod tests {
     }
 
     #[test]
+    fn heredoc_variables_interpolate_but_escaped_dollars_and_nowdoc_do_not() {
+        let text = "<?php\r\n$text = <<< TXT\r\nλ🙂 $name \\$escaped \\\\$active {$braced} $2 literal\r\n  TXT;\r\n$raw = <<< 'RAW'\r\n$literal {$also_literal}\r\nRAW;\r\necho strlen($text);";
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            assert_eq!(snap.len(), text.len());
+            for needle in ["$name", "$active", "$braced"] {
+                assert_ne!(php_scope_at(&snap, text, needle, 0), Some("string"), "{lexer}: {needle}");
+            }
+            for needle in ["$escaped", "$2 literal", "$literal", "$also_literal"] {
+                assert_eq!(php_scope_at(&snap, text, needle, 0), Some("string"), "{lexer}: {needle}");
+            }
+            assert_eq!(php_scope_at(&snap, text, "echo strlen", 0), Some("keyword"));
+            let unfinished = "<?php $text = <<<TXT\r\n$name λ🙂\\";
+            let edited = Snapshot::lex(lexer, unfinished, lists).unwrap();
+            assert_eq!(edited.len(), unfinished.len());
+            assert_ne!(php_scope_at(&edited, unfinished, "$name", 0), Some("string"));
+            assert_eq!(Snapshot::lex(lexer, text, lists).unwrap().styles(), snap.styles());
+        }
+    }
+
+    #[test]
     fn php_heredoc_openers_accept_horizontal_whitespace_before_labels() {
         for gap in [" ", "\t", " \t "] {
             for label in ["TXT", "\"TXT\"", "'TXT'"] {

@@ -490,6 +490,19 @@ static void ScanHeredocBody(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		while (pos < max) {
 			const int c = styler.SafeGetCharAt(pos, '\0');
 			if (c == '\n') { pos++; break; }
+			if (!nowdoc && c == '\\' && pos + 1 < max &&
+			    styler.SafeGetCharAt(pos + 1, '\0') != '\n' &&
+			    styler.SafeGetCharAt(pos + 1, '\0') != '\r') {
+				pos += 2;
+				continue;
+			}
+			if (!nowdoc && c == '$' && IsIdentifierStart(styler.SafeGetCharAt(pos + 1, '\0'))) {
+				styler.ColourTo(pos - 1, style);
+				pos++;
+				while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0'))) pos++;
+				styler.ColourTo(pos - 1, SCE_LARAVEL_STRING_VARIABLE);
+				continue;
+			}
 			pos++;
 		}
 	}
