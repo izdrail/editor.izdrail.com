@@ -590,8 +590,9 @@ pub fn php_completion_context(before: &str) -> bool {
     let Ok(context_source) = String::from_utf8(context_bytes) else {
         return false;
     };
+    // PHP names accept every non-ASCII byte, not only Unicode letters.
     let context = context_source
-        .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
+        .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || !c.is_ascii())
         .trim_end();
     !context.ends_with("->")
         && !context.ends_with("::")
@@ -714,5 +715,24 @@ mod php_variable_context_tests {
         }
         assert!(php_completion_context("<?php strlen($value); str"));
         assert!(php_completion_context("<?php $value = str"));
+    }
+}
+
+#[cfg(test)]
+mod php_byte_identifier_context_tests {
+    use super::*;
+    #[test]
+    fn non_ascii_php_identifiers_keep_variable_and_member_guards() {
+        for before in [
+            "<?php $cafe\u{0301}",
+            "<?php $name🙂",
+            "<?php $object->cafe\u{0301}",
+            "<?php ClassName::method🙂",
+            "<p>Host</p><?php $cafe\u{0301}",
+        ] {
+            assert!(!php_completion_context(before), "{before}");
+        }
+        assert!(php_completion_context("<?php $cafe\u{0301} = str"));
+        assert!(php_completion_context("<?php cafe\u{0301}"));
     }
 }

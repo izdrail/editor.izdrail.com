@@ -144,3 +144,7 @@ same; unrelated invalid bytes no longer hide a valid header.
 Regular plugin files larger than 1 MiB still supply header evidence for themselves
 and neighboring PHP files. Only the first 8 KiB is read; JSON/version size limits,
 regular-file checks and the 128-neighbor bound are unchanged.
+
+PHP completion context follows PHP's byte-based identifier rule for non-ASCII
+text. Combining marks and other UTF-8 characters no longer bypass variable or
+member guards; Twig's identifier handling is unchanged.
