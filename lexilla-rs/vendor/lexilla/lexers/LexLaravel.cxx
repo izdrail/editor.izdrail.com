@@ -29,6 +29,7 @@
 #include "LexerModule.h"
 #include "OptionSet.h"
 #include "DefaultLexer.h"
+#include "PHPStringScanner.h"
 
 using namespace Scintilla;
 using namespace Lexilla;
@@ -319,81 +320,7 @@ static void ScanBlockComment(Accessor &styler, Sci_Position &pos, Sci_Position m
 	styler.ColourTo(pos - 1, isDoc ? SCE_LARAVEL_DOCCOMMENT : SCE_LARAVEL_COMMENT);
 }
 
-static void ScanSingleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max) {
-	while (pos < max) {
-		const int c = styler.SafeGetCharAt(pos, '\0');
-		if (c == '\\') {
-			pos = std::min(pos + 2, max);
-		} else if (c == '\'') {
-			pos++;
-			break;
-		} else {
-			pos++;
-		}
-	}
-	styler.ColourTo(pos - 1, SCE_LARAVEL_STRING);
-}
-
-// Consume a {$...} interpolation without letting its quoted keys close the
-// surrounding string. This is a bounded lexical scan, not PHP evaluation.
-static void ScanCurlyInterpolation(Accessor &styler, Sci_Position &pos, Sci_Position max, int stringStyle) {
-	int depth = 1, quote = 0;
-	bool blockComment = false, lineComment = false;
-	pos++; // opening {
-	while (pos < max && depth > 0) {
-		const int c = styler.SafeGetCharAt(pos, '\0');
-		const int n = styler.SafeGetCharAt(pos + 1, '\0');
-		if (quote) {
-			if (c == '\\' && pos + 1 < max) { pos += 2; continue; }
-			if (c == quote) quote = 0;
-		} else if (blockComment) {
-			if (c == '*' && n == '/') { blockComment = false; pos += 2; continue; }
-		} else if (lineComment) {
-			if (c == '\r' || c == '\n') lineComment = false;
-		} else if (c == '\'' || c == '"' || c == '`') {
-			quote = c;
-		} else if (c == '/' && n == '*') {
-			blockComment = true; pos += 2; continue;
-		} else if ((c == '/' && n == '/') || (c == '#' && n != '[')) {
-			lineComment = true;
-		} else if (c == '{') {
-			depth++;
-		} else if (c == '}') {
-			depth--;
-		} else if (c == '$' && IsIdentifierStart(n)) {
-			styler.ColourTo(pos - 1, stringStyle);
-			pos++;
-			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0'))) pos++;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_STRING_VARIABLE);
-			continue;
-		}
-		pos++;
-	}
-}
-
-static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max,
-                                   int delimiter = '"', int stringStyle = SCE_LARAVEL_STRING_DQ) {
-	while (pos < max) {
-		const int c = styler.SafeGetCharAt(pos, '\0');
-		if (c == '\\') {
-			pos = std::min(pos + 2, max);
-		} else if (c == '{' && styler.SafeGetCharAt(pos + 1, '\0') == '$') {
-			ScanCurlyInterpolation(styler, pos, max, stringStyle);
-		} else if (c == delimiter) {
-			pos++;
-			break;
-		} else if (c == '$' && IsIdentifierStart(styler.SafeGetCharAt(pos + 1, '\0'))) {
-			styler.ColourTo(pos - 1, stringStyle);
-			pos++;
-			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
-				pos++;
-			styler.ColourTo(pos - 1, SCE_LARAVEL_STRING_VARIABLE);
-		} else {
-			pos++;
-		}
-	}
-	styler.ColourTo(pos - 1, stringStyle);
-}
+using StringScanner = PHPStringScanner<SCE_LARAVEL_STRING, SCE_LARAVEL_STRING_DQ, SCE_LARAVEL_STRING_VARIABLE>;
 
 // Magic constants are case-insensitive, unlike ordinary constants in list 3.
 static const char *MagicConstantName(const char *lower) {
@@ -801,22 +728,22 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 			styler.ColourTo(pos - 1, SCE_LARAVEL_MIDDLEWARE);
 		} else {
 			pos++;
-			ScanSingleQuotedString(styler, pos, max);
+			StringScanner::ScanSingleQuotedString(styler, pos, max);
 		}
 	} else if (c == '"') {
 		pos++;
-		ScanDoubleQuotedString(styler, pos, max);
+		StringScanner::ScanDoubleQuotedString(styler, pos, max);
 	} else if (c == '`') {
 		pos++;
-		ScanDoubleQuotedString(styler, pos, max, '`', SCE_LARAVEL_CHARACTER);
+		StringScanner::ScanDoubleQuotedString(styler, pos, max, '`', SCE_LARAVEL_CHARACTER);
 	} else if ((c == 'b' || c == 'B') && (n == '\'' || n == '"')) {
 		pos++;
 		if (styler.SafeGetCharAt(pos, '\0') == '\'') {
 			pos++;
-			ScanSingleQuotedString(styler, pos, max);
+			StringScanner::ScanSingleQuotedString(styler, pos, max);
 		} else {
 			pos++;
-			ScanDoubleQuotedString(styler, pos, max);
+			StringScanner::ScanDoubleQuotedString(styler, pos, max);
 		}
 	} else if (c == '$' && IsIdentifierStart(n)) {
 		pos += 2;
@@ -974,11 +901,11 @@ void SCI_METHOD LexerLaravel::Lex(Sci_PositionU startPos, Sci_Position length, i
 	} else if (initStyle == SCE_LARAVEL_COMMENTLINE) {
 		ScanLineComment(styler, pos, max);
 	} else if (initStyle == SCE_LARAVEL_STRING) {
-		ScanSingleQuotedString(styler, pos, max);
+		StringScanner::ScanSingleQuotedString(styler, pos, max);
 	} else if (initStyle == SCE_LARAVEL_STRING_DQ) {
-		ScanDoubleQuotedString(styler, pos, max);
+		StringScanner::ScanDoubleQuotedString(styler, pos, max);
 	} else if (initStyle == SCE_LARAVEL_CHARACTER) {
-		ScanDoubleQuotedString(styler, pos, max, '`', SCE_LARAVEL_CHARACTER);
+		StringScanner::ScanDoubleQuotedString(styler, pos, max, '`', SCE_LARAVEL_CHARACTER);
 	} else if (initStyle == SCE_LARAVEL_HEREDOC || initStyle == SCE_LARAVEL_NOWDOC) {
 		Sci_Position idStart = 0, idLen = 0;
 		bool nowdoc = (initStyle == SCE_LARAVEL_NOWDOC);

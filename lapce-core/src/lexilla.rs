@@ -693,6 +693,27 @@ mod tests {
     }
 
     #[test]
+    fn php_and_laravel_string_scanner_styles_stay_identical() {
+        let strings = [
+            "''", "\"\"", "``", "'λ🙂 \\\' ?>'", "\"λ🙂 $name ?>\"",
+            "`printf $name ?>`", "\"{$user[\"?>}\"]} tail\"",
+            "\"{$user['key']} {$obj->{$names[\"}\"]}}\"",
+            "\"{$user[/* } ?> */ 'key']}\"",
+            "\"{$user[// }\n'key']} tail\"",
+            "\"{$user[# }\r\n'key']} tail\"",
+            "\"\\$literal \\\" $name\"", "'unfinished\\", "\"unfinished\\",
+            "\"{$user[\"unfinished", "\"{$user[/* unfinished",
+        ];
+        for string in strings {
+            let text = format!("<?php $value = {string}; $after = 1; ?>");
+            let php = Snapshot::lex("php", &text, &[]).unwrap();
+            let laravel = Snapshot::lex("laravel", &text, &[]).unwrap();
+            assert_eq!(php.len(), text.len());
+            assert_eq!(php.styles(), laravel.styles(), "{text}");
+        }
+    }
+
+    #[test]
     fn php_backticks_keep_close_tags_in_strings_and_resume_code() {
         let text = "<?php\r\n$name = 'λ🙂'; $out = `printf \"hello\" $name ?> still_command \\` escaped`; echo strlen($out);";
         assert!(is_pure_php(text));

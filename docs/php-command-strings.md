@@ -9,3 +9,5 @@ Source: https://www.php.net/manual/en/language.operators.execution.php . A token
 Curly interpolation beginning with `{$` owns its balanced expression until `}`. Quoted array keys and braces in quoted/commented expression text cannot end the surrounding double-quoted or backtick string. Simple variable spans retain their variable scope. This is bounded lexical highlighting, not full PHP expression parsing or execution; unfinished expressions stay inside the current string snapshot.
 
 Reference: https://www.php.net/manual/en/language.types.string.php .
+
+Single-quoted, double-quoted, backtick and curly-interpolation scanning is shared by the PHP and Laravel/Blade lexers through `PHPStringScanner.h`. Each lexer supplies its existing style IDs; framework keywords and other scanners remain separate. A parity corpus checks byte-for-byte style equality, including unfinished and UTF-8 source.
