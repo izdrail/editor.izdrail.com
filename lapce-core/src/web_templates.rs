@@ -530,7 +530,9 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
     let refs: Vec<&str> = lists.iter().map(String::as_str).collect();
     let template = Snapshot::lex("twig", before, &refs).ok()?;
     let last = *template.styles().last()?;
-    if matches!(last, 0 | 2 | 3 | 9) {
+    if matches!(last, 0 | 2 | 3 | 9)
+        || (last == 1 && (before.ends_with("}}") || before.ends_with("%}")))
+    {
         return None;
     }
     let opener = |needle| {
@@ -630,6 +632,17 @@ pub fn php_completion_context(before: &str) -> bool {
 #[cfg(test)]
 mod isolation_tests {
     use super::*;
+    #[test]
+    fn completed_twig_regions_do_not_offer_global_symbols() {
+        for before in ["{{ value }}", "{{ value -}}", "{{ value ~}}", "{% endif %}", "{% endif -%}", "{% endif ~%}"] {
+            assert_eq!(completion_kind(before), None, "{before}");
+        }
+        assert_eq!(completion_kind("{{ value }}{{ ran"), Some("function"));
+        assert_eq!(completion_kind("{% endif %}{% fo"), Some("tag"));
+        assert_eq!(completion_kind("{{ value }}{{"), Some("function"));
+        assert_eq!(completion_kind("{% endif %}{%"), Some("tag"));
+    }
+
     #[test]
     fn popup_positions_and_host_strings_are_separate() {
         assert_eq!(completion_kind("{{ x|up"), Some("filter"));

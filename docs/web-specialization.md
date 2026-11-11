@@ -193,3 +193,7 @@ Embedded script/style bodies require exact opening tag names. Custom names such
 as `script:custom`, `script_custom` or `style.custom` remain with the HTML host;
 real tags with whitespace or attributes keep their JS/CSS regions.
 Reference: https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state .
+
+Twig static completion stops directly after a completed expression or statement
+closing delimiter, including whitespace controls. A newly opened Twig region
+still selects its normal symbol category.
