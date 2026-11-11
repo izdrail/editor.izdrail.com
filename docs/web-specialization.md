@@ -96,3 +96,11 @@ static detector, not PHP parsing.
 
 Sources: https://developer.wordpress.org/reference/functions/get_file_data/
 and https://developer.wordpress.org/reference/functions/_cleanup_header_comment/ .
+
+## Twig negated test completion
+
+Both `is` and `is not` select the test catalogue in unfinished Twig expressions
+and statement tags. Whitespace/newlines between the operator words are accepted;
+strings and comments still suppress completion. This changes the category of
+static completion only, not expression parsing or type inference.
+Reference: https://twig.symfony.com/doc/3.x/templates.html .

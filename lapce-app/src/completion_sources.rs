@@ -492,3 +492,15 @@ mod profile_tests {
         assert!(profile_items("twig", &p, "<div>up").is_empty());
     }
 }
+
+#[cfg(test)]
+mod negated_twig_tests {
+    use super::*;
+    #[test]
+    fn negated_twig_completion_offers_tests_not_functions() {
+        let profile = Default::default();
+        let items = profile_items("twig", &profile, "{% if user is not def");
+        assert!(items.iter().any(|item| item.label == "defined"));
+        assert!(!items.iter().any(|item| item.label == "range"));
+    }
+}

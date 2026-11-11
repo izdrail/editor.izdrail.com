@@ -524,9 +524,15 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
     let context = tail
         .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
         .trim_end();
+    let mut words = context.split_whitespace().rev();
+    let test_context = match words.next() {
+        Some("is") => true,
+        Some("not") => words.next() == Some("is"),
+        _ => false,
+    };
     if context.ends_with('|') {
         Some("filter")
-    } else if context.split_whitespace().last() == Some("is") {
+    } else if test_context {
         Some("test")
     } else if tag == Some(start)
         && !tail
@@ -592,5 +598,24 @@ mod isolation_tests {
             assert_eq!(s.scope(s.styles()[t.find(word).unwrap()]), Some("tag"));
         }
         assert_eq!(s.scope(s.styles()[t.find("{#").unwrap()]), Some("comment"));
+    }
+}
+
+#[cfg(test)]
+mod negated_test_completion_tests {
+    use super::*;
+    #[test]
+    fn twig_negated_tests_keep_test_catalogue() {
+        for before in [
+            "{{ user is not def",
+            "{% if user is not def",
+            "{{ user is\nnot\tdef",
+        ] {
+            assert_eq!(completion_kind(before), Some("test"), "{before}");
+        }
+        assert_eq!(completion_kind("{{ not ran"), Some("function"));
+        assert_eq!(completion_kind("{{ user is nothing def"), Some("function"));
+        assert_eq!(completion_kind("{{ 'user is not def"), None);
+        assert_eq!(completion_kind("{# user is not def"), None);
     }
 }
