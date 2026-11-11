@@ -171,7 +171,7 @@ fn embed_web_mode(source: &str, host: &mut Snapshot, vue: bool) {
             if lower
                 .as_bytes()
                 .get(after)
-                .is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'-')
+                .is_none_or(|c| !matches!(c, b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'>' | b'/'))
             {
                 cursor = after;
                 continue;
@@ -246,6 +246,24 @@ mod tests {
     fn scope(s: &Snapshot, t: &str, word: &str) -> Option<&'static str> {
         s.scope(s.styles()[t.find(word).unwrap()])
     }
+    #[test]
+    fn embedded_bodies_require_exact_opening_tag_names() {
+        use crate::language::LapceLanguage;
+        use lapce_xi_rope::Rope;
+        for tag in ["script", "style"] {
+            for suffix in [":custom", "_custom", ".custom", "λ", "-custom", "ure", "\u{000b}custom"] {
+                let name = format!("{tag}{suffix}");
+                let text = format!("<{name}>const marker = 42;</{name}><p>after</p>");
+                let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text.as_str())).unwrap();
+                assert_eq!(snap.embed_at(text.find("marker").unwrap()), None, "{name}");
+            }
+        }
+        for text in ["<script>const marker = 42;</script>", "<script type='module'>const marker = 42;</script>", "<script\t>const marker = 42;</script>"] {
+            let snap = crate::lexilla::highlight(LapceLanguage::Html, &Rope::from(text)).unwrap();
+            assert_eq!(snap.embed_at(text.find("marker").unwrap()), Some(lexilla_rs::Embed::Script));
+        }
+    }
+
     #[test]
     fn embedded_bodies_require_exact_closing_tag_names() {
         use crate::language::LapceLanguage;

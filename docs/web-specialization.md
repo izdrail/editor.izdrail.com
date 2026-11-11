@@ -188,3 +188,8 @@ closing tag no longer ends the region early; whitespace controls still work.
 Twig verbatim mode also requires a complete valid opening tag. Extra tokens
 after `verbatim` no longer hide subsequent expressions; valid whitespace-control
 openers still start raw regions.
+
+Embedded script/style bodies require exact opening tag names. Custom names such
+as `script:custom`, `script_custom` or `style.custom` remain with the HTML host;
+real tags with whitespace or attributes keep their JS/CSS regions.
+Reference: https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state .
