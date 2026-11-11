@@ -226,3 +226,7 @@ remain in place; syntax highlighting keeps its existing word lists.
 Comment-free Twig completion prefixes are borrowed instead of copied for
 context checks. Prefixes containing comments retain the byte-preserving mask,
 including UTF-8 comments, newlines and fake operators/openers inside comments.
+
+PHP completion context also borrows comment-free prefixes. Commented prefixes
+retain their byte-preserving mask for global/member checks in both pure PHP
+and mixed HTML/PHP, including non-ASCII identifiers and comment text.

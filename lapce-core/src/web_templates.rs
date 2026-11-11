@@ -610,14 +610,21 @@ pub fn php_completion_context(before: &str) -> bool {
             return false;
         }
     }
-    let mut context_bytes = before.as_bytes().to_vec();
-    for (byte, style) in context_bytes.iter_mut().zip(snapshot.styles()) {
-        if snapshot.scope(*style) == Some("comment") {
-            *byte = b' ';
+    let context_source = if snapshot.styles().iter().any(|style| {
+        snapshot.scope(*style) == Some("comment")
+    }) {
+        let mut context_bytes = before.as_bytes().to_vec();
+        for (byte, style) in context_bytes.iter_mut().zip(snapshot.styles()) {
+            if snapshot.scope(*style) == Some("comment") {
+                *byte = b' ';
+            }
         }
-    }
-    let Ok(context_source) = String::from_utf8(context_bytes) else {
-        return false;
+        let Ok(source) = String::from_utf8(context_bytes) else {
+            return false;
+        };
+        std::borrow::Cow::Owned(source)
+    } else {
+        std::borrow::Cow::Borrowed(before)
     };
     // PHP names accept every non-ASCII byte, not only Unicode letters.
     let context = context_source
@@ -677,6 +684,22 @@ mod isolation_tests {
         }
         for before in ["<?php 'str", "<?php // str", "<?php $value->str", "<?php Type::str", "<?php $str", "<?php ?>", "<p>str"] {
             assert!(!php_completion_context(before), "{before}");
+        }
+    }
+
+    #[test]
+    fn borrowed_and_comment_masked_php_contexts_keep_member_guards() {
+        for (plain, commented, expected) in [
+            ("strlen", "/* λ🙂 -> */ strlen", true),
+            ("$object->m", "$object->/* λ🙂 :: */m", false),
+            ("Type::m", "Type::/* λ🙂 -> */m", false),
+            ("$va", "$/* λ🙂 */va", false),
+            ("$object->λ\u{0301}", "$object->/* 🙂 */λ\u{0301}", false),
+        ] {
+            for prefix in ["<?php ", "<div><?php "] {
+                assert_eq!(php_completion_context(&format!("{prefix}{plain}")), expected, "{prefix}{plain}");
+                assert_eq!(php_completion_context(&format!("{prefix}{commented}")), expected, "{prefix}{commented}");
+            }
         }
     }
 
