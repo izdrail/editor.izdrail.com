@@ -329,8 +329,7 @@ static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 			if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
 		}
 		/* fractional part */
-		if (styler.SafeGetCharAt(pos, '\0') == '.' &&
-		    IsADigit(styler.SafeGetCharAt(pos + 1, '\0'), 10)) {
+		if (styler.SafeGetCharAt(pos, '\0') == '.') {
 			pos++;
 			while (pos < max) {
 				int d = styler.SafeGetCharAt(pos, '\0');
@@ -668,7 +667,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 			ScanHeredoc(styler, pos, max);
 		} else if (IsIdentifierStart(c)) {
 			ScanIdentifier(styler, pos, max, keywords);
-		} else if (c >= '0' && c <= '9') {
+		} else if ((c >= '0' && c <= '9') || (c == '.' && IsADigit(n, 10))) {
 			ScanNumber(styler, pos, max);
 		} else if (IsOperatorChar(c)) {
 			pos++;

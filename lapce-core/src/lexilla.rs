@@ -641,6 +641,38 @@ mod tests {
     }
 
     #[test]
+    fn php_float_literals_include_leading_and_trailing_decimal_points() {
+        let text = "<?php\r\n$values = [.5, 1., 2.e3, .5e-2, 1_000.5, 0.5];\r\necho strlen('λ🙂');";
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            for value in [".5,", "1.", "2.e3", ".5e-2", "1_000.5", "0.5"] {
+                let start = text.find(value).unwrap();
+                let len = value.trim_end_matches(',').len();
+                for pos in start..start+len {
+                    assert_eq!(snap.styles()[pos], 12, "{lexer} {value} at {pos}");
+                }
+            }
+            assert_eq!(php_scope_at(&snap, text, "echo strlen", 0), Some("keyword"));
+            let controls = "<?php $x = 'left' . 'right'; $obj->value; ...$args; .5; 1.";
+            let snap = Snapshot::lex(lexer, controls, lists).unwrap();
+            let bare = controls.find(". 'right'").unwrap();
+            assert_ne!(snap.styles()[bare], 12);
+            let spread = controls.find("...$args").unwrap();
+            for pos in spread..spread+3 {
+                assert_ne!(snap.styles()[pos], 12);
+            }
+            for value in [".5", "1."] {
+                let start = controls.rfind(value).unwrap();
+                for pos in start..start+value.len() {
+                    assert_eq!(snap.styles()[pos], 12);
+                }
+            }
+            assert_eq!(Snapshot::lex(lexer, text, lists).unwrap().styles().len(), text.len());
+        }
+    }
+
+    #[test]
     fn php_base_words_are_ascii_case_insensitive_in_both_scanners() {
         let text = "<?php IF (TRUE) { ECHO STRLEN('λ🙂'); ReTuRn NuLl; } FuNcTiOn test(InT $Value): VoId {} $IF = 'RETURN'; // ECHO\r\nPHP_VERSION; php_version;";
         for lexer in ["php", "laravel"] {

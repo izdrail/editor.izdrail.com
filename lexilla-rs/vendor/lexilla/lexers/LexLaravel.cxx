@@ -377,8 +377,7 @@ static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 			int d = styler.SafeGetCharAt(pos, '\0');
 			if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
 		}
-		if (styler.SafeGetCharAt(pos, '\0') == '.' &&
-		    IsADigit(styler.SafeGetCharAt(pos + 1, '\0'), 10)) {
+		if (styler.SafeGetCharAt(pos, '\0') == '.') {
 			pos++;
 			while (pos < max) {
 				int d = styler.SafeGetCharAt(pos, '\0');
@@ -866,7 +865,7 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 			}
 			styler.ColourTo(identEnd - 1, SCE_LARAVEL_IDENTIFIER);
 		}
-	} else if (c >= '0' && c <= '9') {
+	} else if ((c >= '0' && c <= '9') || (c == '.' && IsADigit(n, 10))) {
 		ScanNumber(styler, pos, max);
 	} else if (IsOperatorChar(c)) {
 		pos++;

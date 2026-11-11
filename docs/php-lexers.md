@@ -43,3 +43,9 @@ Keywords, builtin functions, types and constants of the PHP lists also feed the 
 The Laravel attribute scope keeps bracket depth only outside quoted arguments and comments. Literal `]`, `[` and `?>` inside attribute strings cannot end the attribute or switch the rest of the file to inline HTML. Escaped quotes, nested array arguments, block comments and line comments are skipped without evaluating the attribute. Unfinished attributes remain bounded by the current snapshot. PHP close tags in line comments keep their normal meaning.
 
 Syntax reference: https://www.php.net/manual/en/language.attributes.syntax.php .
+
+### Decimal float spans
+
+Both custom PHP scanners keep leading-dot and trailing-dot floats in a single number span: `.5`, `1.`, `2.e3` and `.5e-2`, alongside ordinary decimals and digit separators. A bare dot remains an operator. This is lexical coloring; PHP parsing and evaluation are unchanged.
+
+Grammar reference: https://www.php.net/manual/en/language.types.float.php .
