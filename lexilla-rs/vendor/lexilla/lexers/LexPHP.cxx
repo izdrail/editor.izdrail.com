@@ -392,6 +392,7 @@ static bool FindHeredocStart(Accessor &styler, Sci_Position pos,
 			    styler.SafeGetCharAt(p + 1, '\0') == '<' &&
 			    styler.SafeGetCharAt(p + 2, '\0') == '<') {
 				p += 3;
+				while (p < lineEnd && (styler.SafeGetCharAt(p, '\0') == ' ' || styler.SafeGetCharAt(p, '\0') == '\t')) p++;
 				int q = styler.SafeGetCharAt(p, '\0');
 				if (q == '\'' || q == '"') {
 					nowdoc = (q == '\'');
@@ -456,6 +457,7 @@ static void ScanHeredocBody(Accessor &styler, Sci_Position &pos, Sci_Position ma
 /* pos points just past "<<<". */
 static void ScanHeredoc(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 	int quote = 0;
+	while (pos < max && (styler.SafeGetCharAt(pos, '\0') == ' ' || styler.SafeGetCharAt(pos, '\0') == '\t')) pos++;
 	const int c = styler.SafeGetCharAt(pos, '\0');
 	if (c == '\'' || c == '"') {
 		quote = c;

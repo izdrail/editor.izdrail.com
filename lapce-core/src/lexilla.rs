@@ -514,6 +514,29 @@ mod tests {
     }
 
     #[test]
+    fn php_heredoc_openers_accept_horizontal_whitespace_before_labels() {
+        for gap in [" ", "\t", " \t "] {
+            for label in ["TXT", "\"TXT\"", "'TXT'"] {
+                let text = format!("<?php\r\n$text = <<<{gap}{label}\r\nλ🙂 ?> body $name\r\nTXT;\r\necho strlen($text);");
+                assert!(is_pure_php(&text), "{gap:?} {label}");
+                for lexer in ["php", "laravel"] {
+                    let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+                    let snap = Snapshot::lex(lexer, &text, lists).unwrap();
+                    assert_eq!(snap.len(), text.len());
+                    assert_eq!(php_scope_at(&snap, &text, "?> body", 0), Some("string"));
+                    assert_eq!(php_scope_at(&snap, &text, "echo strlen", 0), Some("keyword"));
+                    assert_eq!(php_scope_at(&snap, &text, "strlen", 0), Some("function"));
+                    let unfinished = text.split("TXT;\r\n").next().unwrap();
+                    let edited = Snapshot::lex(lexer, unfinished, lists).unwrap();
+                    assert_eq!(edited.len(), unfinished.len());
+                    assert_eq!(php_scope_at(&edited, unfinished, "?> body", 0), Some("string"));
+                    assert_eq!(Snapshot::lex(lexer, &text, lists).unwrap().styles(), snap.styles());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn php_backticks_keep_close_tags_in_strings_and_resume_code() {
         let text = "<?php\r\n$name = 'λ🙂'; $out = `printf \"hello\" $name ?> still_command \\` escaped`; echo strlen($out);";
         assert!(is_pure_php(text));
