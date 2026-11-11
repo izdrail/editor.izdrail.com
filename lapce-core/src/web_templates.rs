@@ -619,3 +619,26 @@ mod negated_test_completion_tests {
         assert_eq!(completion_kind("{# user is not def"), None);
     }
 }
+
+#[cfg(test)]
+mod twig_inline_comment_tests {
+    use super::*;
+    #[test]
+    fn inline_comments_hide_delimiters_and_resume_after_newline() {
+        for text in [
+            "{{ user # }} hidden\n|upper }}<p>after</p>",
+            "{% if user # %} hidden\r\n is defined %}<p>after</p>",
+        ] {
+            let snapshot = twig(text).unwrap();
+            let position = text.find("hidden").unwrap();
+            assert_eq!(snapshot.scope(snapshot.styles()[position]), Some("comment"), "{text}");
+            let position = text.find("<p>").unwrap();
+            assert_eq!(snapshot.scope(snapshot.styles()[position]), Some("tag"));
+        }
+        assert_eq!(completion_kind("{{ user # is not def"), None);
+        assert_eq!(completion_kind("{{ user # comment\n|up"), Some("filter"));
+        let text = "{{ '# is a string' }}";
+        let snapshot = twig(text).unwrap();
+        assert_eq!(snapshot.scope(snapshot.styles()[text.find('#').unwrap()]), Some("string"));
+    }
+}

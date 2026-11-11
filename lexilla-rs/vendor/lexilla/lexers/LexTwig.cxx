@@ -71,6 +71,11 @@ public:
                     size_t a=p++; int quote=c;
                     while(p<text.size()) { if(text[p]=='\\') p=std::min(p+2,text.size()); else if(text[p++]==quote) break; }
                     paint(a,p,3);
+                } else if(c=='#') {
+                    // Twig 3.15 inline comments consume closing delimiters too.
+                    size_t a=p++;
+                    while(p<text.size() && text[p]!='\n' && text[p]!='\r') ++p;
+                    paint(a,p,2);
                 } else if(std::isdigit(c)) {
                     size_t a=p++; while(p<text.size() && (std::isdigit(static_cast<unsigned char>(text[p])) || text[p]=='.' || text[p]=='_')) ++p;
                     paint(a,p,4);

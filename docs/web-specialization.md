@@ -104,3 +104,12 @@ and statement tags. Whitespace/newlines between the operator words are accepted;
 strings and comments still suppress completion. This changes the category of
 static completion only, not expression parsing or type inference.
 Reference: https://twig.symfony.com/doc/3.x/templates.html .
+
+## Twig inline comments
+
+Inside Twig expressions and statement tags, `#` comments run to the next newline.
+Closing delimiters inside the comment are ignored; scanning resumes on the next
+line. Hash characters in quoted strings remain string text, and comment text
+suppresses the static completion popup. This follows Twig 3.15+ behavior within
+the shipped Twig 3.21.1 target.
+Reference: https://twig.symfony.com/doc/3.x/templates.html .
