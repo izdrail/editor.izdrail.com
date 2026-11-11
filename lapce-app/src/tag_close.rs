@@ -35,9 +35,25 @@ pub fn closing_tag(before: &str, after: &str) -> Option<String> {
         start += 1;
     }
     let window = &body[start..];
-    let lt = window.rfind('<')?;
+    // Only the matching quote ends an attribute value. Literal opposite
+    // quotes and angle brackets inside that value are ordinary text.
+    let (mut candidate, mut quote) = (None, None);
+    for (i, c) in window.char_indices() {
+        if let Some(q) = quote {
+            if c == q { quote = None; }
+        } else {
+            match c {
+                '<' => candidate = Some(i),
+                '>' => candidate = None,
+                '\'' | '"' if candidate.is_some() => quote = Some(c),
+                _ => {}
+            }
+        }
+    }
+    if quote.is_some() { return None; }
+    let lt = candidate?;
     let tag = &window[lt + 1..];
-    if tag.contains('<') || tag.ends_with('/') || tag.ends_with('=') || tag.ends_with('-') {
+    if tag.ends_with('/') || tag.ends_with('=') || tag.ends_with('-') {
         return None;
     }
     let name: String = tag
@@ -49,9 +65,6 @@ pub fn closing_tag(before: &str, after: &str) -> Option<String> {
     }
     let rest = &tag[name.len()..];
     if !rest.is_empty() && !rest.starts_with(|c: char| c.is_whitespace()) {
-        return None;
-    }
-    if rest.matches('"').count() % 2 == 1 || rest.matches('\'').count() % 2 == 1 {
         return None;
     }
     // A `{{ ... }}` or `{% ... %}` left open means the `>` is part of it.
@@ -85,6 +98,17 @@ mod tests {
         assert_eq!(c("<div>").as_deref(), Some("</div>"));
         assert_eq!(c("  <a href=\"/x\" class='y'>").as_deref(), Some("</a>"));
         assert_eq!(c("<ul>\n  <li>").as_deref(), Some("</li>"));
+    }
+
+    #[test]
+    fn quoted_attribute_content_uses_matching_quote_delimiters() {
+        for text in [r#"<div title="don't">"#, r#"<div title='say "hello"'>"#, r#"<div title="1 < 2 > 0">"#, r#"<div title="<x-card>">"#, "<div\r\n title=\"λ🙂 don't < 2\">", r#"<div title="done" data-note='"'>"#] {
+            assert_eq!(c(text).as_deref(), Some("</div>"), "{text}");
+        }
+        for text in [r#"<div title="don't >"#, r#"<div title='say "hello" >"#, r#"<div title="<x-card>"#, "plain don't >"] {
+            assert_eq!(c(text), None, "{text}");
+        }
+        assert_eq!(c(r#"<x-alert title="don't < 2">"#).as_deref(), Some("</x-alert>"));
     }
 
     #[test]
