@@ -107,6 +107,16 @@ pub fn highlight_in(
     highlight_profile(language, text, &project)
 }
 
+// Only pure PHP routes consume the generated PHP/framework word lists.
+fn profile_php_lists(
+    language: LapceLanguage,
+    source: &str,
+    project: &crate::project_profile::ProjectProfile,
+) -> Option<Vec<String>> {
+    (language == LapceLanguage::Php && is_pure_php(source))
+        .then(|| crate::web_metadata::php_lists(project))
+}
+
 pub fn highlight_profile(
     language: LapceLanguage,
     text: &Rope,
@@ -121,8 +131,12 @@ pub fn highlight_profile(
     if language == Jsx || language == Tsx {
         return crate::web_templates::jsx(&source, language == Tsx).map(Arc::new);
     }
-    let php_lists = crate::web_metadata::php_lists(project);
-    let php_refs: Vec<&str> = php_lists.iter().map(String::as_str).collect();
+    let php_lists = profile_php_lists(language, &source, project);
+    let php_refs: Vec<&str> = php_lists
+        .iter()
+        .flatten()
+        .map(String::as_str)
+        .collect();
     let (lexer, keywords): (&str, &[&str]) = match language {
         // C and C++ share the lexer but not the language: .c files must not
         // paint C++-only keywords (real C code uses them as identifiers - redis
@@ -165,8 +179,8 @@ pub fn highlight_profile(
         // Outside a Laravel project the framework word lists stay empty.
         Blade if laravel => ("blade", LARAVEL_WORD_LISTS),
         Blade => ("blade", PHP_WORD_LISTS),
-        Php if laravel && is_pure_php(&source) => ("laravel", &php_refs),
-        Php if is_pure_php(&source) => ("php", &php_refs),
+        Php if laravel && php_lists.is_some() => ("laravel", &php_refs),
+        Php if php_lists.is_some() => ("php", &php_refs),
         // Vue single-file components are HTML templates with <script>/<style>
         // blocks, which the hypertext lexer already paints; there is no PHP.
         Html | Php | Vue => (
@@ -1243,5 +1257,29 @@ mod tests {
         for d in [dir, dir2, dir3] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+}
+
+#[cfg(test)]
+mod catalogue_routing_tests {
+    use super::*;
+    #[test]
+    fn non_php_highlighting_avoids_php_catalogue() {
+        let profile = crate::project_profile::ProjectProfile::default();
+        for language in [LapceLanguage::Css, LapceLanguage::Json, LapceLanguage::Html, LapceLanguage::Blade] {
+            assert!(profile_php_lists(language, "<?php echo 1;", &profile).is_none());
+        }
+        assert!(profile_php_lists(LapceLanguage::Php, "<p>Host</p><?php echo 1;", &profile).is_none());
+        assert!(profile_php_lists(LapceLanguage::Php, "<?php echo 1;", &profile).is_some());
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            let snapshot = highlight_profile(
+                LapceLanguage::Css,
+                &Rope::from("body { color: red; }"),
+                &Default::default(),
+            ).unwrap();
+            assert_eq!(snapshot.len(), 20);
+        }
+        eprintln!("CSS_100_HIGHLIGHTS={:?}", start.elapsed());
     }
 }

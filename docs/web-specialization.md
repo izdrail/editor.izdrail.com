@@ -124,3 +124,7 @@ member-access check. A comment between `->`, `?->` or `::` and the typed member
 name does not enable the global API catalogue. Ordinary global contexts remain
 available, including after a completed comment. This is context suppression,
 not receiver-type completion.
+
+PHP/framework highlighting word lists are built only for pure PHP lexer routes.
+Other languages and mixed HTML/PHP do not assemble that unrelated catalogue;
+their existing lexer word lists and routing remain unchanged.
