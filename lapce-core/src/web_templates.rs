@@ -1,23 +1,26 @@
 //! Byte-preserving composition of template and vendored web-language snapshots.
 use lexilla_rs::{Property, Snapshot};
 
-pub fn twig_lists() -> Vec<String> {
-    let mut lists = vec!["and or not in is matches starts ends with true false null none elseif else endif endfor endblock endmacro endset endapply endwith endembed endautoescape endverbatim verbatim autoescape".to_owned(), String::new(), String::new(), String::new()];
-    for s in crate::web_metadata::symbols()
-        .iter()
-        .filter(|s| s.framework == "twig")
-    {
-        let index = match s.kind.as_str() {
-            "tag" => 0,
-            "filter" => 1,
-            "function" => 2,
-            "test" => 3,
-            _ => continue,
-        };
-        lists[index].push(' ');
-        lists[index].push_str(&s.name);
-    }
-    lists
+pub fn twig_lists() -> &'static [String] {
+    static LISTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    LISTS.get_or_init(|| {
+        let mut lists = vec!["and or not in is matches starts ends with true false null none elseif else endif endfor endblock endmacro endset endapply endwith endembed endautoescape endverbatim verbatim autoescape".to_owned(), String::new(), String::new(), String::new()];
+        for s in crate::web_metadata::symbols()
+            .iter()
+            .filter(|s| s.framework == "twig")
+        {
+            let index = match s.kind.as_str() {
+                "tag" => 0,
+                "filter" => 1,
+                "function" => 2,
+                "test" => 3,
+                _ => continue,
+            };
+            lists[index].push(' ');
+            lists[index].push_str(&s.name);
+        }
+        lists
+    })
 }
 
 pub fn twig(source: &str) -> Option<Snapshot> {
@@ -785,5 +788,31 @@ mod twig_apply_context_tests {
         assert_eq!(completion_kind("{% apply default(ran"), Some("function"));
         assert_eq!(completion_kind("{{ apply up"), Some("function"));
         assert_eq!(completion_kind("{% set apply = ran"), Some("function"));
+    }
+}
+
+#[cfg(test)]
+mod twig_list_reuse_tests {
+    use super::*;
+    #[test]
+    fn twig_word_lists_are_complete_and_shared_across_threads() {
+        let lists = twig_lists();
+        assert_eq!(lists.len(), 4);
+        for symbol in crate::web_metadata::symbols().iter().filter(|s| s.framework == "twig") {
+            let index = match symbol.kind.as_str() {
+                "tag" => 0, "filter" => 1, "function" => 2, "test" => 3,
+                _ => continue,
+            };
+            // Multiword tests such as "same as" are lexer word sequences.
+            let needle: Vec<_> = symbol.name.split_whitespace().collect();
+            let words: Vec<_> = lists[index].split_whitespace().collect();
+            assert!(words.windows(needle.len()).any(|window| window == needle), "{}", symbol.name);
+        }
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| assert!(std::ptr::eq(twig_lists(), lists)));
+            }
+        });
+        assert_eq!(completion_kind("{{ user|up"), Some("filter"));
     }
 }
