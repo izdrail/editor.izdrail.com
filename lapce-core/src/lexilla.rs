@@ -593,6 +593,40 @@ mod tests {
     }
 
     #[test]
+    fn php_heredoc_and_nowdoc_accept_cr_only_line_endings() {
+        for ending in ["\r", "\n", "\r\n"] {
+            for label in ["TXT", "\"TXT\"", "'TXT'"] {
+                let text = format!("<?php{ending}$text = <<<{label}{ending}λ🙂 ?> body $name{ending}TXT;{ending}echo strlen($text);");
+                assert!(is_pure_php(&text));
+                for lexer in ["php", "laravel"] {
+                    let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+                    let snap = Snapshot::lex(lexer, &text, lists).unwrap();
+                    assert_eq!(snap.len(), text.len());
+                    assert_eq!(php_scope_at(&snap, &text, "?> body", 0), Some("string"));
+                    assert_eq!(php_scope_at(&snap, &text, "echo strlen", 0), Some("keyword"), "{lexer}: {ending:?} {label}");
+                    assert_eq!(php_scope_at(&snap, &text, "strlen", 0), Some("function"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn heredoc_line_boundaries_survive_trailing_backslashes_and_unfinished_edits() {
+        for ending in ["\r", "\n", "\r\n"] {
+            let text = format!("<?php{ending}$text = <<<TXT{ending}λ🙂 \\{ending}  TXT;{ending}echo strlen($text);");
+            for lexer in ["php", "laravel"] {
+                let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+                let snap = Snapshot::lex(lexer, &text, lists).unwrap();
+                assert_eq!(php_scope_at(&snap, &text, "echo strlen", 0), Some("keyword"));
+                let unfinished = text.split("  TXT;").next().unwrap();
+                let edited = Snapshot::lex(lexer, unfinished, lists).unwrap();
+                assert_eq!(edited.len(), unfinished.len());
+                assert_eq!(Snapshot::lex(lexer, &text, lists).unwrap().styles(), snap.styles());
+            }
+        }
+    }
+
+    #[test]
     fn php_heredoc_openers_accept_horizontal_whitespace_before_labels() {
         for gap in [" ", "\t", " \t "] {
             for label in ["TXT", "\"TXT\"", "'TXT'"] {

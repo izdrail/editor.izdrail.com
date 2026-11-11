@@ -504,7 +504,11 @@ static void ScanHeredocBody(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		pos = lineStart;
 		while (pos < max) {
 			const int c = styler.SafeGetCharAt(pos, '\0');
-			if (c == '\n') { pos++; break; }
+			if (c == '\n' || c == '\r') {
+				pos++;
+				if (c == '\r' && pos < max && styler.SafeGetCharAt(pos, '\0') == '\n') pos++;
+				break;
+			}
 			if (!nowdoc && c == '\\' && pos + 1 < max &&
 			    styler.SafeGetCharAt(pos + 1, '\0') != '\n' &&
 			    styler.SafeGetCharAt(pos + 1, '\0') != '\r') {
@@ -549,7 +553,11 @@ static void ScanHeredoc(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 	}
 	while (pos < max) {
 		const int ch = styler.SafeGetCharAt(pos, '\0');
-		if (ch == '\n') { pos++; break; }
+		if (ch == '\n' || ch == '\r') {
+				pos++;
+				if (ch == '\r' && pos < max && styler.SafeGetCharAt(pos, '\0') == '\n') pos++;
+				break;
+			}
 		pos++;
 	}
 	ScanHeredocBody(styler, pos, max, idStart, idLen, quote == '\'');
