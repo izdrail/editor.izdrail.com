@@ -148,3 +148,7 @@ regular-file checks and the 128-neighbor bound are unchanged.
 PHP completion context follows PHP's byte-based identifier rule for non-ASCII
 text. Combining marks and other UTF-8 characters no longer bypass variable or
 member guards; Twig's identifier handling is unchanged.
+
+The PHP buffer-variable source also keeps full non-ASCII UTF-8 names, including
+combining marks. Labels, filtering and insertion preserve the same bytes; ASCII
+digit starts and the special `$this` variable remain excluded.

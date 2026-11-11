@@ -152,10 +152,12 @@ pub fn php_variable_items(text: &str) -> Vec<CompletionItem> {
             let start = i + 1;
             let mut end = start;
             for (off, c) in text[start..].char_indices() {
-                let ok = if off == 0 {
-                    is_ident_start(c)
+                // PHP accepts every byte >= 0x80 in a variable name. All
+                // bytes of a non-ASCII UTF-8 character meet that rule.
+                let ok = !c.is_ascii() || c == '_' || if off == 0 {
+                    c.is_ascii_alphabetic()
                 } else {
-                    is_ident(c)
+                    c.is_ascii_alphanumeric()
                 };
                 if !ok {
                     break;
@@ -502,5 +504,25 @@ mod negated_twig_tests {
         let items = profile_items("twig", &profile, "{% if user is not def");
         assert!(items.iter().any(|item| item.label == "defined"));
         assert!(!items.iter().any(|item| item.label == "range"));
+    }
+}
+
+#[cfg(test)]
+mod php_byte_variable_tests {
+    use super::*;
+    #[test]
+    fn php_variable_names_keep_all_non_ascii_utf8_bytes() {
+        let names = ["cafe\u{0301}", "name🙂", "_value", "é", "\u{0301}start"];
+        let source = names.iter().map(|name| format!("${name};")).collect::<String>();
+        let items = php_variable_items(&source);
+        for name in names {
+            let label = format!("${name}");
+            let item = items.iter().find(|item| item.label == label)
+                .unwrap_or_else(|| panic!("missing {label}"));
+            assert_eq!(item.insert_text.as_deref(), Some(name));
+            assert_eq!(item.filter_text.as_deref(), Some(name));
+        }
+        assert_eq!(items.len(), names.len());
+        assert!(php_variable_items("$1invalid $this").is_empty());
     }
 }
