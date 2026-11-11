@@ -159,3 +159,7 @@ as outside PHP. Reopened PHP blocks resume the global catalogue normally.
 Twig dot-attribute positions no longer offer the global function catalogue.
 Filters/tests after an attribute, range operands and dynamic attribute
 expressions keep their existing completion categories.
+
+Twig `apply` tags offer filters for their initial name, including whitespace
+controls and inline comments. Function calls inside filter arguments still use
+the function category.

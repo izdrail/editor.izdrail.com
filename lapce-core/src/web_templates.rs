@@ -549,7 +549,9 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
         Some("not") => words.next() == Some("is"),
         _ => false,
     };
-    if context.ends_with('|') {
+    let apply_filter = tag == Some(start)
+        && context.trim_start_matches(['-', '~']).trim() == "apply";
+    if context.ends_with('|') || apply_filter {
         Some("filter")
     } else if test_context {
         Some("test")
@@ -768,5 +770,20 @@ mod twig_member_context_tests {
         assert_eq!(completion_kind("{{ user.name|up"), Some("filter"));
         assert_eq!(completion_kind("{{ user.name is def"), Some("test"));
         assert_eq!(completion_kind("{{ user.(ran"), Some("function"));
+    }
+}
+
+#[cfg(test)]
+mod twig_apply_context_tests {
+    use super::*;
+    #[test]
+    fn apply_tag_starts_in_filter_context() {
+        for before in ["{% apply up", "{%- apply up", "{%~ apply\nup", "{% apply # comment\nup"] {
+            assert_eq!(completion_kind(before), Some("filter"), "{before}");
+        }
+        assert_eq!(completion_kind("{% apply upper|low"), Some("filter"));
+        assert_eq!(completion_kind("{% apply default(ran"), Some("function"));
+        assert_eq!(completion_kind("{{ apply up"), Some("function"));
+        assert_eq!(completion_kind("{% set apply = ran"), Some("function"));
     }
 }
