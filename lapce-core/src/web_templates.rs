@@ -593,7 +593,9 @@ pub fn php_completion_context(before: &str) -> bool {
     let context = context_source
         .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
         .trim_end();
-    !context.ends_with("->") && !context.ends_with("::")
+    !context.ends_with("->")
+        && !context.ends_with("::")
+        && !context.ends_with('$')
 }
 
 #[cfg(test)]
@@ -699,5 +701,18 @@ mod php_member_comment_tests {
         }
         assert!(php_completion_context("<?php /* ordinary comment */ str"));
         assert!(!php_completion_context("<?php /* unfinished comment str"));
+    }
+}
+
+#[cfg(test)]
+mod php_variable_context_tests {
+    use super::*;
+    #[test]
+    fn variable_names_do_not_offer_global_api_catalogue() {
+        for before in ["<?php $str", "<?php $$str", "<?php $", "<p>Host</p><?php $str"] {
+            assert!(!php_completion_context(before), "{before}");
+        }
+        assert!(php_completion_context("<?php strlen($value); str"));
+        assert!(php_completion_context("<?php $value = str"));
     }
 }

@@ -132,3 +132,7 @@ their existing lexer word lists and routing remain unchanged.
 Syntax jobs already marked cancelled return before project metadata scanning or
 full-document highlighting. Checks after highlighting and folding remain, so
 cancellation that arrives during either step still prevents snapshot publication.
+
+PHP global API fallback is also suppressed while typing a dollar-prefixed
+variable name. The independent buffer-variable source remains available; normal
+function contexts after an assignment or completed expression are unchanged.
