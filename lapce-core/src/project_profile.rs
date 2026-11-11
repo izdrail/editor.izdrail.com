@@ -66,6 +66,13 @@ fn wordpress_header(bytes: &[u8], marker: &str) -> bool {
     false
 }
 
+fn wordpress_version_pattern() -> &'static regex::Regex {
+    static VERSION: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    VERSION.get_or_init(|| {
+        regex::Regex::new(r#"\$wp_version\s*=\s*['"]([^'"]+)['"]"#).unwrap()
+    })
+}
+
 pub fn detect(file: &Path) -> ProjectProfile {
     let mut profile = ProjectProfile::default();
     let Some(dir) = file.parent() else {
@@ -112,10 +119,8 @@ pub fn detect(file: &Path) -> ProjectProfile {
                 .filter(|bytes| bytes.len() <= 8192)
                 .and_then(|bytes| String::from_utf8(bytes).ok())
             {
-                let re = regex::Regex::new(r#"\$wp_version\s*=\s*['"]([^'"]+)['"]"#)
-                    .unwrap();
-                profile.wordpress_version =
-                    re.captures(&version).map(|c| c[1].to_owned());
+                profile.wordpress_version = wordpress_version_pattern()
+                    .captures(&version).map(|c| c[1].to_owned());
             }
             if let Some(value) = json(&composer) {
                 for section in ["require", "require-dev"] {
@@ -408,5 +413,30 @@ mod large_plugin_tests {
         file.set_len(0).unwrap();
         file.write_all(b"<?php /* No plugin header */\n").unwrap();
         assert!(!detect(&tmp.path().join("helper.php")).wordpress);
+    }
+}
+
+#[cfg(test)]
+mod shared_wordpress_version_tests {
+    use super::*;
+    #[test]
+    fn version_pattern_is_shared_without_caching_file_evidence() {
+        let pattern = wordpress_version_pattern();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| assert!(std::ptr::eq(pattern, wordpress_version_pattern())));
+            }
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("wp-includes")).unwrap();
+        std::fs::write(tmp.path().join("wp-config.php"), "<?php").unwrap();
+        let version = tmp.path().join("wp-includes/version.php");
+        let file = tmp.path().join("index.php");
+        for value in ["6.8.3", "5.0", "6.8.3"] {
+            std::fs::write(&version, format!("<?php $wp_version = '{value}';")).unwrap();
+            assert_eq!(detect(&file).wordpress_version.as_deref(), Some(value));
+        }
+        std::fs::remove_file(version).unwrap();
+        assert!(detect(&file).wordpress_version.is_none());
     }
 }

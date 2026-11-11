@@ -202,3 +202,7 @@ Twig completion treats all non-ASCII UTF-8 bytes as part of the identifier,
 matching Twig's name rule. Combining marks no longer bypass attribute guards
 or change filter/test completion into the global function category.
 Reference: https://raw.githubusercontent.com/twigphp/Twig/v3.21.1/src/Lexer.php .
+
+WordPress version matching shares its immutable regex across profile reads and
+threads. Version files are still read each time; edits and removal apply on the
+next detection without a project-evidence cache.
