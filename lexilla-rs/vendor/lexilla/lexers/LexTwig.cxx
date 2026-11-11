@@ -87,6 +87,14 @@ public:
                     if(p+1<text.size() && text[p]=='.' && std::isdigit(static_cast<unsigned char>(text[p+1]))) {
                         ++p; digits();
                     }
+                    if(p<text.size() && (text[p]=='e' || text[p]=='E')) {
+                        size_t exponent=p+1;
+                        if(exponent<text.size() && (text[exponent]=='+' || text[exponent]=='-')) ++exponent;
+                        // Keep unfinished exponents outside the number token.
+                        if(exponent<text.size() && std::isdigit(static_cast<unsigned char>(text[exponent]))) {
+                            p=exponent; digits();
+                        }
+                    }
                     paint(a,p,4);
                 } else if(ident(c)) {
                     size_t a=p++; while(p<text.size() && ident(text[p])) ++p;

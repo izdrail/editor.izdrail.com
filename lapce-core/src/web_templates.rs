@@ -838,3 +838,28 @@ mod twig_range_number_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod twig_exponent_tests {
+    use super::*;
+    #[test]
+    fn twig_complete_exponents_keep_number_styling() {
+        for number in ["1e3", "2.5E-4", "1_000e+2_0"] {
+            let text = format!("{{{{ {number} }}}}");
+            let snapshot = twig(&text).unwrap();
+            for position in 3..3 + number.len() {
+                assert_eq!(snapshot.scope(snapshot.styles()[position]), Some("constant"), "{number} at {position}");
+            }
+        }
+        for number in ["1e", "1E+", "1e-"] {
+            let text = format!("{{{{ {number}");
+            let snapshot = twig(&text).unwrap();
+            assert_ne!(snapshot.scope(snapshot.styles()[4]), Some("constant"), "{number}");
+        }
+        let text = "{{ 1e2..3e4 }}";
+        let snapshot = twig(text).unwrap();
+        let dots = text.find("..").unwrap();
+        assert_eq!(snapshot.scope(snapshot.styles()[dots]), Some("operator"));
+        assert_eq!(snapshot.scope(snapshot.styles()[dots + 1]), Some("operator"));
+    }
+}

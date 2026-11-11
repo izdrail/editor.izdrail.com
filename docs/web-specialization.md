@@ -173,3 +173,7 @@ Accepted contexts keep PHP, Laravel and WordPress entries unchanged.
 
 Twig numeric highlighting keeps the two-dot range operator separate from its
 numeric operands. Decimal fractions and digit separators retain number styling.
+
+Twig numbers include complete e/E exponents with optional signs and digit
+separators. Incomplete exponent suffixes stay outside the numeric token, and
+range operators remain separate.
