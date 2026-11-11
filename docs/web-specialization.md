@@ -118,3 +118,9 @@ Twig completion also uses lexer styles when selecting its open region and
 operator context. Comment bytes act as whitespace, and quoted/commented fake
 openers cannot choose the region. Test/filter completion therefore survives an
 inline comment between the operator and the name being typed.
+
+PHP global fallback completion treats block comments as whitespace before its
+member-access check. A comment between `->`, `?->` or `::` and the typed member
+name does not enable the global API catalogue. Ordinary global contexts remain
+available, including after a completed comment. This is context suppression,
+not receiver-type completion.

@@ -581,7 +581,16 @@ pub fn php_completion_context(before: &str) -> bool {
             return false;
         }
     }
-    let context = before
+    let mut context_bytes = before.as_bytes().to_vec();
+    for (byte, style) in context_bytes.iter_mut().zip(snapshot.styles()) {
+        if snapshot.scope(*style) == Some("comment") {
+            *byte = b' ';
+        }
+    }
+    let Ok(context_source) = String::from_utf8(context_bytes) else {
+        return false;
+    };
+    let context = context_source
         .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
         .trim_end();
     !context.ends_with("->") && !context.ends_with("::")
@@ -672,5 +681,23 @@ mod twig_comment_context_tests {
         }
         assert_eq!(completion_kind("{{ '{%' ~ ran"), Some("function"));
         assert_eq!(completion_kind("{{ user # is not def"), None);
+    }
+}
+
+#[cfg(test)]
+mod php_member_comment_tests {
+    use super::*;
+    #[test]
+    fn comments_do_not_turn_members_into_global_completion() {
+        for before in [
+            "<?php $value-> /* receiver comment */ str",
+            "<?php ClassName:: /* static comment */ str",
+            "<?php $value?-> /* nullsafe comment */ str",
+            "<p>Host</p><?php $value-> /* mixed PHP */ str",
+        ] {
+            assert!(!php_completion_context(before), "{before}");
+        }
+        assert!(php_completion_context("<?php /* ordinary comment */ str"));
+        assert!(!php_completion_context("<?php /* unfinished comment str"));
     }
 }
