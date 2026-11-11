@@ -155,3 +155,7 @@ digit starts and the special `$this` variable remain excluded.
 
 The pure-PHP completion guard treats a cursor directly after a closing `?>` tag
 as outside PHP. Reopened PHP blocks resume the global catalogue normally.
+
+Twig dot-attribute positions no longer offer the global function catalogue.
+Filters/tests after an attribute, range operands and dynamic attribute
+expressions keep their existing completion categories.

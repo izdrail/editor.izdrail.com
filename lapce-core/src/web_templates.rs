@@ -538,6 +538,11 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
     let context = tail
         .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
         .trim_end();
+    // A single dot selects an attribute/method, not a global function.
+    // Two dots are the range operator; dynamic .(expression) is also global.
+    if context.ends_with('.') && !context.ends_with("..") {
+        return None;
+    }
     let mut words = context.split_whitespace().rev();
     let test_context = match words.next() {
         Some("is") => true,
@@ -747,5 +752,21 @@ mod php_close_tag_context_tests {
         }
         assert!(php_completion_context("<?php ?><?php str"));
         assert!(php_completion_context("<?php $x = 1; str"));
+    }
+}
+
+#[cfg(test)]
+mod twig_member_context_tests {
+    use super::*;
+    #[test]
+    fn twig_attributes_do_not_offer_global_functions() {
+        for before in ["{{ user.ra", "{% if user.ra", "{{ user. # comment\n ra"] {
+            assert_eq!(completion_kind(before), None, "{before}");
+        }
+        assert_eq!(completion_kind("{{ ran"), Some("function"));
+        assert_eq!(completion_kind("{{ 1..ran"), Some("function"));
+        assert_eq!(completion_kind("{{ user.name|up"), Some("filter"));
+        assert_eq!(completion_kind("{{ user.name is def"), Some("test"));
+        assert_eq!(completion_kind("{{ user.(ran"), Some("function"));
     }
 }
