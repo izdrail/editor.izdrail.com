@@ -230,3 +230,7 @@ including UTF-8 comments, newlines and fake operators/openers inside comments.
 PHP completion context also borrows comment-free prefixes. Commented prefixes
 retain their byte-preserving mask for global/member checks in both pure PHP
 and mixed HTML/PHP, including non-ASCII identifiers and comment text.
+
+Local Blade hover uses the same filename classifier as bundled snippets and
+completion routing: `.blade.php` is case-insensitive, including
+`VIEW.BLADE.PHP`. Plain PHP and `.blade.php.bak` do not get Blade hover help.

@@ -9,6 +9,11 @@
 //! not know (custom ones from `Blade::directive`) get no hover.
 use std::path::Path;
 
+/// Keep editor hover routing and local help aligned with Blade snippets.
+pub(crate) fn supports_path(path: &Path) -> bool {
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
+}
+
 const DIRECTIVES: &[(&str, &str, &str)] = &[
     ("if", "@if (cond) ... @elseif (cond) ... @else ... @endif", "Conditional block."),
     ("elseif", "@elseif (cond)", "Else-if branch of an `@if`."),
@@ -369,7 +374,7 @@ fn component_tag_at(line: &str, col: usize) -> Option<(&'static str, &str)> {
 /// `window` is the text of up to 30 lines above plus the hovered line (for
 /// multi-line component tags); `at` is the hover byte offset inside it.
 pub fn help(root: Option<&Path>, file: &Path, window: &str, at: usize) -> Option<String> {
-    if !file.file_name()?.to_str()?.ends_with(".blade.php") {
+    if !supports_path(file) {
         return None;
     }
     let mut at = at.min(window.len());
@@ -607,6 +612,19 @@ mod tests {
         assert!(h.contains("Prop") && h.contains("'data' => null"), "{h}");
         assert!(in_expression_string(r#"x-on:click="$el.focus()"#, 16));
         assert!(!in_expression_string("plain $el text", 8));
+    }
+
+    #[test]
+    fn blade_hover_paths_match_snippet_case_rules() {
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
+            assert!(supports_path(Path::new(name)), "{name}");
+            let md = help(None, Path::new(name), "@foreach ($items as $item)", 3).unwrap();
+            assert!(md.contains("Loop over a collection"), "{name}: {md}");
+        }
+        for name in ["view.php", "view.blade.php.bak", "view.blade", "BLADE.PHP"] {
+            assert!(!supports_path(Path::new(name)), "{name}");
+            assert!(help(None, Path::new(name), "@foreach ($items as $item)", 3).is_none(), "{name}");
+        }
     }
 
     #[test]

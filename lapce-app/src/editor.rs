@@ -4750,7 +4750,7 @@ impl EditorData {
         };
         // Blade directive / component prop help comes from local text, no
         // language server round trip.
-        if path.to_string_lossy().ends_with(".blade.php") {
+        if crate::hover_help::supports_path(&path) {
             let (window, at) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 let from = buffer.offset_of_line(line.saturating_sub(30));
