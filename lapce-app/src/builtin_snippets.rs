@@ -235,6 +235,21 @@ mod tests {
     }
 
     #[test]
+    fn case_variants_share_blade_completion_packs_and_component_context() {
+        use std::path::Path;
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
+            let lang = snippet_language(Path::new(name), "php");
+            assert_eq!(lang, "blade", "{name}");
+            let pack = for_context(lang, &ProjectProfile::default());
+            assert!(pack.iter().any(|s| s.prefix.iter().any(|p| p == "wire-target")));
+            for text in ["<x-", "<x-forms.in", "<livewire:admin.us"] {
+                assert!(lang == "blade" && tag_name_context(text), "{name}: {text}");
+            }
+        }
+        assert_eq!(snippet_language(Path::new("BLADE.PHP.txt"), "php"), "php");
+    }
+
+    #[test]
     fn blade_bodies_keep_their_dollar_variables() {
         let each = packs().blade.iter().find(|s| s.prefix.iter().any(|x| x == "foreach")).unwrap();
         let text = Parsed::from_str(&each.body).unwrap().text();

@@ -210,3 +210,7 @@ next detection without a project-evidence cache.
 Completion word ranges recognize uppercase and mixed-case Blade suffixes, like
 language and snippet routing already do. Dotted component names and hyphenated
 attribute prefixes replace their complete typed prefix in those files too.
+
+Uppercase and mixed-case Blade filenames also use Blade variable completion,
+component-only popup filtering and component-name triggers. Other navigation
+and hover gates are unchanged.

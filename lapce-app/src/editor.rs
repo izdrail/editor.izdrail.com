@@ -3048,7 +3048,7 @@ impl EditorData {
                     end_offset..len.min(end_offset + MAX_SCAN_BYTES / 2),
                 ));
                 let lang = lapce_proxy::buffer::language_id_from_path(path);
-                let is_blade = path.to_string_lossy().ends_with(".blade.php");
+                let is_blade = crate::builtin_snippets::snippet_language(path, "php") == "blade";
                 let mut words = word_items(&buffer_words(&text));
                 if lang == Some("php") && !is_blade {
                     words.extend(php_variable_items(&text));
@@ -3140,7 +3140,7 @@ impl EditorData {
         // Inside a `<x-...` / `<livewire:...` tag name, only the project's
         // component tags are relevant: no snippets, keywords or words, and
         // show them even before a letter is typed.
-        let tag_only = path.to_string_lossy().ends_with(".blade.php")
+        let tag_only = crate::builtin_snippets::snippet_language(path, "php") == "blade"
             && matches!(
                 crate::project_completion::context(&line_before),
                 Some(
@@ -3226,7 +3226,7 @@ impl EditorData {
             };
             // `<x-` ends in `-`, which is not a trigger char, but the
             // component list should open there too.
-            let tag_ctx = path.to_string_lossy().ends_with(".blade.php")
+            let tag_ctx = crate::builtin_snippets::snippet_language(&path, "php") == "blade"
                 && start_offset > 0 && {
                 let line_start =
                     buffer.offset_of_line(buffer.line_of_offset(start_offset));

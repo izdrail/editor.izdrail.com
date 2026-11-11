@@ -4375,10 +4375,9 @@ fn component_names(root: &Path) -> Vec<String> {
 
 /// `<x-...>` tag completion: only inside a `.blade.php` view.
 fn component_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
-    let is_blade = file
-        .and_then(|p| p.file_name())
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.ends_with(".blade.php"));
+    let is_blade = file.is_some_and(|path| {
+        crate::builtin_snippets::snippet_language(path, "php") == "blade"
+    });
     if !is_blade {
         return Vec::new();
     }
@@ -4467,10 +4466,9 @@ fn livewire_names(root: &Path) -> Vec<String> {
 
 /// `<livewire:...>` tag completion: only inside a `.blade.php` view.
 fn livewire_tags(root: &Path, file: Option<&Path>) -> Vec<CompletionItem> {
-    let is_blade = file
-        .and_then(|p| p.file_name())
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.ends_with(".blade.php"));
+    let is_blade = file.is_some_and(|path| {
+        crate::builtin_snippets::snippet_language(path, "php") == "blade"
+    });
     if !is_blade {
         return Vec::new();
     }
@@ -8464,6 +8462,21 @@ Gate::define(\"buy-cd\", 'shop.buy');
         let plain = r.join("routes/web.php");
         put(r, "routes/web.php", "<?php");
         assert!(items(r, Some(&plain), "<livewire:").is_empty());
+    }
+
+    #[test]
+    fn component_sources_accept_case_variants_of_blade_suffixes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/components/forms/input.blade.php", "");
+        put(r, "resources/views/livewire/counter.blade.php", "");
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
+            let view = r.join("resources/views").join(name);
+            put(r, &format!("resources/views/{name}"), "");
+            assert!(items(r, Some(&view), "<x-forms.in").iter().any(|i| i.label == "forms.input"), "{name}");
+            assert!(items(r, Some(&view), "<livewire:co").iter().any(|i| i.label == "counter"), "{name}");
+        }
+        assert!(items(r, Some(&r.join("note.txt")), "<x-").is_empty());
     }
 
     #[test]
