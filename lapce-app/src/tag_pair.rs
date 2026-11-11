@@ -95,8 +95,11 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
         if rest.starts_with(b"<!--") {
             i = find_from(b, i + 4, b"-->").map(|p| p + 3).unwrap_or(b.len());
         } else if rest.starts_with(b"<?") {
-            let php_opener = rest.get(..5).is_some_and(|tag| tag.eq_ignore_ascii_case(b"<?php")) || rest.starts_with(b"<?=")
-                || rest.get(2).is_some_and(|c| c.is_ascii_whitespace());
+            let tag_whitespace = |c: &u8| matches!(c, b' ' | b'\t' | b'\r' | b'\n');
+            let long_opener = rest.get(..5).is_some_and(|tag| tag.eq_ignore_ascii_case(b"<?php"))
+                && rest.get(5).is_none_or(tag_whitespace);
+            let php_opener = long_opener || rest.starts_with(b"<?=")
+                || rest.get(2).is_some_and(tag_whitespace);
             if !php_opener {
                 i = find_from(b, i + 2, b"?>").map(|p| p + 2).unwrap_or(b.len());
                 continue;
@@ -290,6 +293,17 @@ mod tests {
         assert_eq!(names(text, text.find("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
         let unfinished = "<?php $x = '?><div>fake</div>'";
         assert_eq!(names(unfinished, unfinished.find("<div>").unwrap() + 2), None);
+    }
+
+    #[test]
+    fn php_prefix_lookalikes_do_not_hide_later_real_elements() {
+        for prefix in ["<?phpx", "<?PhP/**/", "<?php\u{000b}", "<?php\u{000c}", "<?\u{000b}", "<?\u{000c}"] {
+            let text = format!("{prefix} ignored ?> <p>real</p>");
+            assert_eq!(names(&text, text.find("<p>").unwrap()+1), Some(("p".into(), "p".into())), "{prefix:?}");
+            let text = format!("{prefix} ignored ?> <?php echo '?><div>fake</div>'; ?> <p>real</p>");
+            assert_eq!(names(&text, text.find("<div>").unwrap()+1), None);
+            assert_eq!(names(&text, text.find("<p>").unwrap()+1), Some(("p".into(), "p".into())));
+        }
     }
 
     #[test]
