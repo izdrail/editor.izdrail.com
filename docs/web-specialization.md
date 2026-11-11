@@ -85,3 +85,14 @@ navigation, local symbol shadowing/import-aware insertion, richer snippets,
 JSX/TSX grammar integration, incremental performance, overrides/watcher cache,
 LSP or AI features. Performance and real UI/theme/viewport verification are still
 required. No patent clearance or exhaustive framework coverage is claimed.
+
+## WordPress header detection
+
+Plugin/theme labels follow WordPress's line-prefix, case-insensitive matching
+and CR-only line handling. Empty labels and label mentions in ordinary PHP
+strings do not establish a WordPress project. Closing comment/PHP tags are
+removed before checking whether the value is empty. This remains a bounded
+static detector, not PHP parsing.
+
+Sources: https://developer.wordpress.org/reference/functions/get_file_data/
+and https://developer.wordpress.org/reference/functions/_cleanup_header_comment/ .

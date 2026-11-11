@@ -38,6 +38,35 @@ fn json(path: &Path) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+// Match WordPress get_file_data's line-prefix/case/CR rules without executing PHP.
+fn wordpress_header(bytes: &[u8], marker: &str) -> bool {
+    use std::sync::OnceLock;
+    static HEADER: OnceLock<regex::Regex> = OnceLock::new();
+    let pattern = HEADER.get_or_init(|| {
+        regex::Regex::new(
+            r"(?im)^(?:[ \t]*<\?(?:php)?)?[ \t/*#@]*(plugin name:|theme name:)([^\n]*)$",
+        )
+        .unwrap()
+    });
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let text = text.replace('\r', "\n");
+    for captures in pattern.captures_iter(&text) {
+        if !captures[1].eq_ignore_ascii_case(marker) {
+            continue;
+        }
+        let value = &captures[2];
+        let end = [value.find("*/"), value.find("?>")]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(value.len());
+        return !value[..end].trim().is_empty();
+    }
+    false
+}
+
 pub fn detect(file: &Path) -> ProjectProfile {
     let mut profile = ProjectProfile::default();
     let Some(dir) = file.parent() else {
@@ -52,7 +81,7 @@ pub fn detect(file: &Path) -> ProjectProfile {
                 return false;
             };
             bytes.truncate(8192);
-            std::str::from_utf8(&bytes).is_ok_and(|s| s.contains(marker))
+            wordpress_header(&bytes, marker)
         };
         let plugin_file = |path: &Path| {
             path.extension().is_some_and(|e| e == "php")
@@ -320,5 +349,31 @@ mod opened_plugin_tests {
         assert_eq!(profile.root.as_deref(), Some(tmp.path()));
         assert!(crate::web_metadata::php_symbols(&profile)
             .any(|s| s.name == "add_action"));
+    }
+}
+
+#[cfg(test)]
+mod header_parity_tests {
+    use super::*;
+    #[test]
+    fn wordpress_headers_are_case_insensitive_and_line_anchored() {
+        for (source, expected) in [
+            ("<?php /* plugin name: Lowercase */", true),
+            ("<?php\r/**\r * pLuGiN nAmE: CR-only\r */", true),
+            ("<?php\n// Plugin Name: Slash comment", true),
+            ("<?php\n# Plugin Name: Hash comment", true),
+            ("<?php $example = 'Plugin Name: Not a plugin';", false),
+            ("<?php\n/* Example Plugin Name: Not a header */", false),
+            ("<?php\n/* Plugin Name: */", false),
+            ("<?php\n/* Plugin Name:    */", false),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let file = tmp.path().join("plugin.php");
+            std::fs::write(&file, source).unwrap();
+            assert_eq!(detect(&file).wordpress, expected, "{source}");
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("style.css"), "/* theme name: Lowercase */").unwrap();
+        assert!(detect(&tmp.path().join("functions.php")).wordpress);
     }
 }
