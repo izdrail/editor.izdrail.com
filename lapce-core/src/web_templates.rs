@@ -548,13 +548,17 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
     };
     // Comments are whitespace for the surrounding expression, including any
     // fake operators/openers they contain. Mask bytes to preserve UTF-8 offsets.
-    let mut context_bytes = before.as_bytes().to_vec();
-    for (byte, style) in context_bytes.iter_mut().zip(template.styles()) {
-        if *style == 2 && !matches!(*byte, b'\n' | b'\r') {
-            *byte = b' ';
+    let context_source = if template.styles().contains(&2) {
+        let mut context_bytes = before.as_bytes().to_vec();
+        for (byte, style) in context_bytes.iter_mut().zip(template.styles()) {
+            if *style == 2 && !matches!(*byte, b'\n' | b'\r') {
+                *byte = b' ';
+            }
         }
-    }
-    let context_source = String::from_utf8(context_bytes).ok()?;
+        std::borrow::Cow::Owned(String::from_utf8(context_bytes).ok()?)
+    } else {
+        std::borrow::Cow::Borrowed(before)
+    };
     let tail = &context_source[start + 2..];
     // Ignore the identifier currently being completed.
     let context = tail
@@ -673,6 +677,19 @@ mod isolation_tests {
         }
         for before in ["<?php 'str", "<?php // str", "<?php $value->str", "<?php Type::str", "<?php $str", "<?php ?>", "<p>str"] {
             assert!(!php_completion_context(before), "{before}");
+        }
+    }
+
+    #[test]
+    fn borrowed_and_comment_masked_twig_contexts_keep_categories() {
+        for (plain, commented, expected) in [
+            ("{{ λ|up", "{{ λ| # λ🙂 fake {{ .\nup", Some("filter")),
+            ("{{ λ is def", "{{ λ is # λ🙂 |\r\ndef", Some("test")),
+            ("{{ λ.at", "{{ λ. # λ🙂 is\nat", None),
+            ("{% apply up", "{% apply # λ🙂 {{\nup", Some("filter")),
+        ] {
+            assert_eq!(completion_kind(plain), expected, "{plain}");
+            assert_eq!(completion_kind(commented), expected, "{commented}");
         }
     }
 

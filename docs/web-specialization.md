@@ -222,3 +222,7 @@ categories and string/comment/attribute suppression remain unchanged.
 PHP completion context scanning also skips catalogue word-list setup. Its
 structural string/comment, host-text, close-tag, member and variable guards
 remain in place; syntax highlighting keeps its existing word lists.
+
+Comment-free Twig completion prefixes are borrowed instead of copied for
+context checks. Prefixes containing comments retain the byte-preserving mask,
+including UTF-8 comments, newlines and fake operators/openers inside comments.
