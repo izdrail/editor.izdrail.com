@@ -816,3 +816,25 @@ mod twig_list_reuse_tests {
         assert_eq!(completion_kind("{{ user|up"), Some("filter"));
     }
 }
+
+#[cfg(test)]
+mod twig_range_number_tests {
+    use super::*;
+    #[test]
+    fn twig_ranges_do_not_merge_into_numeric_literals() {
+        for text in ["{{ 1..5 }}", "{% for n in 1_000..2_000 %}"] {
+            let snapshot = twig(text).unwrap();
+            let dots = text.find("..").unwrap();
+            for position in dots..dots + 2 {
+                assert_eq!(snapshot.scope(snapshot.styles()[position]), Some("operator"), "{text}");
+            }
+            assert_eq!(snapshot.scope(snapshot.styles()[dots - 1]), Some("constant"));
+            assert_eq!(snapshot.scope(snapshot.styles()[dots + 2]), Some("constant"));
+        }
+        let text = "{{ 3_141.592_65 }}";
+        let snapshot = twig(text).unwrap();
+        for position in 3..text.len() - 3 {
+            assert_eq!(snapshot.scope(snapshot.styles()[position]), Some("constant"));
+        }
+    }
+}

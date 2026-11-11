@@ -170,3 +170,6 @@ this does not introduce a project-metadata cache.
 
 Rejected PHP completion contexts return before fallback catalogue allocation.
 Accepted contexts keep PHP, Laravel and WordPress entries unchanged.
+
+Twig numeric highlighting keeps the two-dot range operator separate from its
+numeric operands. Decimal fractions and digit separators retain number styling.

@@ -77,7 +77,16 @@ public:
                     while(p<text.size() && text[p]!='\n' && text[p]!='\r') ++p;
                     paint(a,p,2);
                 } else if(std::isdigit(c)) {
-                    size_t a=p++; while(p<text.size() && (std::isdigit(static_cast<unsigned char>(text[p])) || text[p]=='.' || text[p]=='_')) ++p;
+                    size_t a=p++;
+                    auto digits=[&]() {
+                        while(p<text.size() && (std::isdigit(static_cast<unsigned char>(text[p])) || text[p]=='_')) ++p;
+                    };
+                    digits();
+                    // A decimal point has a following digit. Never consume the
+                    // two-dot range operator as part of a numeric literal.
+                    if(p+1<text.size() && text[p]=='.' && std::isdigit(static_cast<unsigned char>(text[p+1]))) {
+                        ++p; digits();
+                    }
                     paint(a,p,4);
                 } else if(ident(c)) {
                     size_t a=p++; while(p<text.size() && ident(text[p])) ++p;
