@@ -403,6 +403,13 @@ pub fn profile_items(
     profile: &lapce_core::project_profile::ProjectProfile,
     before_cursor: &str,
 ) -> Vec<CompletionItem> {
+    // Avoid API words in PHP strings/comments and member-access contexts. Static
+    // global-function fallback cannot infer the object's receiver type.
+    if language_id == "php"
+        && !lapce_core::web_templates::php_completion_context(before_cursor)
+    {
+        return Vec::new();
+    }
     let mut items = if language_id == "php" {
         language_items(language_id, profile.laravel)
     } else {
@@ -415,13 +422,6 @@ pub fn profile_items(
     };
     if language_id == "twig" && twig_kind.is_none() {
         return items;
-    }
-    // Avoid API words in PHP strings/comments and member-access contexts. Static
-    // global-function fallback cannot infer the object's receiver type.
-    if language_id == "php"
-        && !lapce_core::web_templates::php_completion_context(before_cursor)
-    {
-        return Vec::new();
     }
     let mut seen: std::collections::HashSet<String> =
         items.iter().map(|i| i.label.clone()).collect();
@@ -524,5 +524,23 @@ mod php_byte_variable_tests {
         }
         assert_eq!(items.len(), names.len());
         assert!(php_variable_items("$1invalid $this").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod rejected_php_context_tests {
+    use super::*;
+    #[test]
+    fn rejected_php_contexts_return_no_catalogue_items() {
+        let profile = lapce_core::project_profile::ProjectProfile {
+            laravel: true, wordpress: true, ..Default::default()
+        };
+        for before in ["<?php $str", "<?php $value->str", "<?php 'str", "<?php // str", "<?php ?>"] {
+            assert!(profile_items("php", &profile, before).is_empty(), "{before}");
+        }
+        let items = profile_items("php", &profile, "<?php str");
+        for name in ["strlen", "Route", "add_action"] {
+            assert!(items.iter().any(|item| item.label == name), "{name}");
+        }
     }
 }

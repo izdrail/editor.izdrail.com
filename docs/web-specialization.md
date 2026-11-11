@@ -167,3 +167,6 @@ the function category.
 Immutable Twig lexer word lists are initialized once and shared by highlighting
 and completion across threads. Project evidence remains reread on each request;
 this does not introduce a project-metadata cache.
+
+Rejected PHP completion contexts return before fallback catalogue allocation.
+Accepted contexts keep PHP, Laravel and WordPress entries unchanged.
