@@ -512,14 +512,28 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
     if matches!(last, 0 | 2 | 3 | 9) {
         return None;
     }
-    let echo = before.rfind("{{");
-    let tag = before.rfind("{%");
+    let opener = |needle| {
+        before.rmatch_indices(needle).find_map(|(offset, _)| {
+            (template.styles()[offset] == 1).then_some(offset)
+        })
+    };
+    let echo = opener("{{");
+    let tag = opener("{%");
     let start = match (echo, tag) {
         (Some(a), Some(b)) => a.max(b),
         (Some(a), None) | (None, Some(a)) => a,
         _ => return None,
     };
-    let tail = &before[start + 2..];
+    // Comments are whitespace for the surrounding expression, including any
+    // fake operators/openers they contain. Mask bytes to preserve UTF-8 offsets.
+    let mut context_bytes = before.as_bytes().to_vec();
+    for (byte, style) in context_bytes.iter_mut().zip(template.styles()) {
+        if *style == 2 && !matches!(*byte, b'\n' | b'\r') {
+            *byte = b' ';
+        }
+    }
+    let context_source = String::from_utf8(context_bytes).ok()?;
+    let tail = &context_source[start + 2..];
     // Ignore the identifier currently being completed.
     let context = tail
         .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
@@ -640,5 +654,23 @@ mod twig_inline_comment_tests {
         let text = "{{ '# is a string' }}";
         let snapshot = twig(text).unwrap();
         assert_eq!(snapshot.scope(snapshot.styles()[text.find('#').unwrap()]), Some("string"));
+    }
+}
+
+#[cfg(test)]
+mod twig_comment_context_tests {
+    use super::*;
+    #[test]
+    fn comments_are_whitespace_in_twig_completion_context() {
+        for before in [
+            "{{ user is # comment\n not def",
+            "{{ user is # fake {% opener\n not def",
+            "{{ user | # comment with is not\nup",
+        ] {
+            let expected = if before.ends_with("up") { "filter" } else { "test" };
+            assert_eq!(completion_kind(before), Some(expected), "{before}");
+        }
+        assert_eq!(completion_kind("{{ '{%' ~ ran"), Some("function"));
+        assert_eq!(completion_kind("{{ user # is not def"), None);
     }
 }

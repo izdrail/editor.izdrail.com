@@ -113,3 +113,8 @@ line. Hash characters in quoted strings remain string text, and comment text
 suppresses the static completion popup. This follows Twig 3.15+ behavior within
 the shipped Twig 3.21.1 target.
 Reference: https://twig.symfony.com/doc/3.x/templates.html .
+
+Twig completion also uses lexer styles when selecting its open region and
+operator context. Comment bytes act as whitespace, and quoted/commented fake
+openers cannot choose the region. Test/filter completion therefore survives an
+inline comment between the operator and the name being typed.
