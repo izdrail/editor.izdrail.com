@@ -765,6 +765,26 @@ mod tests {
     }
 
     #[test]
+    fn php_and_laravel_numeric_scanning_agrees_on_explicit_octal() {
+        for literal in ["0o755", "0O7_55", "0xF_f", "0B10_01", "1_000", ".5e-2", "2.e3"] {
+            let text = format!("<?php $value = {literal}; echo 1;");
+            for lexer in ["php", "laravel", "blade"] {
+                let snap = Snapshot::lex(lexer, &text, PHP_WORD_LISTS).unwrap();
+                let start = text.find(literal).unwrap();
+                assert!(snap.styles()[start..start+literal.len()].iter().all(|s| *s == 12), "{lexer}: {literal}");
+                assert_eq!(php_scope_at(&snap, &text, "echo", 0), Some("keyword"));
+            }
+        }
+        for literal in ["0x", "0X", "0b", "0B", "0o", "0O"] {
+            let text = format!("<?php $value = {literal}");
+            let php = Snapshot::lex("php", &text, &[]).unwrap();
+            for lexer in ["laravel", "blade"] {
+                assert_eq!(php.styles(), Snapshot::lex(lexer, &text, &[]).unwrap().styles(), "{lexer}: {literal}");
+            }
+        }
+    }
+
+    #[test]
     fn php_float_literals_include_leading_and_trailing_decimal_points() {
         let text = "<?php\r\n$values = [.5, 1., 2.e3, .5e-2, 1_000.5, 0.5];\r\necho strlen('λ🙂');";
         for lexer in ["php", "laravel"] {

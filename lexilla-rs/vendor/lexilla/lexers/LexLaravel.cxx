@@ -31,6 +31,7 @@
 #include "DefaultLexer.h"
 #include "PHPStringScanner.h"
 #include "PHPHeredocScanner.h"
+#include "PHPNumberScanner.h"
 
 using namespace Scintilla;
 using namespace Lexilla;
@@ -338,52 +339,7 @@ static const char *MagicConstantName(const char *lower) {
 	return nullptr;
 }
 
-static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
-	/* Same numeric logic as LexPHP.cxx - kept compact here. */
-	const int c = styler.SafeGetCharAt(pos, '\0');
-	const int n = styler.SafeGetCharAt(pos + 1, '\0');
-	if (c == '0' && (n == 'x' || n == 'X')) {
-		pos += 2;
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if (IsADigit(d, 16) || d == '_') pos++; else break;
-		}
-	} else if (c == '0' && (n == 'b' || n == 'B')) {
-		pos += 2;
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if (d == '0' || d == '1' || d == '_') pos++; else break;
-		}
-	} else {
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
-		}
-		if (styler.SafeGetCharAt(pos, '\0') == '.') {
-			pos++;
-			while (pos < max) {
-				int d = styler.SafeGetCharAt(pos, '\0');
-				if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
-			}
-		}
-		int e = styler.SafeGetCharAt(pos, '\0');
-		if (e == 'e' || e == 'E') {
-			Sci_Position save = pos;
-			pos++;
-			int s = styler.SafeGetCharAt(pos, '\0');
-			if (s == '+' || s == '-') pos++;
-			if (IsADigit(styler.SafeGetCharAt(pos, '\0'), 10)) {
-				while (pos < max) {
-					int d = styler.SafeGetCharAt(pos, '\0');
-					if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
-				}
-			} else {
-				pos = save;
-			}
-		}
-	}
-	styler.ColourTo(pos - 1, SCE_LARAVEL_NUMBER);
-}
+using NumberScanner = PHPNumberScanner<SCE_LARAVEL_NUMBER, SCE_LARAVEL_LEXERROR>;
 
 static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max, WordList *keywords) {
 	const Sci_Position start = pos;
@@ -737,7 +693,7 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 			styler.ColourTo(identEnd - 1, SCE_LARAVEL_IDENTIFIER);
 		}
 	} else if ((c >= '0' && c <= '9') || (c == '.' && IsADigit(n, 10))) {
-		ScanNumber(styler, pos, max);
+		NumberScanner::ScanNumber(styler, pos, max);
 	} else if (IsOperatorChar(c)) {
 		pos++;
 		styler.ColourTo(pos - 1, SCE_LARAVEL_OPERATOR);

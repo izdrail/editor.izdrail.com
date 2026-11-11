@@ -51,3 +51,5 @@ Both custom PHP scanners keep leading-dot and trailing-dot floats in a single nu
 Grammar reference: https://www.php.net/manual/en/language.types.float.php .
 
 Long PHP open tags require a space, tab, CR or LF after `<?php` (ASCII case-insensitive), or the end of the document. Prefix lookalikes such as `<?phpx` and `<?php/**/` do not enter PHP. Routing and standalone PHP/Laravel/Blade scanners use that boundary; short echo tags retain their separate path. This does not model a project-specific `short_open_tag` ini setting. Reference: https://www.php.net/manual/en/language.basic-syntax.phptags.php .
+
+The PHP and Laravel/Blade numeric scanners share `PHPNumberScanner.h`. Explicit PHP 8.1+ octal prefixes (`0o`/`0O`) keep the whole literal numeric in all three modes. Unfinished base prefixes use the standalone PHP scanner's existing lexical-error style. Decimal/float behavior is preserved; this is not complete malformed-number or underscore-placement validation. Reference: https://www.php.net/manual/en/language.types.integer.php .

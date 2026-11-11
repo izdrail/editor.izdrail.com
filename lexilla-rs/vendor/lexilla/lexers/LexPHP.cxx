@@ -31,6 +31,7 @@
 #include "DefaultLexer.h"
 #include "PHPStringScanner.h"
 #include "PHPHeredocScanner.h"
+#include "PHPNumberScanner.h"
 
 using namespace Scintilla;
 using namespace Lexilla;
@@ -273,68 +274,7 @@ static const char *MagicConstantName(const char *lower) {
 	return nullptr;
 }
 
-static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
-	const int c = styler.SafeGetCharAt(pos, '\0');
-	const int n = styler.SafeGetCharAt(pos + 1, '\0');
-	bool error = false;
-
-	if (c == '0' && (n == 'x' || n == 'X')) {
-		pos += 2;
-		bool any = false;
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if (IsADigit(d, 16) || d == '_') { pos++; any = true; } else break;
-		}
-		if (!any) error = true;
-	} else if (c == '0' && (n == 'b' || n == 'B')) {
-		pos += 2;
-		bool any = false;
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if (d == '0' || d == '1' || d == '_') { pos++; any = true; } else break;
-		}
-		if (!any) error = true;
-	} else if (c == '0' && (n == 'o' || n == 'O')) {
-		pos += 2;
-		bool any = false;
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if ((d >= '0' && d <= '7') || d == '_') { pos++; any = true; } else break;
-		}
-		if (!any) error = true;
-	} else {
-		while (pos < max) {
-			int d = styler.SafeGetCharAt(pos, '\0');
-			if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
-		}
-		/* fractional part */
-		if (styler.SafeGetCharAt(pos, '\0') == '.') {
-			pos++;
-			while (pos < max) {
-				int d = styler.SafeGetCharAt(pos, '\0');
-				if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
-			}
-		}
-		/* exponent */
-		int e = styler.SafeGetCharAt(pos, '\0');
-		if (e == 'e' || e == 'E') {
-			Sci_Position save = pos;
-			pos++;
-			int s = styler.SafeGetCharAt(pos, '\0');
-			if (s == '+' || s == '-') pos++;
-			if (IsADigit(styler.SafeGetCharAt(pos, '\0'), 10)) {
-				while (pos < max) {
-					int d = styler.SafeGetCharAt(pos, '\0');
-					if ((d >= '0' && d <= '9') || d == '_') pos++; else break;
-				}
-			} else {
-				pos = save;
-			}
-		}
-	}
-
-	styler.ColourTo(pos - 1, error ? SCE_PHP_LEXERROR : SCE_PHP_NUMBER);
-}
+using NumberScanner = PHPNumberScanner<SCE_PHP_NUMBER, SCE_PHP_LEXERROR>;
 
 static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max, WordList *keywords) {
 	const Sci_Position start = pos;
@@ -529,7 +469,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		} else if (IsIdentifierStart(c)) {
 			ScanIdentifier(styler, pos, max, keywords);
 		} else if ((c >= '0' && c <= '9') || (c == '.' && IsADigit(n, 10))) {
-			ScanNumber(styler, pos, max);
+			NumberScanner::ScanNumber(styler, pos, max);
 		} else if (IsOperatorChar(c)) {
 			pos++;
 			styler.ColourTo(pos - 1, SCE_PHP_OPERATOR);
