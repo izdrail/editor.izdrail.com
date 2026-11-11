@@ -695,6 +695,30 @@ mod tests {
     }
 
     #[test]
+    fn php_and_laravel_heredoc_styles_stay_identical() {
+        for newline in ["\n", "\r\n", "\r"] {
+            for opener in ["TXT", "\"TXT\"", "'TXT'", " \t\"TXT\""] {
+                for body in ["λ🙂 $name {$user['key']} ?>", r"\$literal $real", "TXT_suffix", "  TXTmore"] {
+                    let text = format!("<?php $x = <<<{opener}{newline}{body}{newline}  TXT; $after = 1; ?>");
+                    let php = Snapshot::lex("php", &text, &[]).unwrap();
+                    let laravel = Snapshot::lex("laravel", &text, &[]).unwrap();
+                    assert_eq!(php.len(), text.len());
+                    assert_eq!(php.styles(), laravel.styles(), "{text}");
+                    let end = text.find("  TXT;").unwrap();
+                    let unfinished = &text[..end];
+                    let php = Snapshot::lex("php", unfinished, &[]).unwrap();
+                    let laravel = Snapshot::lex("laravel", unfinished, &[]).unwrap();
+                    assert_eq!(php.len(), unfinished.len());
+                    assert_eq!(php.styles(), laravel.styles());
+                }
+            }
+        }
+        for text in ["<?php $x = <<<", "<?php $x = <<<'", "<?php $x = <<<\"TXT", "<?php $x = <<< \t"] {
+            assert_eq!(Snapshot::lex("php", text, &[]).unwrap().styles(), Snapshot::lex("laravel", text, &[]).unwrap().styles());
+        }
+    }
+
+    #[test]
     fn php_and_laravel_string_scanner_styles_stay_identical() {
         let strings = [
             "''", "\"\"", "``", "'λ🙂 \\\' ?>'", "\"λ🙂 $name ?>\"",

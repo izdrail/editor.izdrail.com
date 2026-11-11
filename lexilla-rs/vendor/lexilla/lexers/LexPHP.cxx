@@ -30,6 +30,7 @@
 #include "OptionSet.h"
 #include "DefaultLexer.h"
 #include "PHPStringScanner.h"
+#include "PHPHeredocScanner.h"
 
 using namespace Scintilla;
 using namespace Lexilla;
@@ -357,134 +358,7 @@ static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max
 	styler.ColourTo(pos - 1, SCE_PHP_IDENTIFIER);
 }
 
-/* Find the "<<<" that opened the heredoc containing `pos`. */
-static bool FindHeredocStart(Accessor &styler, Sci_Position pos,
-                             Sci_Position &idStart, Sci_Position &idLen,
-                             bool &nowdoc) {
-	Sci_Position line = styler.GetLine(pos);
-	for (; line >= 0; line--) {
-		const Sci_Position lineStart = styler.LineStart(line);
-		const Sci_Position lineEnd   = styler.LineStart(line + 1);
-		for (Sci_Position p = lineStart; p + 2 < lineEnd; p++) {
-			if (styler.SafeGetCharAt(p,     '\0') == '<' &&
-			    styler.SafeGetCharAt(p + 1, '\0') == '<' &&
-			    styler.SafeGetCharAt(p + 2, '\0') == '<') {
-				p += 3;
-				while (p < lineEnd && (styler.SafeGetCharAt(p, '\0') == ' ' || styler.SafeGetCharAt(p, '\0') == '\t')) p++;
-				int q = styler.SafeGetCharAt(p, '\0');
-				if (q == '\'' || q == '"') {
-					nowdoc = (q == '\'');
-					p++;
-				} else {
-					nowdoc = false;
-				}
-				idStart = p;
-				while (IsIdentifierContinue(styler.SafeGetCharAt(p, '\0')))
-					p++;
-				idLen = p - idStart;
-				return idLen > 0;
-			}
-		}
-	}
-	return false;
-}
-
-/* Scan from `pos` (at the beginning of the heredoc body) to the closing
- * identifier.  The identifier is described by [idStart, idStart+idLen). */
-static void ScanHeredocBody(Accessor &styler, Sci_Position &pos, Sci_Position max,
-                            Sci_Position idStart, Sci_Position idLen, bool nowdoc) {
-	const int style = nowdoc ? SCE_PHP_NOWDOC : SCE_PHP_HEREDOC;
-	while (pos < max) {
-		const Sci_Position lineStart = pos;
-		Sci_Position p = lineStart;
-		/* PHP 7.3+ allows indentation before the closing identifier. */
-		while (p < max) {
-			const int c = styler.SafeGetCharAt(p, '\0');
-			if (c == ' ' || c == '\t') p++; else break;
-		}
-		const Sci_Position wordStart = p;
-		while (IsIdentifierContinue(styler.SafeGetCharAt(p, '\0')))
-			p++;
-		const Sci_Position wordLen = p - wordStart;
-		if (wordLen == idLen) {
-			bool match = true;
-			for (Sci_Position i = 0; i < idLen; i++) {
-				if (styler.SafeGetCharAt(idStart + i, '\0') !=
-				    styler.SafeGetCharAt(wordStart + i, '\0')) {
-					match = false;
-					break;
-				}
-			}
-			if (match && !IsIdentifierContinue(styler.SafeGetCharAt(p, '\0'))) {
-				pos = p;
-				styler.ColourTo(pos - 1, style);
-				return;
-			}
-		}
-		/* Not the end - advance to the next line. */
-		pos = lineStart;
-		while (pos < max) {
-			const int c = styler.SafeGetCharAt(pos, '\0');
-			if (c == '\n' || c == '\r') {
-				pos++;
-				if (c == '\r' && pos < max && styler.SafeGetCharAt(pos, '\0') == '\n') pos++;
-				break;
-			}
-			if (!nowdoc && c == '\\' && pos + 1 < max &&
-			    styler.SafeGetCharAt(pos + 1, '\0') != '\n' &&
-			    styler.SafeGetCharAt(pos + 1, '\0') != '\r') {
-				pos += 2;
-				continue;
-			}
-			if (!nowdoc && c == '$' && IsIdentifierStart(styler.SafeGetCharAt(pos + 1, '\0'))) {
-				styler.ColourTo(pos - 1, style);
-				pos++;
-				while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0'))) pos++;
-				styler.ColourTo(pos - 1, SCE_PHP_STRING_VARIABLE);
-				continue;
-			}
-			pos++;
-		}
-	}
-	styler.ColourTo(pos - 1, style);
-}
-
-/* pos points just past "<<<". */
-static void ScanHeredoc(Accessor &styler, Sci_Position &pos, Sci_Position max) {
-	int quote = 0;
-	while (pos < max && (styler.SafeGetCharAt(pos, '\0') == ' ' || styler.SafeGetCharAt(pos, '\0') == '\t')) pos++;
-	const int c = styler.SafeGetCharAt(pos, '\0');
-	if (c == '\'' || c == '"') {
-		quote = c;
-		pos++;
-	}
-	const Sci_Position idStart = pos;
-	while (IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
-		pos++;
-	const Sci_Position idLen = pos - idStart;
-	if (idLen == 0) {
-		styler.ColourTo(pos - 1, SCE_PHP_LEXERROR);
-		return;
-	}
-	if (quote) {
-		if (styler.SafeGetCharAt(pos, '\0') != quote) {
-			styler.ColourTo(pos - 1, SCE_PHP_LEXERROR);
-			return;
-		}
-		pos++;
-	}
-	/* Skip the rest of the opening line. */
-	while (pos < max) {
-		const int ch = styler.SafeGetCharAt(pos, '\0');
-		if (ch == '\n' || ch == '\r') {
-				pos++;
-				if (ch == '\r' && pos < max && styler.SafeGetCharAt(pos, '\0') == '\n') pos++;
-				break;
-			}
-		pos++;
-	}
-	ScanHeredocBody(styler, pos, max, idStart, idLen, quote == '\'');
-}
+using HeredocScanner = PHPHeredocScanner<SCE_PHP_HEREDOC, SCE_PHP_NOWDOC, SCE_PHP_STRING_VARIABLE, SCE_PHP_LEXERROR>;
 
 static bool IsOperatorChar(int c) {
 	return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' ||
@@ -532,8 +406,8 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 	} else if (initStyle == SCE_PHP_HEREDOC || initStyle == SCE_PHP_NOWDOC) {
 		Sci_Position idStart = 0, idLen = 0;
 		bool nowdoc = (initStyle == SCE_PHP_NOWDOC);
-		if (FindHeredocStart(styler, pos, idStart, idLen, nowdoc)) {
-			ScanHeredocBody(styler, pos, max, idStart, idLen, nowdoc);
+		if (HeredocScanner::FindHeredocStart(styler, pos, idStart, idLen, nowdoc)) {
+			HeredocScanner::ScanHeredocBody(styler, pos, max, idStart, idLen, nowdoc);
 		} else {
 			/* Couldn't locate the opener - colour what we have. */
 			styler.ColourTo(max - 1, initStyle);
@@ -651,7 +525,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 			styler.ColourTo(pos - 1, SCE_PHP_VARIABLE);
 		} else if (c == '<' && n == '<' && n2 == '<') {
 			pos += 3;
-			ScanHeredoc(styler, pos, max);
+			HeredocScanner::ScanHeredoc(styler, pos, max);
 		} else if (IsIdentifierStart(c)) {
 			ScanIdentifier(styler, pos, max, keywords);
 		} else if ((c >= '0' && c <= '9') || (c == '.' && IsADigit(n, 10))) {
