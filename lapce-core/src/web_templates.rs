@@ -883,3 +883,24 @@ mod twig_digit_separator_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod twig_verbatim_close_tests {
+    use super::*;
+    #[test]
+    fn verbatim_requires_complete_end_tag() {
+        for fake in ["{% endverbatim nope %}", "{% endverbatim", "{% endverbatim + %}"] {
+            let text = format!("{{% verbatim %}}{fake}{{{{ hidden|upper }}}}{{% endverbatim %}}{{{{ shown|upper }}}}");
+            let snapshot = Snapshot::lex("twig", &text, &[]).unwrap();
+            let hidden = text.find("hidden").unwrap();
+            assert_eq!(snapshot.styles()[hidden], 9, "{fake}");
+            let shown = text.find("shown").unwrap();
+            assert_eq!(snapshot.styles()[shown], 7, "{fake}");
+        }
+        for end in ["{% endverbatim %}", "{%- endverbatim -%}", "{%~ endverbatim ~%}"] {
+            let text = format!("{{% verbatim %}}raw{end}{{{{ shown }}}}");
+            let snapshot = Snapshot::lex("twig", &text, &[]).unwrap();
+            assert_eq!(snapshot.styles()[text.find("shown").unwrap()], 7, "{end}");
+        }
+    }
+}

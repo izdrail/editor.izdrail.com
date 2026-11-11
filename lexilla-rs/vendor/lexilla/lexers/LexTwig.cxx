@@ -120,7 +120,12 @@ public:
                 while((search=text.find("{%",search))!=std::string::npos) {
                     size_t q=search+2; if(q<text.size() && (text[q]=='-' || text[q]=='~')) ++q;
                     while(q<text.size() && std::isspace(static_cast<unsigned char>(text[q]))) ++q;
-                    if(text.compare(q,11,"endverbatim")==0 && (q+11==text.size() || !ident(text[q+11]))) { end=search; break; }
+                    if(text.compare(q,11,"endverbatim")==0) {
+                        q+=11;
+                        while(q<text.size() && std::isspace(static_cast<unsigned char>(text[q]))) ++q;
+                        if(q<text.size() && (text[q]=='-' || text[q]=='~')) ++q;
+                        if(text.compare(q,2,"%}")==0) { end=search; break; }
+                    }
                     search+=2;
                 }
                 if(end==std::string::npos) { paint(raw,text.size(),9); p=text.size(); }

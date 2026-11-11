@@ -180,3 +180,7 @@ range operators remain separate.
 
 Twig digit separators stay numeric only between digits. Trailing or repeated
 underscores are left outside integer, fraction and exponent tokens.
+
+Twig verbatim regions require a complete `endverbatim` closing tag, including
+the closing delimiter. Tag-like raw text with extra tokens or an incomplete
+closing tag no longer ends the region early; whitespace controls still work.
