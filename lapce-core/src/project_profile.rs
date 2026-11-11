@@ -48,10 +48,9 @@ fn wordpress_header(bytes: &[u8], marker: &str) -> bool {
         )
         .unwrap()
     });
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return false;
-    };
-    let text = text.replace('\r', "\n");
+    // The bounded prefix can end inside a UTF-8 character. Header names are
+    // ASCII, so unrelated invalid bytes must not discard a valid header.
+    let text = String::from_utf8_lossy(bytes).replace('\r', "\n");
     for captures in pattern.captures_iter(&text) {
         if !captures[1].eq_ignore_ascii_case(marker) {
             continue;
@@ -375,5 +374,22 @@ mod header_parity_tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("style.css"), "/* theme name: Lowercase */").unwrap();
         assert!(detect(&tmp.path().join("functions.php")).wordpress);
+    }
+}
+
+#[cfg(test)]
+mod wordpress_prefix_encoding_tests {
+    use super::*;
+    #[test]
+    fn truncated_multibyte_tail_does_not_hide_wordpress_header() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("plugin.php");
+        let mut text = String::from("<?php\n/*\nPlugin Name: Boundary Test\n");
+        text.extend(std::iter::repeat_n('x', 8191 - text.len()));
+        text.push('🙂');
+        text.push_str("\n*/\nadd_act");
+        assert!(std::str::from_utf8(&text.as_bytes()[..8192]).is_err());
+        std::fs::write(&file, &text).unwrap();
+        assert!(detect(&file).wordpress);
     }
 }

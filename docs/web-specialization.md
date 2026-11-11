@@ -136,3 +136,7 @@ cancellation that arrives during either step still prevents snapshot publication
 PHP global API fallback is also suppressed while typing a dollar-prefixed
 variable name. The independent buffer-variable source remains available; normal
 function contexts after an assignment or completed expression are unchanged.
+
+WordPress plugin/theme header detection tolerates an incomplete UTF-8 character
+at the 8 KiB scan boundary. The read limit and ASCII header matching stay the
+same; unrelated invalid bytes no longer hide a valid header.
