@@ -128,3 +128,7 @@ not receiver-type completion.
 PHP/framework highlighting word lists are built only for pure PHP lexer routes.
 Other languages and mixed HTML/PHP do not assemble that unrelated catalogue;
 their existing lexer word lists and routing remain unchanged.
+
+Syntax jobs already marked cancelled return before project metadata scanning or
+full-document highlighting. Checks after highlighting and folding remain, so
+cancellation that arrives during either step still prevents snapshot publication.

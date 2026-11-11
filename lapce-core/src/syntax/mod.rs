@@ -971,6 +971,10 @@ impl Syntax {
         // states. The UI accepts only the matching revision, then extracts runs
         // per painted line. No tree-sitter grammar loading or full-file spans.
         let _ = edits;
+        // Superseded jobs need no filesystem scan or full-document lexing.
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
+            return;
+        }
         if let Some(path) = &self.project_path {
             self.project = crate::project_profile::detect(path);
         }
@@ -1249,5 +1253,28 @@ mod tests {
         assert_eq!(Some((89, 2)), iter.next());
         assert_eq!(Some((90, 25)), iter.next());
         assert_eq!(None, iter.next());
+    }
+}
+
+#[cfg(test)]
+mod cancellation_entry_tests {
+    use super::*;
+    #[test]
+    fn cancelled_parse_does_not_refresh_profile_or_publish_snapshot() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("composer.json"), "{}").unwrap();
+        let mut syntax = Syntax::init(&root.path().join("file.php"));
+        syntax.parse(1, Rope::from("<?php echo 1;"), None);
+        let original = syntax.lexilla.clone().unwrap();
+        std::fs::write(root.path().join("artisan"), "").unwrap();
+        syntax.cancel_flag.store(1, std::sync::atomic::Ordering::Release);
+        syntax.parse(2, Rope::from("<?php echo 2;"), None);
+        assert_eq!(syntax.rev, 1);
+        assert!(Arc::ptr_eq(syntax.lexilla.as_ref().unwrap(), &original));
+        assert!(!syntax.project.laravel);
+        syntax.cancel_flag.store(0, std::sync::atomic::Ordering::Release);
+        syntax.parse(3, Rope::from("<?php echo 3;"), None);
+        assert_eq!(syntax.rev, 3);
+        assert!(syntax.project.laravel);
     }
 }
