@@ -526,9 +526,8 @@ mod jsx_tests {
 
 /// The unfinished final Twig region determines the popup's symbol category.
 pub fn completion_kind(before: &str) -> Option<&'static str> {
-    let lists = twig_lists();
-    let refs: Vec<&str> = lists.iter().map(String::as_str).collect();
-    let template = Snapshot::lex("twig", before, &refs).ok()?;
+    // Context needs structural styles only, not catalogue name classification.
+    let template = Snapshot::lex("twig", before, &[]).ok()?;
     let last = *template.styles().last()?;
     if matches!(last, 0 | 2 | 3 | 9)
         || (last == 1 && (before.ends_with("}}") || before.ends_with("%}")))
@@ -651,6 +650,24 @@ mod isolation_tests {
         assert_eq!(completion_kind("{% endif %}{% fo"), Some("tag"));
         assert_eq!(completion_kind("{{ value }}{{"), Some("function"));
         assert_eq!(completion_kind("{% endif %}{%"), Some("tag"));
+    }
+
+    #[test]
+    fn structural_context_keeps_catalogue_categories_and_suppression() {
+        for (before, expected) in [
+            ("{{ random", Some("function")),
+            ("{{ user|upper", Some("filter")),
+            ("{{ user is defined", Some("test")),
+            ("{% include", Some("tag")),
+            ("{% apply upper", Some("filter")),
+            ("{{ user.upper", None),
+            ("{{ 'upper", None),
+            ("{{ user # upper", None),
+            ("{% verbatim %}{{ upper", None),
+            ("{{ upper }}", None),
+        ] {
+            assert_eq!(completion_kind(before), expected, "{before}");
+        }
     }
 
     #[test]

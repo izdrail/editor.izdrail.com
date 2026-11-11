@@ -214,3 +214,7 @@ attribute prefixes replace their complete typed prefix in those files too.
 Uppercase and mixed-case Blade filenames also use Blade variable completion,
 component-only popup filtering and component-name triggers. Other navigation
 and hover gates are unchanged.
+
+Twig completion context scanning uses structural lexer styles without installing
+catalogue word lists. Highlighting keeps its shared word lists, and completion
+categories and string/comment/attribute suppression remain unchanged.
