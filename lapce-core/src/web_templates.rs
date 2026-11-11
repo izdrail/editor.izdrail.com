@@ -594,11 +594,7 @@ pub fn php_completion_context(before: &str) -> bool {
     let Ok(snapshot) = Snapshot::lex(
         if pure { "php" } else { "hypertext" },
         before,
-        if pure {
-            crate::lexilla::PHP_WORD_LISTS
-        } else {
-            &[]
-        },
+        &[],
     ) else {
         return false;
     };
@@ -667,6 +663,16 @@ mod isolation_tests {
             ("{{ upper }}", None),
         ] {
             assert_eq!(completion_kind(before), expected, "{before}");
+        }
+    }
+
+    #[test]
+    fn structural_php_context_keeps_global_and_member_guards() {
+        for before in ["<?php str", "<?php $value = str", "<?php /* note */ str", "<?php ?>text<?php str"] {
+            assert!(php_completion_context(before), "{before}");
+        }
+        for before in ["<?php 'str", "<?php // str", "<?php $value->str", "<?php Type::str", "<?php $str", "<?php ?>", "<p>str"] {
+            assert!(!php_completion_context(before), "{before}");
         }
     }
 

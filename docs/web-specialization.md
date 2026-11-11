@@ -218,3 +218,7 @@ and hover gates are unchanged.
 Twig completion context scanning uses structural lexer styles without installing
 catalogue word lists. Highlighting keeps its shared word lists, and completion
 categories and string/comment/attribute suppression remain unchanged.
+
+PHP completion context scanning also skips catalogue word-list setup. Its
+structural string/comment, host-text, close-tag, member and variable guards
+remain in place; syntax highlighting keeps its existing word lists.
