@@ -59,7 +59,13 @@ public:
             size_t begin=p; paint(p,p+2,1); p+=2;
             if(p<text.size() && (text[p]=='-' || text[p]=='~')) { paint(p,p+1,1); ++p; }
             size_t first=p; while(first<text.size() && std::isspace(static_cast<unsigned char>(text[first]))) ++first;
-            bool verbatim=tag && text.compare(first,8,"verbatim")==0 && (first+8==text.size() || !ident(text[first+8]));
+            bool verbatim=false;
+            if(tag && text.compare(first,8,"verbatim")==0) {
+                size_t q=first+8;
+                while(q<text.size() && std::isspace(static_cast<unsigned char>(text[q]))) ++q;
+                if(q<text.size() && (text[q]=='-' || text[q]=='~')) ++q;
+                verbatim=text.compare(q,2,"%}")==0;
+            }
             int nesting=0;
             while(p<text.size()) {
                 const char *close=tag?"%}":"}}";

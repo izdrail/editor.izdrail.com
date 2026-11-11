@@ -184,3 +184,7 @@ underscores are left outside integer, fraction and exponent tokens.
 Twig verbatim regions require a complete `endverbatim` closing tag, including
 the closing delimiter. Tag-like raw text with extra tokens or an incomplete
 closing tag no longer ends the region early; whitespace controls still work.
+
+Twig verbatim mode also requires a complete valid opening tag. Extra tokens
+after `verbatim` no longer hide subsequent expressions; valid whitespace-control
+openers still start raw regions.

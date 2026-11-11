@@ -904,3 +904,21 @@ mod twig_verbatim_close_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod twig_verbatim_open_tests {
+    use super::*;
+    #[test]
+    fn verbatim_requires_complete_start_tag() {
+        for begin in ["{% verbatim nope %}", "{% verbatim + %}"] {
+            let text = format!("{begin}{{{{ shown|upper }}}}");
+            let snapshot = Snapshot::lex("twig", &text, &[]).unwrap();
+            assert_eq!(snapshot.styles()[text.find("shown").unwrap()], 7, "{begin}");
+        }
+        for begin in ["{% verbatim %}", "{%- verbatim -%}", "{%~ verbatim ~%}"] {
+            let text = format!("{begin}{{{{ hidden }}}}{{% endverbatim %}}");
+            let snapshot = Snapshot::lex("twig", &text, &[]).unwrap();
+            assert_eq!(snapshot.styles()[text.find("hidden").unwrap()], 9, "{begin}");
+        }
+    }
+}
