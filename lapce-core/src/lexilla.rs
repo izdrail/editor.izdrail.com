@@ -650,6 +650,49 @@ mod tests {
     }
 
     #[test]
+    fn php_complex_interpolation_inner_quotes_do_not_close_the_outer_string() {
+        let text = r#"<?php $text = "Hello {$user["?>"]} ?> still string"; echo strlen($text);"#;
+        assert!(is_pure_php(text));
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            assert_eq!(php_scope_at(&snap, text, "?> still string", 0), Some("string"));
+            assert_eq!(php_scope_at(&snap, text, "echo strlen", 0), Some("keyword"));
+            assert_eq!(php_scope_at(&snap, text, "strlen", 0), Some("function"));
+        }
+    }
+
+    #[test]
+    fn php_curly_interpolation_quotes_comments_and_unfinished_edits_are_bounded() {
+        for text in [
+            r#"<?php $x = "λ🙂 {$user["?>}"]} tail"; echo strlen($x);"#,
+            r#"<?php $x = "{$user['?>}']} tail"; echo strlen($x);"#,
+            r#"<?php $x = "{$user["a\"?>}"]} tail"; echo strlen($x);"#,
+            r#"<?php $x = "{$user[/* ?>} */ 'key']} tail"; echo strlen($x);"#,
+            r#"<?php $x = "{$obj->{$names["?>}"]}} tail"; echo strlen($x);"#,
+            r#"<?php $x = `{$user["?>}"]} tail`; echo strlen($x);"#,
+        ] {
+            assert!(is_pure_php(text));
+            for lexer in ["php", "laravel"] {
+                let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+                let snap = Snapshot::lex(lexer, text, lists).unwrap();
+                assert_eq!(snap.len(), text.len());
+                assert_eq!(php_scope_at(&snap, text, "tail", 0), Some("string"));
+                assert_eq!(php_scope_at(&snap, text, "echo strlen", 0), Some("keyword"));
+                assert_eq!(php_scope_at(&snap, text, "strlen", 0), Some("function"));
+                let unfinished = text.split(" tail").next().unwrap();
+                assert_eq!(Snapshot::lex(lexer, unfinished, lists).unwrap().len(), unfinished.len());
+                assert_eq!(Snapshot::lex(lexer, text, lists).unwrap().styles(), snap.styles());
+            }
+        }
+        let escaped = r#"<?php $x = "\{$user} tail"; echo 1;"#;
+        for lexer in ["php", "laravel"] {
+            let snap = Snapshot::lex(lexer, escaped, &[]).unwrap();
+            assert_eq!(php_scope_at(&snap, escaped, "tail", 0), Some("string"));
+        }
+    }
+
+    #[test]
     fn php_backticks_keep_close_tags_in_strings_and_resume_code() {
         let text = "<?php\r\n$name = 'λ🙂'; $out = `printf \"hello\" $name ?> still_command \\` escaped`; echo strlen($out);";
         assert!(is_pure_php(text));

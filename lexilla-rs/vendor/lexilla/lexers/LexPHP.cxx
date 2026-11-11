@@ -270,6 +270,43 @@ static void ScanSingleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	styler.ColourTo(pos - 1, SCE_PHP_STRING);
 }
 
+// Consume a {$...} interpolation without letting its quoted keys close the
+// surrounding string. This is a bounded lexical scan, not PHP evaluation.
+static void ScanCurlyInterpolation(Accessor &styler, Sci_Position &pos, Sci_Position max, int stringStyle) {
+	int depth = 1, quote = 0;
+	bool blockComment = false, lineComment = false;
+	pos++; // opening {
+	while (pos < max && depth > 0) {
+		const int c = styler.SafeGetCharAt(pos, '\0');
+		const int n = styler.SafeGetCharAt(pos + 1, '\0');
+		if (quote) {
+			if (c == '\\' && pos + 1 < max) { pos += 2; continue; }
+			if (c == quote) quote = 0;
+		} else if (blockComment) {
+			if (c == '*' && n == '/') { blockComment = false; pos += 2; continue; }
+		} else if (lineComment) {
+			if (c == '\r' || c == '\n') lineComment = false;
+		} else if (c == '\'' || c == '"' || c == '`') {
+			quote = c;
+		} else if (c == '/' && n == '*') {
+			blockComment = true; pos += 2; continue;
+		} else if ((c == '/' && n == '/') || (c == '#' && n != '[')) {
+			lineComment = true;
+		} else if (c == '{') {
+			depth++;
+		} else if (c == '}') {
+			depth--;
+		} else if (c == '$' && IsIdentifierStart(n)) {
+			styler.ColourTo(pos - 1, stringStyle);
+			pos++;
+			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0'))) pos++;
+			styler.ColourTo(pos - 1, SCE_PHP_STRING_VARIABLE);
+			continue;
+		}
+		pos++;
+	}
+}
+
 /* pos points just past the opening ".  Handles escapes and $variables. */
 static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max,
                                    int delimiter = '"', int stringStyle = SCE_PHP_STRING_DQ) {
@@ -277,6 +314,8 @@ static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
 			pos = std::min(pos + 2, max);
+		} else if (c == '{' && styler.SafeGetCharAt(pos + 1, '\0') == '$') {
+			ScanCurlyInterpolation(styler, pos, max, stringStyle);
 		} else if (c == delimiter) {
 			pos++;
 			break;
