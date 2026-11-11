@@ -10,11 +10,11 @@ trap cleanup EXIT INT TERM
 container=$(docker create --label "instinct.editor.build=${GITHUB_RUN_ID:-local}" --name "$name" --workdir /src ubuntu:22.04 sleep infinity)
 docker start "$container" >/dev/null
 # The runner filesystem is on dell root. Stop only this build if the
-# approved 30 GiB floor is crossed, even during a long compiler step.
+# approved 25 GiB floor is crossed, even during a long compiler step.
 (
   while sleep 5; do
     free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
-    if [ "$free_kb" -lt 31457280 ]; then
+    if [ "$free_kb" -lt 26214400 ]; then
       echo "Disk floor crossed: stopping this build container" >&2
       docker stop -t 5 "$container" >/dev/null
       exit 1
