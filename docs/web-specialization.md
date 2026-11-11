@@ -206,3 +206,7 @@ Reference: https://raw.githubusercontent.com/twigphp/Twig/v3.21.1/src/Lexer.php 
 WordPress version matching shares its immutable regex across profile reads and
 threads. Version files are still read each time; edits and removal apply on the
 next detection without a project-evidence cache.
+
+Completion word ranges recognize uppercase and mixed-case Blade suffixes, like
+language and snippet routing already do. Dotted component names and hyphenated
+attribute prefixes replace their complete typed prefix in those files too.

@@ -280,8 +280,7 @@ pub(crate) fn completion_word_start(
     if start == 0 {
         return start;
     }
-    let name = path.to_string_lossy();
-    let blade = name.ends_with(".blade.php");
+    let blade = crate::builtin_snippets::snippet_language(path, "php") == "blade";
     let php = crate::project_completion::php_completion_path(path);
     if !php {
         return start;
@@ -337,6 +336,16 @@ mod completion_word_start_tests {
 
     fn php() -> Option<&'static Path> {
         Some(Path::new("probe.php"))
+    }
+
+    #[test]
+    fn blade_name_ranges_follow_case_insensitive_language_routing() {
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
+            for (text, expected) in [("<x-forms.in", 3), ("<div wire-ta", 5)] {
+                let b = Buffer::new(text);
+                assert_eq!(completion_word_start(&b, Some(Path::new(name)), text.len()), expected, "{name}: {text}");
+            }
+        }
     }
 
     #[test]
