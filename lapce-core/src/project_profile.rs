@@ -54,15 +54,20 @@ pub fn detect(file: &Path) -> ProjectProfile {
             bytes.truncate(8192);
             std::str::from_utf8(&bytes).is_ok_and(|s| s.contains(marker))
         };
-        let plugin = std::fs::read_dir(root).ok().is_some_and(|files| {
-            files.take(128).filter_map(Result::ok).any(|f| {
-                let path = f.path();
-                path.extension().is_some_and(|e| e == "php")
-                    && std::fs::metadata(&path)
-                        .is_ok_and(|m| m.is_file() && m.len() <= 1 << 20)
-                    && header(&path, "Plugin Name:")
-            })
-        });
+        let plugin_file = |path: &Path| {
+            path.extension().is_some_and(|e| e == "php")
+                && std::fs::metadata(path)
+                    .is_ok_and(|m| m.is_file() && m.len() <= 1 << 20)
+                && header(path, "Plugin Name:")
+        };
+        // The opened file is direct evidence, not an arbitrary neighbor. Keep
+        // the neighbor scan bounded without losing it in a large directory.
+        let plugin = (file.parent() == Some(root) && plugin_file(file))
+            || std::fs::read_dir(root).ok().is_some_and(|files| {
+                files.take(128).filter_map(Result::ok).any(|f| {
+                    f.path() != file && plugin_file(&f.path())
+                })
+            });
         let wordpress = plugin
             || header(&root.join("style.css"), "Theme Name:")
             || root.join("wp-config.php").is_file()
@@ -289,5 +294,31 @@ mod bounded_read_tests {
         )
         .unwrap();
         assert!(detect(&path.join("index.php")).symfony_app);
+    }
+}
+
+#[cfg(test)]
+mod opened_plugin_tests {
+    use super::*;
+    #[test]
+    fn opened_plugin_outside_neighbor_scan_is_still_recognized() {
+        let tmp = tempfile::tempdir().unwrap();
+        for index in 0..256 {
+            std::fs::write(tmp.path().join(format!("entry{index}.php")), "<?php").unwrap();
+        }
+        // Select an actual entry beyond the bounded neighbor scan, independent
+        // of the filesystem's directory ordering.
+        let plugin = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .nth(200)
+            .unwrap()
+            .unwrap()
+            .path();
+        std::fs::write(&plugin, "<?php /* Plugin Name: Opened Plugin */").unwrap();
+        let profile = detect(&plugin);
+        assert!(profile.wordpress);
+        assert_eq!(profile.root.as_deref(), Some(tmp.path()));
+        assert!(crate::web_metadata::php_symbols(&profile)
+            .any(|s| s.name == "add_action"));
     }
 }
