@@ -140,3 +140,7 @@ function contexts after an assignment or completed expression are unchanged.
 WordPress plugin/theme header detection tolerates an incomplete UTF-8 character
 at the 8 KiB scan boundary. The read limit and ASCII header matching stay the
 same; unrelated invalid bytes no longer hide a valid header.
+
+Regular plugin files larger than 1 MiB still supply header evidence for themselves
+and neighboring PHP files. Only the first 8 KiB is read; JSON/version size limits,
+regular-file checks and the 128-neighbor bound are unchanged.

@@ -84,8 +84,6 @@ pub fn detect(file: &Path) -> ProjectProfile {
         };
         let plugin_file = |path: &Path| {
             path.extension().is_some_and(|e| e == "php")
-                && std::fs::metadata(path)
-                    .is_ok_and(|m| m.is_file() && m.len() <= 1 << 20)
                 && header(path, "Plugin Name:")
         };
         // The opened file is direct evidence, not an arbitrary neighbor. Keep
@@ -391,5 +389,24 @@ mod wordpress_prefix_encoding_tests {
         assert!(std::str::from_utf8(&text.as_bytes()[..8192]).is_err());
         std::fs::write(&file, &text).unwrap();
         assert!(detect(&file).wordpress);
+    }
+}
+
+#[cfg(test)]
+mod large_plugin_tests {
+    use super::*;
+    #[test]
+    fn large_plugins_keep_bounded_header_evidence() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin = tmp.path().join("plugin.php");
+        let mut file = std::fs::File::create(&plugin).unwrap();
+        file.write_all(b"<?php /* Plugin Name: Large Plugin */\n").unwrap();
+        file.set_len(2 << 20).unwrap();
+        assert!(detect(&plugin).wordpress);
+        assert!(detect(&tmp.path().join("helper.php")).wordpress);
+        file.set_len(0).unwrap();
+        file.write_all(b"<?php /* No plugin header */\n").unwrap();
+        assert!(!detect(&tmp.path().join("helper.php")).wordpress);
     }
 }
