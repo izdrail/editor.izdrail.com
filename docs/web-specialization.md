@@ -14,6 +14,10 @@ Base: main `a499bd6489ccdb656fe538311bbd4b1c593dee27`.
   roots are boundaries; lockfile versions replace constraints; Laravel/Symfony/WP
   evidence can coexist. Standalone WP plugin/theme headers and core versions are
   recognised. Reads are bounded; no PHP, Composer or console command is executed.
+  Project metadata readers ignore special files (including named pipes), retain
+  regular-file symlinks and cap reads on the opened handle. JSON over 1 MiB and
+  WordPress versions over 8 KiB are ignored; plugin/theme headers use the first
+  8 KiB. The regular-file precheck is not an adversarial filesystem-race sandbox.
   Evidence is reread, so config changes/removal apply on the next request. There
   is no TTL cache, override UI or filesystem watcher in this milestone.
 - A Twig lexer (id 146) and `.twig` mode. Region delimiters, comments, quotes,

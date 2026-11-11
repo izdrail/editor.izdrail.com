@@ -14,12 +14,28 @@ pub struct ProjectProfile {
     pub packages: BTreeMap<String, String>,
 }
 
-fn json(path: &Path) -> Option<serde_json::Value> {
-    // Bound before reading, not after allocating an arbitrarily large file.
-    if std::fs::metadata(path).ok()?.len() > 1 << 20 {
+// Reject special files before opening them, then recheck the opened handle.
+// Reads remain bounded even if a regular file grows after metadata is checked.
+fn read_regular(path: &Path, limit: u64) -> Option<Vec<u8>> {
+    use std::io::Read;
+    if !std::fs::metadata(path).ok()?.is_file() {
         return None;
     }
-    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+    let file = std::fs::File::open(path).ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+fn json(path: &Path) -> Option<serde_json::Value> {
+    let bytes = read_regular(path, 1 << 20)?;
+    if bytes.len() > 1 << 20 {
+        return None;
+    }
+    serde_json::from_slice(&bytes).ok()
 }
 
 pub fn detect(file: &Path) -> ProjectProfile {
@@ -32,21 +48,18 @@ pub fn detect(file: &Path) -> ProjectProfile {
     for root in dir.ancestors().take(24) {
         let composer = root.join("composer.json");
         let header = |file: &Path, marker: &str| -> bool {
-            use std::io::Read;
-            let Ok(file) = std::fs::File::open(file) else {
+            let Some(mut bytes) = read_regular(file, 8192) else {
                 return false;
             };
-            let mut bytes = Vec::new();
-            if file.take(8192).read_to_end(&mut bytes).is_err() {
-                return false;
-            }
+            bytes.truncate(8192);
             std::str::from_utf8(&bytes).is_ok_and(|s| s.contains(marker))
         };
         let plugin = std::fs::read_dir(root).ok().is_some_and(|files| {
             files.take(128).filter_map(Result::ok).any(|f| {
                 let path = f.path();
                 path.extension().is_some_and(|e| e == "php")
-                    && std::fs::metadata(&path).is_ok_and(|m| m.len() <= 1 << 20)
+                    && std::fs::metadata(&path)
+                        .is_ok_and(|m| m.is_file() && m.len() <= 1 << 20)
                     && header(&path, "Plugin Name:")
             })
         });
@@ -64,10 +77,9 @@ pub fn detect(file: &Path) -> ProjectProfile {
             profile.root = Some(root.to_owned());
             profile.wordpress = wordpress;
             let version_file = root.join("wp-includes/version.php");
-            if let Some(version) = std::fs::metadata(&version_file)
-                .ok()
-                .filter(|m| m.len() <= 8192)
-                .and_then(|_| std::fs::read_to_string(version_file).ok())
+            if let Some(version) = read_regular(&version_file, 8192)
+                .filter(|bytes| bytes.len() <= 8192)
+                .and_then(|bytes| String::from_utf8(bytes).ok())
             {
                 let re = regex::Regex::new(r#"\$wp_version\s*=\s*['"]([^'"]+)['"]"#)
                     .unwrap();
@@ -190,5 +202,92 @@ mod wordpress_tests {
                 .count(),
             0
         );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod special_file_tests {
+    use super::*;
+    #[test]
+    fn project_detection_ignores_fifo_headers_and_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        for name in [
+            "plugin.php",
+            "style.css",
+            "composer.json",
+            "composer.lock",
+            "wp-includes/version.php",
+        ] {
+            let path = tmp.path().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            assert!(std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success());
+        }
+        std::fs::write(tmp.path().join("artisan"), "").unwrap();
+        // No writer exists: opening any of these FIFOs for reading would hang.
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            sender.send(detect(&tmp.path().join("index.php"))).unwrap();
+        });
+        let profile = receiver
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .expect("project detection blocked on a named pipe");
+        assert!(!profile.wordpress);
+        assert!(profile.packages.is_empty());
+        assert!(profile.wordpress_version.is_none());
+    }
+}
+
+#[cfg(test)]
+mod bounded_read_tests {
+    use super::*;
+    #[test]
+    fn regular_reads_keep_prefixes_but_reject_oversized_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("artisan"), "").unwrap();
+        let mut composer = br#"{"require":{"laravel/framework":"^12"}}"#.to_vec();
+        composer.resize(1 << 20, b' ');
+        std::fs::write(root.join("composer.json"), &composer).unwrap();
+        assert!(json(&root.join("composer.json")).is_some());
+        composer.push(b' ');
+        std::fs::write(root.join("composer.json"), &composer).unwrap();
+        assert!(json(&root.join("composer.json")).is_none());
+        let mut header = b"/* Theme Name: Demo */".to_vec();
+        header.resize(16384, b' ');
+        std::fs::write(root.join("style.css"), header).unwrap();
+        assert!(detect(&root.join("index.php")).wordpress);
+        std::fs::create_dir(root.join("wp-includes")).unwrap();
+        let mut version = b"<?php $wp_version = '6.8.3';".to_vec();
+        version.resize(8192, b' ');
+        std::fs::write(root.join("wp-includes/version.php"), &version).unwrap();
+        assert_eq!(
+            detect(&root.join("index.php")).wordpress_version.as_deref(),
+            Some("6.8.3")
+        );
+        version.push(b' ');
+        std::fs::write(root.join("wp-includes/version.php"), version).unwrap();
+        assert!(detect(&root.join("index.php")).wordpress_version.is_none());
+        assert!(read_regular(root, 8192).is_none());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn regular_symlinks_still_supply_project_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path();
+        std::fs::write(
+            path.join("manifest"),
+            r#"{"require":{"symfony/framework-bundle":"7.3.0"}}"#,
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            path.join("manifest"),
+            path.join("composer.json"),
+        )
+        .unwrap();
+        assert!(detect(&path.join("index.php")).symfony_app);
     }
 }
