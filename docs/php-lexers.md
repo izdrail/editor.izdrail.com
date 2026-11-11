@@ -49,3 +49,5 @@ Syntax reference: https://www.php.net/manual/en/language.attributes.syntax.php .
 Both custom PHP scanners keep leading-dot and trailing-dot floats in a single number span: `.5`, `1.`, `2.e3` and `.5e-2`, alongside ordinary decimals and digit separators. A bare dot remains an operator. This is lexical coloring; PHP parsing and evaluation are unchanged.
 
 Grammar reference: https://www.php.net/manual/en/language.types.float.php .
+
+Long PHP open tags require a space, tab, CR or LF after `<?php` (ASCII case-insensitive), or the end of the document. Prefix lookalikes such as `<?phpx` and `<?php/**/` do not enter PHP. Routing and standalone PHP/Laravel/Blade scanners use that boundary; short echo tags retain their separate path. This does not model a project-specific `short_open_tag` ini setting. Reference: https://www.php.net/manual/en/language.basic-syntax.phptags.php .

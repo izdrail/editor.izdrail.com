@@ -550,7 +550,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		/* -------------------- inline HTML mode -------------------- */
 		if (!inPhp) {
 			if (c == '<' && n == '?') {
-				if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) {
+				if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P') && (pos + 5 >= max || IsWhitespace(styler.SafeGetCharAt(pos + 5, '\0')))) {
 					pos += 5;
 					styler.ColourTo(pos - 1, SCE_PHP_OPEN_TAG);
 					inPhp = true;
@@ -599,7 +599,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		} else if (c == '<' && n == '?') {
 			/* We may start in PHP mode because initStyle was DEFAULT on a
 			 * document that in fact begins with <?php - handle it here. */
-			if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) {
+			if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P') && (pos + 5 >= max || IsWhitespace(styler.SafeGetCharAt(pos + 5, '\0')))) {
 				pos += 5;
 				styler.ColourTo(pos - 1, SCE_PHP_OPEN_TAG);
 			} else if (n2 == '=') {

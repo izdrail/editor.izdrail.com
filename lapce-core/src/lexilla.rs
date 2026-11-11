@@ -17,7 +17,9 @@ pub fn is_pure_php(source: &str) -> bool {
         .and_then(|rest| rest.split_once('\n').map(|(_, after)| after))
         .map(str::trim_start)
         .unwrap_or(s);
-    if !s.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("<?php")) {
+    if !s.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("<?php"))
+        || s.as_bytes().get(5).is_some_and(|b| !matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+    {
         return false;
     }
     // Most source files never close PHP, so avoid a second lex there. A
@@ -884,6 +886,29 @@ mod tests {
             let s = Snapshot::lex("php", bad, PHP_WORD_LISTS).unwrap();
             assert_eq!(s.len(), bad.len());
         }
+    }
+
+    #[test]
+    fn php_long_open_tags_require_whitespace_or_eof() {
+        for suffix in ["x", "/**/", "\u{000b}", "\u{000c}", "λ"] {
+            let text = format!("<?php{suffix} echo 1; ?> <p>text</p>");
+            assert!(!is_pure_php(&text));
+            assert!(!is_pure_php(&format!("<?php{suffix} echo 1;")));
+            for lexer in ["php", "laravel", "blade"] {
+                let snap = Snapshot::lex(lexer, &text, &[]).unwrap();
+                assert!(!snap.styles().contains(&19), "{lexer}: {text}");
+                assert!(!snap.styles().contains(&20), "{lexer}: {text}");
+            }
+        }
+        for tail in ["", " ", "\t", "\r", "\n", "\r\n"] {
+            let text = format!("<?PhP{tail}");
+            assert!(is_pure_php(&text));
+            for lexer in ["php", "laravel", "blade"] {
+                let snap = Snapshot::lex(lexer, &text, &[]).unwrap();
+                assert!(snap.styles()[..5].iter().all(|s| *s == 19));
+            }
+        }
+        assert!(!is_pure_php("<?phpx echo 1;"));
     }
 
     #[test]
