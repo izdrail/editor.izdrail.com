@@ -37,3 +37,9 @@ that mentions `laravel/framework`. Project evidence is read at the nearest root 
 
 Keywords, builtin functions, types and constants of the PHP lists also feed the completion popup
 ([completion-popup.md](completion-popup.md)), together with `$variable` names from the buffer.
+
+### Laravel attribute boundaries
+
+The Laravel attribute scope keeps bracket depth only outside quoted arguments and comments. Literal `]`, `[` and `?>` inside attribute strings cannot end the attribute or switch the rest of the file to inline HTML. Escaped quotes, nested array arguments, block comments and line comments are skipped without evaluating the attribute. Unfinished attributes remain bounded by the current snapshot. PHP close tags in line comments keep their normal meaning.
+
+Syntax reference: https://www.php.net/manual/en/language.attributes.syntax.php .

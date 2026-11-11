@@ -541,6 +541,36 @@ mod tests {
     }
 
     #[test]
+    fn laravel_attribute_arguments_do_not_count_quoted_brackets() {
+        for text in [
+            "<?php\n#[Example(\"] ?> not HTML\", [\"[\", \"]\"])]\nfunction example(): string { return \"valid\"; }\necho strlen(example());",
+            "<?php\n#[Example('] ?> not HTML')]\nfunction example() {}\necho strlen('valid');",
+            "<?php\n#[Example(/* ] ?> */ ['text'])]\nfunction example() {}\necho strlen('valid');",
+            "<?php\r\n#[Example(\"λ🙂 \\\" ] ?>\", [\"[\", \"]\"])]\r\nfunction example() {}\r\necho strlen('valid');",
+            "<?php\n#[Example(// ] ignored\n ['text'])]\nfunction example() {}\necho strlen('valid');",
+            "<?php\n#[Example(# ] ignored\n ['text'])]\nfunction example() {}\necho strlen('valid');",
+        ] {
+            assert!(is_pure_php(text));
+            let snap = Snapshot::lex("laravel", text, LARAVEL_WORD_LISTS).unwrap();
+            assert_eq!(php_scope_at(&snap, text, "function example", 0), Some("keyword"));
+            assert_eq!(php_scope_at(&snap, text, "echo strlen", 0), Some("keyword"));
+            assert_eq!(php_scope_at(&snap, text, "strlen", 0), Some("function"));
+        }
+    }
+
+    #[test]
+    fn laravel_unfinished_attributes_are_bounded_and_line_comment_closers_still_work() {
+        for text in ["<?php #[Example(\"λ🙂 ] ?>", "<?php #[Example(/* ] ?>", "<?php #[Example(['x'"] {
+            let snap = Snapshot::lex("laravel", text, LARAVEL_WORD_LISTS).unwrap();
+            assert_eq!(snap.len(), text.len());
+        }
+        let text = "<?php #[Example(// ?> <p>HTML</p>";
+        let snap = Snapshot::lex("laravel", text, LARAVEL_WORD_LISTS).unwrap();
+        assert_eq!(snap.styles()[text.find("?>").unwrap()], 20);
+        assert_eq!(snap.styles()[text.find("<p>").unwrap()], 21);
+    }
+
+    #[test]
     fn heredoc_variables_interpolate_but_escaped_dollars_and_nowdoc_do_not() {
         let text = "<?php\r\n$text = <<< TXT\r\nλ🙂 $name \\$escaped \\\\$active {$braced} $2 literal\r\n  TXT;\r\n$raw = <<< 'RAW'\r\n$literal {$also_literal}\r\nRAW;\r\necho strlen($text);";
         for lexer in ["php", "laravel"] {

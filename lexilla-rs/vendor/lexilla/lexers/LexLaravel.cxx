@@ -695,10 +695,31 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 			/* PHP 8 attribute - colour the whole #[...] span. */
 			pos += 2;
 			int depth = 1;
+			int quote = 0;
+			bool blockComment = false, lineComment = false;
 			while (pos < max && depth > 0) {
 				const int a = styler.SafeGetCharAt(pos, '\0');
-				if (a == '[') depth++;
-				else if (a == ']') depth--;
+				const int next = styler.SafeGetCharAt(pos + 1, '\0');
+				if (quote) {
+					if (a == '\\' && pos + 1 < max) { pos += 2; continue; }
+					if (a == quote) quote = 0;
+				} else if (blockComment) {
+					if (a == '*' && next == '/') { blockComment = false; pos += 2; continue; }
+				} else if (lineComment) {
+					// PHP close tags still terminate line comments.
+					if (a == '?' && next == '>') break;
+					if (a == '\r' || a == '\n') lineComment = false;
+				} else if (a == '\'' || a == '"' || a == '`') {
+					quote = a;
+				} else if (a == '/' && next == '*') {
+					blockComment = true; pos += 2; continue;
+				} else if ((a == '/' && next == '/') || (a == '#' && next != '[')) {
+					lineComment = true;
+				} else if (a == '[') {
+					depth++;
+				} else if (a == ']') {
+					depth--;
+				}
 				pos++;
 			}
 			styler.ColourTo(pos - 1, SCE_LARAVEL_ATTRIBUTE);
