@@ -577,7 +577,7 @@ pub fn php_completion_context(before: &str) -> bool {
         if matches!(snapshot.scope(style), Some("string" | "comment")) {
             return false;
         }
-        if (pure && style == 21) || (!pure && !(118..=127).contains(&style)) {
+        if (pure && matches!(style, 20 | 21)) || (!pure && !(118..=127).contains(&style)) {
             return false;
         }
     }
@@ -734,5 +734,18 @@ mod php_byte_identifier_context_tests {
         }
         assert!(php_completion_context("<?php $cafe\u{0301} = str"));
         assert!(php_completion_context("<?php cafe\u{0301}"));
+    }
+}
+
+#[cfg(test)]
+mod php_close_tag_context_tests {
+    use super::*;
+    #[test]
+    fn close_tag_cursor_is_outside_php_completion() {
+        for before in ["<?php ?>", "<?php echo 1; ?>", "<?php ?>\n"] {
+            assert!(!php_completion_context(before), "{before}");
+        }
+        assert!(php_completion_context("<?php ?><?php str"));
+        assert!(php_completion_context("<?php $x = 1; str"));
     }
 }

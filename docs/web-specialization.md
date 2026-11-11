@@ -152,3 +152,6 @@ member guards; Twig's identifier handling is unchanged.
 The PHP buffer-variable source also keeps full non-ASCII UTF-8 names, including
 combining marks. Labels, filtering and insertion preserve the same bytes; ASCII
 digit starts and the special `$this` variable remain excluded.
+
+The pure-PHP completion guard treats a cursor directly after a closing `?>` tag
+as outside PHP. Reopened PHP blocks resume the global catalogue normally.
