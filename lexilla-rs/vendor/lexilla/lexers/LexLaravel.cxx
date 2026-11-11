@@ -334,16 +334,17 @@ static void ScanSingleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	styler.ColourTo(pos - 1, SCE_LARAVEL_STRING);
 }
 
-static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max) {
+static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max,
+                                   int delimiter = '"', int stringStyle = SCE_LARAVEL_STRING_DQ) {
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
 			pos = std::min(pos + 2, max);
-		} else if (c == '"') {
+		} else if (c == delimiter) {
 			pos++;
 			break;
 		} else if (c == '$' && IsIdentifierStart(styler.SafeGetCharAt(pos + 1, '\0'))) {
-			styler.ColourTo(pos - 1, SCE_LARAVEL_STRING_DQ);
+			styler.ColourTo(pos - 1, stringStyle);
 			pos++;
 			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
 				pos++;
@@ -352,7 +353,7 @@ static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 			pos++;
 		}
 	}
-	styler.ColourTo(pos - 1, SCE_LARAVEL_STRING_DQ);
+	styler.ColourTo(pos - 1, stringStyle);
 }
 
 static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
@@ -708,6 +709,9 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 	} else if (c == '"') {
 		pos++;
 		ScanDoubleQuotedString(styler, pos, max);
+	} else if (c == '`') {
+		pos++;
+		ScanDoubleQuotedString(styler, pos, max, '`', SCE_LARAVEL_CHARACTER);
 	} else if ((c == 'b' || c == 'B') && (n == '\'' || n == '"')) {
 		pos++;
 		if (styler.SafeGetCharAt(pos, '\0') == '\'') {
@@ -875,6 +879,8 @@ void SCI_METHOD LexerLaravel::Lex(Sci_PositionU startPos, Sci_Position length, i
 		ScanSingleQuotedString(styler, pos, max);
 	} else if (initStyle == SCE_LARAVEL_STRING_DQ) {
 		ScanDoubleQuotedString(styler, pos, max);
+	} else if (initStyle == SCE_LARAVEL_CHARACTER) {
+		ScanDoubleQuotedString(styler, pos, max, '`', SCE_LARAVEL_CHARACTER);
 	} else if (initStyle == SCE_LARAVEL_HEREDOC || initStyle == SCE_LARAVEL_NOWDOC) {
 		Sci_Position idStart = 0, idLen = 0;
 		bool nowdoc = (initStyle == SCE_LARAVEL_NOWDOC);

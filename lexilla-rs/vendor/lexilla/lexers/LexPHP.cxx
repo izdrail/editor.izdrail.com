@@ -271,17 +271,18 @@ static void ScanSingleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 }
 
 /* pos points just past the opening ".  Handles escapes and $variables. */
-static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max) {
+static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Position max,
+                                   int delimiter = '"', int stringStyle = SCE_PHP_STRING_DQ) {
 	while (pos < max) {
 		const int c = styler.SafeGetCharAt(pos, '\0');
 		if (c == '\\') {
 			pos = std::min(pos + 2, max);
-		} else if (c == '"') {
+		} else if (c == delimiter) {
 			pos++;
 			break;
 		} else if (c == '$' && IsIdentifierStart(styler.SafeGetCharAt(pos + 1, '\0'))) {
 			/* flush the string piece up to (but not including) the $ */
-			styler.ColourTo(pos - 1, SCE_PHP_STRING_DQ);
+			styler.ColourTo(pos - 1, stringStyle);
 			pos++;   // consume '$'
 			while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
 				pos++;
@@ -290,7 +291,7 @@ static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 			pos++;
 		}
 	}
-	styler.ColourTo(pos - 1, SCE_PHP_STRING_DQ);
+	styler.ColourTo(pos - 1, stringStyle);
 }
 
 static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
@@ -525,6 +526,8 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		ScanSingleQuotedString(styler, pos, max);
 	} else if (initStyle == SCE_PHP_STRING_DQ) {
 		ScanDoubleQuotedString(styler, pos, max);
+	} else if (initStyle == SCE_PHP_CHARACTER) {
+		ScanDoubleQuotedString(styler, pos, max, '`', SCE_PHP_CHARACTER);
 	} else if (initStyle == SCE_PHP_HEREDOC || initStyle == SCE_PHP_NOWDOC) {
 		Sci_Position idStart = 0, idLen = 0;
 		bool nowdoc = (initStyle == SCE_PHP_NOWDOC);
@@ -625,6 +628,9 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		} else if (c == '"') {
 			pos++;
 			ScanDoubleQuotedString(styler, pos, max);
+		} else if (c == '`') {
+			pos++;
+			ScanDoubleQuotedString(styler, pos, max, '`', SCE_PHP_CHARACTER);
 		} else if ((c == 'b' || c == 'B') && (n == '\'' || n == '"')) {
 			/* binary string prefix */
 			pos++;

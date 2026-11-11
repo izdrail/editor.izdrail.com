@@ -514,6 +514,31 @@ mod tests {
     }
 
     #[test]
+    fn php_backticks_keep_close_tags_in_strings_and_resume_code() {
+        let text = "<?php\r\n$name = 'λ🙂'; $out = `printf \"hello\" $name ?> still_command \\` escaped`; echo strlen($out);";
+        assert!(is_pure_php(text));
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            assert_eq!(snap.len(), text.len());
+            for needle in ["printf", "?>", "still_command", "escaped"] {
+                assert_eq!(php_scope_at(&snap, text, needle, 0), Some("string"), "{lexer}: {needle}");
+            }
+            assert_ne!(php_scope_at(&snap, text, "$name ?>", 0), Some("string"));
+            assert_eq!(php_scope_at(&snap, text, "echo strlen", 0), Some("keyword"));
+            assert_eq!(php_scope_at(&snap, text, "strlen", 0), Some("function"));
+            let unfinished = "<?php $out = `printf ?> λ🙂\r\ncontinued\\";
+            let snap = Snapshot::lex(lexer, unfinished, lists).unwrap();
+            assert_eq!(snap.len(), unfinished.len());
+            assert_eq!(php_scope_at(&snap, unfinished, "continued", 0), Some("string"));
+            let edited = format!("{unfinished}x`; echo 1;");
+            let fixed = Snapshot::lex(lexer, &edited, lists).unwrap();
+            assert_eq!(php_scope_at(&fixed, &edited, "echo", 0), Some("keyword"));
+            assert_eq!(Snapshot::lex(lexer, unfinished, lists).unwrap().styles(), snap.styles());
+        }
+    }
+
+    #[test]
     fn php_base_words_are_ascii_case_insensitive_in_both_scanners() {
         let text = "<?php IF (TRUE) { ECHO STRLEN('λ🙂'); ReTuRn NuLl; } FuNcTiOn test(InT $Value): VoId {} $IF = 'RETURN'; // ECHO\r\nPHP_VERSION; php_version;";
         for lexer in ["php", "laravel"] {
