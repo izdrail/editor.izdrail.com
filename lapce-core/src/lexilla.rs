@@ -673,6 +673,37 @@ mod tests {
     }
 
     #[test]
+    fn php_magic_constants_are_case_insensitive_but_regular_constants_are_not() {
+        let text = "<?php __CLASS__; __class__; __DiR__; __file__; __function__; __line__; __method__; __namespace__; __trait__; PHP_VERSION; php_version; $x = '__class__'; // __class__\r\n";
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            let expected = snap.styles()[text.find("__CLASS__").unwrap()];
+            for name in ["__class__", "__DiR__", "__file__", "__function__", "__line__", "__method__", "__namespace__", "__trait__"] {
+                assert_eq!(snap.styles()[text.find(name).unwrap()], expected, "{lexer}: {name}");
+            }
+            assert_ne!(snap.styles()[text.find("PHP_VERSION").unwrap()], snap.styles()[text.find("php_version").unwrap()]);
+            assert_eq!(php_scope_at(&snap, text, "__class__'", 0), Some("string"));
+            assert_eq!(php_scope_at(&snap, text, "__class__\r", 0), Some("comment"));
+        }
+    }
+
+    #[test]
+    fn magic_constant_matching_respects_active_and_custom_constant_lists() {
+        for lexer in ["php", "laravel"] {
+            let mut lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS }.to_vec();
+            lists[3] = "CustomConstant";
+            let text = "<?php __CLASS__; __class__; CustomConstant; customconstant; __CLASSICAL__;";
+            let snap = Snapshot::lex(lexer, text, &lists).unwrap();
+            assert_eq!(snap.styles()[text.find("__CLASS__").unwrap()], 17);
+            assert_eq!(snap.styles()[text.find("__class__").unwrap()], 17);
+            assert_eq!(snap.styles()[text.find("CustomConstant").unwrap()], 16);
+            assert_eq!(snap.styles()[text.find("customconstant").unwrap()], 17);
+            assert_eq!(snap.styles()[text.find("__CLASSICAL__").unwrap()], 17);
+        }
+    }
+
+    #[test]
     fn php_base_words_are_ascii_case_insensitive_in_both_scanners() {
         let text = "<?php IF (TRUE) { ECHO STRLEN('λ🙂'); ReTuRn NuLl; } FuNcTiOn test(InT $Value): VoId {} $IF = 'RETURN'; // ECHO\r\nPHP_VERSION; php_version;";
         for lexer in ["php", "laravel"] {

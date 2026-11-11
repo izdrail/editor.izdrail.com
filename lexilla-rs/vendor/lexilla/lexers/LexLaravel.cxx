@@ -356,6 +356,21 @@ static void ScanDoubleQuotedString(Accessor &styler, Sci_Position &pos, Sci_Posi
 	styler.ColourTo(pos - 1, stringStyle);
 }
 
+// Magic constants are case-insensitive, unlike ordinary constants in list 3.
+static const char *MagicConstantName(const char *lower) {
+	static const char *names[] = {
+		"__CLASS__", "__DIR__", "__FILE__", "__FUNCTION__", "__LINE__",
+		"__METHOD__", "__NAMESPACE__", "__TRAIT__"
+	};
+	for (const char *name : names) {
+		const char *p = name;
+		const char *q = lower;
+		while (*p && MakeLowerCase(*p) == *q) { p++; q++; }
+		if (!*p && !*q) return name;
+	}
+	return nullptr;
+}
+
 static void ScanNumber(Accessor &styler, Sci_Position &pos, Sci_Position max) {
 	/* Same numeric logic as LexPHP.cxx - kept compact here. */
 	const int c = styler.SafeGetCharAt(pos, '\0');
@@ -416,7 +431,8 @@ static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max
 	for (Sci_Position i = 0; i <= len; i++) lower[i] = MakeLowerCase(s[i]);
 
 	for (int ii = 0; ii < NUM_LARAVEL_KEYWORD_LISTS; ii++) {
-		if (keywords[ii].InList(ii < 3 ? lower : s)) {
+		if (keywords[ii].InList(ii < 3 ? lower : s) ||
+		    (ii == 3 && MagicConstantName(lower) && keywords[ii].InList(MagicConstantName(lower)))) {
 			styler.ColourTo(pos - 1, SCE_LARAVEL_WORD + ii);
 			return;
 		}
@@ -829,7 +845,8 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		/* Fall back to the plain PHP word lists. */
 		bool keyword = false;
 		for (int ii = 0; ii < 4; ii++) {   /* WL_PHP_* */
-			if (keywords[ii].InList(ii < 3 ? lower : s)) {
+			if (keywords[ii].InList(ii < 3 ? lower : s) ||
+			    (ii == 3 && MagicConstantName(lower) && keywords[ii].InList(MagicConstantName(lower)))) {
 				styler.ColourTo(identEnd - 1, SCE_LARAVEL_WORD + ii);
 				keyword = true;
 				break;
