@@ -78,6 +78,8 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
     let mut stack: Vec<Open> = vec![];
     let mut best: Option<(usize, Pair)> = None; // (span length, pair)
     let mut work = 0usize;
+    let mut php_close_tags: Option<Vec<usize>> = None;
+    let mut php_close_index = 0;
     let mut i = 0;
     while i < b.len() {
         if b[i] != b'<' {
@@ -93,7 +95,26 @@ pub fn pair_at(text: &str, offset: usize) -> Option<Pair> {
         if rest.starts_with(b"<!--") {
             i = find_from(b, i + 4, b"-->").map(|p| p + 3).unwrap_or(b.len());
         } else if rest.starts_with(b"<?") {
-            i = find_from(b, i + 2, b"?>").map(|p| p + 2).unwrap_or(b.len());
+            let php_opener = rest.get(..5).is_some_and(|tag| tag.eq_ignore_ascii_case(b"<?php")) || rest.starts_with(b"<?=")
+                || rest.get(2).is_some_and(|c| c.is_ascii_whitespace());
+            if !php_opener {
+                i = find_from(b, i + 2, b"?>").map(|p| p + 2).unwrap_or(b.len());
+                continue;
+            }
+            // Lazily lex the suffix once, then advance through close tags.
+            // A quoted ?> is not an HTML boundary; on lex failure, hiding the
+            // remaining region is safer than offering to edit PHP strings.
+            let ends = php_close_tags.get_or_insert_with(|| {
+                lapce_core::lexilla::php_close_tag_offsets(&text[i..])
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|end| i + end)
+                    .collect()
+            });
+            while ends.get(php_close_index).is_some_and(|end| *end <= i) {
+                php_close_index += 1;
+            }
+            i = ends.get(php_close_index).copied().unwrap_or(b.len());
         } else if rest.starts_with(b"<!") {
             i = find_from(b, i + 2, b">").map(|p| p + 1).unwrap_or(b.len());
         } else if rest.starts_with(b"</") {
@@ -242,6 +263,47 @@ mod tests {
         let text = "<script>let s = '</script-x><div>fake</div>';</SCRIPT><p>real</p>";
         assert_eq!(names(text, text.find("<div>").unwrap()+2), None);
         assert_eq!(names(text, text.find("<p>").unwrap()+1), Some(("p".into(), "p".into())));
+    }
+
+    #[test]
+    fn php_literal_closers_do_not_expose_fake_elements() {
+        for body in [
+            r#"$x = "?><div>fake</div>";"#,
+            r#"$x = '?><div>fake</div>';"#,
+            r#"/* ?><div>fake</div> */"#,
+            r#"$x = `printf '?><div>fake</div>'`;"#,
+            "$x = <<<TXT\n?><div>fake</div>\nTXT;",
+            "$x = <<<'TXT'\n?><div>fake</div>\nTXT;",
+        ] {
+            let text = format!("<section><?php {body} ?>\n<p>real</p></section>");
+            assert_eq!(names(&text, text.find("<div>").unwrap() + 2), None, "{body}");
+            assert_eq!(names(&text, text.find("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
+            assert_eq!(names(&text, 2), Some(("section".into(), "section".into())));
+        }
+        for opener in ["<?PHP", "<?PhP", "<?="] {
+            let text = format!(r#"{opener} "?><div>fake</div>"; ?> <p>real</p>"#);
+            assert_eq!(names(&text, text.find("<div>").unwrap() + 2), None);
+            assert_eq!(names(&text, text.find("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
+        }
+        // A close tag in a PHP line comment really does return to HTML.
+        let text = "<?php // ?> <p>real</p>";
+        assert_eq!(names(text, text.find("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
+        let unfinished = "<?php $x = '?><div>fake</div>'";
+        assert_eq!(names(unfinished, unfinished.find("<div>").unwrap() + 2), None);
+    }
+
+    #[test]
+    fn non_php_processing_instructions_after_php_do_not_stall() {
+        let text = "<?php echo 1; ?><?xml version='1.0' ?><p>real</p>";
+        assert_eq!(names(text, text.find("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
+    }
+
+    #[test]
+    fn many_php_regions_use_one_linear_lex_pass() {
+        let text = "<?php echo '?><div>fake</div>'; ?>".repeat(5000) + "<p>real</p>";
+        let start = std::time::Instant::now();
+        assert_eq!(names(&text, text.rfind("<p>").unwrap() + 1), Some(("p".into(), "p".into())));
+        assert!(start.elapsed() < std::time::Duration::from_secs(20));
     }
 
     #[test]

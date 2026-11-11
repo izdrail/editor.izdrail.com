@@ -42,6 +42,20 @@ pub fn is_pure_php(source: &str) -> bool {
     true
 }
 
+/// Byte offsets just after real PHP close tags in a source suffix beginning
+/// with `<?`. Strings, comments, heredocs and nowdocs use the same states as
+/// highlighting. Call once per bounded document, not once per PHP block.
+pub fn php_close_tag_offsets(source: &str) -> Option<Vec<usize>> {
+    if !source.starts_with("<?") {
+        return None;
+    }
+    let snapshot = Snapshot::lex("php", source, &[]).ok()?;
+    let styles = snapshot.styles();
+    Some(styles.iter().enumerate().filter_map(|(i, &style)| {
+        (style == 20 && styles.get(i + 1) != Some(&20)).then_some(i + 1)
+    }).collect())
+}
+
 /// Word lists for the `laravel` lexer: the four PHP lists, then facades, route
 /// methods, Artisan commands, helpers and Eloquent methods.
 pub const LARAVEL_WORD_LISTS: &[&str] = &[
@@ -511,6 +525,19 @@ mod tests {
     ) -> Option<&'static str> {
         let pos = text.match_indices(needle).nth(nth).expect("needle").0;
         snapshot.scope(snapshot.styles()[pos])
+    }
+
+    #[test]
+    fn php_processing_instructions_advance_and_real_close_tags_are_indexed() {
+        let text = "<?php $x = '?><div>fake</div>'; ?><?xml version='1.0' ?><p>real</p><?php echo 1; ?>";
+        for lexer in ["php", "laravel"] {
+            let snap = Snapshot::lex(lexer, text, &[]).unwrap();
+            assert_eq!(snap.len(), text.len());
+            assert_eq!(snap.styles()[text.find("<p>").unwrap()], 21);
+        }
+        let ends = php_close_tag_offsets(text).unwrap();
+        assert_eq!(ends, vec![text.find("; ?>").unwrap() + 4, text.len()]);
+        assert!(php_close_tag_offsets("not PHP").is_none());
     }
 
     #[test]

@@ -677,8 +677,7 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 		styler.ColourTo(pos - 1, SCE_LARAVEL_CLOSE_TAG);
 		inPhp = false;
 	} else if (c == '<' && n == '?') {
-		if (n2 == 'p' && n3 == 'h' &&
-		    styler.SafeGetCharAt(pos + 4, '\0') == 'p') {
+		if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) {
 			pos += 5;
 			styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
 		} else if (n2 == '=') {
@@ -915,8 +914,7 @@ void SCI_METHOD LexerLaravel::Lex(Sci_PositionU startPos, Sci_Position length, i
 
 		if (!inPhp) {
 			if (c == '<' && n == '?') {
-				if (n2 == 'p' && n3 == 'h' &&
-				    styler.SafeGetCharAt(pos + 4, '\0') == 'p') {
+				if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) {
 					pos += 5;
 					styler.ColourTo(pos - 1, SCE_LARAVEL_OPEN_TAG);
 					inPhp = true;
@@ -1073,7 +1071,7 @@ bool LexerLaravel::TryBlade(Accessor &styler, Sci_Position &pos, Sci_Position ma
 	}
 	if (c == '<' && n == '?') {
 		int open = 0;
-		if (n2 == 'p' && n3 == 'h' && styler.SafeGetCharAt(pos + 4, '\0') == 'p') open = 5;
+		if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) open = 5;
 		else if (n2 == '=') open = 3;
 		else if (n2 == ' ' || n2 == '\t' || n2 == '\n' || n2 == '\r') open = 2;
 		if (!open)

@@ -564,8 +564,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		/* -------------------- inline HTML mode -------------------- */
 		if (!inPhp) {
 			if (c == '<' && n == '?') {
-				if (n2 == 'p' && n3 == 'h' &&
-				    styler.SafeGetCharAt(pos + 4, '\0') == 'p') {
+				if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) {
 					pos += 5;
 					styler.ColourTo(pos - 1, SCE_PHP_OPEN_TAG);
 					inPhp = true;
@@ -583,6 +582,10 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 					inPhp = true;
 					continue;
 				}
+				/* Non-PHP processing instructions must advance past <?. */
+				pos += 2;
+				styler.ColourTo(pos - 1, SCE_PHP_INLINE_HTML);
+				continue;
 			}
 			/* Consume HTML text up to the next "<?" so we colour it in one go. */
 			const Sci_Position segStart = pos;
@@ -610,8 +613,7 @@ void SCI_METHOD LexerPHP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 		} else if (c == '<' && n == '?') {
 			/* We may start in PHP mode because initStyle was DEFAULT on a
 			 * document that in fact begins with <?php - handle it here. */
-			if (n2 == 'p' && n3 == 'h' &&
-			    styler.SafeGetCharAt(pos + 4, '\0') == 'p') {
+			if ((n2 == 'p' || n2 == 'P') && (n3 == 'h' || n3 == 'H') && (styler.SafeGetCharAt(pos + 4, '\0') == 'p' || styler.SafeGetCharAt(pos + 4, '\0') == 'P')) {
 				pos += 5;
 				styler.ColourTo(pos - 1, SCE_PHP_OPEN_TAG);
 			} else if (n2 == '=') {

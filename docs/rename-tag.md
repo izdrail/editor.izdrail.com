@@ -7,3 +7,7 @@ Parsing is textual and bounded (files up to 1 MB, tags up to 4 KB). Skipped: HTM
 You can also type any element name: when nothing in the list matches, Enter uses what you typed (name only; attributes are not used for rename).
 
 Raw-text closing names must be complete: `</scripture>` and `</styles>` inside JavaScript or CSS do not end the raw-text body or expose fake HTML elements to Rename Tag. Real elements after the matching `</script>` or `</style>` remain editable.
+
+PHP boundaries come from the shared PHP lexer, not a substring search for `?>`. Tag-like text inside PHP strings, block comments, backticks, heredocs and nowdocs cannot be renamed. A real `?>` (including one in a PHP line comment) restores HTML parsing. One lazy lex pass supplies all close-tag offsets, even in files with many PHP regions; a failed lex hides the rest conservatively. This does not execute PHP or shell commands.
+
+The shared scanners accept mixed-case long PHP tags such as `<?PHP`, matching PHP tokenization. Non-PHP processing instructions such as `<?xml` always advance the standalone scanner rather than looping without consuming input. Rename Tag keeps its existing processing-instruction skip and 1 MB file limit.
