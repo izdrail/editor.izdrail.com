@@ -559,7 +559,7 @@ pub fn completion_kind(before: &str) -> Option<&'static str> {
     let tail = &context_source[start + 2..];
     // Ignore the identifier currently being completed.
     let context = tail
-        .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
+        .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || !c.is_ascii())
         .trim_end();
     // A single dot selects an attribute/method, not a global function.
     // Two dots are the range operator; dynamic .(expression) is also global.
@@ -632,6 +632,16 @@ pub fn php_completion_context(before: &str) -> bool {
 #[cfg(test)]
 mod isolation_tests {
     use super::*;
+    #[test]
+    fn twig_completion_context_keeps_non_ascii_identifier_bytes() {
+        for name in ["e\u{0301}", "λ\u{200d}x", "变量\u{0301}"] {
+            assert_eq!(completion_kind(&format!("{{{{ user.{name}")), None, "{name}");
+            assert_eq!(completion_kind(&format!("{{{{ user|{name}")), Some("filter"), "{name}");
+            assert_eq!(completion_kind(&format!("{{{{ user is {name}")), Some("test"), "{name}");
+        }
+        assert_eq!(completion_kind("{{ user..ran"), Some("function"));
+    }
+
     #[test]
     fn completed_twig_regions_do_not_offer_global_symbols() {
         for before in ["{{ value }}", "{{ value -}}", "{{ value ~}}", "{% endif %}", "{% endif -%}", "{% endif ~%}"] {

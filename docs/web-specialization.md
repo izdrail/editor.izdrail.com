@@ -197,3 +197,8 @@ Reference: https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state .
 Twig static completion stops directly after a completed expression or statement
 closing delimiter, including whitespace controls. A newly opened Twig region
 still selects its normal symbol category.
+
+Twig completion treats all non-ASCII UTF-8 bytes as part of the identifier,
+matching Twig's name rule. Combining marks no longer bypass attribute guards
+or change filter/test completion into the global function category.
+Reference: https://raw.githubusercontent.com/twigphp/Twig/v3.21.1/src/Lexer.php .
