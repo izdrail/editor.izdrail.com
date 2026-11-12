@@ -238,3 +238,7 @@ completion routing: `.blade.php` is case-insensitive, including
 Tailwind local CSS hover accepts case-insensitive template filename extensions
 (Blade, HTML/HTM, Vue, Svelte, JSX/TSX and Twig). Backup suffixes and plain
 PHP, CSS, JavaScript and TypeScript files remain outside this template route.
+
+Blade stack/push and yield/section navigation use the snippet filename rule for
+both the source gate and destination scan. Mixed/uppercase `.blade.php`
+suffixes work without changing the destination's actual path spelling.

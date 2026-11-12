@@ -10,6 +10,11 @@
 //! list). Bounded: depth 8, 5000 files, 1 MB per file, symlinks not followed.
 use std::path::{Path, PathBuf};
 
+/// Keep source routing and destination scanning on the same Blade path rule.
+pub(crate) fn supports_path(path: &Path) -> bool {
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
+}
+
 const MAX_FILE_BYTES: u64 = 1_000_000;
 const MAX_FILES: usize = 5000;
 const MAX_DEPTH: usize = 8;
@@ -84,7 +89,7 @@ pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> 
                     stack.push((p, depth + 1));
                 }
             } else if ft.is_file()
-                && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".blade.php"))
+                && supports_path(&p)
                 && e.metadata().is_ok_and(|m| m.len() <= MAX_FILE_BYTES)
             {
                 let Ok(text) = std::fs::read_to_string(&p) else { continue };
@@ -124,6 +129,27 @@ mod tests {
         assert_eq!(go("@yield('content')", "content"), Some((page.clone(), 1)));
         assert_eq!(go("@section(\"content\")", "content"), Some((layout, 2)));
         assert_eq!(go("@stack('missing')", "missing"), None);
+    }
+
+    #[test]
+    fn mixed_case_blade_slot_paths_keep_exact_destinations() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let layout = put(r, "resources/views/layouts/APP.BLADE.PHP", "@stack('scripts')\n@yield('content')\n");
+        let page = put(r, "resources/views/Home.Blade.Php", "@push('scripts')\n@section('content')\n");
+        for file in [&layout, &page] {
+            assert!(supports_path(file));
+        }
+        for file in ["view.php", "view.blade.php.bak", "view.blade"] {
+            assert!(!supports_path(Path::new(file)), "{file}");
+            put(r, &format!("resources/views/{file}"), "@push('excluded')");
+        }
+        let go = |l: &str, n: &str| resolve(r, l, at(l, n));
+        assert_eq!(go("@stack('scripts')", "scripts"), Some((page.clone(), 0)));
+        assert_eq!(go("@push('scripts')", "scripts"), Some((layout.clone(), 0)));
+        assert_eq!(go("@yield('content')", "content"), Some((page, 1)));
+        assert_eq!(go("@section('content')", "content"), Some((layout, 1)));
+        assert_eq!(go("@stack('excluded')", "excluded"), None);
     }
 
     #[test]

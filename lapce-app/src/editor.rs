@@ -1726,7 +1726,7 @@ impl EditorData {
                 }
             }
             // `@stack('x')` <-> `@push('x')`, `@yield('x')` <-> `@section('x')`.
-            if path.to_string_lossy().ends_with(".blade.php") {
+            if crate::blade_slots::supports_path(&path) {
                 if let Some((target, line)) =
                     crate::blade_slots::resolve(root, &line_text, col)
                 {
