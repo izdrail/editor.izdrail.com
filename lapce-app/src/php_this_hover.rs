@@ -11,6 +11,14 @@
 //!
 //! Inherited members and traits are not searched. Static text scan.
 
+/// Only PHP syntax paths get same-file member fallback, never Blade templates.
+pub(crate) fn supports_path(path: &std::path::Path) -> bool {
+    matches!(
+        lapce_core::language::LapceLanguage::from_path_raw(path),
+        Some(lapce_core::language::LapceLanguage::Php)
+    )
+}
+
 const MAX: usize = 1 << 20;
 const MODEL_LISTS: &[&str] = &["fillable", "guarded", "hidden", "visible", "appends", "dates", "casts", "with"];
 
@@ -131,6 +139,17 @@ pub fn help(text: &str, line: &str, col: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fallback_paths_follow_php_syntax_but_exclude_blade() {
+        use std::path::Path;
+        for name in ["Model.php", "Model.PHP", "artisan", "bin/console"] {
+            assert!(super::supports_path(Path::new(name)), "{name}");
+        }
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php", "Model.php.bak", "console", "ARTISAN", "bin/Console", "view.twig", "view.js"] {
+            assert!(!super::supports_path(Path::new(name)), "{name}");
+        }
+    }
+
     use super::*;
 
     const MODEL: &str = "<?php\nclass User extends Model\n{\n    protected $fillable = ['name', 'email'];\n    protected $hidden = [\n        'password',\n    ];\n    protected $casts = [\n        'email_verified_at' => 'datetime',\n        'is_admin' => 'boolean',\n    ];\n\n    #[Url]\n    #[Locked]\n    public string $email = '';\n\n    public function __construct(private int $id) {}\n\n    public function save(): void\n    {\n        $this->email = 'x';\n    }\n}\n";

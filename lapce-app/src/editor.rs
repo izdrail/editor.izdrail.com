@@ -4998,8 +4998,7 @@ impl EditorData {
         let editor_id = self.id();
         // `$this->member` in a PHP file: used only if the language server has
         // nothing to say.
-        let fallback: Option<String> = (path.extension().is_some_and(|e| e == "php")
-            && !path.to_string_lossy().ends_with(".blade.php"))
+        let fallback: Option<String> = crate::php_this_hover::supports_path(&path)
         .then(|| {
             doc.buffer.with_untracked(|buffer| {
                 if buffer.len() > 1 << 20 {

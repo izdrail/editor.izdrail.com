@@ -255,3 +255,7 @@ Local Laravel validation, helper, route, channel, schema and middleware hover
 now use the existing syntax-aware PHP path gate, as config and Artisan hover
 already do. Uppercase PHP/Blade and conventional `artisan` / `bin/console`
 entry scripts work; arbitrary extensionless files and backup suffixes do not.
+
+Same-file `$this` fallback hover follows PHP syntax routing, including uppercase
+PHP and recognized CLI scripts. Blade stays excluded regardless of suffix case,
+and a nonempty language-server hover still takes priority over the fallback.
