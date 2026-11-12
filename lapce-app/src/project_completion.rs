@@ -7957,6 +7957,23 @@ Gate::define(\"buy-cd\", 'shop.buy');
     }
 
     #[test]
+    fn php_definition_source_gate_keeps_controller_target_and_line() {
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("app/Http/Controllers/PostController.php");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, "<?php\nclass PostController {\n public function show() {}\n}\n").unwrap();
+        let line = "Route::get('/posts', [PostController::class, 'show']);";
+        let at = line.find("show").unwrap() + 1;
+        for source in ["routes/web.php", "routes/WEB.PHP", "artisan", "bin/console", "VIEW.BLADE.PHP"] {
+            assert!(php_completion_path(Path::new(source)), "{source}");
+            assert_eq!(crate::controller_actions::resolve(d.path(), line, at), Some((target.clone(), 2)), "{source}");
+        }
+        for source in ["routes/web.php.bak", "web.js", "console", "page.twig"] {
+            assert!(!php_completion_path(Path::new(source)), "{source}");
+        }
+    }
+
+    #[test]
     fn name_replacement_kinds_are_php_file_only() {
         // The item 411 mismatch: a .txt buffer used to offer the
         // same whole-name items whose replacement is PHP-gated.

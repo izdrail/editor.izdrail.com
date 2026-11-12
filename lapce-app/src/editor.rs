@@ -1626,7 +1626,7 @@ impl EditorData {
             }
             // `->middleware('auth')` opens the alias line in
             // `bootstrap/app.php` or `app/Http/Kernel.php`.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::middleware_alias::resolve(root, &line_text, col)
                 {
@@ -1644,7 +1644,7 @@ impl EditorData {
             }
             // `Storage::disk('s3')`, `Log::channel(..)`, `DB::connection(..)`
             // open the matching entry in `config/*.php`.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::config_channels::resolve(root, &line_text, col)
                 {
@@ -1661,7 +1661,7 @@ impl EditorData {
                 }
             }
             // `Post::published()` opens `scopePublished` in the model.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::eloquent_scopes::resolve(root, &line_text, col)
                 {
@@ -1678,7 +1678,7 @@ impl EditorData {
                 }
             }
             // `Post::factory()` opens `PostFactory` in database/factories.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::eloquent_factories::resolve(root, &line_text, col)
                 {
@@ -1695,7 +1695,7 @@ impl EditorData {
                 }
             }
             // `@can('x')` / `Gate::allows('x')` opens `Gate::define('x'`.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) = crate::gate_refs::resolve(root, &line_text, col) {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation {
@@ -1710,7 +1710,7 @@ impl EditorData {
                 }
             }
             // `PostSeeder::class` in `$this->call(...)` opens the seeder.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) = crate::seeder_refs::resolve(root, &line_text, col)
                 {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
@@ -1744,7 +1744,7 @@ impl EditorData {
             }
             // `[PostController::class, 'show']` / `'PostController@show'`
             // open the controller method.
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::controller_actions::resolve(root, &line_text, col)
                 {
@@ -1906,7 +1906,7 @@ impl EditorData {
             }
             // `$request->input('title')` in a FormRequest opens the
             // `'title' => ...` line of rules().
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::request_fields::resolve(root, &path, &line_text, col)
                 {
@@ -1924,7 +1924,7 @@ impl EditorData {
             }
             // `Post::class` opens the one conventional `Post.php`
             // (Laravel/Symfony folders; several candidates do nothing).
-            if path.extension().is_some_and(|e| e == "php") {
+            if crate::project_completion::php_completion_path(&path) {
                 if let Some((target, line)) =
                     crate::class_const_refs::resolve(root, &line_text, col)
                 {

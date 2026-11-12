@@ -259,3 +259,8 @@ entry scripts work; arbitrary extensionless files and backup suffixes do not.
 Same-file `$this` fallback hover follows PHP syntax routing, including uppercase
 PHP and recognized CLI scripts. Blade stays excluded regardless of suffix case,
 and a nonempty language-server hover still takes priority over the fallback.
+
+PHP-only local definition source gates now follow the syntax-aware PHP/Blade
+classifier too: middleware aliases, config channels, Eloquent scopes/factories,
+gates, seeders, controller actions, request fields and class constants. Uppercase
+PHP and recognized CLI sources work; destination resolution rules stay intact.
