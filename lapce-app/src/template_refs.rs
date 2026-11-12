@@ -202,8 +202,8 @@ fn clamp_col(line: &str, col: usize) -> usize {
 pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathBuf> {
     let col = clamp_col(line, col);
     let name = file.file_name()?.to_str()?;
-    let blade = name.ends_with(".blade.php");
-    let twig = name.ends_with(".twig");
+    let blade = crate::builtin_snippets::snippet_language(file, "php") == "blade";
+    let twig = name.to_ascii_lowercase().ends_with(".twig");
     let php = matches!(
         lapce_core::language::LapceLanguage::from_path_raw(file),
         Some(lapce_core::language::LapceLanguage::Php
@@ -282,6 +282,28 @@ mod tests {
         }
         for name in ["console", "scripts/console", "ARTISAN", "notes.txt"] {
             assert_eq!(resolve(r, Path::new(name), line, at(line, "reports")), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn template_source_case_keeps_specialized_routes_and_target_names() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        let blade = touch(root, "resources/views/components/forms/input.blade.php");
+        let twig = touch(root, "templates/Base.html.twig");
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
+            let line = "<x-forms.input type=\"text\" />";
+            assert_eq!(resolve(root, Path::new(name), line, at(line, "forms")), Some(blade.clone()), "{name}");
+        }
+        for name in ["view.twig", "VIEW.TWIG", "view.Twig"] {
+            let line = "{% extends 'Base.html.twig' %}";
+            assert_eq!(resolve(root, Path::new(name), line, at(line, "Base")), Some(twig.clone()), "{name}");
+            let wrong_case = "{% extends 'base.html.twig' %}";
+            assert_eq!(resolve(root, Path::new(name), wrong_case, at(wrong_case, "base")), None);
+        }
+        let line = "<x-forms.input />";
+        for name in ["view.php", "view.blade.php.bak", "view.twig.bak", "view.html"] {
+            assert_eq!(resolve(root, Path::new(name), line, at(line, "forms")), None, "{name}");
         }
     }
 

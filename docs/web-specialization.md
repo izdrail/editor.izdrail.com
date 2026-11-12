@@ -272,3 +272,7 @@ and exact destination path/line rules are unchanged.
 Local JS/TS/Vue/Svelte import navigation accepts source extension case variants
 for its existing supported file types. Import specifiers and target filenames
 remain case-sensitive and keep their exact spelling; lookup rules are unchanged.
+
+Specialized template-reference routes recognize mixed/uppercase Blade and Twig
+source suffixes too, including Blade component tags and Twig extends. Referenced
+template names and target paths retain their exact case-sensitive spelling.
