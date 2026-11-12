@@ -4794,7 +4794,7 @@ impl EditorData {
         }
         // Laravel validation rule string under the cursor in a PHP file:
         // one line on the rule, no language server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
@@ -4838,7 +4838,7 @@ impl EditorData {
 
         // `Str::slug(...)` / `Arr::get(...)` under the cursor: one line on
         // the Laravel helper, no language server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
@@ -4859,7 +4859,7 @@ impl EditorData {
         }
         // `route('users.index')` under the cursor: verb, URI and action
         // from routes/*.php, no language server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
@@ -4882,7 +4882,7 @@ impl EditorData {
         // `Storage::disk('s3')`, `Log::channel('slack')` and friends under
         // the cursor: the entry's driver from config/*.php, no language
         // server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
@@ -4928,7 +4928,7 @@ impl EditorData {
         // A database table name under the cursor (`DB::table('users')`,
         // `Schema::table(...)`, a model's `$table`): the column list rebuilt
         // from migrations, no language server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (
@@ -4973,7 +4973,7 @@ impl EditorData {
         }
         // A middleware alias under the cursor (`->middleware('auth')`):
         // the class the alias maps to, no language server round trip.
-        if path.extension().is_some_and(|e| e == "php") {
+        if crate::project_completion::php_completion_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (

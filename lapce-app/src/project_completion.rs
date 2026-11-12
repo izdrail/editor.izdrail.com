@@ -7944,6 +7944,19 @@ Gate::define(\"buy-cd\", 'shop.buy');
     }
 
     #[test]
+    fn local_php_hover_gate_matches_syntax_for_templates_and_scripts() {
+        for path in ["FormRequest.PHP", "views/VIEW.BLADE.PHP", "views/page.Blade.Php", "artisan", "bin/console"] {
+            assert!(php_completion_path(Path::new(path)), "{path}");
+        }
+        for path in ["FormRequest.PHP.bak", "views/page.twig", "views/page.html", "console", "ARTISAN", "bin/Console", "script.js"] {
+            assert!(!php_completion_path(Path::new(path)), "{path}");
+        }
+        let line = "'title' => 'required|string|max:255',";
+        let at = line.find("required").unwrap() + 1;
+        assert!(crate::validation_hover::help(line, at).unwrap().contains("must be present and not empty"));
+    }
+
+    #[test]
     fn name_replacement_kinds_are_php_file_only() {
         // The item 411 mismatch: a .txt buffer used to offer the
         // same whole-name items whose replacement is PHP-gated.

@@ -250,3 +250,8 @@ classifier; view `@props` and class constructor destinations stay unchanged.
 Livewire handler navigation accepts mixed/uppercase Blade suffixes too. Only
 the suffix is stripped case-insensitively; the view's directory and component
 basename retain their spelling when deriving the PHP class path.
+
+Local Laravel validation, helper, route, channel, schema and middleware hover
+now use the existing syntax-aware PHP path gate, as config and Artisan hover
+already do. Uppercase PHP/Blade and conventional `artisan` / `bin/console`
+entry scripts work; arbitrary extensionless files and backup suffixes do not.
