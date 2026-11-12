@@ -268,3 +268,7 @@ PHP and recognized CLI sources work; destination resolution rules stay intact.
 Symfony parameter definition sources accept YAML/YML/XML extension case
 variants and the existing PHP syntax paths. Declaration search, file bounds,
 and exact destination path/line rules are unchanged.
+
+Local JS/TS/Vue/Svelte import navigation accepts source extension case variants
+for its existing supported file types. Import specifiers and target filenames
+remain case-sensitive and keep their exact spelling; lookup rules are unchanged.

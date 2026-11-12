@@ -1606,9 +1606,7 @@ impl EditorData {
             }
             // `import X from '@/Components/X.vue'` and relative imports in
             // JS / TS / Vue / Svelte files open the imported file.
-            if path.extension().is_some_and(|e| {
-                ["vue", "svelte", "ts", "tsx", "js", "jsx", "mjs"].iter().any(|k| e == *k)
-            }) {
+            if crate::js_imports::supports_path(&path) {
                 if let Some(target) =
                     crate::js_imports::resolve(root, &path, &line_text, col)
                 {

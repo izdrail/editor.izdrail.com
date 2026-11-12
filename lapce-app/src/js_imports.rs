@@ -16,6 +16,14 @@ const ALIAS_ROOTS: &[&str] = &["resources/js", "resources/ts", "resources/vue"];
 const EXTS: &[&str] = &["vue", "ts", "tsx", "js", "jsx", "svelte", "mjs"];
 const MAX_SPEC: usize = 300;
 
+/// Source gate shared with the editor; target path spelling stays exact.
+pub(crate) fn supports_path(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+        EXTS.iter().any(|known| ext.eq_ignore_ascii_case(known))
+    })
+}
+
+
 /// `(specifier, text before its opening quote)` for the string at `col`.
 fn spec_at(line: &str, col: usize) -> Option<(&str, &str)> {
     let mut col = col.min(line.len());
@@ -122,6 +130,23 @@ mod tests {
         assert_eq!(go(l, "util"), Some(util.clone()));
         let l = "const u = require('./util.js?v=2')";
         assert_eq!(go(l, "util"), Some(util));
+    }
+
+    #[test]
+    fn import_source_extension_case_keeps_target_spelling() {
+        let d = tempfile::tempdir().unwrap();
+        let target = touch(d.path(), "resources/js/Components/Card.Vue");
+        let line = "import Card from '@/Components/Card.Vue'";
+        for ext in EXTS {
+            for ext in [ext.to_string(), ext.to_ascii_uppercase()] {
+                let source = d.path().join(format!("resources/js/Home.{ext}"));
+                assert!(supports_path(&source), "{ext}");
+                assert_eq!(resolve(d.path(), &source, line, at(line, "Card.Vue")), Some(target.clone()), "{ext}");
+            }
+        }
+        for source in ["Home.vue.bak", "Home.php", "Home.twig", "Home.json", "js"] {
+            assert!(!supports_path(Path::new(source)), "{source}");
+        }
     }
 
     #[test]
