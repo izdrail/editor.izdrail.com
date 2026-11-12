@@ -4772,11 +4772,7 @@ impl EditorData {
         }
         // Tailwind utility class under the cursor in a template's class
         // attribute: its CSS from a built-in table, no language server.
-        let tailwind_file = path.to_string_lossy().ends_with(".blade.php")
-            || path.extension().is_some_and(|e| {
-                ["html", "htm", "vue", "svelte", "jsx", "tsx", "twig"].iter().any(|k| e == *k)
-            });
-        if tailwind_file {
+        if crate::tailwind_hover::supports_path(&path) {
             let (line_text, col) = doc.buffer.with_untracked(|buffer| {
                 let line = buffer.line_of_offset(offset);
                 (

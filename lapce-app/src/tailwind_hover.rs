@@ -17,6 +17,16 @@
 //! differences are not covered; a class that matches nothing gets no hover.
 //! Nothing is executed; only the hovered line and bounded CSS files are read.
 
+/// Template paths accepted by the editor's local CSS hover route.
+pub(crate) fn supports_path(path: &std::path::Path) -> bool {
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
+        || path.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+            ["html", "htm", "vue", "svelte", "jsx", "tsx", "twig"]
+                .iter()
+                .any(|known| ext.eq_ignore_ascii_case(known))
+        })
+}
+
 const MAX_LINE: usize = 4096;
 const MAX_CSS: u64 = 1 << 20;
 const MAX_CSS_FILES: usize = 20;
@@ -851,6 +861,22 @@ pub fn help(root: Option<&std::path::Path>, line: &str, col: usize) -> Option<St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hover_paths_accept_template_extension_case_only() {
+        use std::path::Path;
+        for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
+            assert!(super::supports_path(Path::new(name)), "{name}");
+        }
+        for ext in ["html", "htm", "vue", "svelte", "jsx", "tsx", "twig"] {
+            for ext in [ext.to_owned(), ext.to_ascii_uppercase()] {
+                assert!(super::supports_path(Path::new(&format!("view.{ext}"))), "{ext}");
+            }
+        }
+        for name in ["view.php", "view.css", "view.blade.php.bak", "view.html.bak", "html", "view.ts", "view.js"] {
+            assert!(!super::supports_path(Path::new(name)), "{name}");
+        }
+    }
+
     use super::*;
 
     fn h(line: &str, needle: &str) -> Option<String> {

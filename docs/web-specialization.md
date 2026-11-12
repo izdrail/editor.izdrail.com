@@ -234,3 +234,7 @@ and mixed HTML/PHP, including non-ASCII identifiers and comment text.
 Local Blade hover uses the same filename classifier as bundled snippets and
 completion routing: `.blade.php` is case-insensitive, including
 `VIEW.BLADE.PHP`. Plain PHP and `.blade.php.bak` do not get Blade hover help.
+
+Tailwind local CSS hover accepts case-insensitive template filename extensions
+(Blade, HTML/HTM, Vue, Svelte, JSX/TSX and Twig). Backup suffixes and plain
+PHP, CSS, JavaScript and TypeScript files remain outside this template route.
