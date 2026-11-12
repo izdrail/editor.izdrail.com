@@ -1795,7 +1795,7 @@ impl EditorData {
             }
             // Livewire view: `wire:click="save"` / `$wire.save()` opens the
             // component class at that method or property.
-            if path.to_string_lossy().ends_with(".blade.php") {
+            if crate::livewire_handlers::supports_path(&path) {
                 if let Some((target, line)) =
                     crate::livewire_handlers::resolve(root, &path, &line_text, col)
                 {

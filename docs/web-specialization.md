@@ -246,3 +246,7 @@ suffixes work without changing the destination's actual path spelling.
 Component-attribute definition navigation also accepts mixed/uppercase Blade
 source suffixes. Both the editor route and local resolver use the snippet
 classifier; view `@props` and class constructor destinations stay unchanged.
+
+Livewire handler navigation accepts mixed/uppercase Blade suffixes too. Only
+the suffix is stripped case-insensitively; the view's directory and component
+basename retain their spelling when deriving the PHP class path.

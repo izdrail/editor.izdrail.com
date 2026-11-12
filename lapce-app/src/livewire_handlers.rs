@@ -35,9 +35,19 @@ fn studly(part: &str) -> String {
         .collect()
 }
 
+/// Source suffix matches the editor's Blade snippet routing.
+pub(crate) fn supports_path(path: &Path) -> bool {
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
+}
+
 pub(crate) fn class_for_view(root: &Path, view: &Path) -> Option<PathBuf> {
     let rel = view.strip_prefix(root.join("resources/views/livewire")).ok()?;
-    let s = rel.to_str()?.strip_suffix(".blade.php")?;
+    if !supports_path(view) {
+        return None;
+    }
+    let rel = rel.to_str()?;
+    // Strip only the ASCII suffix, keeping directory and component case intact.
+    let s = rel.get(..rel.len().checked_sub(".blade.php".len())?)?;
     if s.is_empty() || s.contains("..") || s.split('/').any(str::is_empty) {
         return None;
     }
@@ -276,6 +286,24 @@ class UserProfile extends Component
         let l = "<div x-on:click=\"$wire.save()\" x-text=\"$wire.count\">";
         assert_eq!(go(l, "save"), Some((class.clone(), 11)));
         assert_eq!(go(l, "count"), Some((class.clone(), 6)));
+    }
+
+    #[test]
+    fn mixed_case_suffix_preserves_livewire_component_basename() {
+        let (d, _, class) = project();
+        let root = d.path();
+        let line = r#"<button wire:click="save">"#;
+        for name in ["user-profile.blade.php", "user-profile.BLADE.PHP", "user-profile.Blade.Php"] {
+            let view = root.join("resources/views/livewire/admin").join(name);
+            assert!(supports_path(&view));
+            assert_eq!(class_for_view(root, &view), Some(class.clone()), "{name}");
+            assert_eq!(resolve(root, &view, line, at(line, "save")), Some((class.clone(), 11)), "{name}");
+        }
+        for name in ["user-profile.php", "user-profile.blade.php.bak", "user-profile.blade"] {
+            let view = root.join("resources/views/livewire/admin").join(name);
+            assert!(!supports_path(&view));
+            assert_eq!(class_for_view(root, &view), None, "{name}");
+        }
     }
 
     #[test]
