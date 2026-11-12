@@ -1544,7 +1544,7 @@ impl EditorData {
             }
             // An attribute of a Blade component tag opens the component's
             // `@props` / constructor line (the tag may start on earlier lines).
-            if path.to_string_lossy().ends_with(".blade.php") {
+            if crate::blade_props::supports_path(&path) {
                 let (window, at) = doc.buffer.with_untracked(|buffer| {
                     let line = buffer.line_of_offset(offset);
                     let first = line.saturating_sub(30);

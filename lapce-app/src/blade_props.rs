@@ -312,9 +312,14 @@ pub fn component_prop_names(root: &Path, tag: &str) -> Vec<String> {
     }
 }
 
+/// Source paths accepted by local component-attribute navigation.
+pub(crate) fn supports_path(path: &Path) -> bool {
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
+}
+
 /// Target file and 0-based line for the attribute at `at` of `text`.
 pub fn resolve(root: &Path, file: &Path, text: &str, at: usize) -> Option<(PathBuf, usize)> {
-    if !file.file_name()?.to_str()?.ends_with(".blade.php") {
+    if !supports_path(file) {
         return None;
     }
     let (tag, attr) = tag_and_attr(text, at)?;
@@ -412,6 +417,36 @@ mod tests {
         assert!(r.0.ends_with("Alert.php"));
         assert_eq!(r.1, 2);
         assert!(resolve(d.path(), Path::new("a.php"), t, 9).is_none());
+    }
+
+    #[test]
+    fn mixed_case_source_paths_navigate_view_and_class_props() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let views = r.join("resources/views/components");
+        std::fs::create_dir_all(&views).unwrap();
+        let view = views.join("input.blade.php");
+        std::fs::write(&view, "@props([\n 'type' => 'text',\n])\n").unwrap();
+        let classes = r.join("app/View/Components");
+        std::fs::create_dir_all(&classes).unwrap();
+        let class = classes.join("Alert.php");
+        std::fs::write(&class, "<?php\nclass Alert {\n public function __construct(public string $kind) {}\n}").unwrap();
+        for name in ["p.blade.php", "P.BLADE.PHP", "p.Blade.Php"] {
+            let source = r.join("resources/views").join(name);
+            assert!(supports_path(&source));
+            for (text, attr, target, line) in [
+                (r#"<x-input type="text" />"#, "type", &view, 1),
+                (r#"<x-alert kind="info" />"#, "kind", &class, 2),
+            ] {
+                assert_eq!(resolve(r, &source, text, at(text, attr)), Some((target.clone(), line)), "{name}");
+            }
+        }
+        for name in ["p.php", "p.blade.php.bak", "p.blade"] {
+            let source = Path::new(name);
+            assert!(!supports_path(source));
+            let text = r#"<x-input type="text" />"#;
+            assert!(resolve(r, source, text, at(text, "type")).is_none());
+        }
     }
 
     #[test]

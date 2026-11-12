@@ -242,3 +242,7 @@ PHP, CSS, JavaScript and TypeScript files remain outside this template route.
 Blade stack/push and yield/section navigation use the snippet filename rule for
 both the source gate and destination scan. Mixed/uppercase `.blade.php`
 suffixes work without changing the destination's actual path spelling.
+
+Component-attribute definition navigation also accepts mixed/uppercase Blade
+source suffixes. Both the editor route and local resolver use the snippet
+classifier; view `@props` and class constructor destinations stay unchanged.
