@@ -11,6 +11,14 @@
 //! from PHP are not found. Bounded: 80 config files, 1 MB per file.
 use std::path::{Path, PathBuf};
 
+/// PHP sources follow syntax routing; YAML/XML accept extension case variants.
+pub(crate) fn supports_path(path: &Path) -> bool {
+    crate::project_completion::php_completion_path(path)
+        || path.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+            ["yaml", "yml", "xml"].iter().any(|known| ext.eq_ignore_ascii_case(known))
+        })
+}
+
 const MAX_FILES: usize = 80;
 const MAX_FILE_BYTES: u64 = 1_000_000;
 
@@ -169,6 +177,20 @@ mod tests {
         assert_eq!(go(l, "project_dir"), None);
         let l = "$p = $this->get('app.admin_email');";
         assert_eq!(go(l, "admin_email"), None);
+    }
+
+    #[test]
+    fn parameter_source_paths_accept_case_and_preserve_target() {
+        let d = tempfile::tempdir().unwrap();
+        let target = put(d.path(), "config/services.yaml", "parameters:\n    app.name: demo\n");
+        let line = "value: '%app.name%'";
+        for source in ["source.yaml", "SOURCE.YAML", "source.Yml", "source.XML", "Source.PHP", "artisan", "bin/console", "VIEW.BLADE.PHP"] {
+            assert!(supports_path(Path::new(source)), "{source}");
+            assert_eq!(resolve(d.path(), line, at(line, "app.name")), Some((target.clone(), 1)), "{source}");
+        }
+        for source in ["source.yaml.bak", "source.json", "source.twig", "console", "ARTISAN"] {
+            assert!(!supports_path(Path::new(source)), "{source}");
+        }
     }
 
     #[test]

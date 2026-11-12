@@ -1762,7 +1762,7 @@ impl EditorData {
             }
             // `%app.admin_email%` / `getParameter('app.x')` open the Symfony
             // parameter declaration under `parameters:` in `config/`.
-            if path.extension().is_some_and(|e| ["yaml", "yml", "xml", "php"].iter().any(|k| e == *k)) {
+            if crate::symfony_params::supports_path(&path) {
                 if let Some((target, line)) =
                     crate::symfony_params::resolve(root, &line_text, col)
                 {

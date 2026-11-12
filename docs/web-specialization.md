@@ -264,3 +264,7 @@ PHP-only local definition source gates now follow the syntax-aware PHP/Blade
 classifier too: middleware aliases, config channels, Eloquent scopes/factories,
 gates, seeders, controller actions, request fields and class constants. Uppercase
 PHP and recognized CLI sources work; destination resolution rules stay intact.
+
+Symfony parameter definition sources accept YAML/YML/XML extension case
+variants and the existing PHP syntax paths. Declaration search, file bounds,
+and exact destination path/line rules are unchanged.
