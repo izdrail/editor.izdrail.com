@@ -1683,7 +1683,9 @@ impl WindowTabData {
             NextError => {
                 self.main_split.next_error();
             }
-            PreviousError => {}
+            PreviousError => {
+                self.main_split.previous_error();
+            }
             Quit => {
                 floem::quit_app();
             }

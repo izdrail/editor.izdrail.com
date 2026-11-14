@@ -24,10 +24,14 @@ use lapce_rpc::{
     plugin::{PluginId, VoltID},
     proxy::ProxyResponse,
 };
-use lapce_xi_rope::{Rope, spans::SpansBuilder};
+use lapce_xi_rope::{
+    Interval, Rope,
+    spans::{Spans, SpansBuilder},
+};
 use lsp_types::{
-    CodeAction, CodeActionOrCommand, DiagnosticSeverity, DocumentChangeOperation,
-    DocumentChanges, OneOf, Position, TextEdit, Url, WorkspaceEdit,
+    CodeAction, CodeActionOrCommand, Diagnostic, DiagnosticSeverity,
+    DocumentChangeOperation, DocumentChanges, OneOf, Position, Range, TextEdit,
+    Url, WorkspaceEdit,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -2328,6 +2332,36 @@ impl MainSplitData {
         self.jump_to_location(location, None);
     }
 
+    /// Shift+F8: jump to the previous error, mirroring [`Self::next_error`].
+    pub fn previous_error(&self) {
+        let file_diagnostics =
+            self.file_diagnostics_items(DiagnosticSeverity::ERROR);
+        if file_diagnostics.is_empty() {
+            return;
+        }
+        let active_editor = self.active_editor.get_untracked();
+        let active_path = active_editor
+            .map(|editor| (editor.doc(), editor.cursor()))
+            .and_then(|(doc, cursor)| {
+                let offset = cursor.with_untracked(|c| c.offset());
+                let (path, position) = (
+                    doc.content.get_untracked().path().cloned(),
+                    doc.buffer.with_untracked(|b| b.offset_to_position(offset)),
+                );
+                path.map(|path| (path, offset, position))
+            });
+        let (path, position) =
+            prev_in_file_errors_offset(active_path, &file_diagnostics);
+        let location = EditorLocation {
+            path,
+            position: Some(position),
+            scroll_offset: None,
+            ignore_unconfirmed: false,
+            same_editor_tab: false,
+        };
+        self.jump_to_location(location, None);
+    }
+
     fn file_diagnostics_items(
         &self,
         severity: DiagnosticSeverity,
@@ -3137,9 +3171,200 @@ fn next_in_file_errors_offset(
     )
 }
 
+/// Mirror of [`next_in_file_errors_offset`]: the last error before the
+/// cursor in the active file, else the last error of the previous file with
+/// errors, wrapping to the last file. Backs Shift+F8.
+fn prev_in_file_errors_offset(
+    active_path: Option<(PathBuf, usize, Position)>,
+    file_diagnostics: &[(PathBuf, Vec<EditorDiagnostic>)],
+) -> (PathBuf, EditorPosition) {
+    fn last_of(
+        file_diagnostics: &[(PathBuf, Vec<EditorDiagnostic>)],
+        idx: usize,
+    ) -> (PathBuf, EditorPosition) {
+        let (path, diagnostics) = &file_diagnostics[idx];
+        let last = &diagnostics[diagnostics.len() - 1];
+        (
+            path.clone(),
+            if let Some((start, _)) = last.range {
+                EditorPosition::Offset(start)
+            } else {
+                EditorPosition::Position(last.diagnostic.range.start)
+            },
+        )
+    }
+
+    if let Some((active_path, offset, position)) = active_path {
+        for (idx, (current_path, diagnostics)) in
+            file_diagnostics.iter().enumerate().rev()
+        {
+            if &active_path == current_path {
+                for diagnostic in diagnostics.iter().rev() {
+                    if let Some((start, _)) = diagnostic.range {
+                        if start < offset {
+                            return (
+                                (*current_path).clone(),
+                                EditorPosition::Offset(start),
+                            );
+                        }
+                    }
+
+                    if diagnostic.diagnostic.range.start.line < position.line
+                        || (diagnostic.diagnostic.range.start.line
+                            == position.line
+                            && diagnostic.diagnostic.range.start.character
+                                < position.character)
+                    {
+                        return (
+                            (*current_path).clone(),
+                            EditorPosition::Position(
+                                diagnostic.diagnostic.range.start,
+                            ),
+                        );
+                    }
+                }
+            }
+            if current_path < &active_path {
+                return last_of(file_diagnostics, idx);
+            }
+        }
+    }
+
+    last_of(file_diagnostics, file_diagnostics.len() - 1)
+}
+
+/// First line of the diagnostic message whose span contains `offset`,
+/// errors ahead of warnings and lower severities. The status bar shows it
+/// when the cursor sits inside a diagnostic span, like Zed's F8 detail.
+pub fn diagnostic_message_at(
+    diagnostics: &Spans<Diagnostic>,
+    offset: usize,
+) -> Option<String> {
+    fn rank(severity: Option<DiagnosticSeverity>) -> i32 {
+        if severity == Some(DiagnosticSeverity::ERROR) {
+            0
+        } else if severity == Some(DiagnosticSeverity::WARNING) {
+            1
+        } else if severity == Some(DiagnosticSeverity::INFORMATION) {
+            2
+        } else if severity == Some(DiagnosticSeverity::HINT) {
+            3
+        } else {
+            4
+        }
+    }
+    let mut best: Option<&Diagnostic> = None;
+    for (iv, diag) in diagnostics.iter() {
+        if iv.start <= offset && offset <= iv.end
+            && best.map_or(true, |b| rank(diag.severity) < rank(b.severity))
+        {
+            best = Some(diag);
+        }
+    }
+    best.and_then(|d| {
+        d.message
+            .lines()
+            .next()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    })
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum TabCloseKind {
     CloseOther,
     CloseToLeft,
     CloseToRight,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn err_at(offset: usize, line: u32, character: u32) -> EditorDiagnostic {
+        EditorDiagnostic {
+            range: Some((offset, offset + 1)),
+            diagnostic: Diagnostic::new_simple(
+                Range::new(
+                    Position::new(line, character),
+                    Position::new(line, character + 1),
+                ),
+                format!("error at {offset}"),
+            ),
+        }
+    }
+
+    #[test]
+    fn previous_error_walks_backwards_and_wraps() {
+        let files = vec![
+            (PathBuf::from("/p/a.rs"), vec![err_at(3, 0, 3)]),
+            (
+                PathBuf::from("/p/b.rs"),
+                vec![err_at(10, 1, 0), err_at(20, 3, 0)],
+            ),
+        ];
+        // Same file: the error right before the cursor.
+        let (path, pos) = prev_in_file_errors_offset(
+            Some((PathBuf::from("/p/b.rs"), 25, Position::new(4, 0))),
+            &files,
+        );
+        assert_eq!(path, PathBuf::from("/p/b.rs"));
+        assert!(matches!(pos, EditorPosition::Offset(20)));
+        // Cursor on an error jumps to the one before it.
+        let (_, pos) = prev_in_file_errors_offset(
+            Some((PathBuf::from("/p/b.rs"), 20, Position::new(3, 0))),
+            &files,
+        );
+        assert!(matches!(pos, EditorPosition::Offset(10)));
+        // Before the file's first error: the previous file's last error.
+        let (path, pos) = prev_in_file_errors_offset(
+            Some((PathBuf::from("/p/b.rs"), 5, Position::new(0, 1))),
+            &files,
+        );
+        assert_eq!(path, PathBuf::from("/p/a.rs"));
+        assert!(matches!(pos, EditorPosition::Offset(3)));
+        // The active file need not have errors itself.
+        let (path, pos) = prev_in_file_errors_offset(
+            Some((PathBuf::from("/p/aa.rs"), 0, Position::new(0, 0))),
+            &files,
+        );
+        assert_eq!(path, PathBuf::from("/p/a.rs"));
+        assert!(matches!(pos, EditorPosition::Offset(3)));
+        // Before everything: wrap to the last error overall.
+        let (path, pos) = prev_in_file_errors_offset(
+            Some((PathBuf::from("/p/a.rs"), 3, Position::new(0, 3))),
+            &files,
+        );
+        assert_eq!(path, PathBuf::from("/p/b.rs"));
+        assert!(matches!(pos, EditorPosition::Offset(20)));
+    }
+
+    #[test]
+    fn diagnostic_message_at_shows_first_line_inside_span_only() {
+        let mut b = SpansBuilder::new(100);
+        let mut err = Diagnostic::new_simple(
+            Range::new(Position::new(2, 4), Position::new(2, 8)),
+            "mismatched types\nexpected i32".to_string(),
+        );
+        err.severity = Some(DiagnosticSeverity::ERROR);
+        b.add_span(Interval::new(20, 30), err);
+        let mut warn = Diagnostic::new_simple(
+            Range::new(Position::new(5, 0), Position::new(5, 4)),
+            "unused variable".to_string(),
+        );
+        warn.severity = Some(DiagnosticSeverity::WARNING);
+        b.add_span(Interval::new(40, 50), warn);
+        let spans = b.build();
+        assert_eq!(
+            diagnostic_message_at(&spans, 25).as_deref(),
+            Some("mismatched types")
+        );
+        assert_eq!(
+            diagnostic_message_at(&spans, 45).as_deref(),
+            Some("unused variable")
+        );
+        assert_eq!(diagnostic_message_at(&spans, 20), Some("mismatched types".into()));
+        assert_eq!(diagnostic_message_at(&spans, 5), None);
+    }
 }

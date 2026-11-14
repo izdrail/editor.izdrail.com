@@ -249,6 +249,25 @@ pub fn status(
                         })
                 })
             },
+            label(move || {
+                let Some(editor) = editor.get() else {
+                    return String::new();
+                };
+                let offset = editor.cursor().get().offset();
+                let doc = editor.doc_signal().get();
+                doc.diagnostics.diagnostics_span.with(|spans| {
+                    crate::main_split::diagnostic_message_at(spans, offset)
+                        .unwrap_or_default()
+                })
+            })
+            .style(move |s| {
+                s.max_width(320.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
+                    .padding_horiz(6.0)
+                    .color(config.get().color(LapceColor::STATUS_FOREGROUND))
+                    .selectable(false)
+            }),
             label(ghost_hint).style(move |s| {
                 s.max_width(260.0).min_width(0.0).text_ellipsis()
                     .padding_horiz(6.0)
