@@ -1589,6 +1589,23 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpHook
         }
+        // WordPress cron hooks (item 427): the scheduled event names
+        // a hook, registered with `add_action` as usual - so the
+        // item 419 list applies. `wp_schedule_event($t, $r, 'hook')`
+        // names it third, `wp_schedule_single_event($t, 'hook')`
+        // second, and the query / clear functions name it first
+        // (cron.php: wp_schedule_single_event :56,
+        // wp_schedule_event :291, wp_next_scheduled :661,
+        // wp_clear_scheduled_hook :736, wp_unschedule_hook :876,
+        // wp_get_scheduled_event :526).
+        "wp_schedule_event" if arg == 2 => Kind::WpHook,
+        "wp_schedule_single_event" if arg == 1 => Kind::WpHook,
+        "wp_next_scheduled" | "wp_clear_scheduled_hook"
+        | "wp_unschedule_hook" | "wp_get_scheduled_event"
+            if arg == 0 =>
+        {
+            Kind::WpHook
+        }
         // WordPress shortcodes (item 420): `add_shortcode('tag',
         // ...)` registers the tag first; `remove_shortcode('tag')`
         // and `shortcode_exists('tag')` name it first too;
@@ -7109,6 +7126,51 @@ add_action('widgets_init', 'shop_widgets');
             items(r, None, "taxonomy_exists('")[0].detail.as_deref(),
             Some("taxonomy")
         );
+    }
+
+    #[test]
+    fn detects_wp_cron_hook_context() {
+        let hk = Some(Kind::WpHook);
+        assert_eq!(context("wp_schedule_event($t, 'daily', 'sh"), hk);
+        assert_eq!(context("wp_schedule_single_event($t, 'sh"), hk);
+        assert_eq!(context("wp_next_scheduled('sh"), hk);
+        assert_eq!(context("wp_clear_scheduled_hook('sh"), hk);
+        assert_eq!(context("wp_unschedule_hook(\"sh"), hk);
+        assert_eq!(context("wp_get_scheduled_event('sh"), hk);
+        // The timestamp / recurrence positions are not hook names.
+        assert_eq!(context("wp_schedule_event('sh"), None);
+        assert_eq!(context("wp_schedule_event($t, 'sh"), None);
+        assert_eq!(context("wp_schedule_single_event('sh"), None);
+        assert_eq!(context("wp_next_scheduled('a')"), None);
+        assert_eq!(context("my_wp_next_scheduled('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_cron_hooks() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "add_action('shop_sync', 'shop_sync_cb');
+",
+                "do_action('shop_imported');
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        let want = ["shop_imported", "shop_sync"];
+        assert_eq!(labels("wp_next_scheduled('"), want);
+        assert_eq!(labels("wp_schedule_single_event($t, '"), want);
+        assert_eq!(labels("wp_schedule_event($t, 'daily', '"), want);
     }
 
     #[test]

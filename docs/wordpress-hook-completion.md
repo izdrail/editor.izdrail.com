@@ -30,3 +30,13 @@ or fires. Unsaved edits are not seen until the lists cache expires.
 
 Go to Definition on hook names and callbacks is separate
 (see go-to-wordpress-hook).
+
+## Cron hook positions (item 427)
+
+The same project hook list also completes the hook argument of the
+cron API: `wp_schedule_event($timestamp, $recurrence, '...')` (third
+argument), `wp_schedule_single_event($timestamp, '...')` (second),
+and `wp_next_scheduled('...')`, `wp_clear_scheduled_hook('...')`,
+`wp_unschedule_hook('...')` and `wp_get_scheduled_event('...')`
+(first). Cron hooks are registered with `add_action` as usual, so
+they are already in the harvested list.
