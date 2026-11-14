@@ -226,6 +226,10 @@ pub enum Kind {
     /// post/user/term/comment meta functions (`get_post_meta($id,
     /// 'key')`, ...) and the generic `*metadata` calls (item 431).
     WpMetaKey,
+    /// WordPress capability name: the capability argument of
+    /// `current_user_can('cap')` / `user_can($u, 'cap')` /
+    /// `author_can($p, 'cap')` (item 432).
+    WpCapability,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1776,6 +1780,12 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpMetaKey
         }
+        // WordPress capabilities (item 432): current_user_can takes
+        // the capability first; user_can/author_can take the user
+        // or post first and the capability second (capabilities.php:
+        // current_user_can :89, user_can :948, author_can :1017).
+        "current_user_can" if arg == 0 => Kind::WpCapability,
+        "user_can" | "author_can" if arg == 1 => Kind::WpCapability,
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2212,6 +2222,7 @@ struct Lists {
     wp_nonces: Vec<String>,
     wp_setting_groups: Vec<String>,
     wp_meta_keys: Vec<String>,
+    wp_capabilities: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3460,6 +3471,7 @@ fn lists(root: &Path) -> Lists {
     let wp_nonces = wp_nonce_actions(root);
     let wp_setting_groups = wp_setting_group_names(root);
     let wp_meta_keys = wp_meta_key_names(root);
+    let wp_capabilities = wp_capability_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3503,6 +3515,7 @@ fn lists(root: &Path) -> Lists {
         wp_nonces,
         wp_setting_groups,
         wp_meta_keys,
+        wp_capabilities,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4802,6 +4815,20 @@ fn wp_meta_key_names(root: &Path) -> Vec<String> {
     out
 }
 
+/// WordPress capability names (item 432): the quoted capability
+/// arguments of the capability checks - `current_user_can('cap')`,
+/// `user_can($u, 'cap')`, `author_can($p, 'cap')`. A capability the
+/// project never checks is dead weight, so checks alone declare the
+/// list; core capabilities the project checks for are included on
+/// purpose. Sorted, deduped.
+fn wp_capability_names(root: &Path) -> Vec<String> {
+    quoted_strings_anywhere(
+        root,
+        &["current_user_can(", "user_can(", "author_can("],
+        0,
+    )
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5870,6 +5897,9 @@ pub fn items(
             (lists.wp_setting_groups, "settings group")
         }
         Kind::WpMetaKey => (lists.wp_meta_keys, "meta key"),
+        Kind::WpCapability => {
+            (lists.wp_capabilities, "capability")
+        }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7608,6 +7638,53 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("meta key")
+        );
+    }
+
+    #[test]
+    fn detects_wp_capability_context() {
+        let cap = Some(Kind::WpCapability);
+        assert_eq!(context("current_user_can('sh"), cap);
+        assert_eq!(context("user_can($u, 'sh"), cap);
+        assert_eq!(context("author_can($p, 'sh"), cap);
+        assert_eq!(context("current_user_can('a')"), None);
+        assert_eq!(context("user_can('sh"), None);
+        assert_eq!(context("my_current_user_can('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_capabilities() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php\n",
+                "if (current_user_can('shop_manage')) {\n",
+                "user_can($u, \"shop_refund\");\n",
+                "// current_user_can('ghosted');\n",
+                "$s = \"current_user_can('instr')\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` declare
+        // no capability.
+        let want = ["shop_manage", "shop_refund"];
+        assert_eq!(labels("current_user_can('"), want);
+        assert_eq!(labels("user_can($u, '"), want);
+        assert_eq!(labels("author_can($p, '"), want);
+        assert!(labels("current_user_can('a')").is_empty());
+        assert_eq!(
+            items(r, None, "current_user_can('")[0]
+                .detail
+                .as_deref(),
+            Some("capability")
         );
     }
 
