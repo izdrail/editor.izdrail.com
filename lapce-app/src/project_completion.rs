@@ -196,6 +196,11 @@ pub enum Kind {
     /// `wp_enqueue_script` / `wp_register_style` and the whole
     /// scripts / styles API (item 423).
     WpHandle,
+    /// WordPress image size name: the size argument of
+    /// `the_post_thumbnail` / `get_the_post_thumbnail` and the
+    /// `add_image_size` / `remove_image_size` registrations
+    /// (item 424).
+    WpImageSize,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1632,6 +1637,18 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpHandle
         }
+        // WordPress image sizes (item 424): `add_image_size('card',
+        // ...)` registers the name first; `remove_image_size('card')`
+        // and `the_post_thumbnail('card')` name it first too, and
+        // `get_the_post_thumbnail($post, 'card')` names it second
+        // (media.php: add_image_size :330, the_post_thumbnail;
+        // post-thumbnail-template.php: get_the_post_thumbnail).
+        "add_image_size" | "remove_image_size" | "the_post_thumbnail"
+            if arg == 0 =>
+        {
+            Kind::WpImageSize
+        }
+        "get_the_post_thumbnail" if arg == 1 => Kind::WpImageSize,
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2061,6 +2078,7 @@ struct Lists {
     wp_callbacks: Vec<String>,
     wp_options: Vec<String>,
     wp_handles: Vec<String>,
+    wp_image_sizes: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3302,6 +3320,7 @@ fn lists(root: &Path) -> Lists {
     let wp_callbacks = wp_callback_names(root);
     let wp_options = wp_option_names(root);
     let wp_handles = wp_handle_names(root);
+    let wp_image_sizes = wp_image_size_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3338,6 +3357,7 @@ fn lists(root: &Path) -> Lists {
         wp_callbacks,
         wp_options,
         wp_handles,
+        wp_image_sizes,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4471,6 +4491,14 @@ fn wp_handle_names(root: &Path) -> Vec<String> {
     )
 }
 
+/// WordPress image size names (item 424): the quoted first
+/// arguments of `add_image_size` registrations. Core sizes
+/// (thumbnail, medium, large, ...) are not listed - only sizes the
+/// project itself registers.
+fn wp_image_size_names(root: &Path) -> Vec<String> {
+    first_quoted_args(root, &["add_image_size(", "remove_image_size("])
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5530,6 +5558,7 @@ pub fn items(
         Kind::WpCallback => (lists.wp_callbacks, "callback"),
         Kind::WpOption => (lists.wp_options, "WordPress option"),
         Kind::WpHandle => (lists.wp_handles, "script/style handle"),
+        Kind::WpImageSize => (lists.wp_image_sizes, "image size"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6865,6 +6894,56 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "wp_enqueue_script('")[0].detail.as_deref(),
             Some("script/style handle")
+        );
+    }
+
+    #[test]
+    fn detects_wp_image_size_context() {
+        let sz = Some(Kind::WpImageSize);
+        assert_eq!(context("add_image_size('sh"), sz);
+        assert_eq!(context("remove_image_size('sh"), sz);
+        assert_eq!(context("the_post_thumbnail('sh"), sz);
+        assert_eq!(context("get_the_post_thumbnail($p, 'sh"), sz);
+        assert_eq!(context("get_the_post_thumbnail($p"), None);
+        assert_eq!(context("the_post_thumbnail('a')"), None);
+        assert_eq!(context("my_add_image_size('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_image_sizes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/themes/shop/functions.php",
+            concat!(
+                "<?php
+",
+                "add_image_size('shop-card', 400, 300, true);
+",
+                "add_image_size(\"shop-hero\", 1200, 600);
+",
+                "// add_image_size('ghosted', 1, 1);
+",
+                "$s = \"add_image_size('instr', 1, 1)\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // nothing.
+        let want = ["shop-card", "shop-hero"];
+        assert_eq!(labels("the_post_thumbnail('"), want);
+        assert_eq!(labels("get_the_post_thumbnail($p, '"), want);
+        assert!(labels("the_post_thumbnail('a')").is_empty());
+        assert_eq!(
+            items(r, None, "the_post_thumbnail('")[0].detail.as_deref(),
+            Some("image size")
         );
     }
 
