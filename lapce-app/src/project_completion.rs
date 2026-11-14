@@ -222,6 +222,10 @@ pub enum Kind {
     /// `register_setting('group', ...)` / `settings_fields('group')`
     /// (item 430).
     WpSettingGroup,
+    /// WordPress meta key name: the key argument of the
+    /// post/user/term/comment meta functions (`get_post_meta($id,
+    /// 'key')`, ...) and the generic `*metadata` calls (item 431).
+    WpMetaKey,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1749,6 +1753,29 @@ fn call_context(line: &str) -> Option<Kind> {
             Kind::WpSettingGroup
         }
         "register_setting" if arg == 1 => Kind::WpOption,
+        // WordPress meta keys (item 431): the object-specific meta
+        // functions take the object id first and the meta KEY
+        // second (the post/user/term/comment wrappers all forward
+        // to *metadata), so the key position completes keys the
+        // project itself uses.
+        "get_post_meta" | "add_post_meta" | "update_post_meta"
+        | "delete_post_meta" | "get_user_meta" | "add_user_meta"
+        | "update_user_meta" | "delete_user_meta" | "get_term_meta"
+        | "add_term_meta" | "update_term_meta" | "delete_term_meta"
+        | "get_comment_meta" | "add_comment_meta"
+        | "update_comment_meta" | "delete_comment_meta"
+            if arg == 1 =>
+        {
+            Kind::WpMetaKey
+        }
+        // The generic *metadata calls name the meta type first, so
+        // the key sits at the third argument.
+        "get_metadata" | "add_metadata" | "update_metadata"
+        | "delete_metadata"
+            if arg == 2 =>
+        {
+            Kind::WpMetaKey
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2184,6 +2211,7 @@ struct Lists {
     wp_roles: Vec<String>,
     wp_nonces: Vec<String>,
     wp_setting_groups: Vec<String>,
+    wp_meta_keys: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3431,6 +3459,7 @@ fn lists(root: &Path) -> Lists {
     let wp_roles = wp_role_names(root);
     let wp_nonces = wp_nonce_actions(root);
     let wp_setting_groups = wp_setting_group_names(root);
+    let wp_meta_keys = wp_meta_key_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3473,6 +3502,7 @@ fn lists(root: &Path) -> Lists {
         wp_roles,
         wp_nonces,
         wp_setting_groups,
+        wp_meta_keys,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4416,6 +4446,27 @@ fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
 /// must open the argument right after the marker; later strings may
 /// follow variables and commas, but never a `)` or `;`.
 fn quoted_arg_names(root: &Path, calls: &[&str], n: usize) -> Vec<String> {
+    quoted_arg_scan(root, calls, n, true)
+}
+
+/// `quoted_strings_anywhere` harvests the nth quoted string anywhere
+/// in the call head (item 431 meta keys, whose object id argument is
+/// usually an unquoted variable): the first string need not open the
+/// call. The same `)` / `;` stop applies at every position.
+fn quoted_strings_anywhere(
+    root: &Path,
+    calls: &[&str],
+    n: usize,
+) -> Vec<String> {
+    quoted_arg_scan(root, calls, n, false)
+}
+
+fn quoted_arg_scan(
+    root: &Path,
+    calls: &[&str],
+    n: usize,
+    strict_first: bool,
+) -> Vec<String> {
     let files = project_php_files(root);
     let mut out: Vec<String> = Vec::new();
     'files: for f in files {
@@ -4448,7 +4499,7 @@ fn quoted_arg_names(root: &Path, calls: &[&str], n: usize) -> Vec<String> {
                 let mut j = i + marker.len();
                 let mut span: Option<(usize, usize)> = None;
                 for k in 0..=n {
-                    if k == 0 {
+                    if k == 0 && strict_first {
                         while j < b.len() && b[j].is_ascii_whitespace() {
                             j += 1;
                         }
@@ -4702,6 +4753,53 @@ fn wp_nonce_actions(root: &Path) -> Vec<String> {
 /// registers under.
 fn wp_setting_group_names(root: &Path) -> Vec<String> {
     first_quoted_args(root, &["register_setting("])
+}
+
+/// WordPress meta key names (item 431): the quoted key arguments of
+/// the object-specific meta calls (the first quoted string - the
+/// object id is usually an unquoted variable) and the generic
+/// *metadata calls (the second quoted string, after the literal
+/// meta type). Reads declare keys just like writes - a key read
+/// anywhere is worth completing elsewhere. Other call shapes (a
+/// variable meta type, a quoted id, a variable key) are
+/// approximated or missed. Core keys are not listed - only keys the
+/// project itself uses.
+fn wp_meta_key_names(root: &Path) -> Vec<String> {
+    let mut out = quoted_strings_anywhere(
+        root,
+        &[
+            "get_post_meta(",
+            "add_post_meta(",
+            "update_post_meta(",
+            "delete_post_meta(",
+            "get_user_meta(",
+            "add_user_meta(",
+            "update_user_meta(",
+            "delete_user_meta(",
+            "get_term_meta(",
+            "add_term_meta(",
+            "update_term_meta(",
+            "delete_term_meta(",
+            "get_comment_meta(",
+            "add_comment_meta(",
+            "update_comment_meta(",
+            "delete_comment_meta(",
+        ],
+        0,
+    );
+    out.extend(quoted_strings_anywhere(
+        root,
+        &[
+            "get_metadata(",
+            "add_metadata(",
+            "update_metadata(",
+            "delete_metadata(",
+        ],
+        1,
+    ));
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Session keys (item 414): the names written by
@@ -5771,6 +5869,7 @@ pub fn items(
         Kind::WpSettingGroup => {
             (lists.wp_setting_groups, "settings group")
         }
+        Kind::WpMetaKey => (lists.wp_meta_keys, "meta key"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7458,6 +7557,57 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "settings_fields('")[0].detail.as_deref(),
             Some("settings group")
+        );
+    }
+
+    #[test]
+    fn detects_wp_meta_key_context() {
+        let key = Some(Kind::WpMetaKey);
+        assert_eq!(context("get_post_meta($id, 'sh"), key);
+        assert_eq!(context("update_user_meta($id, 'sh"), key);
+        assert_eq!(context("update_metadata('post', $id, 'sh"), key);
+        // The id position and the meta type position complete
+        // nothing.
+        assert_eq!(context("get_post_meta('sh"), None);
+        assert_eq!(context("update_metadata('sh"), None);
+        assert_eq!(context("get_post_meta($id, 'k')"), None);
+        assert_eq!(context("my_get_post_meta($id, 'sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_meta_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php\n",
+                "update_post_meta($id, 'shop_price', $v);\n",
+                "get_post_meta($id, \"shop_sku\", true);\n",
+                "update_metadata('post', $id, 'shop_weight', $v);\n",
+                "// update_post_meta($id, 'ghosted', $v);\n",
+                "$s = \"update_post_meta($id, 'instr', $v)\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` declare
+        // no key; reads and writes harvest alike.
+        let want = ["shop_price", "shop_sku", "shop_weight"];
+        assert_eq!(labels("get_post_meta($id, '"), want);
+        assert_eq!(labels("delete_user_meta($id, '"), want);
+        assert_eq!(labels("update_metadata('post', $id, '"), want);
+        assert!(labels("get_post_meta($id, 'k')").is_empty());
+        assert_eq!(
+            items(r, None, "get_post_meta($id, '")[0]
+                .detail
+                .as_deref(),
+            Some("meta key")
         );
     }
 
