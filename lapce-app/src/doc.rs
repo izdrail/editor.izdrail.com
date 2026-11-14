@@ -1191,7 +1191,7 @@ impl Doc {
         if let DocContent::File { path, .. } = doc.content.get_untracked() {
             let send = create_ext_action(cx, {
                 let path = path.clone();
-                move |result| {
+                move |result: Result<ProxyResponse, lapce_rpc::RpcError>| {
                     if rev != doc.rev() {
                         return;
                     }
@@ -1207,6 +1207,24 @@ impl Doc {
                                     )
                                 })
                                 .collect(),
+                            Ok(ProxyResponse::GetDocumentSymbols {
+                                resp: DocumentSymbolResponse::Flat(infos),
+                            }) => {
+                                lsp_types::Url::from_file_path(&path)
+                                    .map(|uri| {
+                                        crate::panel::document_symbol::flat_to_nested(
+                                            infos, &uri,
+                                        )
+                                    })
+                                    .unwrap_or_default()
+                                .into_iter()
+                                .map(|x| {
+                                    cx.create_rw_signal(
+                                        SymbolInformationItemData::from((x, cx)),
+                                    )
+                                })
+                                .collect()
+                            }
                             _ => Vec::new(),
                         };
                     // No language server answer: Blade views get a local

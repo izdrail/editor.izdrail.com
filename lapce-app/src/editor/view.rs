@@ -1974,6 +1974,30 @@ fn editor_breadcrumbs(
     config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View {
     let doc = e_data.doc_signal();
+    let cursor = e_data.editor.cursor;
+    let symbol_path = create_memo(move |_| {
+        let doc = doc.get();
+        let cursor = cursor.get();
+        let Some((line, character, _)) =
+            doc.buffer.with(|buffer| cursor.get_line_col_char(buffer))
+        else {
+            return Vec::new();
+        };
+        doc.document_symbol_data.with(|symbol_data| {
+            symbol_data
+                .as_ref()
+                .map(|symbol_data| {
+                    symbol_data.file.with(|file| {
+                        crate::panel::document_symbol::symbol_path_at(
+                            &file.children,
+                            line as u32,
+                            character as u32,
+                        )
+                    })
+                })
+                .unwrap_or_default()
+        })
+    });
     let doc_path = create_memo(move |_| {
         let doc = doc.get();
         let content = doc.content.get();
@@ -2040,6 +2064,30 @@ fn editor_breadcrumbs(
                     )
                     .style(|s| s.padding_horiz(10.0))
                 },
+                dyn_stack(
+                    move || symbol_path.get().into_iter().enumerate(),
+                    |(i, section)| (*i, section.to_string()),
+                    move |(_i, section)| {
+                        stack((
+                            svg(move || {
+                                config
+                                    .get()
+                                    .ui_svg(LapceIcons::BREADCRUMB_SEPARATOR)
+                            })
+                            .style(move |s| {
+                                let config = config.get();
+                                let size = config.ui.icon_size() as f32;
+                                s.size(size, size).color(
+                                    config.color(LapceColor::LAPCE_ICON_ACTIVE),
+                                )
+                            }),
+                            label(move || section.clone())
+                                .style(move |s| s.selectable(false)),
+                        ))
+                        .style(|s| s.items_center())
+                    },
+                )
+                .debug_name("Editor BreadCrumb Symbols"),
                 label(move || {
                     let doc = doc.get();
                     if let DocContent::History(history) = doc.content.get() {

@@ -319,3 +319,271 @@ pub fn symbol_panel(
     )
     .style(|s| s.absolute().size_full())
 }
+
+/// Chain of symbol names containing the given position, outermost first.
+/// Used by the editor breadcrumbs bar to show the syntax context at the
+/// cursor. `line` and `character` are zero-based; a position on a symbol
+/// boundary counts as inside the symbol.
+pub fn symbol_path_at(
+    items: &[RwSignal<SymbolInformationItemData>],
+    line: u32,
+    character: u32,
+) -> Vec<String> {
+    for item in items {
+        let hit = item.with_untracked(|data| {
+            if !range_contains(&data.item.range, line, character) {
+                return None;
+            }
+            let mut path = vec![data.name.clone()];
+            path.extend(symbol_path_at(&data.children, line, character));
+            Some(path)
+        });
+        if let Some(path) = hit {
+            return path;
+        }
+    }
+    Vec::new()
+}
+
+fn range_contains(
+    range: &lsp_types::Range,
+    line: u32,
+    character: u32,
+) -> bool {
+    let start = range.start;
+    let end = range.end;
+    (line > start.line || (line == start.line && character >= start.character))
+        && (line < end.line || (line == end.line && character <= end.character))
+}
+
+/// Convert a flat `SymbolInformation` list (returned by language servers
+/// when the client does not advertise hierarchical document symbol support)
+/// into a nested `DocumentSymbol` tree, keeping only symbols for `uri`.
+/// Children are symbols strictly contained in another symbol's range.
+pub fn flat_to_nested(
+    infos: Vec<lsp_types::SymbolInformation>,
+    uri: &lsp_types::Url,
+) -> Vec<DocumentSymbol> {
+    let mut flat: Vec<DocumentSymbol> = infos
+        .into_iter()
+        .filter(|info| &info.location.uri == uri)
+        .map(|info| {
+            #[allow(deprecated)]
+            DocumentSymbol {
+                name: info.name,
+                detail: info.container_name,
+                kind: info.kind,
+                tags: info.tags,
+                deprecated: info.deprecated,
+                range: info.location.range,
+                selection_range: info.location.range,
+                children: Some(Vec::new()),
+            }
+        })
+        .collect();
+    // Outer symbols first: earlier start wins; on ties the wider range wins.
+    flat.sort_by(|a, b| {
+        (a.range.start.line, a.range.start.character)
+            .cmp(&(b.range.start.line, b.range.start.character))
+            .then(
+                (b.range.end.line, b.range.end.character)
+                    .cmp(&(a.range.end.line, a.range.end.character)),
+            )
+    });
+    let mut roots: Vec<DocumentSymbol> = Vec::new();
+    for sym in flat {
+        insert_nested(&mut roots, sym);
+    }
+    roots
+}
+
+fn range_strictly_contains(
+    outer: &lsp_types::Range,
+    inner: &lsp_types::Range,
+) -> bool {
+    let start_inside = inner.start.line > outer.start.line
+        || (inner.start.line == outer.start.line
+            && inner.start.character >= outer.start.character);
+    let end_inside = inner.end.line < outer.end.line
+        || (inner.end.line == outer.end.line
+            && inner.end.character <= outer.end.character);
+    let strictly = inner.start != outer.start || inner.end != outer.end;
+    start_inside && end_inside && strictly
+}
+
+fn insert_nested(into: &mut Vec<DocumentSymbol>, sym: DocumentSymbol) {
+    // Descend into the last (deepest) chain whose range contains `sym`.
+    if let Some(last) = into.last_mut() {
+        if range_strictly_contains(&last.range, &sym.range) {
+            insert_nested(
+                last.children.get_or_insert_with(Vec::new),
+                sym,
+            );
+            return;
+        }
+    }
+    into.push(sym);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use floem::reactive::Scope;
+    use lsp_types::Position;
+
+    fn sym(
+        name: &str,
+        start: (u32, u32),
+        end: (u32, u32),
+        children: Vec<DocumentSymbol>,
+    ) -> DocumentSymbol {
+        #[allow(deprecated)]
+        DocumentSymbol {
+            name: name.to_string(),
+            detail: None,
+            kind: SymbolKind::FUNCTION,
+            tags: None,
+            deprecated: None,
+            range: lsp_types::Range::new(
+                Position::new(start.0, start.1),
+                Position::new(end.0, end.1),
+            ),
+            selection_range: lsp_types::Range::new(
+                Position::new(start.0, start.1),
+                Position::new(end.0, end.1),
+            ),
+            children: if children.is_empty() {
+                None
+            } else {
+                Some(children)
+            },
+        }
+    }
+
+    fn items(
+        cx: Scope,
+        syms: Vec<DocumentSymbol>,
+    ) -> Vec<RwSignal<SymbolInformationItemData>> {
+        syms.into_iter()
+            .map(|s| cx.create_rw_signal(SymbolInformationItemData::from((s, cx))))
+            .collect()
+    }
+
+    #[test]
+    fn symbol_path_nested() {
+        let cx = Scope::new();
+        let tree = vec![sym(
+            "outer",
+            (0, 0),
+            (10, 0),
+            vec![sym("inner", (2, 0), (5, 0), vec![])],
+        )];
+        let items = items(cx, tree);
+        assert_eq!(
+            symbol_path_at(&items, 3, 4),
+            vec!["outer".to_string(), "inner".to_string()]
+        );
+        assert_eq!(symbol_path_at(&items, 7, 0), vec!["outer".to_string()]);
+        assert!(symbol_path_at(&items, 12, 0).is_empty());
+    }
+
+    #[test]
+    fn symbol_path_boundaries() {
+        let cx = Scope::new();
+        let tree = vec![sym("a", (1, 2), (3, 4), vec![])];
+        let items = items(cx, tree);
+        // Inclusive on both ends.
+        assert_eq!(symbol_path_at(&items, 1, 2), vec!["a".to_string()]);
+        assert_eq!(symbol_path_at(&items, 3, 4), vec!["a".to_string()]);
+        assert!(symbol_path_at(&items, 1, 1).is_empty());
+        assert!(symbol_path_at(&items, 3, 5).is_empty());
+    }
+
+    #[test]
+    fn symbol_path_siblings() {
+        let cx = Scope::new();
+        let tree = vec![
+            sym("a", (0, 0), (5, 0), vec![]),
+            sym("b", (6, 0), (9, 0), vec![sym("c", (7, 0), (8, 0), vec![])]),
+        ];
+        let items = items(cx, tree);
+        assert_eq!(symbol_path_at(&items, 4, 0), vec!["a".to_string()]);
+        assert_eq!(
+            symbol_path_at(&items, 7, 5),
+            vec!["b".to_string(), "c".to_string()]
+        );
+        assert!(symbol_path_at(&items, 5, 1).is_empty());
+    }
+
+    #[test]
+    fn symbol_path_empty() {
+        let items: Vec<RwSignal<SymbolInformationItemData>> = Vec::new();
+        assert!(symbol_path_at(&items, 0, 0).is_empty());
+    }
+
+    fn flat_info(
+        name: &str,
+        start: (u32, u32),
+        end: (u32, u32),
+        uri: &lsp_types::Url,
+    ) -> lsp_types::SymbolInformation {
+        #[allow(deprecated)]
+        lsp_types::SymbolInformation {
+            name: name.to_string(),
+            kind: SymbolKind::FUNCTION,
+            tags: None,
+            deprecated: None,
+            location: lsp_types::Location {
+                uri: uri.clone(),
+                range: lsp_types::Range::new(
+                    Position::new(start.0, start.1),
+                    Position::new(end.0, end.1),
+                ),
+            },
+            container_name: None,
+        }
+    }
+
+    #[test]
+    fn flat_to_nested_nests_by_containment() {
+        let uri = lsp_types::Url::parse("file:///proj/src/main.rs").unwrap();
+        let infos = vec![
+            flat_info("outer", (0, 0), (10, 0), &uri),
+            flat_info("inner", (2, 0), (5, 0), &uri),
+            flat_info("other", (12, 0), (14, 0), &uri),
+        ];
+        let tree = flat_to_nested(infos, &uri);
+        assert_eq!(tree.len(), 2);
+        assert_eq!(tree[0].name, "outer");
+        let children = tree[0].children.as_ref().unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].name, "inner");
+        assert_eq!(tree[1].name, "other");
+    }
+
+    #[test]
+    fn flat_to_nested_filters_other_files_and_empty() {
+        let uri = lsp_types::Url::parse("file:///proj/src/main.rs").unwrap();
+        let other = lsp_types::Url::parse("file:///proj/src/lib.rs").unwrap();
+        let infos = vec![flat_info("alien", (0, 0), (1, 0), &other)];
+        assert!(flat_to_nested(infos, &uri).is_empty());
+        assert!(flat_to_nested(Vec::new(), &uri).is_empty());
+    }
+
+    #[test]
+    fn flat_to_nested_handles_unsorted_input() {
+        let uri = lsp_types::Url::parse("file:///proj/src/main.rs").unwrap();
+        // Inner arrives before outer.
+        let infos = vec![
+            flat_info("inner", (2, 0), (5, 0), &uri),
+            flat_info("outer", (0, 0), (10, 0), &uri),
+        ];
+        let tree = flat_to_nested(infos, &uri);
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].name, "outer");
+        assert_eq!(
+            tree[0].children.as_ref().unwrap()[0].name,
+            "inner".to_string()
+        );
+    }
+}
