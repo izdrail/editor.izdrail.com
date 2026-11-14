@@ -59,7 +59,7 @@ pub(crate) fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 /// Component name for `rel` (path under the base dir, `/` separated), given
 /// how the file is named: strips the suffix, `index` collapses to its folder.
 pub(crate) fn view_name(rel: &str) -> Option<String> {
-    let stem = rel.strip_suffix(".blade.php")?;
+    let stem = crate::builtin_snippets::blade_view_stem(rel)?;
     let stem = stem.strip_suffix("/index").unwrap_or(stem);
     (!stem.is_empty() && stem != "index").then(|| stem.replace('/', "."))
 }
@@ -157,6 +157,15 @@ mod tests {
         assert_eq!(class_name("Forms/DateInput.php").as_deref(), Some("forms.date-input"));
         assert_eq!(class_name("a.blade.php"), None);
         assert_eq!(kebab("UserProfile"), "user-profile");
+    }
+
+    #[test]
+    fn view_name_accepts_suffix_case_variants() {
+        assert_eq!(view_name("forms/input.BLADE.PHP").as_deref(), Some("forms.input"));
+        assert_eq!(view_name("card/INDEX.Blade.Php").as_deref(), Some("card.INDEX"));
+        assert_eq!(view_name("INPUT.BLADE.PHP").as_deref(), Some("INPUT"));
+        assert_eq!(view_name("input.blade.php.bak"), None);
+        assert_eq!(view_name("index.BLADE.PHP"), None);
     }
 
     #[test]

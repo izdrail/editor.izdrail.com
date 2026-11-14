@@ -195,7 +195,7 @@ impl CompletionData {
     /// Blade snippets always keep their label (see
     /// `dedupe_keeping_blade_snippets`).
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
-        let blade = self.path.to_string_lossy().ends_with(".blade.php");
+        let blade = keeps_blade_snippets(&self.path);
         let items = self.lsp_items();
         if self.input.is_empty() {
             let locals = empty_input_locals(&self.local_items);
@@ -395,6 +395,12 @@ impl CompletionData {
 
 /// Local items offered before anything is typed: only the ones that asked
 /// for it (component tag names after `<x-` / `<livewire:`).
+/// Whether dedupe keeps Blade snippet labels for `path`: the same
+/// case-insensitive filename rule as snippet routing.
+fn keeps_blade_snippets(path: &std::path::Path) -> bool {
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
+}
+
 /// Dedupe `all` by label, but in Blade files a snippet never loses its
 /// label to another source: a bare LSP, keyword or project `foreach`
 /// must not hide the directive snippet that expands the whole
@@ -578,6 +584,15 @@ mod blend_tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].item.label, "forms.input");
         assert!(empty_input_locals(&im::Vector::new()).is_empty());
+    }
+
+    #[test]
+    fn blade_dedupe_follows_the_case_insensitive_snippet_rule() {
+        use std::path::Path;
+        assert!(keeps_blade_snippets(Path::new("resources/views/VIEW.BLADE.PHP")));
+        assert!(keeps_blade_snippets(Path::new("resources/views/show.blade.php")));
+        assert!(!keeps_blade_snippets(Path::new("resources/views/show.blade.php.bak")));
+        assert!(!keeps_blade_snippets(Path::new("app/Models/User.php")));
     }
 
     #[test]

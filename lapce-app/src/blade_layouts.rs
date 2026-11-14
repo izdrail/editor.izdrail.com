@@ -44,7 +44,7 @@ pub fn view_path(root: &Path, name: &str) -> Option<PathBuf> {
 /// `resources/views/layouts/app.blade.php` -> `layouts.app`.
 pub fn view_name_of(root: &Path, file: &Path) -> Option<String> {
     let rel = component_index::rel_of(&root.join("resources/views"), file)?;
-    Some(rel.strip_suffix(".blade.php")?.replace('/', "."))
+    Some(crate::builtin_snippets::blade_view_stem(&rel)?.replace('/', "."))
 }
 
 /// `(kind, name, 0-based line)` for each slot in a layout.
@@ -95,7 +95,7 @@ pub fn discover(root: &Path, file: &Path) -> Vec<RouteTarget> {
     let mut files = Vec::new();
     component_index::walk(&root.join("resources/views"), 0, &mut files);
     for p in files {
-        let blade = p.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.ends_with(".blade.php"));
+        let blade = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| crate::builtin_snippets::blade_view_stem(n).is_some());
         if !blade || p == file {
             continue;
         }
@@ -151,6 +151,18 @@ mod tests {
         let kids = discover(r, &r.join("resources/views/layouts/app.blade.php"));
         assert_eq!(kids.len(), 2);
         assert!(kids.iter().any(|t| t.path.ends_with("about.blade.php") && t.line == 1));
+    }
+
+    #[test]
+    fn suffix_case_variants_still_link_layouts_and_children() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/layouts/app.blade.php", "@yield('content')\n");
+        put(r, "resources/views/ABOUT.BLADE.PHP", "@extends('layouts.app')\n@section('content')x@endsection\n");
+        let kids = discover(r, &r.join("resources/views/layouts/app.blade.php"));
+        assert!(kids.iter().any(|t| t.path.ends_with("ABOUT.BLADE.PHP")));
+        assert_eq!(view_name_of(r, &r.join("resources/views/layouts/app.BLADE.PHP")).as_deref(), Some("layouts.app"));
+        assert!(view_name_of(r, &r.join("resources/views/layouts/app.blade.php.bak")).is_none());
     }
 
     #[test]

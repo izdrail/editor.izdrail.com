@@ -41,7 +41,7 @@ pub fn class_file(root: &Path, file: &Path) -> Option<PathBuf> {
         }
     }
     let rel = file.strip_prefix(root.join("resources/views/livewire")).ok()?;
-    let rel = rel.to_str()?.strip_suffix(".blade.php")?;
+    let rel = crate::builtin_snippets::blade_view_stem(rel.to_str()?)?;
     let mapped: Vec<String> = rel.split('/').map(studly).collect();
     if mapped.iter().any(|s| s.is_empty()) {
         return None;
@@ -210,6 +210,17 @@ class UserProfile extends Component
     }
 }
 "#;
+
+    #[test]
+    fn view_suffix_case_is_ignored() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("app/Livewire")).unwrap();
+        std::fs::write(r.join("app/Livewire/Counter.php"), "<?php\nclass Counter {}\n").unwrap();
+        let view = r.join("resources/views/livewire/counter.BLADE.PHP");
+        assert_eq!(class_file(r, &view).unwrap().file_name().unwrap(), "Counter.php");
+        assert!(class_file(r, &r.join("resources/views/livewire/counter.blade.php.bak")).is_none());
+    }
 
     #[test]
     fn parses_public_members_only() {

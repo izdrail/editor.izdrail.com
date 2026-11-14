@@ -23,7 +23,7 @@ const MAX_TAGS_PER_FILE: usize = 2000;
 /// (`card/index.blade.php` -> `card`).
 pub fn component_name(root: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(root.join("resources/views/components")).ok()?;
-    let s = rel.to_str()?.strip_suffix(".blade.php")?;
+    let s = crate::builtin_snippets::blade_view_stem(rel.to_str()?)?;
     let s = s.strip_suffix("/index").unwrap_or(s);
     (!s.is_empty() && s != "index" && !s.contains("..")).then(|| s.replace('/', "."))
 }
@@ -46,7 +46,11 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         let p = e.path();
         if ft.is_dir() {
             walk(&p, depth + 1, out);
-        } else if ft.is_file() && p.to_string_lossy().ends_with(".blade.php") {
+        } else if ft.is_file()
+            && p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| crate::builtin_snippets::blade_view_stem(n).is_some())
+        {
             out.push(p);
         }
         if out.len() >= MAX_FILES {
@@ -208,6 +212,8 @@ mod tests {
         assert_eq!(f("resources/views/components/index.blade.php"), None);
         assert_eq!(f("resources/views/page.blade.php"), None);
         assert_eq!(f("resources/views/components/a.php"), None);
+        assert_eq!(f("resources/views/components/forms/input.BLADE.PHP").as_deref(), Some("forms.input"));
+        assert_eq!(f("resources/views/components/forms/input.blade.php.bak"), None);
     }
 
     #[test]
@@ -234,6 +240,16 @@ mod tests {
         assert_eq!(draft(&v, "\n"), "@props([\n    'name',\n    'label',\n    'type',\n])\n");
         assert!(scan(&r.join("nope"), "x").is_empty());
         assert!(has_props("a @props(['x'])") && !has_props("none"));
+    }
+
+    #[test]
+    fn scan_reads_case_variants_of_blade_suffixes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("resources/views/pages")).unwrap();
+        std::fs::write(r.join("resources/views/pages/A.BLADE.PHP"), "<x-forms.input label=\"l\"/>").unwrap();
+        std::fs::write(r.join("resources/views/pages/notes.blade.php.bak"), "<x-forms.input id=\"i\"/>").unwrap();
+        assert_eq!(scan(r, "forms.input"), vec!["label"]);
     }
 
     #[test]

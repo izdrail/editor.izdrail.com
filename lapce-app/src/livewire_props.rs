@@ -26,7 +26,7 @@ fn studly(part: &str) -> String {
 /// Class file for a Livewire view path (relative parts after `views/livewire/`).
 pub fn class_for_view(root: &Path, view: &Path) -> Option<PathBuf> {
     let rel = view.strip_prefix(root.join("resources/views/livewire")).ok()?;
-    let s = rel.to_str()?.strip_suffix(".blade.php")?;
+    let s = crate::builtin_snippets::blade_view_stem(rel.to_str()?)?;
     if s.is_empty() || s.contains("..") {
         return None;
     }
@@ -194,6 +194,17 @@ mod tests {
         assert!(help(r, &r.join("resources/views/other.blade.php"), l, 20).is_none());
         assert!(help(r, &r.join("resources/views/livewire/missing.blade.php"), l, 20).is_none());
         assert_eq!(class_for_view(r, &view).unwrap().file_name().unwrap(), "UserProfile.php");
+    }
+
+    #[test]
+    fn view_suffix_case_is_ignored() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("app/Livewire/Admin")).unwrap();
+        std::fs::write(r.join("app/Livewire/Admin/UserProfile.php"), "<?php\nclass UserProfile {}\n").unwrap();
+        let view = r.join("resources/views/livewire/admin/user-profile.BLADE.PHP");
+        assert_eq!(class_for_view(r, &view).unwrap().file_name().unwrap(), "UserProfile.php");
+        assert!(class_for_view(r, &r.join("resources/views/livewire/admin/user-profile.blade.php.bak")).is_none());
     }
 
     #[test]

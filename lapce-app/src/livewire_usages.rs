@@ -75,7 +75,7 @@ pub fn pair(root: &Path, file: &Path) -> Option<(PathBuf, PathBuf)> {
         }
     }
     let rel = file.strip_prefix(root.join("resources/views/livewire")).ok()?;
-    let s = rel.to_str()?.strip_suffix(".blade.php")?;
+    let s = crate::builtin_snippets::blade_view_stem(rel.to_str()?)?;
     if s.is_empty() || s.contains("..") || s.split('/').any(str::is_empty) {
         return None;
     }
@@ -217,6 +217,18 @@ class UserProfile extends Component
             std::fs::write(p, t).unwrap();
         }
         (d, class, view)
+    }
+
+    #[test]
+    fn view_suffix_case_is_ignored() {
+        let (d, _class, _view) = project();
+        let r = d.path();
+        let upper = r.join("resources/views/livewire/admin/user-profile.BLADE.PHP");
+        std::fs::write(&upper, VIEW).unwrap();
+        let items = discover(r, &upper);
+        assert!(items.iter().any(|t| t.label.split_whitespace().next() == Some("form")));
+        assert!(items.iter().all(|t| t.path == upper));
+        assert!(discover(r, &r.join("resources/views/livewire/admin/user-profile.blade.php.bak")).is_empty());
     }
 
     #[test]

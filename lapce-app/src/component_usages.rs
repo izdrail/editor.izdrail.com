@@ -75,7 +75,7 @@ pub fn discover(root: &Path, file: &Path) -> Vec<RouteTarget> {
     component_index::walk(&root.join("resources/views"), 0, &mut files);
     let mut out = Vec::new();
     for p in files.into_iter().take(MAX_FILES) {
-        let is_blade = p.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.ends_with(".blade.php"));
+        let is_blade = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| crate::builtin_snippets::blade_view_stem(n).is_some());
         if !is_blade || p == file {
             continue;
         }
@@ -115,6 +115,8 @@ mod tests {
         assert_eq!(component_of(r, &r.join("app/Livewire/UserProfile.php")), Some(("livewire", "user-profile".into())));
         assert_eq!(component_of(r, &r.join("resources/views/livewire/counter.blade.php")), Some(("livewire", "counter".into())));
         assert_eq!(component_of(r, &r.join("app/Models/User.php")), None);
+        assert_eq!(component_of(r, &r.join("resources/views/components/forms/input.BLADE.PHP")), Some(("x", "forms.input".into())));
+        assert_eq!(component_of(r, &r.join("resources/views/components/forms/input.blade.php.bak")), None);
     }
 
     #[test]
@@ -138,6 +140,18 @@ mod tests {
         assert!(got[0].label.starts_with("resources/views/home.blade.php:2"));
         assert_eq!(got[0].line, 1);
         assert!(discover(r, &r.join("app/Models/User.php")).is_empty());
+    }
+
+    #[test]
+    fn discovers_usages_in_case_variants_of_blade_suffixes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/components/btn.blade.php", "");
+        put(r, "resources/views/HOME.BLADE.PHP", "<x-btn/>\n");
+        put(r, "resources/views/notes.blade.php.bak", "<x-btn/>\n");
+        let got = discover(r, &r.join("resources/views/components/btn.blade.php"));
+        assert_eq!(got.len(), 1);
+        assert!(got[0].label.starts_with("resources/views/HOME.BLADE.PHP:1"));
     }
 
     #[test]

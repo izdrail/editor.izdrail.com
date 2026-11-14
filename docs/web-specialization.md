@@ -276,3 +276,11 @@ remain case-sensitive and keep their exact spelling; lookup rules are unchanged.
 Specialized template-reference routes recognize mixed/uppercase Blade and Twig
 source suffixes too, including Blade component tags and Twig extends. Referenced
 template names and target paths retain their exact case-sensitive spelling.
+
+Blade view-name derivation, component/view discovery scans and the remaining
+local feature gates now share one case-insensitive `.blade.php` stem rule:
+the symbol outline, completion snippet dedupe, component usages, `@props`
+drafts, layout/children links, view usages, Livewire class pairing, the
+`@vite` gate and the view/component name indexes. Stems and derived view
+names keep their exact spelling; backup suffixes and plain `.php` files stay
+outside Blade routes. View-usage scans also read uppercase `.PHP` sources.

@@ -9,9 +9,7 @@ const MAX_BYTES: usize = 2_000_000;
 const MAX_SYMBOLS: usize = 500;
 
 pub fn is_blade_path(path: &std::path::Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .map_or(false, |n| n.ends_with(".blade.php"))
+    crate::builtin_snippets::snippet_language(path, "php") == "blade"
 }
 
 /// First quoted string inside the first `(` of `rest`.
@@ -212,7 +210,10 @@ x
         let o = flat_outline("{{--\n@section('x')\n--}}\n@section('y')\n@endsection");
         assert_eq!(names(&o), ["@section y"]);
         assert!(is_blade_path(std::path::Path::new("a/b/show.blade.php")));
+        assert!(is_blade_path(std::path::Path::new("a/b/SHOW.BLADE.PHP")));
+        assert!(is_blade_path(std::path::Path::new("a/b/Show.Blade.Php")));
         assert!(!is_blade_path(std::path::Path::new("a/b/show.php")));
+        assert!(!is_blade_path(std::path::Path::new("a/b/show.blade.php.bak")));
     }
 
     #[test]

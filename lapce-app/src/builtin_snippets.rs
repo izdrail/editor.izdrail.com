@@ -28,6 +28,22 @@ pub fn snippet_language<'a>(path: &std::path::Path, language_id: &'a str) -> &'a
     if blade { "blade" } else { language_id }
 }
 
+/// `name` without `suffix` when it ends with it, matched
+/// ASCII-case-insensitively. The stem keeps its own spelling; an empty stem
+/// returns `None`.
+pub(crate) fn strip_suffix_ignore_case<'a>(name: &'a str, suffix: &str) -> Option<&'a str> {
+    let stem = name.get(..name.len().checked_sub(suffix.len())?)?;
+    (!stem.is_empty() && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix))
+        .then_some(stem)
+}
+
+/// A Blade view file name without its `.blade.php` suffix, matched
+/// case-insensitively: `input.BLADE.PHP` -> `input`. Backup suffixes and
+/// plain `.php` files return `None`.
+pub fn blade_view_stem(name: &str) -> Option<&str> {
+    strip_suffix_ignore_case(name, ".blade.php")
+}
+
 /// Characters typed in front of the word that a snippet body repeats itself
 /// (`@foreach`, `<livewire:`). The completion range is widened to cover one
 /// so choosing the snippet does not leave `@@foreach`.
@@ -162,6 +178,18 @@ mod tests {
                     .unwrap_or_else(|e| panic!("{}: {e}", s.name));
             }
         }
+    }
+
+    #[test]
+    fn blade_view_stem_accepts_suffix_case_variants() {
+        assert_eq!(blade_view_stem("input.blade.php"), Some("input"));
+        assert_eq!(blade_view_stem("forms/INPUT.BLADE.PHP"), Some("forms/INPUT"));
+        assert_eq!(blade_view_stem("view.Blade.Php"), Some("view"));
+        assert_eq!(blade_view_stem(".blade.php"), None);
+        assert_eq!(blade_view_stem("input.blade.php.bak"), None);
+        assert_eq!(blade_view_stem("input.php"), None);
+        assert_eq!(strip_suffix_ignore_case("page.PHP", ".php"), Some("page"));
+        assert_eq!(strip_suffix_ignore_case(".php", ".php"), None);
     }
 
     #[test]

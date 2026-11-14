@@ -47,7 +47,11 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
                 continue;
             }
             walk(&p, depth + 1, out);
-        } else if ft.is_file() && p.extension().is_some_and(|x| x == "php") {
+        } else if ft.is_file()
+            && p.extension()
+                .and_then(|x| x.to_str())
+                .is_some_and(|x| x.eq_ignore_ascii_case("php"))
+        {
             out.push(p);
         }
     }
@@ -57,7 +61,7 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 /// Livewire views are not treated as plain views here.
 pub fn view_name(root: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(root.join("resources/views")).ok()?.to_str()?;
-    let stem = rel.strip_suffix(".blade.php")?;
+    let stem = crate::builtin_snippets::blade_view_stem(rel)?;
     if stem.is_empty() || stem.starts_with("components/") || stem.starts_with("livewire/") {
         return None;
     }
@@ -125,6 +129,8 @@ mod tests {
         let v = |s: &str| view_name(r, &r.join(s));
         assert_eq!(v("resources/views/users/index.blade.php").as_deref(), Some("users"));
         assert_eq!(v("resources/views/users/show.blade.php").as_deref(), Some("users.show"));
+        assert_eq!(v("resources/views/users/show.BLADE.PHP").as_deref(), Some("users.show"));
+        assert_eq!(v("resources/views/users/show.blade.php.bak"), None);
         assert_eq!(v("resources/views/components/btn.blade.php"), None);
         assert_eq!(v("resources/views/livewire/x.blade.php"), None);
         assert_eq!(v("resources/views/a.php"), None);
@@ -156,6 +162,18 @@ mod tests {
         );
         assert_eq!(got[0].line, 1);
         assert!(discover(r, &r.join("app/Other.php")).is_empty());
+    }
+
+    #[test]
+    fn reads_case_variants_of_blade_and_php_sources() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/users/show.blade.php", "x");
+        put(r, "app/Http/Controllers/C.PHP", "<?php\nreturn view('users.show');\n");
+        put(r, "resources/views/HOME.BLADE.PHP", "@include('users.show')\n");
+        let got = discover(r, &r.join("resources/views/users/show.blade.php"));
+        let shown: Vec<_> = got.iter().map(|t| t.label.split("  ").next().unwrap().to_string()).collect();
+        assert_eq!(shown, ["app/Http/Controllers/C.PHP:2", "resources/views/HOME.BLADE.PHP:1"]);
     }
 
     #[test]

@@ -2679,9 +2679,8 @@ fn view_names(root: &Path) -> Vec<String> {
                 walk(&p, depth + 1, base, out);
             } else if ft.is_file() {
                 let Some(name) = p.file_name().and_then(|n| n.to_str()) else { continue };
-                let stem = name
-                    .strip_suffix(".blade.php")
-                    .or_else(|| name.strip_suffix(".php"));
+                let stem = crate::builtin_snippets::blade_view_stem(name)
+                    .or_else(|| crate::builtin_snippets::strip_suffix_ignore_case(name, ".php"));
                 let Some(stem) = stem else { continue };
                 let Ok(rel) = p.strip_prefix(base) else { continue };
                 let mut dotted = rel
@@ -2770,7 +2769,7 @@ fn walk_php_blade(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         } else if ft.is_file()
             && p.file_name()
                 .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(".blade.php"))
+                .is_some_and(|n| crate::builtin_snippets::blade_view_stem(n).is_some())
         {
             out.push(p);
         }
@@ -4342,7 +4341,7 @@ fn component_names(root: &Path) -> Vec<String> {
                 else {
                     continue;
                 };
-                let Some(stem) = name.strip_suffix(".blade.php") else {
+                let Some(stem) = crate::builtin_snippets::blade_view_stem(name) else {
                     continue;
                 };
                 let Ok(rel) = p.strip_prefix(base) else { continue };
@@ -4709,7 +4708,8 @@ fn vite_directive(line: &str) -> bool {
 /// A Blade template file (`*.blade.php`).
 fn is_blade_file(file: &Path) -> bool {
     file.file_name()
-        .is_some_and(|n| n.to_string_lossy().ends_with(".blade.php"))
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| crate::builtin_snippets::blade_view_stem(n).is_some())
 }
 
 /// The harvested columns of `table` (items 390, 392).
@@ -7313,6 +7313,21 @@ class Comment extends Model {
     }
 
     #[test]
+    fn layout_names_accept_case_variants_of_blade_suffixes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/layouts/APP.BLADE.PHP", "<html>@yield('uppercase')\n@stack('upper_stack')\n</html>\n");
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels("@yield('"), ["uppercase"]);
+        assert_eq!(labels("@stack('"), ["upper_stack"]);
+    }
+
+    #[test]
     fn offers_vite_entries() {
         let d = tempfile::tempdir().unwrap();
         let r = d.path();
@@ -7351,6 +7366,12 @@ class Comment extends Model {
         // PHP and ungated.
         assert!(labels(php, "@vite('").is_empty());
         assert!(items(r, None, "@vite('").is_empty());
+        // The file gate follows the same case-insensitive Blade
+        // filename rule as the other local routes.
+        let upper = std::path::Path::new("PROBE.BLADE.PHP");
+        assert_eq!(labels(upper, "@vite('"), entries);
+        let bak = std::path::Path::new("probe.blade.php.bak");
+        assert!(labels(bak, "@vite('").is_empty());
         assert_eq!(
             items(r, None, "Vite::asset('")
                 .into_iter()
@@ -7412,6 +7433,19 @@ class Comment extends Model {
         );
         assert!(labels("View::first('").is_empty());
         assert!(labels("View::make('pages.home', ['").is_empty());
+    }
+
+    #[test]
+    fn view_names_accept_case_variants_of_blade_suffixes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/pages/HOME.BLADE.PHP", "<h1>hi</h1>\n");
+        put(r, "resources/views/pages/draft.blade.php.bak", "<h1>no</h1>\n");
+        let labels: Vec<_> = items(r, None, "View::make('")
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(labels, ["pages.HOME"]);
     }
 
     #[test]
@@ -8507,6 +8541,20 @@ Gate::define(\"buy-cd\", 'shop.buy');
             assert!(items(r, Some(&view), "<livewire:co").iter().any(|i| i.label == "counter"), "{name}");
         }
         assert!(items(r, Some(&r.join("note.txt")), "<x-").is_empty());
+    }
+
+    #[test]
+    fn component_names_accept_case_variants_of_blade_suffixes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "resources/views/components/forms/input.BLADE.PHP", "");
+        let view = r.join("resources/views/page.blade.php");
+        put(r, "resources/views/page.blade.php", "");
+        let labels: Vec<_> = items(r, Some(&view), "<x-forms.in")
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(labels, ["forms.input"]);
     }
 
     #[test]
