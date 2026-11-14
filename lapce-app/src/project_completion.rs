@@ -213,6 +213,11 @@ pub enum Kind {
     /// WordPress user role name: `add_role('role', ...)` and the
     /// name positions of `remove_role` / `get_role` (item 428).
     WpRole,
+    /// WordPress nonce action name: `wp_create_nonce('action')` and
+    /// the action positions of `wp_verify_nonce` /
+    /// `check_admin_referer` / `check_ajax_referer` /
+    /// `wp_nonce_field` / `wp_nonce_url` (item 429).
+    WpNonce,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1713,6 +1718,21 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpRole
         }
+        // WordPress nonce actions (item 429):
+        // `wp_create_nonce('save-post')` names the action first, as
+        // do `check_admin_referer` / `check_ajax_referer` /
+        // `wp_nonce_field`; `wp_verify_nonce($nonce, 'save-post')`
+        // and `wp_nonce_url($url, 'save-post')` name it second
+        // (pluggable.php: wp_create_nonce :2470, wp_verify_nonce
+        // :2368, wp_nonce_field :1220, wp_nonce_url :1156;
+        // admin/includes: check_admin_referer, check_ajax_referer).
+        "wp_create_nonce" | "check_admin_referer" | "check_ajax_referer"
+        | "wp_nonce_field"
+            if arg == 0 =>
+        {
+            Kind::WpNonce
+        }
+        "wp_verify_nonce" | "wp_nonce_url" if arg == 1 => Kind::WpNonce,
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2146,6 +2166,7 @@ struct Lists {
     wp_post_types: Vec<String>,
     wp_taxonomies: Vec<String>,
     wp_roles: Vec<String>,
+    wp_nonces: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3391,6 +3412,7 @@ fn lists(root: &Path) -> Lists {
     let wp_post_types = wp_post_type_names(root);
     let wp_taxonomies = wp_taxonomy_names(root);
     let wp_roles = wp_role_names(root);
+    let wp_nonces = wp_nonce_actions(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3431,6 +3453,7 @@ fn lists(root: &Path) -> Lists {
         wp_post_types,
         wp_taxonomies,
         wp_roles,
+        wp_nonces,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4601,6 +4624,23 @@ fn wp_role_names(root: &Path) -> Vec<String> {
     first_quoted_args(root, &["add_role(", "remove_role("])
 }
 
+/// WordPress nonce action names (item 429): the quoted first
+/// arguments of `wp_create_nonce` / `check_admin_referer` /
+/// `check_ajax_referer` / `wp_nonce_field` calls. Core actions
+/// (-1 for AJAX heartbeats and friends) are not listed - only
+/// actions the project itself creates or checks.
+fn wp_nonce_actions(root: &Path) -> Vec<String> {
+    first_quoted_args(
+        root,
+        &[
+            "wp_create_nonce(",
+            "check_admin_referer(",
+            "check_ajax_referer(",
+            "wp_nonce_field(",
+        ],
+    )
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5664,6 +5704,7 @@ pub fn items(
         Kind::WpPostType => (lists.wp_post_types, "post type"),
         Kind::WpTaxonomy => (lists.wp_taxonomies, "taxonomy"),
         Kind::WpRole => (lists.wp_roles, "role"),
+        Kind::WpNonce => (lists.wp_nonces, "nonce action"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7241,6 +7282,60 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "get_role('")[0].detail.as_deref(),
             Some("role")
+        );
+    }
+
+    #[test]
+    fn detects_wp_nonce_context() {
+        let nc = Some(Kind::WpNonce);
+        assert_eq!(context("wp_create_nonce('sh"), nc);
+        assert_eq!(context("check_admin_referer('sh"), nc);
+        assert_eq!(context("check_ajax_referer('sh"), nc);
+        assert_eq!(context("wp_nonce_field('sh"), nc);
+        assert_eq!(context("wp_verify_nonce($n, 'sh"), nc);
+        assert_eq!(context("wp_nonce_url($u, 'sh"), nc);
+        // The nonce / url first arguments are not action names.
+        assert_eq!(context("wp_verify_nonce('sh"), None);
+        assert_eq!(context("wp_nonce_url('sh"), None);
+        assert_eq!(context("wp_create_nonce('a')"), None);
+        assert_eq!(context("my_wp_create_nonce('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_nonce_actions() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "wp_create_nonce('shop_checkout');
+",
+                "wp_nonce_field(\"shop_save\");
+",
+                "// wp_create_nonce('ghosted');
+",
+                "$s = \"wp_create_nonce('instr')\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` create
+        // nothing.
+        let want = ["shop_checkout", "shop_save"];
+        assert_eq!(labels("wp_create_nonce('"), want);
+        assert_eq!(labels("wp_verify_nonce($n, '"), want);
+        assert!(labels("wp_create_nonce('a')").is_empty());
+        assert_eq!(
+            items(r, None, "wp_create_nonce('")[0].detail.as_deref(),
+            Some("nonce action")
         );
     }
 
