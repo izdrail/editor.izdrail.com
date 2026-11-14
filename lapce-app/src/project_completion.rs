@@ -192,6 +192,10 @@ pub enum Kind {
     /// `get_option` / `update_option` and the whole options and
     /// transients API (item 422).
     WpOption,
+    /// WordPress script / style handle: the first argument of
+    /// `wp_enqueue_script` / `wp_register_style` and the whole
+    /// scripts / styles API (item 423).
+    WpHandle,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1613,6 +1617,21 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpOption
         }
+        // WordPress script / style handles (item 423): the handle
+        // is the first argument of the whole scripts / styles API
+        // (functions.wp-scripts.php: wp_register_script :106,
+        // wp_enqueue_script :389, wp_script_is :275, ...;
+        // functions.wp-styles.php: wp_register_style :107,
+        // wp_enqueue_style :385, ...).
+        "wp_register_script" | "wp_enqueue_script"
+        | "wp_deregister_script" | "wp_dequeue_script"
+        | "wp_script_is" | "wp_localize_script"
+        | "wp_register_style" | "wp_enqueue_style"
+        | "wp_deregister_style" | "wp_dequeue_style" | "wp_style_is"
+            if arg == 0 =>
+        {
+            Kind::WpHandle
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2041,6 +2060,7 @@ struct Lists {
     shortcodes: Vec<String>,
     wp_callbacks: Vec<String>,
     wp_options: Vec<String>,
+    wp_handles: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3281,6 +3301,7 @@ fn lists(root: &Path) -> Lists {
     let shortcodes = shortcode_names(root);
     let wp_callbacks = wp_callback_names(root);
     let wp_options = wp_option_names(root);
+    let wp_handles = wp_handle_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3316,6 +3337,7 @@ fn lists(root: &Path) -> Lists {
         shortcodes,
         wp_callbacks,
         wp_options,
+        wp_handles,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4426,6 +4448,29 @@ fn wp_option_names(root: &Path) -> Vec<String> {
     )
 }
 
+/// WordPress script / style handles (item 423): the quoted first
+/// arguments of the scripts / styles API calls. Core handles
+/// (jquery, wp-emoji, ...) are not listed - only handles the project
+/// itself registers or enqueues.
+fn wp_handle_names(root: &Path) -> Vec<String> {
+    first_quoted_args(
+        root,
+        &[
+            "wp_register_script(",
+            "wp_enqueue_script(",
+            "wp_deregister_script(",
+            "wp_dequeue_script(",
+            "wp_script_is(",
+            "wp_localize_script(",
+            "wp_register_style(",
+            "wp_enqueue_style(",
+            "wp_deregister_style(",
+            "wp_dequeue_style(",
+            "wp_style_is(",
+        ],
+    )
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5484,6 +5529,7 @@ pub fn items(
         Kind::WpShortcode => (lists.shortcodes, "shortcode"),
         Kind::WpCallback => (lists.wp_callbacks, "callback"),
         Kind::WpOption => (lists.wp_options, "WordPress option"),
+        Kind::WpHandle => (lists.wp_handles, "script/style handle"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6767,6 +6813,58 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "get_option('")[0].detail.as_deref(),
             Some("WordPress option")
+        );
+    }
+
+    #[test]
+    fn detects_wp_handle_context() {
+        let h = Some(Kind::WpHandle);
+        assert_eq!(context("wp_enqueue_script('sh"), h);
+        assert_eq!(context("wp_register_style('sh"), h);
+        assert_eq!(context("wp_script_is('sh"), h);
+        assert_eq!(context("wp_localize_script(\"sh"), h);
+        assert_eq!(context("wp_dequeue_style('sh"), h);
+        assert_eq!(context("wp_enqueue_script('a')"), None);
+        assert_eq!(context("my_wp_enqueue_script('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_handles() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "wp_register_script('shop-cart', $u, [], '1', true);
+",
+                "wp_enqueue_style(\"shop-front\");
+",
+                "wp_localize_script('shop-admin', 'shop', []);
+",
+                "// wp_enqueue_script('ghosted');
+",
+                "$s = \"wp_enqueue_script('instr')\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // nothing.
+        let want = ["shop-admin", "shop-cart", "shop-front"];
+        assert_eq!(labels("wp_enqueue_script('"), want);
+        assert_eq!(labels("wp_style_is('"), want);
+        assert!(labels("wp_enqueue_script('a')").is_empty());
+        assert_eq!(
+            items(r, None, "wp_enqueue_script('")[0].detail.as_deref(),
+            Some("script/style handle")
         );
     }
 
