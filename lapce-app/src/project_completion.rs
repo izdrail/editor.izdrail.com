@@ -205,6 +205,11 @@ pub enum Kind {
     /// and the name positions of `post_type_exists` /
     /// `get_post_type_object` / `unregister_post_type` (item 425).
     WpPostType,
+    /// WordPress taxonomy name: `register_taxonomy('tax', ...)`
+    /// and the name positions of `taxonomy_exists` / `get_taxonomy`
+    /// / `unregister_taxonomy` / `register_taxonomy_for_object_type`
+    /// (item 426).
+    WpTaxonomy,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1665,6 +1670,20 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpPostType
         }
+        // WordPress taxonomies (item 426):
+        // `register_taxonomy('genre', ...)` registers the name first
+        // and `taxonomy_exists` / `get_taxonomy` /
+        // `unregister_taxonomy` / `register_taxonomy_for_object_type`
+        // name it first too (taxonomy.php: register_taxonomy :478,
+        // taxonomy_exists :358, get_taxonomy :325,
+        // unregister_taxonomy :640,
+        // register_taxonomy_for_object_type :758).
+        "register_taxonomy" | "unregister_taxonomy" | "taxonomy_exists"
+        | "get_taxonomy" | "register_taxonomy_for_object_type"
+            if arg == 0 =>
+        {
+            Kind::WpTaxonomy
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2096,6 +2115,7 @@ struct Lists {
     wp_handles: Vec<String>,
     wp_image_sizes: Vec<String>,
     wp_post_types: Vec<String>,
+    wp_taxonomies: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3339,6 +3359,7 @@ fn lists(root: &Path) -> Lists {
     let wp_handles = wp_handle_names(root);
     let wp_image_sizes = wp_image_size_names(root);
     let wp_post_types = wp_post_type_names(root);
+    let wp_taxonomies = wp_taxonomy_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3377,6 +3398,7 @@ fn lists(root: &Path) -> Lists {
         wp_handles,
         wp_image_sizes,
         wp_post_types,
+        wp_taxonomies,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4529,6 +4551,17 @@ fn wp_post_type_names(root: &Path) -> Vec<String> {
     )
 }
 
+/// WordPress taxonomy names (item 426): the quoted first arguments
+/// of `register_taxonomy` / `unregister_taxonomy` calls. Core
+/// taxonomies (category, post_tag, ...) are not listed - only
+/// taxonomies the project itself registers.
+fn wp_taxonomy_names(root: &Path) -> Vec<String> {
+    first_quoted_args(
+        root,
+        &["register_taxonomy(", "unregister_taxonomy("],
+    )
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5590,6 +5623,7 @@ pub fn items(
         Kind::WpHandle => (lists.wp_handles, "script/style handle"),
         Kind::WpImageSize => (lists.wp_image_sizes, "image size"),
         Kind::WpPostType => (lists.wp_post_types, "post type"),
+        Kind::WpTaxonomy => (lists.wp_taxonomies, "taxonomy"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7024,6 +7058,56 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "post_type_exists('")[0].detail.as_deref(),
             Some("post type")
+        );
+    }
+
+    #[test]
+    fn detects_wp_taxonomy_context() {
+        let tx = Some(Kind::WpTaxonomy);
+        assert_eq!(context("register_taxonomy('sh"), tx);
+        assert_eq!(context("taxonomy_exists('sh"), tx);
+        assert_eq!(context("get_taxonomy('sh"), tx);
+        assert_eq!(context("unregister_taxonomy(\"sh"), tx);
+        assert_eq!(context("register_taxonomy_for_object_type('sh"), tx);
+        assert_eq!(context("register_taxonomy('a')"), None);
+        assert_eq!(context("my_register_taxonomy('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_taxonomies() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "register_taxonomy('shop_brand', 'shop_product', []);
+",
+                "register_taxonomy(\"shop_aisle\", 'shop_product', []);
+",
+                "// register_taxonomy('ghosted', 'x', []);
+",
+                "$s = \"register_taxonomy('instr', 'x', [])\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // nothing.
+        let want = ["shop_aisle", "shop_brand"];
+        assert_eq!(labels("taxonomy_exists('"), want);
+        assert_eq!(labels("register_taxonomy('"), want);
+        assert!(labels("register_taxonomy('a')").is_empty());
+        assert_eq!(
+            items(r, None, "taxonomy_exists('")[0].detail.as_deref(),
+            Some("taxonomy")
         );
     }
 
