@@ -22,3 +22,9 @@ commented-out code, from lookalike functions and from inside strings
 are not collected. WordPress core option names are not listed - only
 names the project itself reads or writes. Unsaved edits are not seen
 until the lists cache expires.
+
+## Registered settings (item 430)
+
+The option names registered with `register_setting($group, 'name')`
+are harvested too - a registered setting is stored as an option, so
+`get_option('name')` completes them.

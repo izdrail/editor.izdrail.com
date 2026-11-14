@@ -218,6 +218,10 @@ pub enum Kind {
     /// `check_admin_referer` / `check_ajax_referer` /
     /// `wp_nonce_field` / `wp_nonce_url` (item 429).
     WpNonce,
+    /// WordPress settings group name: the first argument of
+    /// `register_setting('group', ...)` / `settings_fields('group')`
+    /// (item 430).
+    WpSettingGroup,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1733,6 +1737,18 @@ fn call_context(line: &str) -> Option<Kind> {
             Kind::WpNonce
         }
         "wp_verify_nonce" | "wp_nonce_url" if arg == 1 => Kind::WpNonce,
+        // WordPress settings API (item 430):
+        // `register_setting('shop', 'shop_key')` names the group
+        // first and the OPTION name second (options.php:
+        // register_setting, settings_fields) - so the group position
+        // completes groups and the name position completes the item
+        // 422 option list.
+        "register_setting" | "settings_fields"
+            if arg == 0 =>
+        {
+            Kind::WpSettingGroup
+        }
+        "register_setting" if arg == 1 => Kind::WpOption,
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2167,6 +2183,7 @@ struct Lists {
     wp_taxonomies: Vec<String>,
     wp_roles: Vec<String>,
     wp_nonces: Vec<String>,
+    wp_setting_groups: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3413,6 +3430,7 @@ fn lists(root: &Path) -> Lists {
     let wp_taxonomies = wp_taxonomy_names(root);
     let wp_roles = wp_role_names(root);
     let wp_nonces = wp_nonce_actions(root);
+    let wp_setting_groups = wp_setting_group_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3454,6 +3472,7 @@ fn lists(root: &Path) -> Lists {
         wp_taxonomies,
         wp_roles,
         wp_nonces,
+        wp_setting_groups,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4388,6 +4407,15 @@ fn project_php_files(root: &Path) -> Vec<PathBuf> {
 /// .git, node_modules and vendor; at most 500 files, 1 MB each).
 /// Textual scan; nothing is executed.
 fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
+    quoted_arg_names(root, calls, 0)
+}
+
+/// `quoted_arg_names` generalises `first_quoted_args` to the nth
+/// quoted argument of `calls` (item 430 uses n = 1 for the option
+/// name in `register_setting($group, 'option')`). The first string
+/// must open the argument right after the marker; later strings may
+/// follow variables and commas, but never a `)` or `;`.
+fn quoted_arg_names(root: &Path, calls: &[&str], n: usize) -> Vec<String> {
     let files = project_php_files(root);
     let mut out: Vec<String> = Vec::new();
     'files: for f in files {
@@ -4418,17 +4446,37 @@ fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
                     continue;
                 }
                 let mut j = i + marker.len();
-                while j < b.len() && b[j].is_ascii_whitespace() {
-                    j += 1;
+                let mut span: Option<(usize, usize)> = None;
+                for k in 0..=n {
+                    if k == 0 {
+                        while j < b.len() && b[j].is_ascii_whitespace() {
+                            j += 1;
+                        }
+                    } else {
+                        // Later arguments may follow variables and
+                        // commas; `)` or `;` ends the call first.
+                        while j < b.len()
+                            && b[j] != b'\''
+                            && b[j] != b'"'
+                            && b[j] != b')'
+                            && b[j] != b';'
+                        {
+                            j += 1;
+                        }
+                    }
+                    if b.get(j) != Some(&b'\'') && b.get(j) != Some(&b'"') {
+                        span = None;
+                        break;
+                    }
+                    let Ok(si) = strings.binary_search_by_key(&j, |s| s.0)
+                    else {
+                        span = None;
+                        break;
+                    };
+                    span = Some(strings[si]);
+                    j = strings[si].1 + 1;
                 }
-                if b.get(j) != Some(&b'\'') && b.get(j) != Some(&b'"') {
-                    continue;
-                }
-                let Ok(si) = strings.binary_search_by_key(&j, |s| s.0)
-                else {
-                    continue;
-                };
-                let (start, end) = strings[si];
+                let Some((start, end)) = span else { continue };
                 let name = &text[start + 1..end];
                 if !name.is_empty()
                     && name.len() <= 100
@@ -4540,10 +4588,11 @@ fn wp_callback_names(root: &Path) -> Vec<String> {
 }
 
 /// WordPress option and transient names (item 422): the quoted
-/// first arguments of the options / transients API calls. Core
+/// first arguments of the options / transients API calls, plus the
+/// option names registered via `register_setting` (item 430). Core
 /// option names are not listed - only names the project itself uses.
 fn wp_option_names(root: &Path) -> Vec<String> {
-    first_quoted_args(
+    let mut out = first_quoted_args(
         root,
         &[
             "get_option(",
@@ -4561,7 +4610,13 @@ fn wp_option_names(root: &Path) -> Vec<String> {
             "set_site_transient(",
             "delete_site_transient(",
         ],
-    )
+    );
+    // `register_setting($group, 'name')` stores the setting as an
+    // option (item 430).
+    out.extend(quoted_arg_names(root, &["register_setting("], 1));
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// WordPress script / style handles (item 423): the quoted first
@@ -4639,6 +4694,14 @@ fn wp_nonce_actions(root: &Path) -> Vec<String> {
             "wp_nonce_field(",
         ],
     )
+}
+
+/// WordPress settings group names (item 430): the quoted first
+/// arguments of `register_setting` calls. Core groups (general,
+/// reading, ...) are not listed - only groups the project itself
+/// registers under.
+fn wp_setting_group_names(root: &Path) -> Vec<String> {
+    first_quoted_args(root, &["register_setting("])
 }
 
 /// Session keys (item 414): the names written by
@@ -5705,6 +5768,9 @@ pub fn items(
         Kind::WpTaxonomy => (lists.wp_taxonomies, "taxonomy"),
         Kind::WpRole => (lists.wp_roles, "role"),
         Kind::WpNonce => (lists.wp_nonces, "nonce action"),
+        Kind::WpSettingGroup => {
+            (lists.wp_setting_groups, "settings group")
+        }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7336,6 +7402,62 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "wp_create_nonce('")[0].detail.as_deref(),
             Some("nonce action")
+        );
+    }
+
+    #[test]
+    fn detects_wp_setting_group_context() {
+        let grp = Some(Kind::WpSettingGroup);
+        assert_eq!(context("register_setting('sh"), grp);
+        assert_eq!(context("settings_fields('sh"), grp);
+        // The second argument of register_setting is the option name.
+        assert_eq!(
+            context("register_setting('shop', 'sh"),
+            Some(Kind::WpOption)
+        );
+        assert_eq!(context("register_setting('a')"), None);
+        assert_eq!(context("my_register_setting('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_setting_groups() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "register_setting('shop_general', 'shop_key');
+",
+                "register_setting(\"shop_checkout\", 'shop_gate');
+",
+                "// register_setting('ghosted', 'x');
+",
+                "$s = \"register_setting('instr', 'x')\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // no group; the option names land in the item 422 list.
+        let want = ["shop_checkout", "shop_general"];
+        assert_eq!(labels("settings_fields('"), want);
+        assert_eq!(labels("register_setting('"), want);
+        assert_eq!(
+            labels("register_setting('shop_general', '"),
+            ["shop_gate", "shop_key"]
+        );
+        assert!(labels("register_setting('a')").is_empty());
+        assert_eq!(
+            items(r, None, "settings_fields('")[0].detail.as_deref(),
+            Some("settings group")
         );
     }
 
