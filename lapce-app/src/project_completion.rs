@@ -230,6 +230,10 @@ pub enum Kind {
     /// `current_user_can('cap')` / `user_can($u, 'cap')` /
     /// `author_can($p, 'cap')` (item 432).
     WpCapability,
+    /// WordPress template part slug: the theme-relative path of a
+    /// theme `.php` file without the extension, as loaded by
+    /// `get_template_part('template-parts/shop')` (item 433).
+    WpTemplatePart,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1786,6 +1790,9 @@ fn call_context(line: &str) -> Option<Kind> {
         // current_user_can :89, user_can :948, author_can :1017).
         "current_user_can" if arg == 0 => Kind::WpCapability,
         "user_can" | "author_can" if arg == 1 => Kind::WpCapability,
+        // WordPress template parts (item 433): the slug is the
+        // first argument (template-tags.php: get_template_part).
+        "get_template_part" if arg == 0 => Kind::WpTemplatePart,
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2223,6 +2230,7 @@ struct Lists {
     wp_setting_groups: Vec<String>,
     wp_meta_keys: Vec<String>,
     wp_capabilities: Vec<String>,
+    wp_template_parts: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3472,6 +3480,7 @@ fn lists(root: &Path) -> Lists {
     let wp_setting_groups = wp_setting_group_names(root);
     let wp_meta_keys = wp_meta_key_names(root);
     let wp_capabilities = wp_capability_names(root);
+    let wp_template_parts = wp_template_part_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3516,6 +3525,7 @@ fn lists(root: &Path) -> Lists {
         wp_setting_groups,
         wp_meta_keys,
         wp_capabilities,
+        wp_template_parts,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4829,6 +4839,69 @@ fn wp_capability_names(root: &Path) -> Vec<String> {
     )
 }
 
+/// WordPress template part slugs (item 433): the `.php` files of
+/// every theme under `wp-content/themes`, as theme-relative paths
+/// without the extension (`template-parts/shop`) - the slugs
+/// `get_template_part` loads. Same bounded, symlink-refusing walk
+/// as the Laravel view list. Sorted, deduped.
+fn wp_template_part_names(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, base: &Path, out: &mut Vec<String>) {
+        if depth > MAX_DEPTH || out.len() >= MAX_VIEW_FILES {
+            return;
+        }
+        if depth == 0
+            && std::fs::symlink_metadata(dir)
+                .map_or(true, |m| m.file_type().is_symlink())
+        {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                walk(&p, depth + 1, base, out);
+            } else if ft.is_file() {
+                let Some(name) = p.file_name().and_then(|n| n.to_str())
+                else {
+                    continue;
+                };
+                let Some(stem) = crate::builtin_snippets::
+                    strip_suffix_ignore_case(name, ".php")
+                else {
+                    continue;
+                };
+                let Ok(rel) = p.strip_prefix(base) else { continue };
+                let mut slug = rel
+                    .parent()
+                    .map(|pp| pp.to_string_lossy().replace('\\', "/"))
+                    .filter(|s| !s.is_empty())
+                    .map(|s| format!("{s}/"))
+                    .unwrap_or_default();
+                slug.push_str(stem);
+                if out.len() < MAX_VIEW_FILES && !out.contains(&slug) {
+                    out.push(slug);
+                }
+            }
+        }
+    }
+    let themes = root.join("wp-content/themes");
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&themes) {
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() {
+                walk(&e.path(), 0, &e.path(), &mut out);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5899,6 +5972,9 @@ pub fn items(
         Kind::WpMetaKey => (lists.wp_meta_keys, "meta key"),
         Kind::WpCapability => {
             (lists.wp_capabilities, "capability")
+        }
+        Kind::WpTemplatePart => {
+            (lists.wp_template_parts, "template part")
         }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
@@ -7685,6 +7761,39 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("capability")
+        );
+    }
+
+    #[test]
+    fn detects_wp_template_part_context() {
+        let tp = Some(Kind::WpTemplatePart);
+        assert_eq!(context("get_template_part('te"), tp);
+        assert_eq!(context("get_template_part('a')"), None);
+        assert_eq!(context("my_get_template_part('te"), None);
+    }
+
+    #[test]
+    fn offers_wp_template_parts() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/themes/shop/template-parts/shop.php",
+            "<?php\n",
+        );
+        put(r, "wp-content/themes/shop/single.php", "<?php\n");
+        // A second theme with the same file adds no duplicate.
+        put(r, "wp-content/themes/other/single.php", "<?php\n");
+        let labels: Vec<_> = items(r, None, "get_template_part('")
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
+        assert_eq!(labels, ["single", "template-parts/shop"]);
+        assert_eq!(
+            items(r, None, "get_template_part('")[0]
+                .detail
+                .as_deref(),
+            Some("template part")
         );
     }
 
