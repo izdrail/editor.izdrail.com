@@ -179,6 +179,10 @@ pub enum Kind {
     /// and the _ref_array / remove_ / has_ / doing_ / did_ /
     /// current_ variants (item 419).
     WpHook,
+    /// WordPress shortcode tag: `add_shortcode('tag', ...)` and the
+    /// tag positions of `remove_shortcode` / `shortcode_exists` /
+    /// `has_shortcode` / `do_shortcode('[tag ...]')` (item 420).
+    WpShortcode,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1558,6 +1562,21 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpHook
         }
+        // WordPress shortcodes (item 420): `add_shortcode('tag',
+        // ...)` registers the tag first; `remove_shortcode('tag')`
+        // and `shortcode_exists('tag')` name it first too;
+        // `has_shortcode($content, 'tag')` names it second, and
+        // `do_shortcode('[tag ...]')` names it inside the bracket
+        // (shortcodes.php: add_shortcode :539, do_shortcode :307).
+        "add_shortcode" | "remove_shortcode" | "shortcode_exists"
+            if arg == 0 =>
+        {
+            Kind::WpShortcode
+        }
+        "has_shortcode" if arg == 1 => Kind::WpShortcode,
+        "do_shortcode" if arg == 0 && do_shortcode_tag_position(line) => {
+            Kind::WpShortcode
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -1983,6 +2002,7 @@ struct Lists {
     broadcast_channels: Vec<String>,
     route_params: Vec<(String, Vec<String>)>,
     wp_hooks: Vec<String>,
+    shortcodes: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3220,6 +3240,7 @@ fn lists(root: &Path) -> Lists {
     let broadcast_channels = broadcast_channels(root);
     let route_params = route_params(root);
     let wp_hooks = wp_hook_names(root);
+    let shortcodes = shortcode_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3252,6 +3273,7 @@ fn lists(root: &Path) -> Lists {
         broadcast_channels,
         route_params,
         wp_hooks,
+        shortcodes,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4143,13 +4165,12 @@ fn cache_keys(root: &Path) -> Vec<String> {
     out
 }
 
-/// WordPress hook names (item 419): the quoted first arguments of
-/// `add_action` / `add_filter` / `do_action` / `apply_filters` (and
-/// the _ref_array / remove_ variants) across the project's .php
-/// files, skipping .git / node_modules / vendor. Textual scan;
-/// nothing is executed. Core hooks are not listed - only the names
-/// the project itself registers or fires.
-fn wp_hook_names(root: &Path) -> Vec<String> {
+/// Shared first-quoted-argument harvest for the WordPress call
+/// scanners (item 419 hooks, item 420 shortcodes): the quoted first
+/// arguments of `calls` across the project's .php files (skipping
+/// .git, node_modules and vendor; at most 500 files, 1 MB each).
+/// Textual scan; nothing is executed.
+fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
     fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         if depth > 4 || out.len() >= 500 {
             return;
@@ -4177,16 +4198,6 @@ fn wp_hook_names(root: &Path) -> Vec<String> {
             }
         }
     }
-    const CALLS: &[&str] = &[
-        "add_action(",
-        "add_filter(",
-        "remove_action(",
-        "remove_filter(",
-        "do_action(",
-        "apply_filters(",
-        "do_action_ref_array(",
-        "apply_filters_ref_array(",
-    ];
     let mut files = Vec::new();
     walk(root, 0, &mut files);
     let mut out: Vec<String> = Vec::new();
@@ -4206,7 +4217,7 @@ fn wp_hook_names(root: &Path) -> Vec<String> {
             let i = strings.partition_point(|&(_, end)| pos > end);
             i < strings.len() && strings[i].0 <= pos
         };
-        for marker in CALLS {
+        for marker in calls {
             for (i, _) in masked.match_indices(marker) {
                 // Word boundary: `my_add_action(` is not a hook call.
                 if i > 0
@@ -4249,6 +4260,47 @@ fn wp_hook_names(root: &Path) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+/// WordPress hook names (item 419): the quoted first arguments of
+/// `add_action` / `add_filter` / `do_action` / `apply_filters` (and
+/// the _ref_array / remove_ variants). Core hooks are not listed -
+/// only the names the project itself registers or fires.
+fn wp_hook_names(root: &Path) -> Vec<String> {
+    const CALLS: &[&str] = &[
+        "add_action(",
+        "add_filter(",
+        "remove_action(",
+        "remove_filter(",
+        "do_action(",
+        "apply_filters(",
+        "do_action_ref_array(",
+        "apply_filters_ref_array(",
+    ];
+    first_quoted_args(root, CALLS)
+}
+
+/// WordPress shortcode tags (item 420): the quoted first arguments of
+/// `add_shortcode('tag', ...)` registrations. Core shortcodes are
+/// not listed - only tags the project itself registers.
+fn shortcode_names(root: &Path) -> Vec<String> {
+    first_quoted_args(root, &["add_shortcode("])
+}
+
+/// `do_shortcode('[ta` / `do_shortcode('[/ta`: the cursor is inside
+/// the tag name of the shortcode string (item 420).
+fn do_shortcode_tag_position(line: &str) -> bool {
+    let Some(i) = line.rfind("do_shortcode(") else { return false };
+    let rest = line[i + "do_shortcode(".len()..].trim_start();
+    let Some(rest) = rest.strip_prefix(|c| c == '\'' || c == '"') else {
+        return false;
+    };
+    let Some(rest) = rest.strip_prefix('[') else { return false };
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
+    !rest.is_empty()
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
 }
 
 /// Session keys (item 414): the names written by
@@ -5306,6 +5358,7 @@ pub fn items(
         }
         Kind::SessionKey => (lists.session_keys, "session key"),
         Kind::WpHook => (lists.wp_hooks, "WordPress hook"),
+        Kind::WpShortcode => (lists.shortcodes, "shortcode"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6412,6 +6465,60 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "add_action('")[0].detail.as_deref(),
             Some("WordPress hook")
+        );
+    }
+
+    #[test]
+    fn detects_wp_shortcode_context() {
+        let cs = Some(Kind::WpShortcode);
+        assert_eq!(context("add_shortcode('ga"), cs);
+        assert_eq!(context("remove_shortcode('ga"), cs);
+        assert_eq!(context("shortcode_exists('ga"), cs);
+        assert_eq!(context("has_shortcode($c, 'ga"), cs);
+        assert_eq!(context("do_shortcode('[ga"), cs);
+        assert_eq!(context("do_shortcode('[/ga"), cs);
+        // Past the tag name, closed strings and lookalikes stay silent.
+        assert_eq!(context("do_shortcode('[gallery i"), None);
+        assert_eq!(context("add_shortcode('gallery', 'cb')"), None);
+        assert_eq!(context("my_add_shortcode('ga"), None);
+    }
+
+    #[test]
+    fn offers_wp_shortcodes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "add_shortcode('shop_gallery', 'shop_gallery_cb');
+",
+                "add_shortcode(\"shop_cta\", 'shop_cta_cb');
+",
+                "// add_shortcode('ghosted', 'x');
+",
+                "$s = \"add_shortcode('instr', 'y')\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // nothing.
+        let want = ["shop_cta", "shop_gallery"];
+        assert_eq!(labels("add_shortcode('"), want);
+        assert_eq!(labels("shortcode_exists('"), want);
+        assert_eq!(labels("do_shortcode('[s"), want);
+        assert!(labels("do_shortcode('[shop_gallery i").is_empty());
+        assert_eq!(
+            items(r, None, "add_shortcode('")[0].detail.as_deref(),
+            Some("shortcode")
         );
     }
 
