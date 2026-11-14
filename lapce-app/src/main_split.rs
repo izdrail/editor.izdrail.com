@@ -2411,6 +2411,43 @@ impl MainSplitData {
             .collect()
     }
 
+    /// All files with diagnostics (any severity), sorted by path. Like
+    /// [`Self::file_diagnostics_items`] without the severity filter; backs
+    /// the project diagnostics document.
+    pub fn all_diagnostics_items(&self) -> Vec<(PathBuf, Vec<EditorDiagnostic>)> {
+        let diagnostics = self.diagnostics.get_untracked();
+        diagnostics
+            .into_iter()
+            .filter_map(|(path, diagnostic)| {
+                let span = diagnostic.diagnostics_span.get_untracked();
+                let diags = if !span.is_empty() {
+                    span.iter()
+                        .map(|(iv, diag)| EditorDiagnostic {
+                            range: Some((iv.start, iv.end)),
+                            diagnostic: diag.to_owned(),
+                        })
+                        .collect::<Vec<EditorDiagnostic>>()
+                } else {
+                    diagnostic
+                        .diagnostics
+                        .get_untracked()
+                        .into_iter()
+                        .map(|d| EditorDiagnostic {
+                            range: None,
+                            diagnostic: d,
+                        })
+                        .collect()
+                };
+                if diags.is_empty() {
+                    None
+                } else {
+                    Some((path, diags))
+                }
+            })
+            .sorted_by_key(|(path, _)| path.clone())
+            .collect()
+    }
+
     pub fn get_diagnostic_data(&self, path: &Path) -> DiagnosticData {
         if let Some(d) = self.diagnostics.with_untracked(|d| d.get(path).cloned()) {
             d
@@ -3171,6 +3208,61 @@ fn next_in_file_errors_offset(
     )
 }
 
+/// Render all workspace diagnostics as a plain-text document (the
+/// read-only slice of Zed's project diagnostics multibuffer): one header
+/// per file (workspace-relative when under `root`), then one 1-based
+/// `line:col SEVERITY message` line per diagnostic, sorted by position.
+pub fn render_project_diagnostics(
+    root: Option<&Path>,
+    files: &[(PathBuf, Vec<EditorDiagnostic>)],
+) -> String {
+    let mut text = String::new();
+    let mut file_count = 0usize;
+    let mut diag_count = 0usize;
+    for (path, diagnostics) in files {
+        if diagnostics.is_empty() {
+            continue;
+        }
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        let display_path = root
+            .and_then(|root| path.strip_prefix(root).ok())
+            .unwrap_or(path.as_path());
+        text.push_str(&display_path.display().to_string());
+        text.push('\n');
+        file_count += 1;
+        let mut diags: Vec<&Diagnostic> =
+            diagnostics.iter().map(|d| &d.diagnostic).collect();
+        diags.sort_by_key(|d| (d.range.start.line, d.range.start.character));
+        for diag in diags {
+            diag_count += 1;
+            let severity = match diag.severity {
+                Some(s) if s == DiagnosticSeverity::ERROR => "ERROR",
+                Some(s) if s == DiagnosticSeverity::WARNING => "WARNING",
+                Some(s) if s == DiagnosticSeverity::INFORMATION => "INFO",
+                Some(s) if s == DiagnosticSeverity::HINT => "HINT",
+                _ => "UNKNOWN",
+            };
+            let line = diag.range.start.line + 1;
+            let col = diag.range.start.character + 1;
+            let message = diag.message.lines().next().unwrap_or("").trim();
+            text.push_str(&format!("  {line}:{col} {severity} {message}
+"));
+        }
+    }
+    if file_count == 0 {
+        return "No project diagnostics.
+".to_string();
+    }
+    text.push_str(&format!(
+        "
+{diag_count} diagnostic(s) in {file_count} file(s)
+"
+    ));
+    text
+}
+
 /// Mirror of [`next_in_file_errors_offset`]: the last error before the
 /// cursor in the active file, else the last error of the previous file with
 /// errors, wrapping to the last file. Backs Shift+F8.
@@ -3367,4 +3459,82 @@ mod tests {
         assert_eq!(diagnostic_message_at(&spans, 20), Some("mismatched types".into()));
         assert_eq!(diagnostic_message_at(&spans, 5), None);
     }
+
+    fn diag_msg_at(
+        severity: DiagnosticSeverity,
+        line: u32,
+        character: u32,
+        message: &str,
+    ) -> EditorDiagnostic {
+        EditorDiagnostic {
+            range: None,
+            diagnostic: Diagnostic {
+                range: Range::new(
+                    Position::new(line, character),
+                    Position::new(line, character + 1),
+                ),
+                severity: Some(severity),
+                message: message.to_string(),
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn render_project_diagnostics_empty() {
+        assert_eq!(
+            render_project_diagnostics(None, &[]),
+            "No project diagnostics.
+"
+        );
+        assert_eq!(
+            render_project_diagnostics(None, &[(PathBuf::from("/p/a.rs"), vec![])]),
+            "No project diagnostics.
+"
+        );
+    }
+
+    #[test]
+    fn render_project_diagnostics_groups_and_sorts() {
+        let mut files = vec![
+            (
+                PathBuf::from("/root/b.rs"),
+                vec![
+                    diag_msg_at(DiagnosticSeverity::WARNING, 9, 4, "unused var"),
+                    diag_msg_at(DiagnosticSeverity::ERROR, 2, 0, "boom"),
+                ],
+            ),
+            (
+                PathBuf::from("/root/a.rs"),
+                vec![diag_msg_at(DiagnosticSeverity::HINT, 0, 1, "tip")],
+            ),
+        ];
+        // Caller sorts files by path; the render keeps that order.
+        files.sort_by_key(|(p, _)| p.clone());
+        let text = render_project_diagnostics(Some(Path::new("/root")), &files);
+        let expected = "a.rs
+  1:2 HINT tip
+
+b.rs
+  3:1 ERROR boom
+  10:5 WARNING unused var
+
+3 diagnostic(s) in 2 file(s)
+";
+        assert_eq!(text, expected);
+    }
+
+    #[test]
+    fn render_project_diagnostics_uses_first_message_line() {
+        let files = vec![(
+            PathBuf::from("/p/a.rs"),
+            vec![diag_msg_at(DiagnosticSeverity::ERROR, 0, 0, "first
+second")],
+        )];
+        let text = render_project_diagnostics(None, &files);
+        assert!(text.contains("  1:1 ERROR first
+"));
+        assert!(!text.contains("second"));
+    }
 }
+

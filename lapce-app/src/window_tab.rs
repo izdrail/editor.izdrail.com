@@ -1686,6 +1686,9 @@ impl WindowTabData {
             PreviousError => {
                 self.main_split.previous_error();
             }
+            OpenProjectDiagnostics => {
+                self.open_project_diagnostics();
+            }
             Quit => {
                 floem::quit_app();
             }
@@ -4009,6 +4012,31 @@ impl WindowTabData {
         std::thread::spawn(move || {
             send(crate::worktree::git_blame_lines(&root, &rel_path));
         });
+    }
+
+    /// `Diagnostics: Open Project Diagnostics Document`: render every
+    /// workspace diagnostic into a read-only scratch document, grouped by
+    /// file (Zed-style project diagnostics view, read-only slice). Same
+    /// scratch-doc flow as git_blame_active_file.
+    fn open_project_diagnostics(&self) {
+        let files = self.main_split.all_diagnostics_items();
+        let root = self.workspace.path.clone();
+        let text =
+            crate::main_split::render_project_diagnostics(root.as_deref(), &files);
+        let child = self.main_split.new_file();
+        if let EditorTabChild::Editor(editor_id) = child {
+            if let Some(editor) =
+                self.main_split.editors.editor_untracked(editor_id)
+            {
+                let doc = editor.doc();
+                doc.reload(Rope::from(text), true);
+                doc.content.update(|content| {
+                    if let DocContent::Scratch { read_only, .. } = content {
+                        *read_only = true;
+                    }
+                });
+            }
+        }
     }
 
     /// `git merge --abort` off the UI thread, with toast feedback.

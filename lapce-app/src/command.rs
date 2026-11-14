@@ -798,6 +798,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "previous_error")]
     PreviousError,
 
+    #[strum(message = "Diagnostics: Open Project Diagnostics Document")]
+    #[strum(serialize = "open_project_diagnostics")]
+    OpenProjectDiagnostics,
+
     #[strum(message = "Diff Files")]
     #[strum(serialize = "diff_files")]
     DiffFiles,
