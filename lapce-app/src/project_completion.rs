@@ -188,6 +188,10 @@ pub enum Kind {
     /// variants, and of the `register_*_hook` functions - the name
     /// of a plain `function name()` the project defines (item 421).
     WpCallback,
+    /// WordPress option / transient name: the first argument of
+    /// `get_option` / `update_option` and the whole options and
+    /// transients API (item 422).
+    WpOption,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1596,6 +1600,19 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpCallback
         }
+        // WordPress options and transients (item 422): the name is
+        // the first argument of the whole options / transients API
+        // (option.php: get_option :201, update_option :665,
+        // get_transient :1170, set_transient :1235, ...).
+        "get_option" | "add_option" | "update_option" | "delete_option"
+        | "get_site_option" | "add_site_option" | "update_site_option"
+        | "delete_site_option" | "get_transient" | "set_transient"
+        | "delete_transient" | "get_site_transient"
+        | "set_site_transient" | "delete_site_transient"
+            if arg == 0 =>
+        {
+            Kind::WpOption
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2023,6 +2040,7 @@ struct Lists {
     wp_hooks: Vec<String>,
     shortcodes: Vec<String>,
     wp_callbacks: Vec<String>,
+    wp_options: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3262,6 +3280,7 @@ fn lists(root: &Path) -> Lists {
     let wp_hooks = wp_hook_names(root);
     let shortcodes = shortcode_names(root);
     let wp_callbacks = wp_callback_names(root);
+    let wp_options = wp_option_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3296,6 +3315,7 @@ fn lists(root: &Path) -> Lists {
         wp_hooks,
         shortcodes,
         wp_callbacks,
+        wp_options,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4381,6 +4401,31 @@ fn wp_callback_names(root: &Path) -> Vec<String> {
     out
 }
 
+/// WordPress option and transient names (item 422): the quoted
+/// first arguments of the options / transients API calls. Core
+/// option names are not listed - only names the project itself uses.
+fn wp_option_names(root: &Path) -> Vec<String> {
+    first_quoted_args(
+        root,
+        &[
+            "get_option(",
+            "add_option(",
+            "update_option(",
+            "delete_option(",
+            "get_site_option(",
+            "add_site_option(",
+            "update_site_option(",
+            "delete_site_option(",
+            "get_transient(",
+            "set_transient(",
+            "delete_transient(",
+            "get_site_transient(",
+            "set_site_transient(",
+            "delete_site_transient(",
+        ],
+    )
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5438,6 +5483,7 @@ pub fn items(
         Kind::WpHook => (lists.wp_hooks, "WordPress hook"),
         Kind::WpShortcode => (lists.shortcodes, "shortcode"),
         Kind::WpCallback => (lists.wp_callbacks, "callback"),
+        Kind::WpOption => (lists.wp_options, "WordPress option"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6669,6 +6715,58 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "add_action('init', '")[0].detail.as_deref(),
             Some("callback")
+        );
+    }
+
+    #[test]
+    fn detects_wp_option_context() {
+        let opt = Some(Kind::WpOption);
+        assert_eq!(context("get_option('sh"), opt);
+        assert_eq!(context("update_option('sh"), opt);
+        assert_eq!(context("set_transient('sh"), opt);
+        assert_eq!(context("get_site_option('sh"), opt);
+        assert_eq!(context("delete_site_transient(\"sh"), opt);
+        assert_eq!(context("get_option('a')"), None);
+        assert_eq!(context("my_get_option('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_options() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "add_option('shop_version', '1');
+",
+                "update_option(\"shop_license\", $k);
+",
+                "set_transient('shop_feed', $v, 300);
+",
+                "// get_option('ghosted');
+",
+                "$s = \"get_option('instr')\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` use no
+        // option.
+        let want = ["shop_feed", "shop_license", "shop_version"];
+        assert_eq!(labels("get_option('"), want);
+        assert_eq!(labels("delete_transient('"), want);
+        assert!(labels("get_option('a')").is_empty());
+        assert_eq!(
+            items(r, None, "get_option('")[0].detail.as_deref(),
+            Some("WordPress option")
         );
     }
 
