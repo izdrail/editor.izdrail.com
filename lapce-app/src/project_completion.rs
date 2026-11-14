@@ -201,6 +201,10 @@ pub enum Kind {
     /// `add_image_size` / `remove_image_size` registrations
     /// (item 424).
     WpImageSize,
+    /// WordPress post type name: `register_post_type('type', ...)`
+    /// and the name positions of `post_type_exists` /
+    /// `get_post_type_object` / `unregister_post_type` (item 425).
+    WpPostType,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1649,6 +1653,18 @@ fn call_context(line: &str) -> Option<Kind> {
             Kind::WpImageSize
         }
         "get_the_post_thumbnail" if arg == 1 => Kind::WpImageSize,
+        // WordPress post types (item 425):
+        // `register_post_type('book', ...)` registers the name first
+        // and `post_type_exists` / `get_post_type_object` /
+        // `unregister_post_type` name it first too (post.php:
+        // register_post_type :1756, post_type_exists :1964,
+        // get_post_type_object :1518, unregister_post_type :1886).
+        "register_post_type" | "unregister_post_type"
+        | "post_type_exists" | "get_post_type_object"
+            if arg == 0 =>
+        {
+            Kind::WpPostType
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2079,6 +2095,7 @@ struct Lists {
     wp_options: Vec<String>,
     wp_handles: Vec<String>,
     wp_image_sizes: Vec<String>,
+    wp_post_types: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3321,6 +3338,7 @@ fn lists(root: &Path) -> Lists {
     let wp_options = wp_option_names(root);
     let wp_handles = wp_handle_names(root);
     let wp_image_sizes = wp_image_size_names(root);
+    let wp_post_types = wp_post_type_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3358,6 +3376,7 @@ fn lists(root: &Path) -> Lists {
         wp_options,
         wp_handles,
         wp_image_sizes,
+        wp_post_types,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4499,6 +4518,17 @@ fn wp_image_size_names(root: &Path) -> Vec<String> {
     first_quoted_args(root, &["add_image_size(", "remove_image_size("])
 }
 
+/// WordPress post type names (item 425): the quoted first arguments
+/// of `register_post_type` / `unregister_post_type` calls. Core
+/// types (post, page, attachment, ...) are not listed - only types
+/// the project itself registers.
+fn wp_post_type_names(root: &Path) -> Vec<String> {
+    first_quoted_args(
+        root,
+        &["register_post_type(", "unregister_post_type("],
+    )
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5559,6 +5589,7 @@ pub fn items(
         Kind::WpOption => (lists.wp_options, "WordPress option"),
         Kind::WpHandle => (lists.wp_handles, "script/style handle"),
         Kind::WpImageSize => (lists.wp_image_sizes, "image size"),
+        Kind::WpPostType => (lists.wp_post_types, "post type"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6944,6 +6975,55 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "the_post_thumbnail('")[0].detail.as_deref(),
             Some("image size")
+        );
+    }
+
+    #[test]
+    fn detects_wp_post_type_context() {
+        let pt = Some(Kind::WpPostType);
+        assert_eq!(context("register_post_type('sh"), pt);
+        assert_eq!(context("post_type_exists('sh"), pt);
+        assert_eq!(context("get_post_type_object('sh"), pt);
+        assert_eq!(context("unregister_post_type(\"sh"), pt);
+        assert_eq!(context("register_post_type('a')"), None);
+        assert_eq!(context("my_register_post_type('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_post_types() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "register_post_type('shop_product', []);
+",
+                "register_post_type(\"shop_order\", []);
+",
+                "// register_post_type('ghosted', []);
+",
+                "$s = \"register_post_type('instr', [])\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // nothing.
+        let want = ["shop_order", "shop_product"];
+        assert_eq!(labels("post_type_exists('"), want);
+        assert_eq!(labels("register_post_type('"), want);
+        assert!(labels("register_post_type('a')").is_empty());
+        assert_eq!(
+            items(r, None, "post_type_exists('")[0].detail.as_deref(),
+            Some("post type")
         );
     }
 
