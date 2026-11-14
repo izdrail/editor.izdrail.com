@@ -210,6 +210,9 @@ pub enum Kind {
     /// / `unregister_taxonomy` / `register_taxonomy_for_object_type`
     /// (item 426).
     WpTaxonomy,
+    /// WordPress user role name: `add_role('role', ...)` and the
+    /// name positions of `remove_role` / `get_role` (item 428).
+    WpRole,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1701,6 +1704,15 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpTaxonomy
         }
+        // WordPress user roles (item 428): `add_role('manager',
+        // ...)` registers the name first and `remove_role` /
+        // `get_role` name it first too (capabilities.php:
+        // add_role :170, remove_role :211, get_role :234).
+        "add_role" | "remove_role" | "get_role"
+            if arg == 0 =>
+        {
+            Kind::WpRole
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2133,6 +2145,7 @@ struct Lists {
     wp_image_sizes: Vec<String>,
     wp_post_types: Vec<String>,
     wp_taxonomies: Vec<String>,
+    wp_roles: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3377,6 +3390,7 @@ fn lists(root: &Path) -> Lists {
     let wp_image_sizes = wp_image_size_names(root);
     let wp_post_types = wp_post_type_names(root);
     let wp_taxonomies = wp_taxonomy_names(root);
+    let wp_roles = wp_role_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3416,6 +3430,7 @@ fn lists(root: &Path) -> Lists {
         wp_image_sizes,
         wp_post_types,
         wp_taxonomies,
+        wp_roles,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4579,6 +4594,13 @@ fn wp_taxonomy_names(root: &Path) -> Vec<String> {
     )
 }
 
+/// WordPress user role names (item 428): the quoted first arguments
+/// of `add_role` / `remove_role` calls. Core roles (administrator,
+/// editor, ...) are not listed - only roles the project itself adds.
+fn wp_role_names(root: &Path) -> Vec<String> {
+    first_quoted_args(root, &["add_role(", "remove_role("])
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5641,6 +5663,7 @@ pub fn items(
         Kind::WpImageSize => (lists.wp_image_sizes, "image size"),
         Kind::WpPostType => (lists.wp_post_types, "post type"),
         Kind::WpTaxonomy => (lists.wp_taxonomies, "taxonomy"),
+        Kind::WpRole => (lists.wp_roles, "role"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7171,6 +7194,54 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(labels("wp_next_scheduled('"), want);
         assert_eq!(labels("wp_schedule_single_event($t, '"), want);
         assert_eq!(labels("wp_schedule_event($t, 'daily', '"), want);
+    }
+
+    #[test]
+    fn detects_wp_role_context() {
+        let rl = Some(Kind::WpRole);
+        assert_eq!(context("add_role('sh"), rl);
+        assert_eq!(context("remove_role('sh"), rl);
+        assert_eq!(context("get_role(\"sh"), rl);
+        assert_eq!(context("add_role('a')"), None);
+        assert_eq!(context("my_add_role('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_roles() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "add_role('shop_manager', 'Shop Manager', []);
+",
+                "add_role(\"shop_clerk\", 'Shop Clerk', []);
+",
+                "// add_role('ghosted', 'x', []);
+",
+                "$s = \"add_role('instr', 'x', [])\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` add no
+        // role.
+        let want = ["shop_clerk", "shop_manager"];
+        assert_eq!(labels("get_role('"), want);
+        assert_eq!(labels("add_role('"), want);
+        assert!(labels("add_role('a')").is_empty());
+        assert_eq!(
+            items(r, None, "get_role('")[0].detail.as_deref(),
+            Some("role")
+        );
     }
 
     #[test]
