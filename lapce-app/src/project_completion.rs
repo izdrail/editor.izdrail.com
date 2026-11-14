@@ -183,6 +183,11 @@ pub enum Kind {
     /// tag positions of `remove_shortcode` / `shortcode_exists` /
     /// `has_shortcode` / `do_shortcode('[tag ...]')` (item 420).
     WpShortcode,
+    /// WordPress callback: the second argument of `add_action` /
+    /// `add_filter` / `add_shortcode` and the remove_ / has_
+    /// variants, and of the `register_*_hook` functions - the name
+    /// of a plain `function name()` the project defines (item 421).
+    WpCallback,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1577,6 +1582,20 @@ fn call_context(line: &str) -> Option<Kind> {
         "do_shortcode" if arg == 0 && do_shortcode_tag_position(line) => {
             Kind::WpShortcode
         }
+        // WordPress callbacks (item 421): the second argument of
+        // the registration functions names the callback -
+        // `add_action('init', 'cb')`, `add_shortcode('tag', 'cb')`,
+        // `register_activation_hook(__FILE__, 'cb')` (plugin-api.php:
+        // add_action :442 / add_filter :183; general-template.php /
+        // plugin.php: register_activation_hook :861, ...).
+        "add_action" | "add_filter" | "remove_action" | "remove_filter"
+        | "has_action" | "has_filter" | "add_shortcode"
+        | "register_activation_hook" | "register_deactivation_hook"
+        | "register_uninstall_hook"
+            if arg == 1 =>
+        {
+            Kind::WpCallback
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2003,6 +2022,7 @@ struct Lists {
     route_params: Vec<(String, Vec<String>)>,
     wp_hooks: Vec<String>,
     shortcodes: Vec<String>,
+    wp_callbacks: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3241,6 +3261,7 @@ fn lists(root: &Path) -> Lists {
     let route_params = route_params(root);
     let wp_hooks = wp_hook_names(root);
     let shortcodes = shortcode_names(root);
+    let wp_callbacks = wp_callback_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3274,6 +3295,7 @@ fn lists(root: &Path) -> Lists {
         route_params,
         wp_hooks,
         shortcodes,
+        wp_callbacks,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4165,12 +4187,11 @@ fn cache_keys(root: &Path) -> Vec<String> {
     out
 }
 
-/// Shared first-quoted-argument harvest for the WordPress call
-/// scanners (item 419 hooks, item 420 shortcodes): the quoted first
-/// arguments of `calls` across the project's .php files (skipping
-/// .git, node_modules and vendor; at most 500 files, 1 MB each).
-/// Textual scan; nothing is executed.
-fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
+/// Project `.php` files under `root` for the textual harvesters:
+/// skips `.git`, `node_modules` and `vendor` and symlinks, at most
+/// 4 directory levels and 500 files (the item 419 walk, shared with
+/// the item 421 callback harvest).
+fn project_php_files(root: &Path) -> Vec<PathBuf> {
     fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         if depth > 4 || out.len() >= 500 {
             return;
@@ -4200,6 +4221,16 @@ fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
     }
     let mut files = Vec::new();
     walk(root, 0, &mut files);
+    files
+}
+
+/// Shared first-quoted-argument harvest for the WordPress call
+/// scanners (item 419 hooks, item 420 shortcodes): the quoted first
+/// arguments of `calls` across the project's .php files (skipping
+/// .git, node_modules and vendor; at most 500 files, 1 MB each).
+/// Textual scan; nothing is executed.
+fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
+    let files = project_php_files(root);
     let mut out: Vec<String> = Vec::new();
     'files: for f in files {
         let Ok(meta) = std::fs::metadata(&f) else { continue };
@@ -4301,6 +4332,53 @@ fn do_shortcode_tag_position(line: &str) -> bool {
         && rest
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+}
+
+/// WordPress callback names (item 421): the plain `function name()`
+/// declarations across the project's .php files - what the string
+/// callbacks in `add_action('init', 'name')`, `add_shortcode` and
+/// the register_*_hook functions resolve to. Class methods
+/// (`public function ...`), anonymous closures, commented-out code
+/// and text inside strings are not collected.
+fn wp_callback_names(root: &Path) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in project_php_files(root) {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, _) = mask_comments(&text);
+        for line in masked.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("function ")
+            else {
+                continue;
+            };
+            let rest = rest.strip_prefix('&').unwrap_or(rest);
+            let name_len = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            let name = &rest[..name_len];
+            if name.is_empty() {
+                // Anonymous closure.
+                continue;
+            }
+            if !rest[name_len..].trim_start().starts_with('(') {
+                continue;
+            }
+            out.push(name.to_string());
+            if out.len() >= MAX_NAMES {
+                break 'files;
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Session keys (item 414): the names written by
@@ -5359,6 +5437,7 @@ pub fn items(
         Kind::SessionKey => (lists.session_keys, "session key"),
         Kind::WpHook => (lists.wp_hooks, "WordPress hook"),
         Kind::WpShortcode => (lists.shortcodes, "shortcode"),
+        Kind::WpCallback => (lists.wp_callbacks, "callback"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6519,6 +6598,77 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(
             items(r, None, "add_shortcode('")[0].detail.as_deref(),
             Some("shortcode")
+        );
+    }
+
+    #[test]
+    fn detects_wp_callback_context() {
+        let cb = Some(Kind::WpCallback);
+        assert_eq!(context("add_action('init', 'sh"), cb);
+        assert_eq!(context("add_filter(\"the_content\", \"sh"), cb);
+        assert_eq!(context("add_shortcode('tag', 'sh"), cb);
+        assert_eq!(context("remove_action('init', 'sh"), cb);
+        assert_eq!(context("has_filter('x', 'sh"), cb);
+        assert_eq!(context("register_activation_hook(__FILE__, 'sh"), cb);
+        // The first argument is a hook or tag, not a callback.
+        assert_eq!(context("add_action('in"), Some(Kind::WpHook));
+        assert_eq!(context("add_shortcode('sh"), Some(Kind::WpShortcode));
+        // Past the callback, closed strings and lookalikes stay silent.
+        assert_eq!(context("add_action('a', 'b')"), None);
+        assert_eq!(context("my_add_action('a', 'sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_callbacks() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/callbacks.php",
+            concat!(
+                "<?php
+",
+                "function shop_boot() {
+",
+                "}
+",
+                "function &shop_ref_cb() {
+",
+                "}
+",
+                "class Shop_Admin {
+",
+                "    public function render_page() {
+",
+                "    }
+",
+                "}
+",
+                "add_action('init', function () {
+",
+                "});
+",
+                "// function ghosted() {
+",
+                "$s = \"function instr() {\";
+",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // Methods, anonymous closures, commented-out and in-string
+        // "declarations" are not string callbacks.
+        let want = ["shop_boot", "shop_ref_cb"];
+        assert_eq!(labels("add_action('init', '"), want);
+        assert_eq!(labels("add_shortcode('tag', '"), want);
+        assert!(labels("add_action('a', 'b')").is_empty());
+        assert_eq!(
+            items(r, None, "add_action('init', '")[0].detail.as_deref(),
+            Some("callback")
         );
     }
 
