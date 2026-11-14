@@ -174,6 +174,11 @@ pub enum Kind {
     /// `->load('...')` / `->withCount('...')` and friends on a line
     /// that names the model class earlier with `Class::` (item 418).
     EloquentRelation,
+    /// WordPress hook: the first argument of `add_action('...')` /
+    /// `add_filter(...)` / `do_action(...)` / `apply_filters(...)`
+    /// and the _ref_array / remove_ / has_ / doing_ / did_ /
+    /// current_ variants (item 419).
+    WpHook,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1539,6 +1544,20 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::View
         }
+        // WordPress hooks (item 419): the registration and firing
+        // functions take the hook name first - `add_action('init',
+        // ...)`, `do_action('init', ...)` and the _ref_array /
+        // remove_ / has_ / doing_ / did_ / current_ variants
+        // (plugin-api.php: add_action :442, do_action :471, ...).
+        "add_action" | "add_filter" | "remove_action" | "remove_filter"
+        | "has_action" | "has_filter" | "do_action" | "apply_filters"
+        | "do_action_ref_array" | "apply_filters_ref_array"
+        | "doing_action" | "doing_filter" | "did_action" | "did_filter"
+        | "current_action" | "current_filter"
+            if arg == 0 =>
+        {
+            Kind::WpHook
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -1963,6 +1982,7 @@ struct Lists {
     cache_keys: Vec<String>,
     broadcast_channels: Vec<String>,
     route_params: Vec<(String, Vec<String>)>,
+    wp_hooks: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3199,6 +3219,7 @@ fn lists(root: &Path) -> Lists {
     let cache_keys = cache_keys(root);
     let broadcast_channels = broadcast_channels(root);
     let route_params = route_params(root);
+    let wp_hooks = wp_hook_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3230,6 +3251,7 @@ fn lists(root: &Path) -> Lists {
         cache_keys,
         broadcast_channels,
         route_params,
+        wp_hooks,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4118,6 +4140,114 @@ fn cache_keys(root: &Path) -> Vec<String> {
     out.sort();
     out.dedup();
     out.truncate(MAX_NAMES);
+    out
+}
+
+/// WordPress hook names (item 419): the quoted first arguments of
+/// `add_action` / `add_filter` / `do_action` / `apply_filters` (and
+/// the _ref_array / remove_ variants) across the project's .php
+/// files, skipping .git / node_modules / vendor. Textual scan;
+/// nothing is executed. Core hooks are not listed - only the names
+/// the project itself registers or fires.
+fn wp_hook_names(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        if depth > 4 || out.len() >= 500 {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(Result::ok) {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let p = e.path();
+            if ft.is_dir() {
+                let name = e.file_name();
+                if name == ".git" || name == "node_modules" || name == "vendor" {
+                    continue;
+                }
+                walk(&p, depth + 1, out);
+            } else if ft.is_file()
+                && p.extension().is_some_and(|x| x == "php")
+            {
+                out.push(p);
+            }
+            if out.len() >= 500 {
+                return;
+            }
+        }
+    }
+    const CALLS: &[&str] = &[
+        "add_action(",
+        "add_filter(",
+        "remove_action(",
+        "remove_filter(",
+        "do_action(",
+        "apply_filters(",
+        "do_action_ref_array(",
+        "apply_filters_ref_array(",
+    ];
+    let mut files = Vec::new();
+    walk(root, 0, &mut files);
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        for marker in CALLS {
+            for (i, _) in masked.match_indices(marker) {
+                // Word boundary: `my_add_action(` is not a hook call.
+                if i > 0
+                    && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')
+                {
+                    continue;
+                }
+                if in_string(i) {
+                    continue;
+                }
+                let mut j = i + marker.len();
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if b.get(j) != Some(&b'\'') && b.get(j) != Some(&b'"') {
+                    continue;
+                }
+                let Ok(si) = strings.binary_search_by_key(&j, |s| s.0)
+                else {
+                    continue;
+                };
+                let (start, end) = strings[si];
+                let name = &text[start + 1..end];
+                if !name.is_empty()
+                    && name.len() <= 100
+                    && name.chars().all(|c| {
+                        c.is_ascii_alphanumeric()
+                            || matches!(c, '_' | '-' | '.' | '$' | ':')
+                    })
+                    && !out.iter().any(|n: &String| n == name)
+                {
+                    out.push(name.to_string());
+                    if out.len() >= MAX_NAMES {
+                        break 'files;
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
     out
 }
 
@@ -5175,6 +5305,7 @@ pub fn items(
             (lists.artisan_commands, "artisan command")
         }
         Kind::SessionKey => (lists.session_keys, "session key"),
+        Kind::WpHook => (lists.wp_hooks, "WordPress hook"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -6204,6 +6335,83 @@ class Comment extends Model {
         assert_eq!(
             items(r, None, "session('")[0].detail.as_deref(),
             Some("session key")
+        );
+    }
+
+    #[test]
+    fn detects_wp_hook_context() {
+        let cs = Some(Kind::WpHook);
+        assert_eq!(context("add_action('in"), cs);
+        assert_eq!(context("add_filter('the_"), cs);
+        assert_eq!(context("do_action('wo"), cs);
+        assert_eq!(context("apply_filters('ex"), cs);
+        assert_eq!(context("do_action_ref_array('wo"), cs);
+        assert_eq!(context("remove_action('in"), cs);
+        assert_eq!(context("has_filter('th"), cs);
+        assert_eq!(context("did_action('in"), cs);
+        assert_eq!(context("current_filter('"), cs);
+        // Closed strings and non-hook lookalikes stay silent.
+        assert_eq!(context("add_action('init', 'cb')"), None);
+        assert_eq!(context("my_add_action('in"), None);
+        assert_eq!(context("do_action(), 10, 2, 'in"), None);
+    }
+
+    #[test]
+    fn offers_wp_hooks() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php
+",
+                "add_action('init', 'shop_boot');
+",
+                "add_filter(\"the_content\", 'shop_render');
+",
+                "do_action('shop_loaded');
+",
+                "apply_filters_ref_array('shop_parts', $a);
+",
+                "remove_action('wp_head', 'old_cb');
+",
+                "my_add_action('not_a_hook', 'y');
+",
+                "// add_action('commented', 'x');
+",
+            ),
+        );
+        put(
+            r,
+            "wp-content/themes/shop/functions.php",
+            "<?php
+add_action('widgets_init', 'shop_widgets');
+",
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `commented` and the `my_add_action` lookalike
+        // register nothing.
+        let want = [
+            "init",
+            "shop_loaded",
+            "shop_parts",
+            "the_content",
+            "widgets_init",
+            "wp_head",
+        ];
+        assert_eq!(labels("add_action('"), want);
+        assert_eq!(labels("do_action('"), want);
+        assert_eq!(labels("add_filter('"), want);
+        assert!(labels("not_a_hook('").is_empty());
+        assert_eq!(
+            items(r, None, "add_action('")[0].detail.as_deref(),
+            Some("WordPress hook")
         );
     }
 
