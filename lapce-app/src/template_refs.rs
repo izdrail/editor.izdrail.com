@@ -40,7 +40,19 @@ fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
         if bytes[i] == b'\'' || bytes[i] == b'"' {
             let q = bytes[i];
             let start = i + 1;
-            let end = start + line[start..].find(q as char)?;
+            let mut end = start;
+            while end < bytes.len() {
+                if bytes[end] == b'\\' {
+                    end = (end + 2).min(bytes.len());
+                } else if bytes[end] == q {
+                    break;
+                } else {
+                    end += 1;
+                }
+            }
+            if end == bytes.len() {
+                return None;
+            }
             if col + 1 >= start && col <= end {
                 return Some((&line[start..end], &line[..i]));
             }
@@ -408,6 +420,31 @@ mod tests {
         assert_eq!(resolve(r, &f, l, at(l, "missing")), None);
         let l = "$x = route('users.index');";
         assert_eq!(resolve(r, &ctl, l, at(l, "users")), None);
+    }
+
+    #[test]
+    fn quote_scanning_handles_escaped_backslashes_and_unfinished_strings() {
+        let line = r"Route::view('/x\\', 'welcome');";
+        assert_eq!(string_at(line, at(line, "welcome")).unwrap().0, "welcome");
+        let line = r"view('unfinished\'";
+        assert!(string_at(line, line.len()).is_none());
+        let line = r"view('not\'a-template')";
+        assert_eq!(string_at(line, at(line, "template")).unwrap().0, r"not\'a-template");
+    }
+
+    #[test]
+    fn escaped_quotes_in_preceding_arguments_do_not_hide_template() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let target = touch(r, "resources/views/welcome.blade.php");
+        let f = Path::new("routes/web.php");
+        for line in [
+            r"Route::view('/it\'s', 'welcome');",
+            r#"Route::view("/say\"hello", "welcome");"#,
+            r"@includeWhen($name === 'it\'s', 'welcome')",
+        ] {
+            assert_eq!(resolve(r, f, line, at(line, "welcome")), Some(target.clone()), "{line}");
+        }
     }
 
     #[test]
