@@ -50,12 +50,13 @@ trial of that plumbing against the rank-12 gates and the gaps it exposed.
   requests when the hover belongs to that editor.
 - Tests cover id supersession, invalidation, and the current/stale decision.
 
-## Remaining gap
+## Server version reporting (closed in item 450)
 
-- Server version reporting: the registry pins and verifies the phar version
-  and a test probes `phpactor --version`, but the running server's version is
-  not surfaced in the UI (no "php: phpactor 2026.10.07.0" anywhere). Worth a
-  small follow-up if rank 12 graduates from trial.
+- The initialize response's `serverInfo` is now kept on the proxy client and
+  reported in a "php: phpactor 2026.10.07.0 ready" toast when the server
+  starts, completing the Preparing/ready/error lifecycle. Servers without
+  `serverInfo` fall back to the registry id (`ready_message` in
+  `lapce-proxy/src/lsp.rs`, covered by tests).
 
 ## Gate checklist (rank 12)
 
@@ -64,8 +65,9 @@ trial of that plumbing against the rank-12 gates and the gaps it exposed.
   experience.
 - Opt-in processes: yes - the server only starts for workspaces that opt in;
   the phar download is on demand, pinned, and checksum-verified.
-- Source/version reporting: partial - download provenance is pinned and
-  logged; running-version surfacing in the UI is the remaining gap above.
+- Source/version reporting: yes - download provenance is pinned and
+  logged, and the running server's name/version is reported on start
+  (item 450).
 - Stable lexical fallback while semantic results arrive: yes - highlighting
   is immediate and independent of server readiness.
 - Stale-result rejection: diagnostics already rejected stale versions

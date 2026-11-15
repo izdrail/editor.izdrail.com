@@ -72,6 +72,9 @@ pub struct Client {
     pending: Arc<Mutex<Pending>>,
     next: AtomicU64,
     pub capabilities: Value,
+    /// The `serverInfo` object from the initialize response, kept so the UI
+    /// can report which server name/version is actually running.
+    pub server_info: Value,
     documents: Mutex<HashMap<PathBuf, String>>,
 }
 impl Client {
@@ -218,6 +221,7 @@ impl Client {
             pending,
             next: AtomicU64::new(1),
             capabilities: Value::Null,
+            server_info: Value::Null,
             documents: Mutex::new(HashMap::new()),
         };
         let root_uri = root.and_then(|path| Url::from_directory_path(path).ok());
@@ -233,6 +237,7 @@ impl Client {
             "workspaceFolders": root_uri.as_ref().map(|uri| vec![json!({"uri":uri,"name":root.unwrap().file_name().unwrap_or_default().to_string_lossy()})])
         })).map_err(|e| anyhow::anyhow!(e.message))?;
         client.capabilities = result["capabilities"].clone();
+        client.server_info = result["serverInfo"].clone();
         ensure!(
             client
                 .capabilities
@@ -612,6 +617,20 @@ impl Manager {
                                 return Err(error);
                             }
                         };
+                        {
+                            let info = &client.server_info;
+                            core.notification(CoreNotification::ShowMessage {
+                                title: "Language server".into(),
+                                message: lsp_types::ShowMessageParams {
+                                    typ: lsp_types::MessageType::INFO,
+                                    message: ready_message(
+                                        &name,
+                                        info.get("name").and_then(Value::as_str),
+                                        info.get("version").and_then(Value::as_str),
+                                    ),
+                                },
+                            });
+                        }
                         // Reopen all retained documents after a server restart.
                         for open in documents.values().filter(|open| {
                             server
@@ -657,6 +676,23 @@ impl Manager {
     }
 }
 
+/// User-facing one-liner reporting which language-server name and version
+/// actually started (rank-12 source/version reporting). Falls back to the
+/// registry id when the server does not send `serverInfo`.
+pub fn ready_message(
+    server_id: &str,
+    name: Option<&str>,
+    version: Option<&str>,
+) -> String {
+    match (name, version) {
+        (Some(name), Some(version)) => {
+            format!("{server_id}: {name} {version} ready")
+        }
+        (Some(name), None) => format!("{server_id}: {name} ready"),
+        _ => format!("{server_id} language server ready"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,6 +727,23 @@ mod tests {
             }
         );
     }
+    #[test]
+    fn ready_message_reports_server_version() {
+        assert_eq!(
+            ready_message("php", Some("phpactor"), Some("2026.10.07.0")),
+            "php: phpactor 2026.10.07.0 ready"
+        );
+        assert_eq!(
+            ready_message("php", Some("phpactor"), None),
+            "php: phpactor ready"
+        );
+        assert_eq!(
+            ready_message("php", None, Some("1.0")),
+            "php language server ready"
+        );
+        assert_eq!(ready_message("php", None, None), "php language server ready");
+    }
+
     #[test]
     fn registry_serializes_and_selects_language_without_wasm() {
         let registry = registry::Registry::default();
