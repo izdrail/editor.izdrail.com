@@ -252,6 +252,12 @@ pub enum Kind {
     /// registered with `register_block_type('shop/card')` (item
     /// 437).
     WpBlockType,
+    /// WordPress REST namespace (`shop/v1`): the first argument of
+    /// `register_rest_route` (item 438).
+    WpRestNamespace,
+    /// WordPress REST route path (`/products`): the second argument
+    /// of `register_rest_route` (item 438).
+    WpRestRoute,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1848,6 +1854,11 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpBlockType
         }
+        // WordPress REST routes (item 438): the namespace comes
+        // first and the route path second (rest-api.php:
+        // register_rest_route :40).
+        "register_rest_route" if arg == 0 => Kind::WpRestNamespace,
+        "register_rest_route" if arg == 1 => Kind::WpRestRoute,
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2290,6 +2301,8 @@ struct Lists {
     wp_nav_menu_locations: Vec<String>,
     wp_cron_schedules: Vec<String>,
     wp_block_types: Vec<String>,
+    wp_rest_namespaces: Vec<String>,
+    wp_rest_routes: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3544,6 +3557,8 @@ fn lists(root: &Path) -> Lists {
     let wp_nav_menu_locations = wp_nav_menu_location_names(root);
     let wp_cron_schedules = wp_cron_schedule_names(root);
     let wp_block_types = wp_block_type_names(root);
+    let wp_rest_namespaces = wp_rest_namespace_names(root);
+    let wp_rest_routes = wp_rest_route_paths(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3593,6 +3608,8 @@ fn lists(root: &Path) -> Lists {
         wp_nav_menu_locations,
         wp_cron_schedules,
         wp_block_types,
+        wp_rest_namespaces,
+        wp_rest_routes,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -5214,6 +5231,22 @@ fn wp_block_type_names(root: &Path) -> Vec<String> {
     )
 }
 
+/// WordPress REST namespaces (item 438): the quoted first arguments
+/// of `register_rest_route` calls. Core namespaces (`wp/v2`, ...)
+/// are not listed - only namespaces the project itself registers
+/// under.
+fn wp_rest_namespace_names(root: &Path) -> Vec<String> {
+    quoted_arg_names(root, &["register_rest_route("], 0)
+}
+
+/// WordPress REST route paths (item 438): the quoted second
+/// arguments of `register_rest_route` calls. Routes with regex
+/// capture groups fail the name charset and are not listed - only
+/// plain literal paths complete.
+fn wp_rest_route_paths(root: &Path) -> Vec<String> {
+    quoted_arg_names(root, &["register_rest_route("], 1)
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -6296,6 +6329,10 @@ pub fn items(
             (lists.wp_cron_schedules, "cron recurrence")
         }
         Kind::WpBlockType => (lists.wp_block_types, "block type"),
+        Kind::WpRestNamespace => {
+            (lists.wp_rest_namespaces, "REST namespace")
+        }
+        Kind::WpRestRoute => (lists.wp_rest_routes, "REST route"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -8305,6 +8342,56 @@ add_action('widgets_init', 'shop_widgets');
                 .as_deref(),
             Some("block type")
         );
+    }
+
+    #[test]
+    fn detects_wp_rest_route_context() {
+        let ns = Some(Kind::WpRestNamespace);
+        let rt = Some(Kind::WpRestRoute);
+        assert_eq!(context("register_rest_route('sh"), ns);
+        assert_eq!(context("register_rest_route('shop/v1', '/p"), rt);
+        assert_eq!(context("register_rest_route('a')"), None);
+        assert_eq!(context("my_register_rest_route('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_rest_namespaces_and_routes() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/rest.php",
+            concat!(
+                "<?php\n",
+                "register_rest_route('shop/v1', '/products', $args);\n",
+                "register_rest_route(\"shop/v2\", \"/orders\", $args);\n",
+                "register_rest_route('shop/v1', '/orders/(?P<id>\\d+)', $args);\n",
+                "// register_rest_route('ghost/v1', '/ghosted', $args);\n",
+                "$s = \"register_rest_route('instr/v1', '/instr', $args)\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghost/v1` and the in-string `instr/v1`
+        // register nothing; the regex route fails the name charset
+        // and completes nothing, but its namespace still counts.
+        assert_eq!(
+            labels("register_rest_route('"),
+            ["shop/v1", "shop/v2"]
+        );
+        assert_eq!(
+            labels("register_rest_route('shop/v1', '"),
+            ["/orders", "/products"]
+        );
+        assert!(labels("register_rest_route('a')").is_empty());
+        let it = items(r, None, "register_rest_route('");
+        assert_eq!(it[0].detail.as_deref(), Some("REST namespace"));
+        let it = items(r, None, "register_rest_route('shop/v1', '");
+        assert_eq!(it[0].detail.as_deref(), Some("REST route"));
     }
 
     #[test]
