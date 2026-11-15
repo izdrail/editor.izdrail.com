@@ -172,6 +172,25 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Keep only forward method bodies, preserving line/byte positions. Older
+/// migration snippets without methods retain their top-level behavior.
+fn forward_source(text: &str) -> Option<String> {
+    let methods = lapce_index::symbols::php_method_bodies(text).ok()?;
+    if methods.is_empty() {
+        return Some(text.to_owned());
+    }
+    let mut source = text.as_bytes().to_vec();
+    for byte in &mut source {
+        if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
+    }
+    for (name, range) in methods {
+        if name.eq_ignore_ascii_case("up") {
+            source[range.clone()].copy_from_slice(&text.as_bytes()[range]);
+        }
+    }
+    String::from_utf8(source).ok()
+}
+
 /// Rebuild the column list for `table` from migrations, oldest first.
 /// Returns `(columns, create-file, dropped-by)` when any migration touches it.
 fn columns_for(root: &Path, table: &str) -> Option<(Vec<(String, String)>, PathBuf, Option<PathBuf>)> {
@@ -189,6 +208,7 @@ fn columns_for(root: &Path, table: &str) -> Option<(Vec<(String, String)>, PathB
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        let Some(text) = forward_source(&text) else { continue };
         let lines: Vec<&str> = text.lines().collect();
         for (i, l) in lines.iter().enumerate() {
             for verb in ["create", "table"] {
@@ -316,6 +336,67 @@ mod tests {
             assert_eq!(table_at(line, col), Some("users".into()), "{line}");
             assert_eq!(table_at(line, col + 2), Some("users".into()), "{line}");
         }
+    }
+
+    #[test]
+    fn incomplete_migrations_do_not_fall_back_to_rollback_text() {
+        assert!(forward_source("<?php return new class { public function down() { Schema::drop('users');").is_none());
+    }
+
+    #[test]
+    fn forward_source_uses_syntax_not_fake_method_text() {
+        let source = r#"<?php
+return new class {
+    public function down(): void { Schema::drop('users'); }
+    public function up(): void {
+        $note = 'function down() { }';
+        // function down() { }
+        Schema::drop('old_users');
+    }
+};"#;
+        let result = forward_source(source).unwrap();
+        assert_eq!(result.len(), source.len());
+        assert!(!result.contains("Schema::drop('users')"));
+        assert!(result.contains("Schema::drop('old_users')"));
+        assert_eq!(result.lines().count(), source.lines().count());
+    }
+
+    #[test]
+    fn rollback_methods_do_not_drop_or_revert_forward_schema() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        put(root, "database/migrations/2026_01_01_create_users.php", r#"<?php
+return new class extends Migration {
+    public function up(): void {
+        Schema::create('users', function ($table) {
+            $table->id();
+            $table->string('email');
+        });
+    }
+    public function down(): void {
+        Schema::dropIfExists('users');
+    }
+};
+"#);
+        put(root, "database/migrations/2026_01_02_add_bio.php", r#"<?php
+return new class extends Migration {
+    public function down(): void {
+        Schema::table('users', function ($table) {
+            $table->dropColumn('bio');
+        });
+    }
+    public function up(): void {
+        Schema::table('users', function ($table) {
+            $table->text('bio');
+        });
+    }
+};
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(root), line, at(line, "users")).unwrap();
+        assert!(!md.contains("table dropped"), "{md}");
+        assert!(md.contains("`email` string"), "{md}");
+        assert!(md.contains("`bio` text"), "{md}");
     }
 
     #[test]

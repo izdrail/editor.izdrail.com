@@ -41,6 +41,10 @@ pub fn typescript_definitions(path: &str, source: &str, tsx: bool) -> Result<Vec
 
 /// PHP and mixed PHP/HTML declarations. Blade directives are not PHP syntax.
 pub fn php_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry>> {
+    extract_definitions(path, source, "php", php_language())
+}
+
+fn php_language() -> tree_sitter::Language {
     // SAFETY: pinned generated static PHP grammar is non-null ABI 14,
     // accepted by the single workspace runtime (13..=14).
     let language = unsafe {
@@ -48,7 +52,41 @@ pub fn php_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry>> {
         assert!(!pointer.is_null(), "PHP grammar returned null");
         tree_sitter::Language::from_raw(pointer.cast())
     };
-    extract_definitions(path, source, "php", language)
+    language
+}
+
+/// Named PHP method bodies, using syntax nodes rather than matching braces
+/// in strings, comments or nested closures. Ranges include the body braces.
+pub fn php_method_bodies(source: &str) -> Result<Vec<(String, std::ops::Range<usize>)>> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&php_language())
+        .map_err(|err| IndexError::SymbolParse(err.to_string()))?;
+    let tree = parser.parse(source, None)
+        .ok_or_else(|| IndexError::SymbolParse("Method parse returned no tree".into()))?;
+    if tree.root_node().has_error() {
+        return Err(IndexError::SymbolParse("Incomplete migration syntax".into()));
+    }
+    let mut cursor = tree.walk();
+    let mut bodies = Vec::new();
+    loop {
+        let node = cursor.node();
+        if node.kind() == "method_declaration" {
+            if let (Some(name), Some(body)) =
+                (node.child_by_field_name("name"), node.child_by_field_name("body"))
+            {
+                if !body.has_error() && !body.is_missing() {
+                    if let Ok(name) = name.utf8_text(source.as_bytes()) {
+                        bodies.push((name.to_owned(), body.byte_range()));
+                    }
+                }
+            }
+        }
+        if cursor.goto_first_child() { continue; }
+        loop {
+            if cursor.goto_next_sibling() { break; }
+            if !cursor.goto_parent() { return Ok(bodies); }
+        }
+    }
 }
 
 fn extract_definitions(path: &str, source: &str, language_id: &str, language: tree_sitter::Language) -> Result<Vec<IndexEntry>> {
