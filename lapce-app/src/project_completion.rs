@@ -243,6 +243,11 @@ pub enum Kind {
     /// `register_nav_menu('primary', ...)` and checked with
     /// `has_nav_menu('primary')` (item 435).
     WpNavMenuLocation,
+    /// WordPress cron recurrence name: the recurrence argument of
+    /// `wp_schedule_event($time, 'hourly', $hook)` /
+    /// `wp_reschedule_event(...)` (item 436). Item 427 owns the
+    /// hook position.
+    WpCronSchedule,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1820,6 +1825,15 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpNavMenuLocation
         }
+        // WordPress cron recurrences (item 436): the recurrence
+        // name is the second argument (cron.php:
+        // wp_schedule_event :40, wp_reschedule_event :437). The
+        // hook position belongs to item 427.
+        "wp_schedule_event" | "wp_reschedule_event"
+            if arg == 1 =>
+        {
+            Kind::WpCronSchedule
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2260,6 +2274,7 @@ struct Lists {
     wp_template_parts: Vec<String>,
     wp_sidebars: Vec<String>,
     wp_nav_menu_locations: Vec<String>,
+    wp_cron_schedules: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3512,6 +3527,7 @@ fn lists(root: &Path) -> Lists {
     let wp_template_parts = wp_template_part_names(root);
     let wp_sidebars = wp_sidebar_names(root);
     let wp_nav_menu_locations = wp_nav_menu_location_names(root);
+    let wp_cron_schedules = wp_cron_schedule_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3559,6 +3575,7 @@ fn lists(root: &Path) -> Lists {
         wp_template_parts,
         wp_sidebars,
         wp_nav_menu_locations,
+        wp_cron_schedules,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4500,7 +4517,8 @@ fn first_quoted_args(root: &Path, calls: &[&str]) -> Vec<String> {
 /// quoted argument of `calls` (item 430 uses n = 1 for the option
 /// name in `register_setting($group, 'option')`). The first string
 /// must open the argument right after the marker; later strings may
-/// follow variables and commas, but never a `)` or `;`.
+/// follow variables, nested calls and commas, but never an
+/// unmatched `)` or a `;`.
 fn quoted_arg_names(root: &Path, calls: &[&str], n: usize) -> Vec<String> {
     quoted_arg_scan(root, calls, n, true)
 }
@@ -4508,7 +4526,8 @@ fn quoted_arg_names(root: &Path, calls: &[&str], n: usize) -> Vec<String> {
 /// `quoted_strings_anywhere` harvests the nth quoted string anywhere
 /// in the call head (item 431 meta keys, whose object id argument is
 /// usually an unquoted variable): the first string need not open the
-/// call. The same `)` / `;` stop applies at every position.
+/// call. The same unmatched-`)` / `;` stop applies at every
+/// position.
 fn quoted_strings_anywhere(
     root: &Path,
     calls: &[&str],
@@ -4560,14 +4579,21 @@ fn quoted_arg_scan(
                             j += 1;
                         }
                     } else {
-                        // Later arguments may follow variables and
-                        // commas; `)` or `;` ends the call first.
+                        // Later arguments may follow variables,
+                        // nested calls and commas; an unmatched `)`
+                        // or a `;` ends the call first.
+                        let mut depth = 0usize;
                         while j < b.len()
                             && b[j] != b'\''
                             && b[j] != b'"'
-                            && b[j] != b')'
+                            && !(b[j] == b')' && depth == 0)
                             && b[j] != b';'
                         {
+                            if b[j] == b'(' {
+                                depth += 1;
+                            } else if b[j] == b')' {
+                                depth -= 1;
+                            }
                             j += 1;
                         }
                     }
@@ -5139,6 +5165,20 @@ fn wp_nav_menu_location_names(root: &Path) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+/// WordPress cron recurrence names (item 436): the quoted
+/// recurrence arguments of `wp_schedule_event` /
+/// `wp_reschedule_event`. A recurrence the project never schedules
+/// with is dead weight, so scheduling calls alone declare the list;
+/// core recurrences (`hourly`, `twicedaily`, `daily`) the project
+/// uses are included on purpose. Sorted, deduped.
+fn wp_cron_schedule_names(root: &Path) -> Vec<String> {
+    quoted_strings_anywhere(
+        root,
+        &["wp_schedule_event(", "wp_reschedule_event("],
+        0,
+    )
 }
 
 /// Session keys (item 414): the names written by
@@ -6218,6 +6258,9 @@ pub fn items(
         Kind::WpSidebar => (lists.wp_sidebars, "sidebar"),
         Kind::WpNavMenuLocation => {
             (lists.wp_nav_menu_locations, "nav menu location")
+        }
+        Kind::WpCronSchedule => {
+            (lists.wp_cron_schedules, "cron recurrence")
         }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
@@ -7715,9 +7758,13 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(context("wp_clear_scheduled_hook('sh"), hk);
         assert_eq!(context("wp_unschedule_hook(\"sh"), hk);
         assert_eq!(context("wp_get_scheduled_event('sh"), hk);
-        // The timestamp / recurrence positions are not hook names.
+        // The timestamp position is not a hook name; the
+        // recurrence position completes cron schedules (item 436).
         assert_eq!(context("wp_schedule_event('sh"), None);
-        assert_eq!(context("wp_schedule_event($t, 'sh"), None);
+        assert_eq!(
+            context("wp_schedule_event($t, 'sh"),
+            Some(Kind::WpCronSchedule)
+        );
         assert_eq!(context("wp_schedule_single_event('sh"), None);
         assert_eq!(context("wp_next_scheduled('a')"), None);
         assert_eq!(context("my_wp_next_scheduled('sh"), None);
@@ -8127,6 +8174,57 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("nav menu location")
+        );
+    }
+
+    #[test]
+    fn detects_wp_cron_schedule_context() {
+        let rec = Some(Kind::WpCronSchedule);
+        assert_eq!(context("wp_schedule_event($t, 'sh"), rec);
+        assert_eq!(context("wp_reschedule_event($t, 'sh"), rec);
+        // The hook position completes hooks (item 427).
+        assert_eq!(
+            context("wp_schedule_event($t, 'hourly', 'sh"),
+            Some(Kind::WpHook)
+        );
+        assert_eq!(context("wp_schedule_event('sh"), None);
+        assert_eq!(context("wp_schedule_event($t, 'h')"), None);
+        assert_eq!(context("my_wp_schedule_event($t, 'sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_cron_schedules() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php\n",
+                "wp_schedule_event($t, 'shop_hourly', 'shop_sync');\n",
+                "wp_schedule_event(time(), \"daily\", 'shop_report');\n",
+                "// wp_schedule_event($t, 'ghosted', 'x');\n",
+                "$s = \"wp_schedule_event($t, 'instr', 'x')\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` declare
+        // no recurrence; custom and used core recurrences complete
+        // alike.
+        let want = ["daily", "shop_hourly"];
+        assert_eq!(labels("wp_schedule_event($t, '"), want);
+        assert_eq!(labels("wp_reschedule_event($t, '"), want);
+        assert!(labels("wp_schedule_event($t, 'h')").is_empty());
+        assert_eq!(
+            items(r, None, "wp_schedule_event($t, '")[0]
+                .detail
+                .as_deref(),
+            Some("cron recurrence")
         );
     }
 
