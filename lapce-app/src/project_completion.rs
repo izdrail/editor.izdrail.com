@@ -248,6 +248,10 @@ pub enum Kind {
     /// `wp_reschedule_event(...)` (item 436). Item 427 owns the
     /// hook position.
     WpCronSchedule,
+    /// WordPress block type name: the namespaced block name
+    /// registered with `register_block_type('shop/card')` (item
+    /// 437).
+    WpBlockType,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1834,6 +1838,16 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpCronSchedule
         }
+        // WordPress block types (item 437): the block name is the
+        // first argument of the string form (blocks.php:
+        // register_block_type :30, unregister_block_type :285).
+        // The metadata-path form names no block and completes
+        // nothing.
+        "register_block_type" | "unregister_block_type"
+            if arg == 0 =>
+        {
+            Kind::WpBlockType
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2275,6 +2289,7 @@ struct Lists {
     wp_sidebars: Vec<String>,
     wp_nav_menu_locations: Vec<String>,
     wp_cron_schedules: Vec<String>,
+    wp_block_types: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3528,6 +3543,7 @@ fn lists(root: &Path) -> Lists {
     let wp_sidebars = wp_sidebar_names(root);
     let wp_nav_menu_locations = wp_nav_menu_location_names(root);
     let wp_cron_schedules = wp_cron_schedule_names(root);
+    let wp_block_types = wp_block_type_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3576,6 +3592,7 @@ fn lists(root: &Path) -> Lists {
         wp_sidebars,
         wp_nav_menu_locations,
         wp_cron_schedules,
+        wp_block_types,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4611,11 +4628,14 @@ fn quoted_arg_scan(
                 }
                 let Some((start, end)) = span else { continue };
                 let name = &text[start + 1..end];
+                // `/` is allowed for namespaced WordPress block
+                // names (`shop/card`, item 437); the other kinds
+                // simply never contain one.
                 if !name.is_empty()
                     && name.len() <= 100
                     && name.chars().all(|c| {
                         c.is_ascii_alphanumeric()
-                            || matches!(c, '_' | '-' | '.' | '$' | ':')
+                            || matches!(c, '_' | '-' | '.' | '$' | ':' | '/')
                     })
                     && !out.iter().any(|n: &String| n == name)
                 {
@@ -5178,6 +5198,19 @@ fn wp_cron_schedule_names(root: &Path) -> Vec<String> {
         root,
         &["wp_schedule_event(", "wp_reschedule_event("],
         0,
+    )
+}
+
+/// WordPress block type names (item 437): the quoted first
+/// arguments of `register_block_type` / `unregister_block_type`
+/// calls in their string form. The metadata-path form
+/// (`register_block_type(__DIR__ . '/build')`) opens with an
+/// expression, so it harvests nothing. Core block names are not
+/// listed - only names the project itself registers.
+fn wp_block_type_names(root: &Path) -> Vec<String> {
+    first_quoted_args(
+        root,
+        &["register_block_type(", "unregister_block_type("],
     )
 }
 
@@ -6262,6 +6295,7 @@ pub fn items(
         Kind::WpCronSchedule => {
             (lists.wp_cron_schedules, "cron recurrence")
         }
+        Kind::WpBlockType => (lists.wp_block_types, "block type"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -8225,6 +8259,51 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("cron recurrence")
+        );
+    }
+
+    #[test]
+    fn detects_wp_block_type_context() {
+        let bt = Some(Kind::WpBlockType);
+        assert_eq!(context("register_block_type('sh"), bt);
+        assert_eq!(context("unregister_block_type('sh"), bt);
+        assert_eq!(context("register_block_type('a')"), None);
+        assert_eq!(context("my_register_block_type('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_block_types() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/blocks.php",
+            concat!(
+                "<?php\n",
+                "register_block_type('shop/card', $args);\n",
+                "register_block_type(\"shop/banner\", $args);\n",
+                "register_block_type(__DIR__ . '/build');\n",
+                "// register_block_type('shop/ghosted', $args);\n",
+                "$s = \"register_block_type('shop/instr', $args)\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The metadata-path form, the commented `ghosted` and the
+        // in-string `instr` register no block name.
+        let want = ["shop/banner", "shop/card"];
+        assert_eq!(labels("register_block_type('"), want);
+        assert_eq!(labels("unregister_block_type('"), want);
+        assert!(labels("register_block_type('a')").is_empty());
+        assert_eq!(
+            items(r, None, "register_block_type('")[0]
+                .detail
+                .as_deref(),
+            Some("block type")
         );
     }
 
