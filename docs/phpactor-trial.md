@@ -63,8 +63,11 @@ trial of that plumbing against the rank-12 gates and the gaps it exposed.
 - Offline fallback unchanged: yes - all local providers and Lexilla are
   untouched in behaviour; a dead server degrades to exactly the pre-trial
   experience.
-- Opt-in processes: yes - the server only starts for workspaces that opt in;
-  the phar download is on demand, pinned, and checksum-verified.
+- Process control: the seeded registry enables phpactor for PHP/Blade by
+  default with the pinned phar installed on demand (checksum-verified);
+  `language-servers.toml` disables or switches it. phpactor never starts
+  without an open folder, so nothing outside the workspace is indexed, and
+  after three failed starts it is disabled for the session (item 451).
 - Source/version reporting: yes - download provenance is pinned and
   logged, and the running server's name/version is reported on start
   (item 450).

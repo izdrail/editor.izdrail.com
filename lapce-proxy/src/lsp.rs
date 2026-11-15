@@ -454,7 +454,7 @@ impl Manager {
         let (sender, receiver) = crossbeam_channel::unbounded();
         std::thread::spawn(move || {
             let mut clients: HashMap<String, Arc<Client>> = HashMap::new();
-            let mut failed: HashMap<String, Instant> = HashMap::new();
+            let mut failed: HashMap<String, (Instant, u32)> = HashMap::new();
             let mut missing: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
             let mut no_workspace_notified: std::collections::HashSet<String> =
@@ -560,12 +560,20 @@ impl Manager {
                         clients.remove(&name);
                     }
                     if !clients.contains_key(&name) {
-                        ensure!(
-                            !failed.get(&name).is_some_and(
-                                |at| at.elapsed() < Duration::from_secs(30)
-                            ),
-                            "Language server recently failed; retry in 30 seconds"
-                        );
+                        if let Some((at, failures)) = failed.get(&name) {
+                            if *failures >= MAX_START_FAILURES {
+                                // Gave up after the final toast: stay quiet
+                                // like a missing server for the rest of the
+                                // session instead of re-toasting every 30s.
+                                anyhow::bail!(
+                                    "{name} language server disabled for this session after {failures} failed starts"
+                                );
+                            }
+                            ensure!(
+                                at.elapsed() >= Duration::from_secs(30),
+                                "Language server recently failed; retry in 30 seconds"
+                            );
+                        }
                         if registry.is_missing(&server) {
                             // Not installed and not auto-installable: stay quiet
                             // instead of popping an error on every startup.
@@ -606,17 +614,26 @@ impl Manager {
                         let client = match launch {
                             Ok(client) => client,
                             Err(error) => {
-                                failed.insert(name.clone(), Instant::now());
+                                let failures = failed
+                                    .get(&name)
+                                    .map(|(_, count)| *count)
+                                    .unwrap_or(0)
+                                    + 1;
+                                failed
+                                    .insert(name.clone(), (Instant::now(), failures));
                                 core.notification(CoreNotification::ShowMessage {
                                     title: "Language server".into(),
                                     message: lsp_types::ShowMessageParams {
                                         typ: lsp_types::MessageType::ERROR,
-                                        message: format!("{name}: {error}"),
+                                        message: start_failure_message(
+                                            &name, &error, failures,
+                                        ),
                                     },
                                 });
                                 return Err(error);
                             }
                         };
+                        failed.remove(&name);
                         {
                             let info = &client.server_info;
                             core.notification(CoreNotification::ShowMessage {
@@ -676,6 +693,28 @@ impl Manager {
     }
 }
 
+/// Consecutive language-server start failures after which the proxy gives
+/// up for the session: later requests bail quietly instead of surfacing the
+/// same spawn error every 30 seconds.
+pub const MAX_START_FAILURES: u32 = 3;
+
+/// User-facing message for a failed language-server start: the bare error
+/// while retries remain, then a final note that the server is disabled for
+/// this session once MAX_START_FAILURES is reached.
+pub fn start_failure_message(
+    server_id: &str,
+    error: &anyhow::Error,
+    failures: u32,
+) -> String {
+    if failures >= MAX_START_FAILURES {
+        format!(
+            "{server_id}: {error} (disabled for this session after {failures} failed starts)"
+        )
+    } else {
+        format!("{server_id}: {error}")
+    }
+}
+
 /// User-facing one-liner reporting which language-server name and version
 /// actually started (rank-12 source/version reporting). Falls back to the
 /// registry id when the server does not send `serverInfo`.
@@ -727,6 +766,24 @@ mod tests {
             }
         );
     }
+    #[test]
+    fn start_failure_message_disables_after_repeated_failures() {
+        let error = anyhow::anyhow!("spawn failed");
+        assert_eq!(
+            start_failure_message("php", &error, 1),
+            "php: spawn failed"
+        );
+        assert_eq!(
+            start_failure_message("php", &error, MAX_START_FAILURES - 1),
+            "php: spawn failed"
+        );
+        assert_eq!(
+            start_failure_message("php", &error, MAX_START_FAILURES),
+            "php: spawn failed (disabled for this session after 3 failed starts)"
+        );
+        assert!(MAX_START_FAILURES >= 2);
+    }
+
     #[test]
     fn ready_message_reports_server_version() {
         assert_eq!(
