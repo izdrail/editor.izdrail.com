@@ -986,8 +986,16 @@ impl Syntax {
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }
-        let folding_ranges =
-            crate::folding::indentation_ranges(&new_text.to_string(), 4);
+        // Lexer fold levels (braces, tags) win where the lexer provides
+        // them; indentation stays the language-independent fallback.
+        let folding_ranges = snapshot
+            .as_ref()
+            .and_then(|s| s.levels())
+            .map(crate::folding::level_ranges)
+            .filter(|ranges| !ranges.is_empty())
+            .unwrap_or_else(|| {
+                crate::folding::indentation_ranges(&new_text.to_string(), 4)
+            });
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }

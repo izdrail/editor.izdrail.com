@@ -105,6 +105,8 @@ int lx_lex(void *p,size_t start,size_t length,int init,int fold) noexcept {
     try {s.lexer->Lex(start,length,init,&s.doc);if(fold)s.lexer->Fold(start,length,init,&s.doc);return s.doc.error;}catch(...){return -2;}
 }
 const unsigned char *lx_styles(void *p) noexcept {return static_cast<Session*>(p)->doc.styles.data();}
+const int *lx_levels(void *p) noexcept {return static_cast<Session*>(p)->doc.levels.data();}
+int lx_line_count(void *p) noexcept {return static_cast<int>(static_cast<Session*>(p)->doc.starts.size());}
 const unsigned long long *lx_calls(void *p) noexcept {return static_cast<Session*>(p)->doc.calls.data();}
 int lx_named(void *p) noexcept {return static_cast<Session*>(p)->lexer->NamedStyles();}
 const char *lx_name(void *p,int i) noexcept {return static_cast<Session*>(p)->lexer->NameOfStyle(i);}

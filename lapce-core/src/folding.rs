@@ -17,6 +17,63 @@ impl FoldRange {
     }
 }
 
+/// Fold ranges from Scintilla fold levels (item 446), following the
+/// container's contract: a header-flagged line hides up to the first later
+/// non-blank line whose level number is at or below the header's; a fold
+/// reaching EOF excludes trailing blank lines. Flat documents produce no
+/// ranges. The level word packs the number in the low 12 bits above base
+/// 0x400, the header flag 0x2000 and the blank flag 0x1000.
+pub fn level_ranges(levels: &[i32]) -> Vec<FoldRange> {
+    const BASE: i32 = 0x400;
+    const HEADER: i32 = 0x2000;
+    const WHITE: i32 = 0x1000;
+    const MASK: i32 = 0x0FFF;
+    // Level words are either plain Scintilla (number and flags in the low
+    // bits) or packed by the PHP-family lexers as next<<16|flags|current:
+    // a closing-brace line then reports its pre-decrement level low and
+    // the post-decrement level high. A fold opens from the header's own
+    // (low-word) level, and the high half - when present - is the fold
+    // boundary for the lines inside. Flags always live in the low word.
+    let low_of = |raw: i32| (raw & MASK).saturating_sub(BASE);
+    let inner_of = |raw: i32| {
+        let high = (raw >> 16) & MASK;
+        if high != 0 {
+            high.saturating_sub(BASE)
+        } else {
+            low_of(raw)
+        }
+    };
+    let mut ranges = Vec::new();
+    for (line, &raw) in levels.iter().enumerate() {
+        if raw & HEADER == 0 {
+            continue;
+        }
+        let level = low_of(raw);
+        let mut end = None;
+        for (later, &next) in levels.iter().enumerate().skip(line + 1) {
+            if next & WHITE != 0 {
+                continue;
+            }
+            if inner_of(next) <= level {
+                end = Some(later);
+                break;
+            }
+        }
+        let end = match end {
+            Some(end) => end,
+            None => levels
+                .iter()
+                .rposition(|raw| raw & WHITE == 0)
+                .map(|last| last + 1)
+                .unwrap_or(levels.len()),
+        };
+        if end > line + 1 {
+            ranges.push(FoldRange { start: line, end });
+        }
+    }
+    ranges
+}
+
 /// Find indentation blocks in one pass, including nested blocks. Tabs advance
 /// to tab stops. Blank lines do not open blocks or cause dedents; trailing blank
 /// lines are excluded. The closing/dedented line remains visible.
@@ -477,5 +534,32 @@ mod tests {
         s.set_ranges(vec![r(3, 4), r(3, 3), r(5, 9), r(5, 7), r(1, 6)]);
         assert_eq!(s.ranges(), &[r(1, 6), r(5, 9)]);
         assert_eq!(s.folded(), &[r(1, 6)]);
+    }
+
+    #[test]
+    fn level_ranges_follow_scintilla_and_packed_php_levels() {
+        const B: i32 = 0x400;
+        const H: i32 = 0x2000;
+        const W: i32 = 0x1000;
+        let pack = |next: i32, cur: i32| (next << 16) | cur;
+        // PHP-family packing: closing braces report the pre-decrement
+        // level low and the post-decrement level high; each block's own
+        // closing brace stays visible.
+        let php = [
+            pack(B, B),             // <?php
+            pack(B + 1, B | H),     // function a() {
+            pack(B + 2, (B + 1) | H), // if (x) {
+            pack(B + 2, B + 2),     // foo();
+            pack(B + 1, B + 2),     // } (if)
+            pack(B, B + 1),         // } (function)
+        ];
+        assert_eq!(level_ranges(&php), vec![r(1, 5), r(2, 4)]);
+        // Plain Scintilla words (HTML): closing tags carry the inner level.
+        let html = [B | H, (B + 1) | H, B + 2, B + 2, B + 1, B];
+        assert_eq!(level_ranges(&html), vec![r(0, 5), r(1, 4)]);
+        // Trailing blank lines stay visible when a fold reaches EOF.
+        let eof = [B, B | H, B + 1, B | W];
+        assert_eq!(level_ranges(&eof), vec![r(1, 3)]);
+        assert!(level_ranges(&[B, B, B]).is_empty());
     }
 }

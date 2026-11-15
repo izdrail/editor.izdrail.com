@@ -22,6 +22,8 @@ unsafe extern "C" {
         fold: i32,
     ) -> i32;
     fn lx_styles(session: *mut c_void) -> *const u8;
+    fn lx_levels(session: *mut c_void) -> *const i32;
+    fn lx_line_count(session: *mut c_void) -> i32;
     fn lx_named(session: *mut c_void) -> i32;
     fn lx_tags(session: *mut c_void, index: i32) -> *const c_char;
 }
@@ -83,6 +85,7 @@ pub struct Snapshot {
     scopes: Vec<Option<&'static str>>,
     embeds: Vec<(usize, usize, Embed)>,
     lexer: String,
+    levels: Option<Vec<i32>>,
 }
 
 /// An embedded sub-language region recorded while a host snapshot was being
@@ -145,7 +148,15 @@ impl Snapshot {
                 return Err(Error::Keywords);
             }
         }
-        let status = unsafe { lx_lex(session.0, 0, text.len(), 0, 0) };
+        // Enable the Fold pass: several lexers gate level computation on
+        // the "fold" property. Lexers without the option report -1 and
+        // ignore it (item 446).
+        for (key, val) in [("fold", "1"), ("fold.html", "1")] {
+            let key = CString::new(key).map_err(|_| Error::Property)?;
+            let val = CString::new(val).map_err(|_| Error::Property)?;
+            let _ = unsafe { lx_property(session.0, key.as_ptr(), val.as_ptr()) };
+        }
+        let status = unsafe { lx_lex(session.0, 0, text.len(), 0, 1) };
         if status != 0 {
             return Err(Error::Lexing(status));
         }
@@ -168,11 +179,23 @@ impl Snapshot {
                 );
             }
         }
+        let levels = {
+            let count = unsafe { lx_line_count(session.0) };
+            let raw = unsafe { lx_levels(session.0) };
+            if raw.is_null() || count <= 0 {
+                None
+            } else {
+                // SAFETY: the session owns exactly `count` level entries;
+                // copy them before RAII releases it.
+                Some(unsafe { std::slice::from_raw_parts(raw, count as usize) }.to_vec())
+            }
+        };
         Ok(Self {
             styles,
             scopes,
             embeds: Vec::new(),
             lexer: name.to_str().map(str::to_owned).unwrap_or_default(),
+            levels,
         })
     }
 
@@ -211,6 +234,14 @@ impl Snapshot {
     /// paint the same bytes with different numbering schemes.
     pub fn lexer(&self) -> &str {
         &self.lexer
+    }
+
+    /// Scintilla fold levels per line from the lexer's Fold pass: level
+    /// numbers above base 0x400 with the header flag 0x2000 on lines that
+    /// open a fold and the white flag 0x1000 on blank lines. None only for
+    /// snapshots never lexed through Lexilla.
+    pub fn levels(&self) -> Option<&[i32]> {
+        self.levels.as_deref()
     }
 
     /// Records an embedded sub-language region as `[start, end)` byte offsets.

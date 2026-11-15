@@ -495,6 +495,44 @@ mod tests {
         assert_eq!(syntax.rev, 7);
     }
     #[test]
+    fn lexilla_fold_levels_drive_ranges_for_zero_indented_php() {
+        let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Php);
+        syntax.parse(
+            11,
+            Rope::from("<?php\nfunction a() {\nreturn 1;\n}\nfunction b() {\nreturn 2;\n}\n"),
+            None,
+        );
+        // Zero indentation: only lexer fold levels find these blocks.
+        assert_eq!(
+            syntax.folding_ranges,
+            vec![
+                crate::folding::FoldRange { start: 1, end: 3 },
+                crate::folding::FoldRange { start: 4, end: 6 },
+            ]
+        );
+    }
+
+    #[test]
+    fn html_tag_levels_drive_folding() {
+        let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Html);
+        syntax.parse(
+            3,
+            Rope::from("<html>\n<body>\n<p>hi</p>\n</body>\n</html>\n"),
+            None,
+        );
+        assert!(
+            syntax
+                .folding_ranges
+                .contains(&crate::folding::FoldRange { start: 0, end: 5 })
+        );
+        assert!(
+            syntax
+                .folding_ranges
+                .contains(&crate::folding::FoldRange { start: 1, end: 4 })
+        );
+    }
+
+    #[test]
     fn syntax_worker_publishes_local_folds_and_rejects_cancelled_folds() {
         let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Php);
         syntax.parse(
