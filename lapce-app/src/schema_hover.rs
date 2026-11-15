@@ -121,12 +121,32 @@ fn column_ops(l: &str) -> Vec<(String, String)> {
             break;
         }
     }
+    // Only a literal first argument overrides a default name. Quotes in a
+    // later chained modifier are not arguments to this Blueprint helper.
+    let named_or_default = |default: &str, drop: bool| {
+        let arg = args.trim_start();
+        let name = if arg.starts_with(')') {
+            Some(default.to_string())
+        } else if arg.starts_with(['\'', '"']) {
+            names.first().cloned()
+        } else {
+            None
+        };
+        name.into_iter().map(|n| {
+            (if drop { format!("-{n}") } else { n }, String::new())
+        }).collect::<Vec<_>>()
+    };
     match method {
-        "id" => vec![("id".into(), String::new())],
-        "timestamps" | "nullableTimestamps" => {
+        "id" => named_or_default("id", false),
+        "timestamps" | "nullableTimestamps" | "timestampsTz" | "nullableTimestampsTz" | "datetimes" => {
             vec![("created_at".into(), String::new()), ("updated_at".into(), String::new())]
         }
-        "softDeletes" | "softDeletesTz" => vec![("deleted_at".into(), String::new())],
+        "softDeletes" | "softDeletesTz" | "softDeletesDatetime" => named_or_default("deleted_at", false),
+        "dropSoftDeletes" | "dropSoftDeletesTz" => named_or_default("deleted_at", true),
+        "dropTimestamps" | "dropTimestampsTz" => {
+            vec![("-created_at".into(), String::new()), ("-updated_at".into(), String::new())]
+        }
+        "dropRememberToken" => vec![("-remember_token".into(), String::new())],
         "rememberToken" => vec![("remember_token".into(), String::new())],
         "dropColumn" | "dropConstrainedForeignId" => {
             names.into_iter().map(|n| (format!("-{n}"), String::new())).collect()
@@ -521,6 +541,53 @@ Schema::table('users', function ($table) {
         assert!(md.contains("2 columns from migrations"), "{md}");
         assert!(md.contains("`id`, `owner_index` string"), "{md}");
         assert!(!md.contains("`owner_id`") && !md.contains("`owner_type`"), "{md}");
+    }
+
+    #[test]
+    fn implicit_column_helpers_keep_custom_names_and_drop_defaults() {
+        for (call, expected) in [
+            ("id()", vec!["id"]), ("id()->comment('record key')", vec!["id"]),
+            ("id($column)", vec![]), ("softDeletes($column)", vec![]), ("id('user_id')", vec!["user_id"]),
+            ("softDeletes()", vec!["deleted_at"]),
+            ("softDeletesTz('removed_at')", vec!["removed_at"]),
+            ("softDeletesDatetime('removed_at')", vec!["removed_at"]),
+            ("timestampsTz()", vec!["created_at", "updated_at"]),
+            ("nullableTimestampsTz()", vec!["created_at", "updated_at"]),
+            ("datetimes()", vec!["created_at", "updated_at"]),
+            ("dropTimestamps()", vec!["-created_at", "-updated_at"]),
+            ("dropTimestampsTz()", vec!["-created_at", "-updated_at"]),
+            ("dropSoftDeletes()", vec!["-deleted_at"]),
+            ("dropSoftDeletesTz('removed_at')", vec!["-removed_at"]),
+            ("dropRememberToken()", vec!["-remember_token"]),
+        ] {
+            let ops = column_ops(&format!("$table->{call};"));
+            assert_eq!(ops.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), expected, "{call}");
+        }
+    }
+
+    #[test]
+    fn implicit_column_adds_and_drops_rebuild_the_final_schema() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "database/migrations/2026_01_create.php", r#"<?php
+Schema::create('users', function ($table) {
+    $table->id('user_id');
+    $table->timestampsTz();
+    $table->softDeletesTz('removed_at');
+    $table->rememberToken();
+});
+Schema::table('users', function ($table) {
+    $table->dropTimestampsTz();
+    $table->dropSoftDeletesTz('removed_at');
+    $table->dropRememberToken();
+});
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(d.path()), line, at(line, "users")).unwrap();
+        assert!(md.contains("1 column from migrations"), "{md}");
+        assert!(md.contains("`user_id`"), "{md}");
+        for removed in ["`id`", "`created_at`", "`updated_at`", "`removed_at`", "`remember_token`"] {
+            assert!(!md.contains(removed), "{md}");
+        }
     }
 
     #[test]
