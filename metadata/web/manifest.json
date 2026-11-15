@@ -15002,5 +15002,23 @@
     "licence": "Apache-2.0",
     "url": "https://github.com/JetBrains/phpstorm-stubs",
     "version": "phpstorm-stubs@2049ca3"
+  },
+  {
+    "commit": "9180415f97d923a80ee576200a3212b0f64c5446",
+    "framework": "wordpress",
+    "inputs": [
+      {
+        "path": "schemas/json/block.json",
+        "sha256": "91d12ea3fff8fbd0581a2509a98d9194903c28191aae047aa8ad8df7f4a95e41"
+      },
+      {
+        "path": "schemas/json/theme.json",
+        "sha256": "e62a4306be0e8b2c4dd537fa641f5e9623dcd77d8204e4888c1ac79ee4a2986e"
+      }
+    ],
+    "licence": "GPL-2.0-or-later",
+    "note": "fact extraction (paths/types/enum values); schema prose not vendored",
+    "url": "https://github.com/WordPress/gutenberg",
+    "version": "gutenberg-schemas@9180415f97d9"
   }
 ]

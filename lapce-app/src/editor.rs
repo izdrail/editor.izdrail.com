@@ -3032,7 +3032,7 @@ impl EditorData {
             },
         };
         let doc = self.doc();
-        let (words, snippets, keywords, line_before, blade_vars, alpine_props) =
+        let (words, snippets, keywords, line_before, blade_vars, alpine_props, json_items) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
                 let len = buffer.len();
@@ -3056,6 +3056,9 @@ impl EditorData {
                 let keywords = lang
                     .map(|l| profile_items(l, &project, &before_cursor))
                     .unwrap_or_default();
+                // theme.json / block.json schema keys and values.
+                let json_items =
+                    crate::project_completion::json_schema_items(path, &before_cursor);
 
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);
@@ -3115,7 +3118,15 @@ impl EditorData {
                         &line_before,
                         self.common.workspace.path.as_deref(),
                     );
-                (words, snippets, keywords, line_before, blade_vars, alpine_props)
+                (
+                    words,
+                    snippets,
+                    keywords,
+                    line_before,
+                    blade_vars,
+                    alpine_props,
+                    json_items,
+                )
             });
         let wrap = |item, source| ScoredCompletionItem {
             item,
@@ -3185,6 +3196,13 @@ impl EditorData {
                     .into_iter()
                     .map(|i| wrap(i, CompletionSource::Project)),
             )
+            .chain(json_items.into_iter().map(|i| {
+                // Schema keys/values are context-exact: offer them on the
+                // bare quote too.
+                let mut w = wrap(i, CompletionSource::Project);
+                w.show_on_empty = true;
+                w
+            }))
             .chain(words.into_iter().map(|i| wrap(i, CompletionSource::Word)))
             .collect()
     }
@@ -3208,7 +3226,7 @@ impl EditorData {
         };
 
         let offset = self.cursor().with_untracked(|c| c.offset());
-        let (start_offset, input, char, tag_ctx, project_ctx) =
+        let (start_offset, input, char, tag_ctx, project_ctx, json_ctx) =
             doc.buffer.with_untracked(|buffer| {
             // Blade words cover hyphenated snippet prefixes (`x-da`) and
             // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
@@ -3243,7 +3261,10 @@ impl EditorData {
                 )
                 .is_some()
             };
-            (start_offset, input, char, tag_ctx, project_ctx)
+            // theme.json / block.json complete schema keys on the bare
+            // quote and enum values after the colon.
+            let json_ctx = crate::project_completion::json_schema_path(&path);
+            (start_offset, input, char, tag_ctx, project_ctx, json_ctx)
         });
         if !display_if_empty_input
             && input.is_empty()
@@ -3251,6 +3272,7 @@ impl EditorData {
             && char != ":"
             && !tag_ctx
             && !project_ctx
+            && !json_ctx
         {
             self.cancel_completion();
             return;

@@ -6040,6 +6040,68 @@ pub(crate) fn php_completion_path(path: &Path) -> bool {
     )
 }
 
+/// True for files the WordPress JSON schema pack completes
+/// (`theme.json` / `block.json`, item 444).
+pub fn json_schema_path(file: &Path) -> bool {
+    file.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| lapce_core::web_metadata::wp_json_schema(n).is_some())
+}
+
+/// theme.json / block.json key and value completion from the pinned
+/// WordPress JSON schema pack (item 444). `before` is the document text up
+/// to the cursor; keys complete at the cursor's object path (array items
+/// match the schema wildcard), values complete from the key's enum.
+pub fn json_schema_items(file: &Path, before: &str) -> Vec<CompletionItem> {
+    let Some(name) = file.file_name().and_then(|n| n.to_str()) else {
+        return Vec::new();
+    };
+    let Some(pack) = lapce_core::web_metadata::wp_json_schema(name) else {
+        return Vec::new();
+    };
+    if before.len() > 256 * 1024 {
+        return Vec::new();
+    }
+    let (path, pos) = lapce_core::web_metadata::json_cursor_context(before);
+    let parent = path.join(".");
+    match pos {
+        lapce_core::web_metadata::JsonPos::Key => pack
+            .children(&parent)
+            .into_iter()
+            .take(MAX_ITEMS)
+            .map(|(key, entry)| {
+                let detail = if entry.types.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{} ({})", name, entry.types.join(" | "))
+                };
+                CompletionItem {
+                    label: key,
+                    kind: Some(CompletionItemKind::PROPERTY),
+                    detail: Some(detail),
+                    ..Default::default()
+                }
+            })
+            .collect(),
+        lapce_core::web_metadata::JsonPos::Value => pack
+            .entry(&parent)
+            .map(|entry| {
+                entry
+                    .values
+                    .iter()
+                    .take(MAX_ITEMS)
+                    .map(|value| CompletionItem {
+                        label: value.clone(),
+                        kind: Some(CompletionItemKind::VALUE),
+                        detail: Some(name.to_string()),
+                        ..Default::default()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+    }
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -8482,6 +8544,29 @@ add_action('widgets_init', 'shop_widgets');
                 .as_deref(),
             Some("cron recurrence")
         );
+    }
+
+    #[test]
+    fn wp_json_schema_completes_keys_and_enum_values() {
+        let theme = std::path::Path::new("theme.json");
+        let keys = json_schema_items(theme, "{");
+        assert!(keys.iter().any(|i| i.label == "settings"));
+        assert!(keys.iter().any(|i| i.label == "styles"));
+        let nested = json_schema_items(theme, "{ \"settings\": { \"color\": {");
+        assert!(nested.iter().any(|i| i.label == "palette"));
+        // array items complete through the schema wildcard
+        let item = json_schema_items(
+            theme,
+            "{ \"settings\": { \"color\": { \"palette\": [ { \"col",
+        );
+        assert!(item.iter().any(|i| i.label == "color"));
+        assert!(item.iter().any(|i| i.label == "slug"));
+        // enum values at the value position
+        let values = json_schema_items(std::path::Path::new("block.json"), "{ \"category\": \"");
+        assert!(values.iter().any(|i| i.label == "text"));
+        assert!(values.iter().any(|i| i.label == "widgets"));
+        // unrelated files complete nothing
+        assert!(json_schema_items(std::path::Path::new("index.php"), "{").is_empty());
     }
 
     #[test]
