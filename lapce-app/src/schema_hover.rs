@@ -29,35 +29,59 @@ const RECEIVERS: &[&str] = &[
     "->crossJoin(",
 ];
 
-/// The quoted table name covering byte `col`, gated on a receiver (or a
-/// model's `$table =` property).
+/// Only the first argument of a recognized table call, or the value of an
+/// exact `$table =` assignment. Other strings on the line are unrelated.
+fn table_prefix(before: &str) -> bool {
+    let before = before.trim_end();
+    if let Some(lhs) = before.strip_suffix('=') {
+        let lhs = lhs.trim_end();
+        if let Some(rest) = lhs.strip_suffix("$table") {
+            return rest.chars().next_back().is_none_or(|c| {
+                !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$'))
+            });
+        }
+    }
+    let Some(call) = before.strip_suffix('(') else { return false };
+    let call = call.trim_end();
+    RECEIVERS.iter().any(|receiver| {
+        let receiver = receiver.trim_end_matches('(');
+        call.strip_suffix(receiver).is_some_and(|prefix| {
+            receiver.starts_with("->") || prefix.chars().next_back().is_none_or(|c| {
+                !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | ':' | '>'))
+            })
+        })
+    })
+}
+
+/// The quoted table name covering byte `col`, including its opening quote.
 fn table_at(line: &str, col: usize) -> Option<String> {
     if line.len() > MAX_LINE {
         return None;
     }
-    let mut col = col.min(line.len());
-    while !line.is_char_boundary(col) {
-        col -= 1;
-    }
-    for q in ['\'', '"'] {
-        for (i, _) in line.match_indices(q) {
-            let start = i + 1;
-            let Some(len) = line[start..].find(q) else { break };
-            let end = start + len;
-            if col >= start && col <= end {
-                let s = &line[start..end];
-                let ok = !s.is_empty()
-                    && s.len() <= 100
-                    && s.chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
-                if !ok {
-                    return None;
-                }
-                let gated = RECEIVERS.iter().any(|r| line.contains(r))
-                    || line[..i].contains("$table");
-                return gated.then(|| s.to_string());
-            }
+    let col = col.min(line.len());
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !matches!(bytes[i], b'\'' | b'"') {
+            i += 1;
+            continue;
         }
+        let quote = bytes[i];
+        let start = i + 1;
+        let mut end = start;
+        while end < bytes.len() && bytes[end] != quote {
+            end += if bytes[end] == b'\\' { 2 } else { 1 };
+        }
+        if end >= bytes.len() {
+            return None;
+        }
+        if col + 1 >= start && col <= end {
+            let name = &line[start..end];
+            return (!name.is_empty() && name.len() <= 100
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.'))
+                && table_prefix(&line[..i])).then(|| name.to_string());
+        }
+        i = end + 1;
     }
     None
 }
@@ -273,6 +297,25 @@ mod tests {
 
     fn at(line: &str, needle: &str) -> usize {
         line.rfind(needle).unwrap() + 1
+    }
+
+    #[test]
+    fn table_reference_requires_its_own_argument_or_property_assignment() {
+        for line in [
+            "DB::table('users')->where('status', 'active')",
+            "DB::table('users'); foo('orders')",
+            "DB::table('users', 'alias')",
+            "protected $table = 'users'; $label = 'orders';",
+            "NotDB::table('orders')",
+        ] {
+            let name = if line.contains("orders") { "orders" } else if line.contains("active") { "active" } else { "alias" };
+            assert_eq!(table_at(line, at(line, name)), None, "{line}");
+        }
+        for line in ["DB::table('users')", "DB::table ( 'users' )", "protected $table = 'users';", "$query->join('users', 'users.id', '=', 'id')"] {
+            let col = line.find("'users'").unwrap();
+            assert_eq!(table_at(line, col), Some("users".into()), "{line}");
+            assert_eq!(table_at(line, col + 2), Some("users".into()), "{line}");
+        }
     }
 
     #[test]
