@@ -1,6 +1,7 @@
 use floem::text::{
     Attrs, AttrsList, FamilyOwned, LineHeightValue, Style, TextLayout, Weight,
 };
+use floem::{peniko::kurbo::Point, View};
 use lapce_core::{language::LapceLanguage, syntax::Syntax};
 use lapce_xi_rope::Rope;
 use lsp_types::MarkedString;
@@ -11,9 +12,17 @@ use crate::config::{LapceConfig, color::LapceColor};
 
 #[derive(Clone)]
 pub enum MarkdownContent {
-    Text(TextLayout),
+    Text { layout: TextLayout, links: Vec<MdLink> },
     Image { url: String, title: String },
     Separator,
+}
+
+/// A markdown link's byte range inside its text block (item 443).
+#[derive(Clone)]
+pub struct MdLink {
+    pub start: usize,
+    pub end: usize,
+    pub url: String,
 }
 
 pub fn parse_markdown(
@@ -36,6 +45,9 @@ pub fn parse_markdown(
     let mut builder_dirty = false;
 
     let mut pos = 0;
+
+    // Links of the block currently built; flushed with it.
+    let mut block_links: Vec<MdLink> = Vec::new();
 
     let mut tag_stack: SmallVec<[(usize, Tag); 4]> = SmallVec::new();
 
@@ -81,6 +93,14 @@ pub fn parse_markdown(
                             .add_span(start_offset..pos.max(start_offset), attrs);
                     }
 
+                    if let Tag::Link { dest_url, .. } = &tag {
+                        block_links.push(MdLink {
+                            start: start_offset,
+                            end: pos.max(start_offset),
+                            url: dest_url.to_string(),
+                        });
+                    }
+
                     if should_add_newline_after_tag(&tag) {
                         add_newline = true;
                     }
@@ -116,7 +136,10 @@ pub fn parse_markdown(
                             if builder_dirty {
                                 let mut text_layout = TextLayout::new();
                                 text_layout.set_text(&current_text, attr_list, None);
-                                res.push(MarkdownContent::Text(text_layout));
+                                res.push(MarkdownContent::Text {
+                                layout: text_layout,
+                                links: std::mem::take(&mut block_links),
+                            });
                                 attr_list = AttrsList::new(default_attrs.clone());
                                 current_text.clear();
                                 pos = 0;
@@ -193,7 +216,10 @@ pub fn parse_markdown(
     if builder_dirty {
         let mut text_layout = TextLayout::new();
         text_layout.set_text(&current_text, attr_list, None);
-        res.push(MarkdownContent::Text(text_layout));
+        res.push(MarkdownContent::Text {
+                                layout: text_layout,
+                                links: std::mem::take(&mut block_links),
+                            });
     }
 
     res
@@ -340,5 +366,103 @@ pub fn from_plaintext(
         ),
         None,
     );
-    vec![MarkdownContent::Text(text_layout)]
+    vec![MarkdownContent::Text {
+        layout: text_layout,
+        links: Vec::new(),
+    }]
+}
+
+/// Rich text whose markdown links open on click (item 443): a
+/// pointer-down whose byte offset lands inside a link's range opens
+/// its URL with the system handler. The hit layout is a private copy
+/// resized to the view's last width, so wrapping matches what is on
+/// screen.
+pub fn linked_text(layout: TextLayout, links: Vec<MdLink>) -> impl View {
+    use floem::{
+        event::{Event, EventListener},
+        peniko::kurbo::Point,
+        views::{rich_text, Decorators},
+    };
+    let shown = layout.clone();
+    let hit_layout = std::cell::RefCell::new(layout);
+    let view = rich_text(move || shown.clone());
+    let id = view.id();
+    view.on_event_cont(EventListener::PointerDown, move |event| {
+        if links.is_empty() {
+            return;
+        }
+        if let Event::PointerDown(pe) = event {
+            // floem offsets pointer events into the view's local coordinate
+            // space during dispatch, so pe.pos is already local to this view.
+            let size = id.get_size().unwrap_or_default();
+            let local = Point::new(pe.pos.x, pe.pos.y);
+            let mut hit = hit_layout.borrow_mut();
+            hit.set_size(size.width as f32, f32::MAX);
+            let point = hit.hit_point(local);
+            if !point.is_inside {
+                return;
+            }
+            // cosmic hit indices are relative to their source line; the link
+            // ranges are byte offsets in the whole block text.
+            let index = hit
+                .lines_range()
+                .get(point.line)
+                .map(|r| r.start + point.index)
+                .unwrap_or(point.index);
+            if let Some(link) = links
+                .iter()
+                .find(|l| index >= l.start && index < l.end)
+            {
+                if let Err(e) = open::that_detached(&link.url) {
+                    tracing::error!("failed to open {}: {e}", link.url);
+                }
+            }
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_ranges_cover_their_text() {
+        let config = LapceConfig::default();
+        let out = parse_markdown(
+            "See [the docs](https://example.com/ref) now",
+            1.8,
+            &config,
+        );
+        let [MarkdownContent::Text { layout, links }] = &out[..] else {
+            panic!("one text block");
+        };
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].url, "https://example.com/ref");
+        // "See " is 4 bytes, "the docs" the next 8.
+        assert_eq!((links[0].start, links[0].end), (4, 12));
+        // The click path round-trips: a point inside the range hits
+        // an offset inside the range.
+        let mut hit = layout.clone();
+        hit.set_size(600.0, f32::MAX);
+        let point = hit.hit_position(8).point;
+        assert!((4..12).contains(&hit.hit_point(point).index));
+        // A point past the block's text is not a link hit.
+        assert!(!hit.hit_point(Point::new(590.0, 1.0)).is_inside
+            || hit.hit_point(Point::new(590.0, 1.0)).index >= 12);
+    }
+
+    #[test]
+    fn plain_text_has_no_links() {
+        let config = LapceConfig::default();
+        let out = parse_markdown("no links here", 1.8, &config);
+        let [MarkdownContent::Text { links, .. }] = &out[..] else {
+            panic!("one text block");
+        };
+        assert!(links.is_empty());
+        let out = from_plaintext("no links here either", 1.8, &config);
+        let [MarkdownContent::Text { links, .. }] = &out[..] else {
+            panic!("one text block");
+        };
+        assert!(links.is_empty());
+    }
 }

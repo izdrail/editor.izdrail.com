@@ -19,7 +19,7 @@ use floem::{
     style::CursorStyle,
     views::{
         Decorators, container, dyn_container, dyn_stack, empty, img, label,
-        rich_text, scroll, stack, svg, text,
+        scroll, stack, svg, text,
     },
 };
 use indexmap::IndexMap;
@@ -1064,8 +1064,8 @@ pub fn plugin_info_view(plugin: PluginData, volt: VoltID) -> impl View {
                                     )
                                 },
                                 move |content| match content {
-                                    MarkdownContent::Text(text_layout) => container(
-                                        rich_text(move || text_layout.clone())
+                                    MarkdownContent::Text { layout, links } => container(
+                                        crate::markdown::linked_text(layout, links)
                                             .style(|s| s.width_full()),
                                     )
                                     .style(|s| s.width_full()),

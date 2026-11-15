@@ -44,7 +44,7 @@ use floem::{
         Decorators, VirtualVector, clip, container, drag_resize_window_area,
         drag_window_area, dyn_stack,
         editor::{core::register::Clipboard, text::SystemClipboard},
-        empty, label, rich_text,
+        empty, label,
         scroll::{PropagatePointerWheel, VerticalScrollAsHorizontal, scroll},
         stack, svg, tab, text, tooltip, virtual_stack,
     },
@@ -3182,8 +3182,8 @@ fn hover(window_tab_data: Rc<WindowTabData>) -> impl View {
             move || hover_data.content.get(),
             move |_| id.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             move |content| match content {
-                MarkdownContent::Text(text_layout) => container(
-                    rich_text(move || text_layout.clone())
+                MarkdownContent::Text { layout, links } => container(
+                    crate::markdown::linked_text(layout, links)
                         .style(|s| s.max_width(600.0)),
                 )
                 .style(|s| s.max_width_full()),

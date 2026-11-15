@@ -79,10 +79,11 @@ pub fn help(path: &Path, line: &str, col: usize) -> Option<String> {
         let lang = if twig { "twig" } else { "php" };
         md.push_str(&format!("```{lang}\n{sig}\n```\n"));
     }
+    // A real markdown link: clickable where links open (item 443).
     md.push_str(&format!(
-        "**{}** ({}) - {} {} baseline\n{}",
+        "**{}** ({}) - {} {} baseline\n[{}]({})",
         found.name, found.kind, found.package, found.version,
-        found.doc_url
+        found.doc_url, found.doc_url
     ));
     Some(md)
 }

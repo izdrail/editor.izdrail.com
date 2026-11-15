@@ -21,7 +21,7 @@ use floem::{
     },
     style::{CursorStyle, Display},
     views::{
-        Decorators, container, dyn_stack, empty, h_stack, label, rich_text,
+        Decorators, container, dyn_stack, empty, h_stack, label,
         scroll::{PropagatePointerWheel, scroll},
         svg, text_editor_keys, v_stack,
     },
@@ -3958,8 +3958,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     )
                                 },
                                 move |(_, content)| match content {
-                                    MarkdownContent::Text(layout) => {
-                                        rich_text(move || layout.clone())
+                                    MarkdownContent::Text { layout, links } => {
+                                        crate::markdown::linked_text(layout, links)
                                             .style(|s| s.max_width_full())
                                             .into_any()
                                     }
