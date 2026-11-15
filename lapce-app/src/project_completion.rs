@@ -259,6 +259,10 @@ pub enum Kind {
     /// WordPress REST route path (`/products`): the second argument
     /// of `register_rest_route` (item 438).
     WpRestRoute,
+    /// WordPress text domain (`shop`): the domain argument of the
+    /// i18n functions (`__('text', 'shop')`, ...) and the
+    /// `load_*_textdomain` calls (item 440).
+    WpTextDomain,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1368,6 +1372,17 @@ fn rule_param_table(line: &str) -> Option<&str> {
 /// is still open, in the argument the helper actually takes the name in
 /// (almost always the first). Quote escapes are not read;
 /// `route('it\'s')` is rare and simply falls out of context.
+// The first quoted string of the call whose `(` sits at `paren`,
+// or None when that string never closes (the cursor is inside it).
+fn first_string_arg(line: &str, paren: usize) -> Option<&str> {
+    let rest = &line[paren + 1..];
+    let open = rest.find(['\'', '"'])?;
+    let q = rest.as_bytes()[open] as char;
+    let after = &rest[open + 1..];
+    let close = after.find(q)?;
+    Some(&after[..close])
+}
+
 fn call_context(line: &str) -> Option<Kind> {
     let paren = line.rfind('(')?;
     let before = &line[..paren];
@@ -1862,6 +1877,43 @@ fn call_context(line: &str) -> Option<Kind> {
         // register_rest_route :40).
         "register_rest_route" if arg == 0 => Kind::WpRestNamespace,
         "register_rest_route" if arg == 1 => Kind::WpRestRoute,
+        // WordPress text domains (item 440): the domain is the last
+        // argument of every i18n function, at a per-function
+        // position (l10n.php: __ :301, _e :339, _x :371, _n :470,
+        // _nx :551; esc_html__ :402, esc_attr__ :431,
+        // esc_html_e :418, esc_attr_e :447, esc_html_x :486,
+        // esc_attr_x :522).
+        // Laravel shares `__` for translation keys: there the
+        // second argument is a replacement value, not a domain.
+        // Tell them apart by the first argument - a dotted key
+        // without spaces (`messages.welcome`) is Laravel.
+        "__"
+            if arg == 1
+                && !matches!(first_string_arg(line, paren),
+                    Some(s) if s.contains('.')
+                        && !s.contains(char::is_whitespace)) =>
+        {
+            Kind::WpTextDomain
+        }
+        "_e" | "esc_html__" | "esc_attr__" | "esc_html_e"
+        | "esc_attr_e"
+            if arg == 1 =>
+        {
+            Kind::WpTextDomain
+        }
+        "_x" | "esc_html_x" | "esc_attr_x"
+            if arg == 2 =>
+        {
+            Kind::WpTextDomain
+        }
+        "_n" if arg == 3 => Kind::WpTextDomain,
+        "_nx" if arg == 4 => Kind::WpTextDomain,
+        "load_plugin_textdomain" | "load_theme_textdomain"
+        | "load_child_theme_textdomain"
+            if arg == 0 =>
+        {
+            Kind::WpTextDomain
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2306,6 +2358,7 @@ struct Lists {
     wp_block_types: Vec<String>,
     wp_rest_namespaces: Vec<String>,
     wp_rest_routes: Vec<String>,
+    wp_text_domains: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3562,6 +3615,7 @@ fn lists(root: &Path) -> Lists {
     let wp_block_types = wp_block_type_names(root);
     let wp_rest_namespaces = wp_rest_namespace_names(root);
     let wp_rest_routes = wp_rest_route_paths(root);
+    let wp_text_domains = wp_text_domain_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3613,6 +3667,7 @@ fn lists(root: &Path) -> Lists {
         wp_block_types,
         wp_rest_namespaces,
         wp_rest_routes,
+        wp_text_domains,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -5254,6 +5309,46 @@ fn wp_rest_route_paths(root: &Path) -> Vec<String> {
     quoted_arg_names(root, &["register_rest_route("], 1)
 }
 
+/// WordPress text domains (item 440): the quoted domain arguments
+/// of the i18n functions and the `load_*_textdomain` calls. The
+/// domain is the last argument, at a per-function quoted-string
+/// position; calls whose text is an expression (`__($text,
+/// 'shop')`) are missed rather than mis-harvested. `default` is
+/// WordPress core's own domain and still completes when the project
+/// uses it.
+fn wp_text_domain_names(root: &Path) -> Vec<String> {
+    let mut out = quoted_arg_names(
+        root,
+        &[
+            "__(",
+            "_e(",
+            "esc_html__(",
+            "esc_attr__(",
+            "esc_html_e(",
+            "esc_attr_e(",
+        ],
+        1,
+    );
+    out.extend(quoted_arg_names(
+        root,
+        &["_x(", "esc_html_x(", "esc_attr_x("],
+        2,
+    ));
+    out.extend(quoted_arg_names(root, &["_n("], 2));
+    out.extend(quoted_arg_names(root, &["_nx("], 3));
+    out.extend(first_quoted_args(
+        root,
+        &[
+            "load_plugin_textdomain(",
+            "load_theme_textdomain(",
+            "load_child_theme_textdomain(",
+        ],
+    ));
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -6340,6 +6435,9 @@ pub fn items(
             (lists.wp_rest_namespaces, "REST namespace")
         }
         Kind::WpRestRoute => (lists.wp_rest_routes, "REST route"),
+        Kind::WpTextDomain => {
+            (lists.wp_text_domains, "text domain")
+        }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -8403,6 +8501,64 @@ add_action('widgets_init', 'shop_widgets');
         assert_eq!(it[0].detail.as_deref(), Some("REST namespace"));
         let it = items(r, None, "register_rest_route('shop/v1', '");
         assert_eq!(it[0].detail.as_deref(), Some("REST route"));
+    }
+
+    #[test]
+    fn detects_wp_text_domain_context() {
+        let td = Some(Kind::WpTextDomain);
+        assert_eq!(context("__('Hello', 'sh"), td);
+        assert_eq!(context("esc_html__('Hello', 'sh"), td);
+        assert_eq!(context("_x('Hello', 'ctx', 'sh"), td);
+        assert_eq!(context("_n('One', 'Many', $n, 'sh"), td);
+        assert_eq!(context("_nx('One', 'Many', $n, 'ctx', 'sh"), td);
+        assert_eq!(context("load_plugin_textdomain('sh"), td);
+        // The text position of `__` belongs to the Laravel lane
+        // (translation keys); the `_x` context position completes
+        // nothing.
+        assert_eq!(context("__('sh"), Some(Kind::Lang));
+        assert_eq!(context("_x('Hello', 'sh"), None);
+        assert_eq!(context("__('Hello', 'a')"), None);
+        assert_eq!(context("my_esc_html__('Hello', 'sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_text_domains() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/plugins/shop/shop.php",
+            concat!(
+                "<?php\n",
+                "__('Hello', 'shop');\n",
+                "_x('Card', 'noun', \"shop\");\n",
+                "load_plugin_textdomain('shop-core');\n",
+                "// __('Ghost', 'ghosted');\n",
+                "$s = \"__('Instr', 'instr')\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` declare
+        // no domain; the i18n argument positions and the
+        // load_*_textdomain calls harvest alike.
+        let want = ["shop", "shop-core"];
+        assert_eq!(labels("__('Hello', '"), want);
+        assert_eq!(labels("esc_attr_e('Hello', '"), want);
+        assert_eq!(labels("_x('A', 'b', '"), want);
+        assert_eq!(labels("_n('A', 'B', $n, '"), want);
+        assert_eq!(labels("load_theme_textdomain('"), want);
+        assert!(labels("__('Hello', 'a')").is_empty());
+        assert_eq!(
+            items(r, None, "__('Hello', '")[0]
+                .detail
+                .as_deref(),
+            Some("text domain")
+        );
     }
 
     #[test]
