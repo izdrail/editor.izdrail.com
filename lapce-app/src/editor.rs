@@ -557,6 +557,8 @@ impl EditorData {
 
     /// Swap out the document this editor is for
     pub fn update_doc(&self, doc: Rc<Doc>) {
+        self.common.mouse_hover_timer.set(TimerToken::INVALID);
+        self.common.hover.dismiss();
         let style = doc.styling();
         self.editor.update_doc(doc, Some(style));
     }

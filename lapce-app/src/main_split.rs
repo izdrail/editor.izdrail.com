@@ -706,6 +706,10 @@ impl MainSplitData {
         location: EditorLocation,
         edits: Option<Vec<TextEdit>>,
     ) {
+        // Palette opens, search hits and history jumps share this path.
+        // A tooltip belongs to the source document, never the destination.
+        self.common.mouse_hover_timer.set(floem::action::TimerToken::INVALID);
+        self.common.hover.dismiss();
         if self.common.focus.get_untracked() != Focus::Workbench {
             self.common.focus.set(Focus::Workbench);
         }
