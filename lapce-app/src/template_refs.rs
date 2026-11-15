@@ -52,13 +52,51 @@ fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
     None
 }
 
-/// True when the string starting right after `before` is the template-name
-/// argument of one of `callers`: the nearest caller on the line is directly
-/// followed by `(` (or `{%`-tag keyword) and nothing but whitespace, or, for
-/// the condition-first forms, a quote-free first argument and a comma.
+/// Index of the argument about to start. Quoted commas and nested
+/// expressions belong to the preceding argument, not the outer call.
+fn pending_argument(args: &str) -> Option<usize> {
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut index = 0;
+    let mut tail = 0;
+    for (i, ch) in args.char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == q {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => stack.push(ch),
+            ')' | ']' | '}' => {
+                let expected = match ch { ')' => '(', ']' => '[', _ => '{' };
+                if stack.pop() != Some(expected) {
+                    return None;
+                }
+            }
+            ',' if stack.is_empty() => {
+                if args[tail..i].trim().is_empty() {
+                    return None;
+                }
+                index += 1;
+                tail = i + 1;
+            }
+            _ => {}
+        }
+    }
+    (quote.is_none() && stack.is_empty() && args[tail..].trim().is_empty())
+        .then_some(index)
+}
+
+/// Does the next string occupy this caller's template-name argument?
 fn called_by(before: &str, callers: &[&str]) -> bool {
     if before.contains("{%") {
-        // Twig tag: `{% extends 'x' %}`, `{% include "x" with {...} %}`.
         let tag = before[before.rfind("{%").unwrap() + 2..].trim();
         return callers.iter().any(|c| tag == c.trim_end_matches('('));
     }
@@ -67,22 +105,20 @@ fn called_by(before: &str, callers: &[&str]) -> bool {
         before.rfind(c).is_some_and(|i| {
             if i > 0 {
                 let prev = before[..i].chars().next_back().unwrap();
-                if prev.is_ascii_alphanumeric() || prev == '_' || prev == '$' {
+                if prev.is_ascii_alphanumeric() || matches!(prev, '_' | '$' | ':') {
                     return false;
                 }
             }
             let rest = before[i + c.len()..].trim_start();
             let Some(args) = rest.strip_prefix('(') else {
-                // Directive without parentheses is not a call.
                 return false;
             };
-            let args = args.trim();
-            if args.is_empty() {
-                return true;
-            }
-            (c == "@includeWhen" || c == "@includeUnless")
-                && args.ends_with(',')
-                && !args.contains(|ch| ch == '\'' || ch == '"')
+            let expected = if matches!(c, "Route::view" | "@includeWhen" | "@includeUnless") {
+                1
+            } else {
+                0
+            };
+            pending_argument(args) == Some(expected)
         })
     })
 }
@@ -372,6 +408,29 @@ mod tests {
         assert_eq!(resolve(r, &f, l, at(l, "missing")), None);
         let l = "$x = route('users.index');";
         assert_eq!(resolve(r, &ctl, l, at(l, "users")), None);
+    }
+
+    #[test]
+    fn route_view_uses_second_argument_not_uri_or_data() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let target = touch(r, "resources/views/welcome.blade.php");
+        touch(r, "resources/views/uri.blade.php");
+        let f = Path::new("routes/web.php");
+        for line in [
+            "Route::view('uri', 'welcome');",
+            "Route::view(route('home', ['x,y']), 'welcome', ['name' => 'welcome']);",
+            "Route::view('/a,b', 'welcome');",
+        ] {
+            let col = at(line, "welcome");
+            assert_eq!(resolve(r, f, line, col), Some(target.clone()), "{line}");
+            assert!(hover(r, f, line, col).unwrap().contains("welcome.blade.php"));
+        }
+        let line = "Route::view('uri', 'welcome', ['name' => 'welcome']);";
+        assert!(resolve(r, f, line, at(line, "uri")).is_none());
+        assert!(resolve(r, f, line, line.rfind("welcome").unwrap()).is_none());
+        let line = "FakeRoute::view('/x', 'welcome');";
+        assert!(resolve(r, f, line, at(line, "welcome")).is_none());
     }
 
     #[test]
