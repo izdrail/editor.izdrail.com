@@ -238,6 +238,11 @@ pub enum Kind {
     /// `register_sidebar(['id' => 'shop-sidebar'])` and rendered
     /// with `dynamic_sidebar('shop-sidebar')` (item 434).
     WpSidebar,
+    /// WordPress nav menu location slug: registered via
+    /// `register_nav_menus(['primary' => ...])` /
+    /// `register_nav_menu('primary', ...)` and checked with
+    /// `has_nav_menu('primary')` (item 435).
+    WpNavMenuLocation,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1805,6 +1810,16 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpSidebar
         }
+        // WordPress nav menu locations (item 435): the location
+        // slug is the first argument (nav-menu.php:
+        // register_nav_menu, has_nav_menu). The plural
+        // register_nav_menus takes an assoc array, and wp_nav_menu
+        // an args array - neither has a plain string position.
+        "register_nav_menu" | "has_nav_menu"
+            if arg == 0 =>
+        {
+            Kind::WpNavMenuLocation
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2244,6 +2259,7 @@ struct Lists {
     wp_capabilities: Vec<String>,
     wp_template_parts: Vec<String>,
     wp_sidebars: Vec<String>,
+    wp_nav_menu_locations: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3495,6 +3511,7 @@ fn lists(root: &Path) -> Lists {
     let wp_capabilities = wp_capability_names(root);
     let wp_template_parts = wp_template_part_names(root);
     let wp_sidebars = wp_sidebar_names(root);
+    let wp_nav_menu_locations = wp_nav_menu_location_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3541,6 +3558,7 @@ fn lists(root: &Path) -> Lists {
         wp_capabilities,
         wp_template_parts,
         wp_sidebars,
+        wp_nav_menu_locations,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -5022,6 +5040,107 @@ fn wp_sidebar_names(root: &Path) -> Vec<String> {
     out
 }
 
+/// `assoc_string_keys` harvests the quoted keys of the assoc array
+/// argument of `calls` (item 435 menu locations in
+/// `register_nav_menus(['primary' => 'Primary'])`): a string inside
+/// the call whose text up to the next string (or the call's closing
+/// `;`) contains `=>` is a key. Same comment- and in-string-safety
+/// as `assoc_string_value`. Textual scan; nothing is executed.
+fn assoc_string_keys(root: &Path, calls: &[&str]) -> Vec<String> {
+    let files = project_php_files(root);
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        for marker in calls {
+            for (i, _) in masked.match_indices(marker) {
+                // Word boundary: `my_register_nav_menus(` is not a
+                // location declaration.
+                if i > 0
+                    && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')
+                {
+                    continue;
+                }
+                if in_string(i) {
+                    continue;
+                }
+                // The call ends at the next `;` after the marker.
+                let start = i + marker.len();
+                let end = masked[start..]
+                    .find(';')
+                    .map(|o| start + o)
+                    .unwrap_or(masked.len());
+                let si = strings.partition_point(|&(s, _)| s < start);
+                for w in si..strings.len() {
+                    let (ks, ke) = strings[w];
+                    if ks >= end {
+                        break;
+                    }
+                    let limit = strings
+                        .get(w + 1)
+                        .map(|&(s, _)| s.min(end))
+                        .unwrap_or(end);
+                    if !masked[ke + 1..limit].contains("=>") {
+                        continue;
+                    }
+                    let name = &text[ks + 1..ke];
+                    if !name.is_empty()
+                        && name.len() <= 100
+                        && name.chars().all(|c| {
+                            c.is_ascii_alphanumeric()
+                                || matches!(c, '_' | '-' | '.' | '$' | ':')
+                        })
+                        && !out.iter().any(|n: &String| n == name)
+                    {
+                        out.push(name.to_string());
+                        if out.len() >= MAX_NAMES {
+                            break 'files;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// WordPress nav menu location slugs (item 435): the assoc keys of
+/// `register_nav_menus`, the first arguments of
+/// `register_nav_menu` / `has_nav_menu`, and the `theme_location`
+/// values of `wp_nav_menu` calls. Core themes declare no locations
+/// of their own here - only slugs the project itself registers or
+/// uses.
+fn wp_nav_menu_location_names(root: &Path) -> Vec<String> {
+    let mut out = assoc_string_keys(root, &["register_nav_menus("]);
+    out.extend(first_quoted_args(
+        root,
+        &["register_nav_menu(", "has_nav_menu("],
+    ));
+    out.extend(assoc_string_value(
+        root,
+        &["wp_nav_menu("],
+        "theme_location",
+    ));
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -6097,6 +6216,9 @@ pub fn items(
             (lists.wp_template_parts, "template part")
         }
         Kind::WpSidebar => (lists.wp_sidebars, "sidebar"),
+        Kind::WpNavMenuLocation => {
+            (lists.wp_nav_menu_locations, "nav menu location")
+        }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7959,6 +8081,52 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("sidebar")
+        );
+    }
+
+    #[test]
+    fn detects_wp_nav_menu_location_context() {
+        let loc = Some(Kind::WpNavMenuLocation);
+        assert_eq!(context("has_nav_menu('pr"), loc);
+        assert_eq!(context("register_nav_menu('pr"), loc);
+        assert_eq!(context("has_nav_menu('a')"), None);
+        assert_eq!(context("my_has_nav_menu('pr"), None);
+    }
+
+    #[test]
+    fn offers_wp_nav_menu_locations() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/themes/shop/functions.php",
+            concat!(
+                "<?php\n",
+                "register_nav_menus(['primary' => 'Primary', 'footer' => 'Footer']);\n",
+                "register_nav_menu('shop', 'Shop menu');\n",
+                "wp_nav_menu(['theme_location' => 'mobile']);\n",
+                "// register_nav_menus(['ghosted' => 'Ghost']);\n",
+                "$s = \"register_nav_menus(['instr' => 'In'])\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` register
+        // no location; the array keys, the plain first arguments and
+        // the theme_location values harvest alike.
+        let want = ["footer", "mobile", "primary", "shop"];
+        assert_eq!(labels("has_nav_menu('"), want);
+        assert_eq!(labels("register_nav_menu('"), want);
+        assert!(labels("has_nav_menu('a')").is_empty());
+        assert_eq!(
+            items(r, None, "has_nav_menu('")[0]
+                .detail
+                .as_deref(),
+            Some("nav menu location")
         );
     }
 
