@@ -26,6 +26,20 @@ pub fn key_at(line: &str, col: usize) -> Option<&str> {
     if !line.is_char_boundary(col) {
         return None;
     }
+    // Hovering the opening quote of `env('KEY')` counts as the key (a quote
+    // followed by a key character opens the string; the closing quote is
+    // already inside via the range below).
+    let col = match line[col..].chars().next() {
+        Some(q @ ('\'' | '"'))
+            if line[col + q.len_utf8()..]
+                .chars()
+                .next()
+                .is_some_and(is_key_char) =>
+        {
+            col + 1
+        }
+        _ => col,
+    };
     let start = line[..col]
         .rfind(|c: char| !is_key_char(c))
         .map(|i| i + line[i..].chars().next().map_or(1, char::len_utf8))
@@ -98,6 +112,16 @@ pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quotes_count_as_inside() {
+        let l = "$v = env('APP_ENV');";
+        let open = l.find("'APP_ENV'").unwrap();
+        let expect = key_at(l, open + 2);
+        assert_eq!(key_at(l, open), expect, "opening quote");
+        assert_eq!(key_at(l, open + 8), expect, "closing quote");
+        assert_eq!(expect, Some("APP_ENV"));
+    }
 
     fn at(line: &str, needle: &str) -> usize {
         line.find(needle).unwrap() + 1
