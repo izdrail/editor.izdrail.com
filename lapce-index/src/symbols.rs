@@ -55,9 +55,14 @@ fn php_language() -> tree_sitter::Language {
     language
 }
 
-/// Named PHP method bodies, using syntax nodes rather than matching braces
-/// in strings, comments or nested closures. Ranges include the body braces.
-pub fn php_method_bodies(source: &str) -> Result<Vec<(String, std::ops::Range<usize>)>> {
+/// Syntax ranges used by static migration reconstruction. Byte offsets refer
+/// to the original source; method bodies include their braces.
+pub struct PhpMigrationSyntax {
+    pub methods: Vec<(String, std::ops::Range<usize>)>,
+    pub comments: Vec<std::ops::Range<usize>>,
+}
+
+pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&php_language())
         .map_err(|err| IndexError::SymbolParse(err.to_string()))?;
@@ -68,8 +73,12 @@ pub fn php_method_bodies(source: &str) -> Result<Vec<(String, std::ops::Range<us
     }
     let mut cursor = tree.walk();
     let mut bodies = Vec::new();
+    let mut comments = Vec::new();
     loop {
         let node = cursor.node();
+        if node.kind() == "comment" {
+            comments.push(node.byte_range());
+        }
         if node.kind() == "method_declaration" {
             if let (Some(name), Some(body)) =
                 (node.child_by_field_name("name"), node.child_by_field_name("body"))
@@ -84,7 +93,7 @@ pub fn php_method_bodies(source: &str) -> Result<Vec<(String, std::ops::Range<us
         if cursor.goto_first_child() { continue; }
         loop {
             if cursor.goto_next_sibling() { break; }
-            if !cursor.goto_parent() { return Ok(bodies); }
+            if !cursor.goto_parent() { return Ok(PhpMigrationSyntax { methods: bodies, comments }); }
         }
     }
 }

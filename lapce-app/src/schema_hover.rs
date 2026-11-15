@@ -215,17 +215,23 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 /// Keep only forward method bodies, preserving line/byte positions. Older
 /// migration snippets without methods retain their top-level behavior.
 fn forward_source(text: &str) -> Option<String> {
-    let methods = lapce_index::symbols::php_method_bodies(text).ok()?;
-    if methods.is_empty() {
-        return Some(text.to_owned());
-    }
+    let syntax = lapce_index::symbols::php_migration_syntax(text).ok()?;
     let mut source = text.as_bytes().to_vec();
-    for byte in &mut source {
-        if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
+    if !syntax.methods.is_empty() {
+        for byte in &mut source {
+            if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
+        }
+        for (name, range) in syntax.methods {
+            if name.eq_ignore_ascii_case("up") {
+                source[range.clone()].copy_from_slice(&text.as_bytes()[range]);
+            }
+        }
     }
-    for (name, range) in methods {
-        if name.eq_ignore_ascii_case("up") {
-            source[range.clone()].copy_from_slice(&text.as_bytes()[range]);
+    // Syntax nodes distinguish comments from URL slashes and comment-like
+    // text inside quoted defaults. Mask rather than remove to keep positions.
+    for range in syntax.comments {
+        for byte in &mut source[range] {
+            if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
         }
     }
     String::from_utf8(source).ok()
@@ -588,6 +594,43 @@ Schema::table('users', function ($table) {
         for removed in ["`id`", "`created_at`", "`updated_at`", "`removed_at`", "`remember_token`"] {
             assert!(!md.contains(removed), "{md}");
         }
+    }
+
+    #[test]
+    fn commented_migration_operations_do_not_change_the_schema() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "database/migrations/2026_01_create.php", r#"<?php
+return new class {
+    public function up(): void {
+        Schema::create('users', function ($table) {
+            $table->id();
+            // $table->string('ghost');
+            /*
+            $table->text('phantom');
+            */
+            # $table->dropColumn('id');
+            $table->string('url')->default('https://example.test/*literal*/');
+        });
+        // Schema::drop('users');
+        /* Schema::dropIfExists('users'); */
+    }
+};
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(d.path()), line, at(line, "users")).unwrap();
+        assert!(!md.contains("table dropped"), "{md}");
+        assert!(md.contains("2 columns from migrations"), "{md}");
+        assert!(md.contains("`id`, `url` string"), "{md}");
+    }
+
+    #[test]
+    fn comment_masking_preserves_literals_and_top_level_source_positions() {
+        let source = "<?php\r\n// Schema::drop('users'); é\r\n$label = 'https://example.test/*literal*/';\r\n/* $table->id(); */\r\n";
+        let clean = forward_source(source).unwrap();
+        assert_eq!(clean.len(), source.len());
+        assert_eq!(clean.lines().count(), source.lines().count());
+        assert!(clean.contains("https://example.test/*literal*/"));
+        assert!(!clean.contains("Schema::drop") && !clean.contains("$table->id"));
     }
 
     #[test]
