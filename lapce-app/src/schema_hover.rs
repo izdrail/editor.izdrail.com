@@ -96,6 +96,18 @@ fn column_ops(l: &str) -> Vec<(String, String)> {
     if !method.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Vec::new();
     }
+    // Blueprint commands operate on indexes, constraints or table metadata.
+    // Their quoted arguments are not new column declarations. Keep this after
+    // reading the first method so `$table->string('email')->unique()` remains
+    // a column, while a standalone `$table->unique(...)` does not add one.
+    if matches!(method,
+        "primary" | "unique" | "index" | "fullText" | "spatialIndex" | "vectorIndex"
+        | "rawIndex" | "foreign" | "dropPrimary" | "dropUnique" | "dropIndex"
+        | "dropFullText" | "dropSpatialIndex" | "dropVectorIndex" | "dropForeign"
+        | "renameIndex" | "rename" | "comment" | "engine" | "charset" | "collation"
+    ) {
+        return Vec::new();
+    }
     let args = &rest[open + 1..];
     let mut names = Vec::new();
     let mut r = args;
@@ -431,6 +443,42 @@ return new class extends Migration {
         let l = "foo('users')";
         assert_eq!(help(root, l, at(l, "users")), None);
         assert_eq!(help(None, "DB::table('users')", 18), None);
+    }
+
+    #[test]
+    fn blueprint_commands_are_not_column_declarations() {
+        for method in [
+            "primary", "unique", "index", "fullText", "spatialIndex", "vectorIndex",
+            "rawIndex", "foreign", "dropPrimary", "dropUnique", "dropIndex",
+            "dropFullText", "dropSpatialIndex", "dropVectorIndex", "dropForeign",
+            "renameIndex", "rename", "comment", "engine", "charset", "collation",
+        ] {
+            let line = format!("$table->{method}('not_a_column', 'other_name');");
+            assert!(column_ops(&line).is_empty(), "{line}");
+        }
+        assert_eq!(column_ops("$table->string('email')->unique();"),
+            vec![("email".into(), "string".into())]);
+        assert_eq!(column_ops("$table->foreignId('user_id')->constrained();"),
+            vec![("user_id".into(), "foreignId".into())]);
+    }
+
+    #[test]
+    fn index_drops_and_table_metadata_do_not_pollute_hover_columns() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "database/migrations/2026_create.php", r#"<?php
+Schema::create('users', function ($table) {
+    $table->id();
+    $table->string('email')->unique();
+    $table->dropIndex('users_email_index');
+    $table->comment('member records');
+    $table->engine('InnoDB');
+    $table->foreign('manager_id')->references('id')->on('users');
+});
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(d.path()), line, at(line, "users")).unwrap();
+        assert!(md.contains("2 columns from migrations"), "{md}");
+        assert!(md.contains("`id`, `email` string"), "{md}");
     }
 
     #[test]
