@@ -117,6 +117,7 @@ pub mod php_organize;
 pub mod props_draft;
 pub mod route_hover;
 pub mod schema_hover;
+pub mod symbol_hover;
 pub mod route_index;
 pub mod blade_end;
 pub mod blade_outline;

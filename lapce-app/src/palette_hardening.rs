@@ -4,7 +4,7 @@
 //! multibyte filler, so the run is reproducible.
 use std::{path::Path, time::Instant};
 
-use crate::{php_imports, test_index, php_organize, tw_sort, blade_props, color_swatch, component_index, env_index, hover_help, model_index};
+use crate::{php_imports, test_index, php_organize, tw_sort, blade_props, color_swatch, component_index, env_index, hover_help, model_index, symbol_hover};
 
 struct Rng(u64);
 impl Rng {
@@ -143,6 +143,23 @@ fn hover_help_random_windows() {
         for at in 0..t.len() + 2 {
             let _ = hover_help::help(None, f, &t, at);
             let _ = hover_help::help(Some(Path::new("/nonexistent")), f, &t, at);
+        }
+    }
+    assert!(start.elapsed().as_secs() < 10);
+}
+
+#[test]
+fn symbol_hover_random_windows() {
+    let mut rng = Rng(0x51B0A1);
+    let php = Path::new("/nonexistent/a.php");
+    let twig = Path::new("/nonexistent/a.twig");
+    let start = Instant::now();
+    for _ in 0..300 {
+        let n = (rng.next() % 60) as usize;
+        let t = soup(&mut rng, TOKENS, n);
+        for at in 0..t.len() + 2 {
+            let _ = symbol_hover::help(php, &t, at);
+            let _ = symbol_hover::help(twig, &t, at);
         }
     }
     assert!(start.elapsed().as_secs() < 10);
