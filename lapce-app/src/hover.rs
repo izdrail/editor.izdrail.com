@@ -1,6 +1,6 @@
 use floem::{
     peniko::kurbo::Rect,
-    reactive::{RwSignal, Scope},
+    reactive::{RwSignal, Scope, SignalGet, SignalUpdate},
     views::editor::id::EditorId,
 };
 
@@ -13,6 +13,9 @@ pub struct HoverData {
     pub editor_id: RwSignal<EditorId>,
     pub content: RwSignal<Vec<MarkdownContent>>,
     pub layout_rect: RwSignal<Rect>,
+    /// Id of the newest hover request issued. A response carrying an older
+    /// id is a stale result and must not replace the visible hover.
+    pub request_id: RwSignal<usize>,
 }
 
 impl HoverData {
@@ -23,6 +26,64 @@ impl HoverData {
             content: cx.create_rw_signal(Vec::new()),
             editor_id: cx.create_rw_signal(EditorId::next()),
             layout_rect: cx.create_rw_signal(Rect::ZERO),
+            request_id: cx.create_rw_signal(0),
         }
+    }
+
+    /// Issue the id for a new hover request, superseding every in-flight
+    /// request so their late responses are dropped.
+    pub fn next_request_id(&self) -> usize {
+        let id = self.request_id.get_untracked() + 1;
+        self.request_id.set(id);
+        id
+    }
+
+    /// Supersede every in-flight request without issuing a new one, so a
+    /// late response cannot bring back a hover the user already left.
+    pub fn invalidate_requests(&self) {
+        self.request_id.update(|id| *id += 1);
+    }
+}
+
+/// Whether the response to request `request_id` may be shown when
+/// `latest_id` is the newest request issued: only the newest request's own
+/// response. Anything older is a stale result from a superseded hover.
+pub fn response_is_current(request_id: usize, latest_id: usize) -> bool {
+    request_id == latest_id
+}
+
+#[cfg(test)]
+mod tests {
+    use floem::reactive::{Scope, SignalGet};
+
+    use super::{response_is_current, HoverData};
+
+    #[test]
+    fn newest_response_is_current() {
+        assert!(response_is_current(3, 3));
+        assert!(!response_is_current(2, 3));
+        assert!(!response_is_current(4, 3));
+    }
+
+    #[test]
+    fn superseded_request_is_stale() {
+        let cx = Scope::new();
+        let hover = HoverData::new(cx);
+        let first = hover.next_request_id();
+        let second = hover.next_request_id();
+        assert_ne!(first, second);
+        assert!(!response_is_current(first, hover.request_id.get_untracked()));
+        assert!(response_is_current(second, hover.request_id.get_untracked()));
+        cx.dispose();
+    }
+
+    #[test]
+    fn invalidation_drops_in_flight_requests() {
+        let cx = Scope::new();
+        let hover = HoverData::new(cx);
+        let pending = hover.next_request_id();
+        hover.invalidate_requests();
+        assert!(!response_is_current(pending, hover.request_id.get_untracked()));
+        cx.dispose();
     }
 }

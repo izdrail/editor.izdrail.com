@@ -4625,6 +4625,10 @@ impl EditorData {
     #[instrument]
     pub fn pointer_leave(&self) {
         self.common.mouse_hover_timer.set(TimerToken::INVALID);
+        if self.common.hover.editor_id.get_untracked() == self.id() {
+            self.common.hover.active.set(false);
+            self.common.hover.invalidate_requests();
+        }
     }
 
     #[instrument]
@@ -4777,6 +4781,8 @@ impl EditorData {
 
     #[instrument]
     fn update_hover(&self, offset: usize) {
+        // Every new hover supersedes in-flight language-server responses.
+        let request_id = self.common.hover.next_request_id();
         let doc = self.doc();
         let path = doc
             .content
@@ -5079,8 +5085,18 @@ impl EditorData {
         })
         .flatten();
         let send = create_ext_action(self.scope, move |resp| {
+            if !crate::hover::response_is_current(
+                request_id,
+                hover_data.request_id.get_untracked(),
+            ) {
+                // A newer hover (or a dismissal) superseded this request.
+                return;
+            }
             let lsp_content = match resp {
-                Ok(ProxyResponse::HoverResponse { hover, .. }) => {
+                Ok(ProxyResponse::HoverResponse {
+                    request_id: echoed,
+                    hover,
+                }) if echoed == request_id => {
                     Some(parse_hover_resp(hover, &config.get_untracked()))
                 }
                 _ => None,
@@ -5095,9 +5111,11 @@ impl EditorData {
             hover_data.editor_id.set(editor_id);
             hover_data.active.set(true);
         });
-        self.common.proxy.get_hover(0, path, position, |resp| {
-            send(resp);
-        });
+        self.common
+            .proxy
+            .get_hover(request_id, path, position, |resp| {
+                send(resp);
+            });
     }
 
     // reset the doc inside and move cursor back
