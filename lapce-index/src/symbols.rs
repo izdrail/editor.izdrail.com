@@ -60,6 +60,7 @@ fn php_language() -> tree_sitter::Language {
 pub struct PhpMigrationSyntax {
     pub methods: Vec<(String, std::ops::Range<usize>)>,
     pub comments: Vec<std::ops::Range<usize>>,
+    pub call_starts: std::collections::BTreeSet<usize>,
 }
 
 pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
@@ -74,8 +75,12 @@ pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
     let mut cursor = tree.walk();
     let mut bodies = Vec::new();
     let mut comments = Vec::new();
+    let mut call_starts = std::collections::BTreeSet::new();
     loop {
         let node = cursor.node();
+        if matches!(node.kind(), "scoped_call_expression" | "member_call_expression") {
+            call_starts.insert(node.start_byte());
+        }
         if node.kind() == "comment" {
             comments.push(node.byte_range());
         }
@@ -93,7 +98,7 @@ pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
         if cursor.goto_first_child() { continue; }
         loop {
             if cursor.goto_next_sibling() { break; }
-            if !cursor.goto_parent() { return Ok(PhpMigrationSyntax { methods: bodies, comments }); }
+            if !cursor.goto_parent() { return Ok(PhpMigrationSyntax { methods: bodies, comments, call_starts }); }
         }
     }
 }

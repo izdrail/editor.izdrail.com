@@ -234,6 +234,15 @@ fn forward_source(text: &str) -> Option<String> {
             if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
         }
     }
+    // Receiver-like text in strings and heredoc/nowdoc examples is data, not
+    // a schema operation. Keep real call arguments intact for reconstruction.
+    for receiver in ["Schema::", "$table->"] {
+        for (start, _) in text.match_indices(receiver) {
+            if !syntax.call_starts.contains(&start) {
+                source[start..start + receiver.len()].fill(b' ');
+            }
+        }
+    }
     String::from_utf8(source).ok()
 }
 
@@ -631,6 +640,31 @@ return new class {
         assert_eq!(clean.lines().count(), source.lines().count());
         assert!(clean.contains("https://example.test/*literal*/"));
         assert!(!clean.contains("Schema::drop") && !clean.contains("$table->id"));
+    }
+
+    #[test]
+    fn migration_literals_are_not_executable_schema_calls() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "database/migrations/2026_01_create.php", r#"<?php
+return new class {
+    public function up(): void {
+        Schema::create('users', function ($table) {
+            $table->id();
+            $example = '$table->string("ghost");';
+            $table->string('email')->default('Schema::table( not a call');
+        });
+        $example = "Schema::drop('users');";
+        $example = <<<'EXAMPLE'
+Schema::dropIfExists('users');
+EXAMPLE;
+    }
+};
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(d.path()), line, at(line, "users")).unwrap();
+        assert!(!md.contains("table dropped"), "{md}");
+        assert!(md.contains("2 columns from migrations"), "{md}");
+        assert!(md.contains("`id`, `email` string"), "{md}");
     }
 
     #[test]
