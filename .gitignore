@@ -12,3 +12,5 @@ vendor/
 *.patch
 *.tar
 *.gz
+.sources/
+__pycache__/
