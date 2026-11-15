@@ -18,6 +18,15 @@ const ASSET_CALLERS: &[&str] = &["asset", "secure_asset", "mix", "Vite::asset", 
 /// The quoted string around byte `col`, taking the nearest quote to the left
 /// as the opener so `href="{{ asset('x') }}"` yields `x`, not the attribute.
 fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
+    // A quote counts as inside only when its prefix starts an asset argument.
+    // Do not reinterpret a closing quote or the surrounding HTML attribute.
+    let col = if matches!(line.as_bytes().get(col), Some(b'\'' | b'"'))
+        && (is_asset_arg(&line[..col]) || is_vite_arg(&line[..col]))
+    {
+        col + 1
+    } else {
+        col
+    };
     let i = line[..col].rfind(['\'', '"'])?;
     let q = line[i..].chars().next()?;
     let start = i + 1;
@@ -132,6 +141,28 @@ mod tests {
         for name in ["console", "scripts/console", "ARTISAN", "notes.txt"] {
             assert_eq!(resolve(r, Path::new(name), line, at(line, "css/")), None, "{name}");
         }
+    }
+
+    #[test]
+    fn opening_quotes_resolve_assets_in_nested_attributes_and_vite_arrays() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let target = touch(r, "public/css/app.css");
+        let vite = touch(r, "resources/js/app.js");
+        let f = Path::new("view.blade.php");
+        for line in ["asset('css/app.css')", "<link href=\"{{ asset('css/app.css') }}\">"] {
+            let col = line.find("'css").unwrap();
+            assert_eq!(resolve(r, f, line, col), Some(target.clone()));
+            assert_eq!(resolve(r, f, line, col + 1), Some(target.clone()));
+        }
+        let line = "@vite(['resources/css/app.css', 'resources/js/app.js'])";
+        let col = line.find("'resources/js").unwrap();
+        assert_eq!(resolve(r, f, line, col), Some(vite));
+        assert!(resolve(r, f, "asset('')", 6).is_none());
+        let line = "asset('css/app.css') . 'other'";
+        assert_eq!(resolve(r, f, line, line.find("')").unwrap()), Some(target));
+        assert!(resolve(r, f, line, line.find(" . ").unwrap() + 1).is_none());
+        assert!(resolve(r, f, line, line.find("'other").unwrap()).is_none());
     }
 
     #[test]
