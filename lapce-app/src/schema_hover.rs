@@ -128,13 +128,21 @@ fn column_ops(l: &str) -> Vec<(String, String)> {
         }
         "softDeletes" | "softDeletesTz" => vec![("deleted_at".into(), String::new())],
         "rememberToken" => vec![("remember_token".into(), String::new())],
-        "dropColumn" | "dropConstrainedForeignId" | "dropMorphs" => {
+        "dropColumn" | "dropConstrainedForeignId" => {
             names.into_iter().map(|n| (format!("-{n}"), String::new())).collect()
+        }
+        "dropMorphs" if !names.is_empty() => {
+            vec![
+                (format!("-{}_id", names[0]), String::new()),
+                (format!("-{}_type", names[0]), String::new()),
+            ]
         }
         "renameColumn" if names.len() >= 2 => {
             vec![(format!("{}>{}", names[0], names[1]), String::new())]
         }
-        "morphs" | "nullableMorphs" | "uuidMorphs" | "ulidMorphs" if !names.is_empty() => {
+        "morphs" | "nullableMorphs" | "numericMorphs" | "nullableNumericMorphs"
+        | "uuidMorphs" | "nullableUuidMorphs" | "ulidMorphs" | "nullableUlidMorphs"
+            if !names.is_empty() => {
             vec![
                 (format!("{}_id", names[0]), method.into()),
                 (format!("{}_type", names[0]), method.into()),
@@ -479,6 +487,40 @@ Schema::create('users', function ($table) {
         let md = help(Some(d.path()), line, at(line, "users")).unwrap();
         assert!(md.contains("2 columns from migrations"), "{md}");
         assert!(md.contains("`id`, `email` string"), "{md}");
+    }
+
+    #[test]
+    fn all_morph_variants_expand_and_drop_their_real_columns() {
+        for method in ["morphs", "nullableMorphs", "numericMorphs", "nullableNumericMorphs",
+            "uuidMorphs", "nullableUuidMorphs", "ulidMorphs", "nullableUlidMorphs"] {
+            let ops = column_ops(&format!("$table->{method}('owner', 'owner_index');"));
+            assert_eq!(ops.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                vec!["owner_id", "owner_type"], "{method}");
+        }
+        assert_eq!(column_ops("$table->dropMorphs('owner', 'owner_index');"),
+            vec![("-owner_id".into(), String::new()), ("-owner_type".into(), String::new())]);
+    }
+
+    #[test]
+    fn morph_drop_keeps_unrelated_columns_and_ignores_the_index_name() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "database/migrations/2026_01_create.php", r#"<?php
+Schema::create('users', function ($table) {
+    $table->id();
+    $table->nullableUuidMorphs('owner', 'owner_index');
+    $table->string('owner_index');
+});
+"#);
+        put(d.path(), "database/migrations/2026_02_drop.php", r#"<?php
+Schema::table('users', function ($table) {
+    $table->dropMorphs('owner', 'owner_index');
+});
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(d.path()), line, at(line, "users")).unwrap();
+        assert!(md.contains("2 columns from migrations"), "{md}");
+        assert!(md.contains("`id`, `owner_index` string"), "{md}");
+        assert!(!md.contains("`owner_id`") && !md.contains("`owner_type`"), "{md}");
     }
 
     #[test]
