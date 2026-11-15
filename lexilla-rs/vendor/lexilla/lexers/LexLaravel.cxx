@@ -454,36 +454,57 @@ static bool IsMiddlewareString(Accessor &styler, Sci_Position quote, Sci_Positio
 	return false;
 }
 
-/* Blade directives recognised in inline-HTML mode. */
-static bool IsBladeDirective(const char *s) {
-	static const char * const names[] = {
-		"if", "elseif", "else", "unless", "isset", "empty", "auth", "guest",
-		"foreach", "forelse", "for", "while", "switch", "case", "default",
-		"break", "continue", "extends", "section", "yield", "show", "parent",
-		"include", "includeIf", "includeWhen", "includeUnless", "includeFirst",
-		"each", "component", "slot", "push", "pushIf", "pushOnce", "stack",
-		"prepend", "csrf", "method", "error", "php", "verbatim", "props",
-		"aware", "once", "can", "cannot", "canany", "env", "production",
-		"lang", "json", "class", "style", "checked", "selected", "disabled",
-		"readonly", "required", "vite", "inject", "use", "dd", "dump", "stop",
-		"overwrite", "append", "hasSection", "sectionMissing", "fragment",
-		"livewire", "livewireStyles", "livewireScripts", "viteReactRefresh",
-		"session", "teleport", "bool", "elseauth", "elseguest", "elsecan",
-		"elsecannot", "elsecanany", "elseunless", "componentFirst", "pushElseif",
-		"persist",
+/* Blade directives recognised in inline-HTML mode. Cross-checked against
+   the laravel/framework 11.x/12.x Blade compilers and the Livewire 3.x
+   directive registrations in the item-448 snippet review
+   (docs/snippet-review.md). */
+static const char *const kBladeDirectives[] = {
+		"if", "elseif", "else", "elsePush", "elsePushIf", "unless", "unset", "isset",
+		"empty", "auth", "guest", "foreach", "forelse", "for", "while", "switch",
+		"case", "default", "break", "continue", "extends", "section", "yield", "show",
+		"parent", "include", "includeIf", "includeWhen", "includeUnless", "includeFirst", "each", "component",
+		"slot", "push", "pushIf", "pushOnce", "stack", "prepend", "prependOnce", "csrf",
+		"method", "error", "php", "verbatim", "props", "aware", "once", "can",
+		"cannot", "canany", "env", "entangle", "production", "lang", "json", "class",
+		"style", "checked", "choice", "selected", "disabled", "readonly", "required", "vite",
+		"inject", "use", "dd", "dump", "stop", "overwrite", "append", "hasSection",
+		"hasStack", "sectionMissing", "fragment", "livewire", "livewireStyles", "livewireScripts", "viteReactRefresh", "session",
+		"teleport", "bool", "elseauth", "elseguest", "elsecan", "elsecannot", "elsecanany", "componentFirst",
+		"context", "persist",
 		nullptr
-	};
-	for (int i = 0; names[i]; i++)
-		if (strcmp(s, names[i]) == 0)
+};
+
+static bool IsBladeDirective(const char *s) {
+	for (int i = 0; kBladeDirectives[i]; i++)
+		if (strcmp(s, kBladeDirectives[i]) == 0)
 			return true;
 	return false;
+}
+
+/* ASCII case-insensitive equality: end forms of camelCase directives
+   (@endPushOnce for @pushOnce) differ only in letter case. */
+static bool BladeEqIgnoreCase(const char *a, const char *b) {
+	while (*a && *b) {
+		char ca = *a++;
+		char cb = *b++;
+		if (ca >= 'A' && ca <= 'Z')
+			ca += 'a' - 'A';
+		if (cb >= 'A' && cb <= 'Z')
+			cb += 'a' - 'A';
+		if (ca != cb)
+			return false;
+	}
+	return *a == *b;
 }
 
 static bool IsBladeEndDirective(const char *s) {
 	if (strncmp(s, "end", 3) != 0)
 		return false;
-	return IsBladeDirective(s + 3) || strcmp(s + 3, "section") == 0 ||
-	       strcmp(s + 3, "slot") == 0;
+	for (int i = 0; kBladeDirectives[i]; i++)
+		if (BladeEqIgnoreCase(s + 3, kBladeDirectives[i]))
+			return true;
+	return BladeEqIgnoreCase(s + 3, "section") ||
+	       BladeEqIgnoreCase(s + 3, "slot");
 }
 
 /* -------------------------------- Lex ----------------------------------- */

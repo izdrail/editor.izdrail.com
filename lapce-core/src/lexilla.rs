@@ -1117,6 +1117,35 @@ mod tests {
         assert_eq!(lv(&snap, t, "<div>", 0), None);
     }
 
+    #[test]
+    fn blade_directive_list_matches_framework_truth() {
+        // Item 448: the snippet review cross-checked the directive list
+        // against the laravel/framework 11.x/12.x Blade compilers and the
+        // Livewire 3.x directive registrations (docs/snippet-review.md).
+        let t = "@pushIf($c, 's') @elsePushIf($d, 's') @elsePush('s') @endPushIf @prependOnce('s') x @endPrependOnce @entangle('p') @pushOnce('s') y @endPushOnce @unset($v) @hasStack('s') @choice('m', $n) @context(['k' => $v]) @endcontext";
+        let snap = Snapshot::lex("blade", t, LARAVEL_WORD_LISTS).unwrap();
+        assert_eq!(lv(&snap, t, "@pushIf(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@elsePushIf(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@elsePush(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@endPushIf", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@prependOnce", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@endPrependOnce", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@entangle", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@pushOnce", 0), Some("keyword"));
+        // camelCase end forms differ from the directive only in case
+        assert_eq!(lv(&snap, t, "@endPushOnce", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@unset(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@hasStack(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@choice(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@context(", 0), Some("keyword"));
+        assert_eq!(lv(&snap, t, "@endcontext", 0), Some("keyword"));
+        // Never shipped in the framework under these names
+        let bad = "@pushElseif($c) @elseunless($d)";
+        let snap = Snapshot::lex("blade", bad, LARAVEL_WORD_LISTS).unwrap();
+        assert_eq!(lv(&snap, bad, "@pushElseif", 0), None);
+        assert_eq!(lv(&snap, bad, "@elseunless", 0), None);
+    }
+
     const BLADE_FIXTURE: &str = "@extends('layouts.app')\n{{-- note @if --}}\n@section('content')\n<div class=\"card {{ $cls }}\" id='a' @disabled($off) data-x=raw>\n  @if ($user->isAdmin() && count($items) > 0)\n    <p>Hello, {{ $user->name ?? 'guest' }} &amp; {!! $html !!}</p>\n  @elseif(true) @else @endif\n  @foreach ($items as $item)\n    <li>{{ route('items.show', $item) }}</li>\n  @endforeach\n</div>\n<!-- c {{ $x }} -->\n@php\n  $total = 1 + 2; // sum\n  $s = \"a\";\n@endphp\n@php($y = 3)\n@verbatim {{ raw }} @if @endverbatim\n@{{ vue }} mail@me.com @@if\n<script>if (a < b) { x = \"{{ $js }}\"; }</script>\n<?php echo $legacy; ?>\n@endsection\n";
 
     fn bl(snap: &Snapshot, needle: &str, nth: usize) -> Option<&'static str> {
