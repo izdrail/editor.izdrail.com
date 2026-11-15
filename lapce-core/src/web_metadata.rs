@@ -97,6 +97,14 @@ pub struct JsonSchemaPack {
     entries: Vec<(String, JsonSchemaEntry)>,
 }
 
+/// A schema path segment ending in `*` and longer than one char
+/// (`when@*`) matches any concrete segment with that prefix (`when@dev`).
+fn schema_prefix_match(schema: &str, concrete: &str) -> bool {
+    schema
+        .strip_suffix('*')
+        .is_some_and(|prefix| !prefix.is_empty() && concrete.starts_with(prefix))
+}
+
 impl JsonSchemaPack {
     fn matches(schema: &str, concrete: &str) -> bool {
         let mut s = schema.split('.');
@@ -104,7 +112,7 @@ impl JsonSchemaPack {
         loop {
             match (s.next(), c.next()) {
                 (None, None) => return true,
-                (Some(a), Some(b)) if a == "*" || a == b => {}
+                (Some(a), Some(b)) if a == "*" || a == b || schema_prefix_match(a, b) => {}
                 _ => return false,
             }
         }
@@ -155,37 +163,56 @@ pub fn wp_json_schema(file_name: &str) -> Option<&'static JsonSchemaPack> {
         .expect("checked generated pack");
         ["theme", "block"]
             .iter()
-            .map(|name| {
-                let doc = value[name]["doc"].as_str().unwrap().to_string();
-                let entries = value[name]["entries"]
-                    .as_object()
-                    .unwrap()
-                    .iter()
-                    .map(|(path, e)| {
-                        let strings = |key: &str| {
-                            e[key]
-                                .as_array()
-                                .map(|a| {
-                                    a.iter()
-                                        .filter_map(|v| v.as_str().map(str::to_string))
-                                        .collect()
-                                })
-                                .unwrap_or_default()
-                        };
-                        (
-                            path.clone(),
-                            JsonSchemaEntry {
-                                types: strings("types"),
-                                values: strings("enum"),
-                            },
-                        )
-                    })
-                    .collect();
-                (format!("{name}.json"), JsonSchemaPack { doc, entries })
-            })
+            .map(|name| (format!("{name}.json"), parse_schema_pack(&value, name)))
             .collect()
     });
     packs.iter().find(|(n, _)| n == file_name).map(|(_, p)| p)
+}
+
+fn parse_schema_pack(value: &serde_json::Value, name: &str) -> JsonSchemaPack {
+    let doc = value[name]["doc"].as_str().unwrap().to_string();
+    let entries = value[name]["entries"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(path, e)| {
+            let strings = |key: &str| {
+                e[key]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            (
+                path.clone(),
+                JsonSchemaEntry {
+                    types: strings("types"),
+                    values: strings("enum"),
+                },
+            )
+        })
+        .collect();
+    JsonSchemaPack { doc, entries }
+}
+
+/// The Symfony YAML config schema pack (`services` or `routing`; item
+/// 445), or None for any other pack name.
+pub fn symfony_yaml_schema(pack: &str) -> Option<&'static JsonSchemaPack> {
+    static PACKS: OnceLock<Vec<(String, JsonSchemaPack)>> = OnceLock::new();
+    let packs = PACKS.get_or_init(|| {
+        let value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../metadata/web/symfony-yaml-schemas.json"
+        ))
+        .expect("checked generated pack");
+        ["services", "routing"]
+            .iter()
+            .map(|name| (name.to_string(), parse_schema_pack(&value, name)))
+            .collect()
+    });
+    packs.iter().find(|(n, _)| n == pack).map(|(_, p)| p)
 }
 
 /// Where the cursor sits in a JSON document: at a key, or at the value of
@@ -281,6 +308,98 @@ pub fn json_cursor_context(before: &str) -> (Vec<String>, JsonPos) {
     (path, JsonPos::Key)
 }
 
+/// The mapping key of a YAML line, tolerating quoted keys; None for
+/// scalar lines (sequence items, plain values) without a mapping key.
+fn yaml_line_key(content: &str) -> Option<String> {
+    let content = content.trim_end();
+    if content.is_empty() {
+        return None;
+    }
+    if let Some(q) = content.chars().next().filter(|c| *c == '"' || *c == '\'') {
+        let rest = &content[q.len_utf8()..];
+        let end = rest.find(q)?;
+        let after = rest[end + q.len_utf8()..].trim_start();
+        if after.starts_with(':') {
+            return Some(rest[..end].to_string());
+        }
+        return None;
+    }
+    let colon = content.find(": ").or_else(|| {
+        content.ends_with(':').then_some(content.len() - 1)
+    })?;
+    let key = content[..colon].trim();
+    if key.is_empty() {
+        return None;
+    }
+    Some(key.to_string())
+}
+
+/// Tolerant scan of the YAML document text before the cursor: the key
+/// path the cursor completes at, and whether it sits at a key or a
+/// value. Sequence items contribute a `*` segment so schema wildcards
+/// match; flow collections and block scalars are out of scope.
+pub fn yaml_cursor_context(before: &str) -> (Vec<String>, JsonPos) {
+    let mut frames: Vec<(usize, String)> = Vec::new();
+    let mut pos = JsonPos::Key;
+    let line_count = before.split('\n').count();
+    for (idx, line) in before.split('\n').enumerate() {
+        let last = idx + 1 == line_count;
+        let trimmed = line.trim_start_matches(' ');
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            if last {
+                let indent = line.len();
+                while frames.last().is_some_and(|(i, _)| *i >= indent) {
+                    frames.pop();
+                }
+                pos = JsonPos::Key;
+            }
+            continue;
+        }
+        if trimmed.starts_with("---") || trimmed.starts_with("...") {
+            continue;
+        }
+        let base = line.len() - trimmed.len();
+        let mut content = trimmed;
+        let mut key_indent = base;
+        let mut dash = false;
+        if let Some(rest) = content.strip_prefix("- ") {
+            dash = true;
+            key_indent = base + (content.len() - rest.len());
+            content = rest;
+        } else if content == "-" {
+            dash = true;
+            content = "";
+        }
+        if dash {
+            let star_indent = base + 1;
+            while frames.last().is_some_and(|(i, _)| *i >= star_indent) {
+                frames.pop();
+            }
+            frames.push((star_indent, "*".to_string()));
+        }
+        match yaml_line_key(content) {
+            Some(key) => {
+                while frames.last().is_some_and(|(i, _)| *i >= key_indent) {
+                    frames.pop();
+                }
+                frames.push((key_indent, key));
+                if last {
+                    pos = JsonPos::Value;
+                }
+            }
+            None => {
+                if last {
+                    while frames.last().is_some_and(|(i, _)| *i >= key_indent) {
+                        frames.pop();
+                    }
+                    pos = JsonPos::Key;
+                }
+            }
+        }
+    }
+    (frames.into_iter().map(|(_, k)| k).collect(), pos)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +437,65 @@ mod tests {
         assert!(symbols().iter().any(|s| s.framework == "twig"
             && s.kind == "filter"
             && s.name == "upper"));
+    }
+}
+
+#[cfg(test)]
+mod symfony_yaml_tests {
+    use super::*;
+
+    #[test]
+    fn yaml_cursor_context_tracks_maps_sequences_and_when() {
+        let (path, pos) = yaml_cursor_context("services:\n  App\\Foo:\n    aut");
+        assert_eq!(path, vec!["services", "App\\Foo"]);
+        assert_eq!(pos, JsonPos::Key);
+        let (path, pos) =
+            yaml_cursor_context("services:\n  App\\Foo:\n    autowire: tr");
+        assert_eq!(path, vec!["services", "App\\Foo", "autowire"]);
+        assert_eq!(pos, JsonPos::Value);
+        let (path, pos) = yaml_cursor_context("imports:\n  - resource: 'a.yaml'\n  - ign");
+        assert_eq!(path, vec!["imports", "*"]);
+        assert_eq!(pos, JsonPos::Key);
+        let (path, pos) = yaml_cursor_context(
+            "services:\n  App\\Foo:\n    tags:\n      - name: kernel.event_listener\n        eve",
+        );
+        assert_eq!(path, vec!["services", "App\\Foo", "tags", "*"]);
+        assert_eq!(pos, JsonPos::Key);
+        let (path, pos) =
+            yaml_cursor_context("when@dev:\n  services:\n    App\\Foo:\n      auto");
+        assert_eq!(path, vec!["when@dev", "services", "App\\Foo"]);
+        assert_eq!(pos, JsonPos::Key);
+        // a fresh indented line below a key completes that key's children
+        let (path, pos) = yaml_cursor_context("services:\n  App\\Foo:\n    ");
+        assert_eq!(path, vec!["services", "App\\Foo"]);
+        assert_eq!(pos, JsonPos::Key);
+    }
+
+    #[test]
+    fn symfony_yaml_packs_load_and_match() {
+        let services = symfony_yaml_schema("services").unwrap();
+        let root: Vec<String> =
+            services.children("").into_iter().map(|(k, _)| k).collect();
+        assert!(root.contains(&"imports".to_string()));
+        assert!(root.contains(&"parameters".to_string()));
+        assert!(root.contains(&"services".to_string()));
+        let def: Vec<String> = services
+            .children("services.App\\Foo")
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert!(def.contains(&"arguments".to_string()));
+        assert!(def.contains(&"autowire".to_string()));
+        // the `when@*` prefix wildcard matches concrete environments
+        let entry = services
+            .entry("when@dev.services.App\\Foo.decoration_on_invalid")
+            .unwrap();
+        assert!(entry.values.contains(&"exception".to_string()));
+        let routing = symfony_yaml_schema("routing").unwrap();
+        let keys: Vec<String> =
+            routing.children("home").into_iter().map(|(k, _)| k).collect();
+        assert!(keys.contains(&"path".to_string()));
+        assert!(keys.contains(&"controller".to_string()));
+        assert!(symfony_yaml_schema("other").is_none());
     }
 }

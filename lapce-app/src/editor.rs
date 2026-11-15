@@ -3032,7 +3032,7 @@ impl EditorData {
             },
         };
         let doc = self.doc();
-        let (words, snippets, keywords, line_before, blade_vars, alpine_props, json_items) =
+        let (words, snippets, keywords, line_before, blade_vars, alpine_props, json_items, yaml_items) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
                 let len = buffer.len();
@@ -3059,6 +3059,12 @@ impl EditorData {
                 // theme.json / block.json schema keys and values.
                 let json_items =
                     crate::project_completion::json_schema_items(path, &before_cursor);
+                // Symfony config/services/routes YAML schema keys and values.
+                let yaml_items = crate::project_completion::symfony_yaml_schema_items(
+                    self.common.workspace.path.as_deref(),
+                    path,
+                    &before_cursor,
+                );
 
                 let line = buffer.line_of_offset(start_offset);
                 let line_text = buffer.line_content(line);
@@ -3126,6 +3132,7 @@ impl EditorData {
                     blade_vars,
                     alpine_props,
                     json_items,
+                    yaml_items,
                 )
             });
         let wrap = |item, source| ScoredCompletionItem {
@@ -3203,6 +3210,12 @@ impl EditorData {
                 w.show_on_empty = true;
                 w
             }))
+            .chain(yaml_items.into_iter().map(|i| {
+                // Same context-exact offering as the JSON schema items.
+                let mut w = wrap(i, CompletionSource::Project);
+                w.show_on_empty = true;
+                w
+            }))
             .chain(words.into_iter().map(|i| wrap(i, CompletionSource::Word)))
             .collect()
     }
@@ -3226,7 +3239,8 @@ impl EditorData {
         };
 
         let offset = self.cursor().with_untracked(|c| c.offset());
-        let (start_offset, input, char, tag_ctx, project_ctx, json_ctx) =
+        let ws_root = self.common.workspace.path.clone();
+        let (start_offset, input, char, tag_ctx, project_ctx, json_ctx, yaml_ctx) =
             doc.buffer.with_untracked(|buffer| {
             // Blade words cover hyphenated snippet prefixes (`x-da`) and
             // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
@@ -3264,7 +3278,12 @@ impl EditorData {
             // theme.json / block.json complete schema keys on the bare
             // quote and enum values after the colon.
             let json_ctx = crate::project_completion::json_schema_path(&path);
-            (start_offset, input, char, tag_ctx, project_ctx, json_ctx)
+            // Symfony YAML config files complete schema keys and values.
+            let yaml_ctx = crate::project_completion::symfony_yaml_schema_path(
+                ws_root.as_deref(),
+                &path,
+            );
+            (start_offset, input, char, tag_ctx, project_ctx, json_ctx, yaml_ctx)
         });
         if !display_if_empty_input
             && input.is_empty()
@@ -3273,6 +3292,7 @@ impl EditorData {
             && !tag_ctx
             && !project_ctx
             && !json_ctx
+            && !yaml_ctx
         {
             self.cancel_completion();
             return;

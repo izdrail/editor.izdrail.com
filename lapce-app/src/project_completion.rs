@@ -6102,6 +6102,97 @@ pub fn json_schema_items(file: &Path, before: &str) -> Vec<CompletionItem> {
     }
 }
 
+/// True for Symfony YAML config files the schema pack completes:
+/// `config/services*.yaml`, `config/packages/**.yaml`,
+/// `config/routes.yaml` and `config/routes/**.yaml` (item 445).
+pub fn symfony_yaml_schema_path(root: Option<&Path>, file: &Path) -> bool {
+    symfony_yaml_pack_name(root, file).is_some()
+}
+
+fn symfony_yaml_pack_name(root: Option<&Path>, file: &Path) -> Option<&'static str> {
+    let name = file.file_name()?.to_str()?;
+    if !(name.ends_with(".yaml") || name.ends_with(".yml")) {
+        return None;
+    }
+    let rel = root.and_then(|r| file.strip_prefix(r).ok())?;
+    let rel = rel.to_str()?.replace('\\', "/");
+    let rel = rel.strip_prefix("./").unwrap_or(rel.as_str());
+    let rest = rel.strip_prefix("config/")?;
+    let first = rest.split('/').next()?;
+    if first == "routes" || name == "routes.yaml" || name == "routes.yml" {
+        return Some("routing");
+    }
+    if first == "packages"
+        || name == "services.yaml"
+        || name == "services.yml"
+        || name.starts_with("services_")
+        || name.starts_with("services.")
+    {
+        return Some("services");
+    }
+    None
+}
+
+/// Symfony YAML config key and value completion from the pinned Symfony
+/// schema pack (item 445). `before` is the document text up to the
+/// cursor; keys complete at the cursor's indentation path (sequence
+/// items match the schema wildcard), values complete from the key's
+/// enum or boolean type.
+pub fn symfony_yaml_schema_items(
+    root: Option<&Path>,
+    file: &Path,
+    before: &str,
+) -> Vec<CompletionItem> {
+    let Some(pack_name) = symfony_yaml_pack_name(root, file) else {
+        return Vec::new();
+    };
+    let Some(pack) = lapce_core::web_metadata::symfony_yaml_schema(pack_name) else {
+        return Vec::new();
+    };
+    if before.len() > 256 * 1024 {
+        return Vec::new();
+    }
+    let (path, pos) = lapce_core::web_metadata::yaml_cursor_context(before);
+    let parent = path.join(".");
+    match pos {
+        lapce_core::web_metadata::JsonPos::Key => pack
+            .children(&parent)
+            .into_iter()
+            .filter(|(key, _)| !key.contains('*'))
+            .take(MAX_ITEMS)
+            .map(|(key, entry)| {
+                let detail = if entry.types.is_empty() {
+                    format!("{pack_name}.yaml")
+                } else {
+                    format!("{pack_name}.yaml ({})", entry.types.join(" | "))
+                };
+                CompletionItem {
+                    label: key,
+                    kind: Some(CompletionItemKind::PROPERTY),
+                    detail: Some(detail),
+                    ..Default::default()
+                }
+            })
+            .collect(),
+        lapce_core::web_metadata::JsonPos::Value => pack
+            .entry(&parent)
+            .map(|entry| {
+                entry
+                    .values
+                    .iter()
+                    .take(MAX_ITEMS)
+                    .map(|value| CompletionItem {
+                        label: value.clone(),
+                        kind: Some(CompletionItemKind::VALUE),
+                        detail: Some(format!("{pack_name}.yaml")),
+                        ..Default::default()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+    }
+}
+
 pub fn items(
     root: &Path,
     file: Option<&Path>,
@@ -8567,6 +8658,55 @@ add_action('widgets_init', 'shop_widgets');
         assert!(values.iter().any(|i| i.label == "widgets"));
         // unrelated files complete nothing
         assert!(json_schema_items(std::path::Path::new("index.php"), "{").is_empty());
+    }
+
+    #[test]
+    fn symfony_yaml_schema_completes_keys_and_values() {
+        let root = std::path::Path::new("/proj");
+        let services = std::path::Path::new("/proj/config/services.yaml");
+        let keys = symfony_yaml_schema_items(Some(root), services, "serv");
+        assert!(keys.iter().any(|i| i.label == "services"));
+        assert!(keys.iter().any(|i| i.label == "parameters"));
+        let nested = symfony_yaml_schema_items(
+            Some(root),
+            services,
+            "services:\n  App\\Controller\\PostController:\n    aut",
+        );
+        assert!(nested.iter().any(|i| i.label == "autowire"));
+        assert!(nested.iter().any(|i| i.label == "autoconfigure"));
+        // wildcard keys (service ids, `when@*`) are never offered literally
+        assert!(!nested.iter().any(|i| i.label.contains('*')));
+        let booleans = symfony_yaml_schema_items(
+            Some(root),
+            services,
+            "services:\n  App\\Controller\\PostController:\n    autowire: ",
+        );
+        assert!(booleans.iter().any(|i| i.label == "true"));
+        assert!(booleans.iter().any(|i| i.label == "false"));
+        let enums = symfony_yaml_schema_items(
+            Some(root),
+            services,
+            "services:\n  App\\Controller\\PostController:\n    decoration_on_invalid: ",
+        );
+        assert!(enums.iter().any(|i| i.label == "exception"));
+        // `when@<env>` blocks complete through the prefix wildcard
+        let when = symfony_yaml_schema_items(
+            Some(root),
+            services,
+            "when@test:\n  services:\n    App\\Kernel:\n      auto",
+        );
+        assert!(when.iter().any(|i| i.label == "autowire"));
+        let routes = std::path::Path::new("/proj/config/routes.yaml");
+        let route_keys = symfony_yaml_schema_items(Some(root), routes, "home:\n  cont");
+        assert!(route_keys.iter().any(|i| i.label == "controller"));
+        assert!(route_keys.iter().any(|i| i.label == "path"));
+        let packaged = std::path::Path::new("/proj/config/packages/cache.yaml");
+        assert!(symfony_yaml_schema_path(Some(root), packaged));
+        let plain = std::path::Path::new("/proj/templates/page.yaml");
+        assert!(!symfony_yaml_schema_path(Some(root), plain));
+        assert!(symfony_yaml_schema_items(Some(root), plain, "serv").is_empty());
+        // without a workspace root the relative path is unknown
+        assert!(symfony_yaml_schema_items(None, services, "serv").is_empty());
     }
 
     #[test]

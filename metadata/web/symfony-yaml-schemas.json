@@ -1,0 +1,7968 @@
+{
+ "routing": {
+  "doc": "https://symfony.com/doc/current/routing.html",
+  "entries": {
+   "*": {
+    "types": [
+     "object"
+    ]
+   },
+   "*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.host.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.path.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.prefix.*": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource.namespace": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource.path": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.condition": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.controller": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.defaults": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.deprecated": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.format": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.host": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.locale": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.methods": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.name_prefix": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.options": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.path": {
+    "types": [
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.prefix": {
+    "types": [
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.requirements": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.resource": {
+    "types": [
+     "array",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.schemes": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.stateless": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.trailing_slash_on_root": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*.utf8": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   }
+  },
+  "source_sha256": "2a51f49b7ee8b78433150945959144fdf664111a21e9239c648950a75592161a"
+ },
+ "services": {
+  "doc": "https://symfony.com/doc/current/service_container.html",
+  "entries": {
+   "imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services.*.stack.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "services.*.stack.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.stack.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*.stack.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.stack.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.stack.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services.*.stack.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services.*.stack.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services._instanceof.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "services._instanceof.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "services._instanceof.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services._instanceof.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "services._instanceof.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.stack.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.stack.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services.*.stack.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services._instanceof.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services._instanceof.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services._instanceof.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services._instanceof.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.services._instanceof.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.stack.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.services._instanceof.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.stack.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.services._instanceof.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.stack.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.services._instanceof.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.services._instanceof.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.calls.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.calls.*.method": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.calls.*.returns_clone": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services.*.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.resource_tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.tags.*.name": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated.message": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated.package": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated.version": {
+    "types": [
+     "number",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports.*.ignore_errors": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports.*.type": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.abstract": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.alias": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.arguments": {
+    "types": [
+     "array",
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.calls": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.class": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.configurator": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.constructor": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decorates": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_inner_name": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_on_invalid": {
+    "enum": [
+     "exception",
+     "ignore"
+    ],
+    "types": [
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.decoration_priority": {
+    "types": [
+     "integer",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.deprecated": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.exclude": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.factory": {
+    "types": [
+     "array",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.file": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.from_callable": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.lazy": {
+    "types": [
+     "boolean",
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.namespace": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.parent": {
+    "types": [
+     "null",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.properties": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource": {
+    "types": [
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.shared": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.stack": {
+    "types": [
+     "array"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.synthetic": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.autoconfigure": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.autowire": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.bind": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.public": {
+    "enum": [
+     "false",
+     "true"
+    ],
+    "types": [
+     "boolean",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.resource_tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults.tags": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof.*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters.*": {
+    "types": [
+     "array",
+     "boolean",
+     "null",
+     "number",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services.*": {
+    "types": [
+     "array",
+     "null",
+     "object",
+     "string"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._defaults": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services._instanceof": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.imports": {
+    "types": [
+     "array",
+     "null"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.parameters": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.services": {
+    "types": [
+     "null",
+     "object"
+    ]
+   },
+   "when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*.when@*": {
+    "types": [
+     "object"
+    ]
+   }
+  },
+  "source_sha256": "83f9ea466bf3bb78507dd3b4927eb1ea373b6602045ce473d28fdbaa2fe26b1b"
+ }
+}

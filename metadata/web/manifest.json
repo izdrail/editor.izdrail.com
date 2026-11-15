@@ -15020,5 +15020,23 @@
     "note": "fact extraction (paths/types/enum values); schema prose not vendored",
     "url": "https://github.com/WordPress/gutenberg",
     "version": "gutenberg-schemas@9180415f97d9"
+  },
+  {
+    "commit": "039017e8635dbc56d1f4bc930c60e5aa45d218e6",
+    "framework": "symfony",
+    "inputs": [
+      {
+        "path": "src/Symfony/Component/DependencyInjection/Loader/schema/services.schema.json",
+        "sha256": "83f9ea466bf3bb78507dd3b4927eb1ea373b6602045ce473d28fdbaa2fe26b1b"
+      },
+      {
+        "path": "src/Symfony/Component/Routing/Loader/schema/routing.schema.json",
+        "sha256": "2a51f49b7ee8b78433150945959144fdf664111a21e9239c648950a75592161a"
+      }
+    ],
+    "licence": "MIT",
+    "note": "fact extraction (paths/types/enum values) from the merged YAML config JSON schemas (symfony/symfony#61282)",
+    "url": "https://github.com/symfony/symfony",
+    "version": "symfony-yaml-schemas@039017e8635d"
   }
 ]
