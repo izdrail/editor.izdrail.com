@@ -14,7 +14,7 @@ pub fn supports_path(path: &Path) -> bool {
 
 /// The identifier covering byte `col` of `line`, counting the byte
 /// just past its end as inside (hover between word and delimiter).
-fn word_at(line: &str, col: usize) -> Option<&str> {
+fn word_bounds(line: &str, col: usize) -> Option<(usize, usize)> {
     let mut col = col.min(line.len());
     while !line.is_char_boundary(col) {
         col -= 1;
@@ -36,6 +36,12 @@ fn word_at(line: &str, col: usize) -> Option<&str> {
     while end < bytes.len() && is_ident(bytes[end]) {
         end += 1;
     }
+    Some((start, end))
+}
+
+#[cfg(test)]
+fn word_at(line: &str, col: usize) -> Option<&str> {
+    let (start, end) = word_bounds(line, col)?;
     Some(&line[start..end])
 }
 
@@ -60,16 +66,29 @@ pub fn help(path: &Path, line: &str, col: usize) -> Option<String> {
     if line.len() > 8192 {
         return None;
     }
-    let word = word_at(line, col)?;
+    let (start, end) = word_bounds(line, col)?;
+    let word = &line[start..end];
     if !known_name(word) {
         return None;
     }
     let twig = path.extension().is_some_and(|e| e == "twig");
     let found = if twig {
+        let kind = lapce_core::web_templates::completion_kind(&line[..end])?;
         lapce_core::web_metadata::symbols()
             .iter()
-            .find(|s| s.framework == "twig" && s.name == word)
+            .find(|s| s.framework == "twig" && s.name == word && s.kind == kind)
     } else {
+        // This provider receives one PHP source line, usually without its
+        // document's opening tag. Give the shared lexer that missing mode.
+        let prefix = &line[..end];
+        let php_source = if prefix.contains("<?") {
+            std::borrow::Cow::Borrowed(prefix)
+        } else {
+            std::borrow::Cow::Owned(format!("<?php {prefix}"))
+        };
+        if !lapce_core::web_templates::php_completion_context(&php_source) {
+            return None;
+        }
         let profile = lapce_core::project_profile::detect(path);
         lapce_core::web_metadata::php_symbols(&profile)
             .find(|s| s.name == word)
@@ -109,6 +128,29 @@ mod tests {
         // which is not an identifier byte.
         assert_eq!(word_at("é upper", 1), None);
         assert_eq!(word_at("é upper", 4), Some("upper"));
+    }
+
+    #[test]
+    fn catalogue_hover_respects_code_context_and_twig_symbol_kind() {
+        let php = Path::new("probe.php");
+        for line in ["$strlen = 1;", "$x->strlen()", "Type::strlen()", "echo 'strlen';", "// strlen($x)"] {
+            let col = line.find("strlen").unwrap() + 2;
+            assert!(help(php, line, col).is_none(), "{line}");
+        }
+        let twig = Path::new("probe.twig");
+        for line in ["<p>upper</p>", "{{ 'upper' }}", "{# upper #}", "{{ user.upper }}", "{{ upper }}"] {
+            let col = line.find("upper").unwrap() + 2;
+            assert!(help(twig, line, col).is_none(), "{line}");
+        }
+        for (line, word, kind) in [
+            ("{{ value|upper }}", "upper", "filter"),
+            ("{{ include('x') }}", "include", "function"),
+            ("{% include 'x' %}", "include", "tag"),
+            ("{{ user is defined }}", "defined", "test"),
+        ] {
+            let md = help(twig, line, line.find(word).unwrap() + 2).unwrap();
+            assert!(md.contains(&format!("({kind})")), "{line}: {md}");
+        }
     }
 
     #[test]
