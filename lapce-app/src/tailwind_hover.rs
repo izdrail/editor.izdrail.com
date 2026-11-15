@@ -814,11 +814,11 @@ fn token_at(line: &str, col: usize) -> Option<&str> {
             let start = i + key.len() + 1;
             let Some(len) = line[start..].find(q) else { continue };
             let end = start + len;
-            if col < start || col > end {
+            if col + 1 < start || col > end {
                 continue;
             }
             let value = &line[start..end];
-            let rel = col - start;
+            let rel = col.saturating_sub(start);
             let ts = value[..rel].rfind(char::is_whitespace).map_or(0, |p| p + value[p..].chars().next().map_or(1, char::len_utf8));
             let te = value[rel..].find(char::is_whitespace).map_or(value.len(), |p| rel + p);
             let tok = &value[ts..te];
@@ -881,6 +881,16 @@ mod tests {
 
     fn h(line: &str, needle: &str) -> Option<String> {
         help(None, line, line.find(needle).unwrap() + 1)
+    }
+
+    #[test]
+    fn quotes_count_as_inside() {
+        let l = "<div class=\"p-4\">";
+        let open = l.find("\"p-4").unwrap();
+        let expect = h(l, "p-4");
+        assert_eq!(help(None, l, open), expect, "opening quote");
+        let close = open + 4;
+        assert_eq!(help(None, l, close), expect, "closing quote");
     }
 
     #[test]

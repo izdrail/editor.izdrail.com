@@ -93,11 +93,11 @@ const RULES: &[(&str, &str)] = &[
 /// `(string content start, content)` for the quoted span covering `col`.
 fn quoted_at(line: &str, col: usize) -> Option<(usize, &str)> {
     for q in ['\'', '"'] {
-        for (i, _) in line.match_indices(q) {
-            let start = i + 1;
-            let Some(len) = line[start..].find(q) else { break };
-            let end = start + len;
-            if col >= start && col <= end {
+        let quotes: Vec<usize> = line.match_indices(q).map(|(i, _)| i).collect();
+        for pair in quotes.chunks_exact(2) {
+            let start = pair[0] + 1;
+            let end = pair[1];
+            if col + 1 >= start && col <= end {
                 return Some((start, &line[start..end]));
             }
         }
@@ -136,7 +136,7 @@ pub fn help(line: &str, col: usize) -> Option<String> {
         }
     }
     // The token under the cursor (byte offsets are ASCII-delimited).
-    let rel = col - start;
+    let rel = col.saturating_sub(start);
     let mut pos = 0;
     for tok in tokens {
         let end = pos + tok.len();
@@ -165,6 +165,16 @@ mod tests {
 
     fn h(line: &str, needle: &str) -> Option<String> {
         help(line, line.find(needle).unwrap() + 1)
+    }
+
+    #[test]
+    fn quotes_count_as_inside() {
+        let l = " = ['email' => 'required|email'];";
+        let open = l.find("'required").unwrap();
+        let expect = h(l, "required");
+        assert_eq!(help(l, open), expect, "opening quote");
+        let close = open + 1 + "required|email".len();
+        assert_eq!(help(l, close), help(l, open + 10), "closing quote");
     }
 
     #[test]

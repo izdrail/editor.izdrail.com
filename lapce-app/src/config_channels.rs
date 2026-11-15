@@ -30,10 +30,31 @@ fn target_at(line: &str, col: usize) -> Option<(&str, &'static str)> {
     while !line.is_char_boundary(col) {
         col -= 1;
     }
-    let i = line[..col].rfind(['\'', '"'])?;
-    let q = line[i..].chars().next()?;
-    let end = col + line[col..].find(q)?;
-    let name = &line[i + 1..end];
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    let (start, end) = loop {
+        while i < bytes.len() && bytes[i] != b'\'' && bytes[i] != b'"' {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            return None;
+        }
+        let q = bytes[i];
+        let start = i + 1;
+        let mut j = start;
+        while j < bytes.len() && bytes[j] != q {
+            j += 1;
+        }
+        if j >= bytes.len() {
+            return None;
+        }
+        if col + 1 >= start && col <= j {
+            break (start, j);
+        }
+        i = j + 1;
+    };
+    let i = start - 1;
+    let name = &line[start..end];
     if name.is_empty()
         || name.len() > 60
         || !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))

@@ -35,7 +35,7 @@ fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
             let q = bytes[i] as char;
             let start = i + 1;
             let end = start + line[start..].find(q)?;
-            if col >= start && col <= end {
+            if col + 1 >= start && col <= end {
                 return Some((&line[start..end], &line[..i]));
             }
             i = end + 1;

@@ -17,11 +17,11 @@ fn name_at(line: &str, col: usize) -> Option<String> {
         col -= 1;
     }
     for q in ['\'', '"'] {
-        for (i, _) in line.match_indices(q) {
-            let start = i + 1;
-            let Some(len) = line[start..].find(q) else { break };
-            let end = start + len;
-            if col >= start && col <= end {
+        let quotes: Vec<usize> = line.match_indices(q).map(|(i, _)| i).collect();
+        for pair in quotes.chunks_exact(2) {
+            let start = pair[0] + 1;
+            let end = pair[1];
+            if col + 1 >= start && col <= end {
                 let s = &line[start..end];
                 return (s.len() <= 200).then(|| s.to_string());
             }
@@ -103,6 +103,22 @@ mod tests {
 
     fn at(line: &str, needle: &str) -> usize {
         line.rfind(needle).unwrap() + 1
+    }
+
+    #[test]
+    fn quotes_count_as_inside() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(r, "routes/web.php", "<?php
+use AppUserController;
+Route::get('/users', [UserController::class, 'index'])->name('users.index');
+");
+        let root = Some(r);
+        let l = "return to_route('users.index');";
+        let open = l.find("'users.index'").unwrap();
+        let expect = help(root, l, open + 2);
+        assert_eq!(help(root, l, open), expect, "opening quote");
+        assert_eq!(help(root, l, open + 12), expect, "closing quote");
     }
 
     #[test]
