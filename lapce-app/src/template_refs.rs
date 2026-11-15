@@ -41,7 +41,7 @@ fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
             let q = bytes[i];
             let start = i + 1;
             let end = start + line[start..].find(q as char)?;
-            if col >= start && col <= end {
+            if col + 1 >= start && col <= end {
                 return Some((&line[start..end], &line[..i]));
             }
             i = end + 1;
@@ -253,6 +253,16 @@ pub fn resolve(root: &Path, file: &Path, line: &str, col: usize) -> Option<PathB
     None
 }
 
+/// Markdown hover for the template or component reference at `col`: the
+/// file it resolves to. Mirrors `resolve`, so the same references are
+/// covered (Blade `view()`, `@include`, `x-` tags, Twig `{% extends %}` /
+/// `{% include %}` / `twig:` tags, Symfony `render('x.html.twig')`).
+pub fn hover(root: &Path, file: &Path, line: &str, col: usize) -> Option<String> {
+    let target = resolve(root, file, line, col)?;
+    let shown = target.strip_prefix(root).unwrap_or(&target).display();
+    Some(format!("**Template** `{shown}`\n\n_Ctrl+click opens the file._"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,6 +276,39 @@ mod tests {
 
     fn at(line: &str, needle: &str) -> usize {
         line.find(needle).unwrap() + 1
+    }
+
+    #[test]
+    fn hover_shows_the_resolved_template() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        touch(r, "resources/views/users/index.blade.php");
+        touch(r, "templates/base.html.twig");
+
+        let l = "return view('users.index');";
+        let f = Path::new("app/Http/Controllers/UserController.php");
+        let md = hover(r, f, l, at(l, "users")).unwrap();
+        assert!(md.contains("resources/views/users/index.blade.php"), "{md}");
+        // The opening quote counts as inside the string.
+        let open = l.find("'users.index'").unwrap();
+        assert_eq!(hover(r, f, l, open), hover(r, f, l, open + 2));
+
+        let l = "{% extends 'base.html.twig' %}";
+        let f = Path::new("templates/page.html.twig");
+        let md = hover(r, f, l, at(l, "base")).unwrap();
+        assert!(md.contains("templates/base.html.twig"), "{md}");
+
+        touch(r, "templates/components/Alert.html.twig");
+        let l = "<twig:Alert />";
+        let md = hover(r, f, l, at(l, "Alert")).unwrap();
+        assert!(md.contains("templates/components/Alert.html.twig"), "{md}");
+        let l = "plain text 'base.html.twig'";
+        assert!(hover(r, f, l, at(l, "base")).is_none());
+
+        // Unknown template: no hover.
+        let l = "return view('missing.index');";
+        let f = Path::new("controller.php");
+        assert!(hover(r, f, l, at(l, "missing")).is_none());
     }
 
     #[test]

@@ -4838,6 +4838,31 @@ impl EditorData {
                 return;
             }
         }
+        // Template reference under the cursor (Blade `view('x')`, Twig
+        // `{% extends 'x' %}`, Symfony `render('x.html.twig')`, components):
+        // the file it resolves to.
+        {
+            let (line_text, col) = doc.buffer.with_untracked(|buffer| {
+                let line = buffer.line_of_offset(offset);
+                (
+                    buffer.line_content(line).to_string(),
+                    offset - buffer.offset_of_line(line),
+                )
+            });
+            let root = self.common.workspace.path.as_deref();
+            if let Some(md) = root.and_then(|root| {
+                crate::template_refs::hover(root, &path, &line_text, col)
+            }) {
+                let content =
+                    parse_markdown(&md, 1.8, &self.common.config.get_untracked());
+                let hover_data = self.common.hover.clone();
+                hover_data.content.set(content);
+                hover_data.offset.set(offset);
+                hover_data.editor_id.set(self.id());
+                hover_data.active.set(true);
+                return;
+            }
+        }
         // Laravel validation rule string under the cursor in a PHP file:
         // one line on the rule, no language server round trip.
         if crate::project_completion::php_completion_path(&path) {
