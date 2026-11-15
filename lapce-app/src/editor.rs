@@ -1505,6 +1505,10 @@ impl EditorData {
     }
 
     fn go_to_definition(&self) {
+        // The source tooltip must not follow us to the destination, nor may
+        // an already scheduled hover or late LSP response bring it back.
+        self.common.mouse_hover_timer.set(TimerToken::INVALID);
+        self.common.hover.dismiss();
         let doc = self.doc();
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
@@ -4626,8 +4630,7 @@ impl EditorData {
     pub fn pointer_leave(&self) {
         self.common.mouse_hover_timer.set(TimerToken::INVALID);
         if self.common.hover.editor_id.get_untracked() == self.id() {
-            self.common.hover.active.set(false);
-            self.common.hover.invalidate_requests();
+            self.common.hover.dismiss();
         }
     }
 

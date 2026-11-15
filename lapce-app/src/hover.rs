@@ -38,6 +38,12 @@ impl HoverData {
         id
     }
 
+    /// Hide the current tooltip and reject late responses from its source.
+    pub fn dismiss(&self) {
+        self.active.set(false);
+        self.invalidate_requests();
+    }
+
     /// Supersede every in-flight request without issuing a new one, so a
     /// late response cannot bring back a hover the user already left.
     pub fn invalidate_requests(&self) {
@@ -54,7 +60,7 @@ pub fn response_is_current(request_id: usize, latest_id: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use floem::reactive::{Scope, SignalGet};
+    use floem::reactive::{Scope, SignalGet, SignalUpdate};
 
     use super::{response_is_current, HoverData};
 
@@ -74,6 +80,20 @@ mod tests {
         assert_ne!(first, second);
         assert!(!response_is_current(first, hover.request_id.get_untracked()));
         assert!(response_is_current(second, hover.request_id.get_untracked()));
+        cx.dispose();
+    }
+
+    #[test]
+    fn dismiss_hides_tooltip_and_rejects_its_pending_response() {
+        let cx = Scope::new();
+        let hover = HoverData::new(cx);
+        hover.active.set(true);
+        let pending = hover.next_request_id();
+        hover.dismiss();
+        assert!(!hover.active.get_untracked());
+        assert!(!response_is_current(pending, hover.request_id.get_untracked()));
+        let fresh = hover.next_request_id();
+        assert!(response_is_current(fresh, hover.request_id.get_untracked()));
         cx.dispose();
     }
 
