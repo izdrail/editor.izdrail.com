@@ -223,8 +223,9 @@ pub enum Kind {
     /// (item 430).
     WpSettingGroup,
     /// WordPress meta key name: the key argument of the
-    /// post/user/term/comment meta functions (`get_post_meta($id,
-    /// 'key')`, ...) and the generic `*metadata` calls (item 431).
+    /// post/user/term/comment/site meta functions
+    /// (`get_post_meta($id, 'key')`, ...) and the generic
+    /// `*metadata` calls (items 431 and 439).
     WpMetaKey,
     /// WordPress capability name: the capability argument of
     /// `current_user_can('cap')` / `user_can($u, 'cap')` /
@@ -1785,17 +1786,19 @@ fn call_context(line: &str) -> Option<Kind> {
             Kind::WpSettingGroup
         }
         "register_setting" if arg == 1 => Kind::WpOption,
-        // WordPress meta keys (item 431): the object-specific meta
-        // functions take the object id first and the meta KEY
-        // second (the post/user/term/comment wrappers all forward
-        // to *metadata), so the key position completes keys the
-        // project itself uses.
+        // WordPress meta keys (items 431 and 439): the
+        // object-specific meta functions take the object id first
+        // and the meta KEY second (the post/user/term/comment/site
+        // wrappers all forward to *metadata), so the key position
+        // completes keys the project itself uses.
         "get_post_meta" | "add_post_meta" | "update_post_meta"
         | "delete_post_meta" | "get_user_meta" | "add_user_meta"
         | "update_user_meta" | "delete_user_meta" | "get_term_meta"
         | "add_term_meta" | "update_term_meta" | "delete_term_meta"
         | "get_comment_meta" | "add_comment_meta"
         | "update_comment_meta" | "delete_comment_meta"
+        | "get_site_meta" | "add_site_meta" | "update_site_meta"
+        | "delete_site_meta"
             if arg == 1 =>
         {
             Kind::WpMetaKey
@@ -4874,13 +4877,13 @@ fn wp_setting_group_names(root: &Path) -> Vec<String> {
     first_quoted_args(root, &["register_setting("])
 }
 
-/// WordPress meta key names (item 431): the quoted key arguments of
-/// the object-specific meta calls (the first quoted string - the
-/// object id is usually an unquoted variable) and the generic
-/// *metadata calls (the second quoted string, after the literal
-/// meta type). Reads declare keys just like writes - a key read
-/// anywhere is worth completing elsewhere. Other call shapes (a
-/// variable meta type, a quoted id, a variable key) are
+/// WordPress meta key names (items 431 and 439): the quoted key
+/// arguments of the object-specific meta calls (the first quoted
+/// string - the object id is usually an unquoted variable) and the
+/// generic *metadata calls (the second quoted string, after the
+/// literal meta type). Reads declare keys just like writes - a key
+/// read anywhere is worth completing elsewhere. Other call shapes
+/// (a variable meta type, a quoted id, a variable key) are
 /// approximated or missed. Core keys are not listed - only keys the
 /// project itself uses.
 fn wp_meta_key_names(root: &Path) -> Vec<String> {
@@ -4903,6 +4906,10 @@ fn wp_meta_key_names(root: &Path) -> Vec<String> {
             "add_comment_meta(",
             "update_comment_meta(",
             "delete_comment_meta(",
+            "get_site_meta(",
+            "add_site_meta(",
+            "update_site_meta(",
+            "delete_site_meta(",
         ],
         0,
     );
@@ -8032,6 +8039,7 @@ add_action('widgets_init', 'shop_widgets');
         let key = Some(Kind::WpMetaKey);
         assert_eq!(context("get_post_meta($id, 'sh"), key);
         assert_eq!(context("update_user_meta($id, 'sh"), key);
+        assert_eq!(context("get_site_meta($id, 'sh"), key);
         assert_eq!(context("update_metadata('post', $id, 'sh"), key);
         // The id position and the meta type position complete
         // nothing.
@@ -8052,6 +8060,7 @@ add_action('widgets_init', 'shop_widgets');
                 "<?php\n",
                 "update_post_meta($id, 'shop_price', $v);\n",
                 "get_post_meta($id, \"shop_sku\", true);\n",
+                "update_site_meta($id, 'shop_region', $v);\n",
                 "update_metadata('post', $id, 'shop_weight', $v);\n",
                 "// update_post_meta($id, 'ghosted', $v);\n",
                 "$s = \"update_post_meta($id, 'instr', $v)\";\n",
@@ -8065,9 +8074,11 @@ add_action('widgets_init', 'shop_widgets');
         };
         // The commented `ghosted` and the in-string `instr` declare
         // no key; reads and writes harvest alike.
-        let want = ["shop_price", "shop_sku", "shop_weight"];
+        let want =
+            ["shop_price", "shop_region", "shop_sku", "shop_weight"];
         assert_eq!(labels("get_post_meta($id, '"), want);
         assert_eq!(labels("delete_user_meta($id, '"), want);
+        assert_eq!(labels("get_site_meta($id, '"), want);
         assert_eq!(labels("update_metadata('post', $id, '"), want);
         assert!(labels("get_post_meta($id, 'k')").is_empty());
         assert_eq!(

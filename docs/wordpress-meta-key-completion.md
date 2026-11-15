@@ -6,8 +6,8 @@ Typing a meta key offers the keys the project itself uses (item
 ## Where it works
 
 - `get_post_meta($id, '...')` and the add/update/delete variants
-  for posts, users, terms and comments - the key is the second
-  argument.
+  for posts, users, terms, comments and sites - the key is the
+  second argument.
 - `get_metadata('post', $id, '...')` and the add/update/delete
   variants - the key is the third argument.
 
