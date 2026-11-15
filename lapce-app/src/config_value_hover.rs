@@ -57,9 +57,45 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
     let raw = if json {
         found.split_once(':')?.1
     } else {
-        found.split_once("=>")?.1
+        // Anchor on the leaf key, not the line start, so a single-line
+        // array like `return ["name" => "App", "env" => "local"];`
+        // resolves its own entry rather than the line's first `=>`.
+        let leaf = key.rsplit('.').next()?;
+        let quoted = [format!("'{leaf}'"), format!("\"{leaf}\"")];
+        let pos = quoted
+            .iter()
+            .find_map(|q| found.find(q.as_str()).map(|p| p + q.len()))?;
+        found[pos..].split_once("=>")?.1
     };
-    let value = raw.trim().strip_suffix(',').unwrap_or(raw.trim()).trim();
+    // Cut at the first top-level comma so inline neighbours are not
+    // shown; commas inside brackets or quotes do not end the value.
+    let raw = raw.trim();
+    let mut depth = 0i32;
+    let mut quote = None;
+    let mut end = raw.len();
+    let mut chars = raw.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        match quote {
+            Some(q) => {
+                if c == '\\' {
+                    chars.next();
+                } else if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                '\'' | '"' => quote = Some(c),
+                '[' | '(' => depth += 1,
+                ']' | ')' => depth -= 1,
+                ',' if depth <= 0 => {
+                    end = i;
+                    break;
+                }
+                _ => {}
+            },
+        }
+    }
+    let value = raw[..end].trim().strip_suffix(',').unwrap_or(raw[..end].trim()).trim();
     if value.is_empty() {
         return None;
     }
@@ -117,6 +153,18 @@ mod tests {
         // Whole file key: nothing to show.
         let l = "$m = config('mail');";
         assert_eq!(help(root, l, at(l, "mail")), None);
+
+        // Single-line array: the leaf's own value, not the first `=>`.
+        put(r, "config/app.php", "<?php return ['name' => 'ReQA App', 'env' => 'local'];\n");
+        let l = "$n = config('app.name');";
+        let md = help(root, l, at(l, "app")).unwrap();
+        assert!(md.contains("**`app.name`** = `'ReQA App'`"), "{md}");
+        // Inline nested array: the leaf's own value, comma inside the
+        // nested brackets does not truncate it.
+        put(r, "config/mail2.php", "<?php\nreturn [\n  'from' => ['address' => 'a@x', 'name' => 'N'],\n];\n");
+        let l = "$m = config('mail2.from.address');";
+        let md = help(root, l, at(l, "from")).unwrap();
+        assert!(md.contains("`'a@x'`"), "{md}");
 
         let l = "{{ __('messages.welcome') }}";
         assert!(help(root, l, at(l, "messages")).unwrap().contains("'Hi there'"));

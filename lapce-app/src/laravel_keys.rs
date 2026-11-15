@@ -75,17 +75,36 @@ fn classify(line: &str, col: usize) -> Option<Key> {
 }
 
 /// Line of the deepest nested key among `segs`, searched in order.
+/// A key is matched at line start first (the usual one-key-per-line
+/// layout); when no line matches that way, an inline `key =>` anywhere
+/// on a later line matches too, so single-line arrays like
+/// `return ["name" => "App", "env" => "local"];` still resolve.
 fn key_line(text: &str, segs: &[&str]) -> usize {
     let lines: Vec<&str> = text.lines().collect();
     let mut cur = 0;
     let mut found = 0;
     for seg in segs {
-        let hit = lines.iter().enumerate().skip(cur).find(|(_, l)| {
-            let l = l.trim_start();
-            [format!("'{seg}'"), format!("\"{seg}\"")].iter().any(|k| {
-                l.strip_prefix(k.as_str()).is_some_and(|r| r.trim_start().starts_with("=>"))
+        let quoted = [format!("'{seg}'"), format!("\"{seg}\"")];
+        let hit = lines
+            .iter()
+            .enumerate()
+            .skip(cur)
+            .find(|(_, l)| {
+                let l = l.trim_start();
+                quoted.iter().any(|k| {
+                    l.strip_prefix(k.as_str())
+                        .is_some_and(|r| r.trim_start().starts_with("=>"))
+                })
             })
-        });
+            .or_else(|| {
+                lines.iter().enumerate().skip(cur).find(|(_, l)| {
+                    quoted.iter().any(|k| {
+                        l.find(k.as_str()).is_some_and(|p| {
+                            l[p + k.len()..].trim_start().starts_with("=>")
+                        })
+                    })
+                })
+            });
         match hit {
             Some((i, _)) => {
                 cur = i;
@@ -241,6 +260,19 @@ mod tests {
         assert_eq!(resolve_config(r, "mail.from.nope"), Some((p.clone(), 3)));
         assert_eq!(resolve_config(r, "mail"), Some((p, 0)));
         assert_eq!(resolve_config(r, "nope.x"), None);
+    }
+
+    #[test]
+    fn config_inline_arrays() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        // Whole array on one line: inline `key =>` still resolves.
+        let p = put(r, "config/app.php", "<?php return ['name' => 'ReQA App', 'env' => 'local'];\n");
+        assert_eq!(resolve_config(r, "app.name"), Some((p, 0)));
+        // Inline nested array on one line: deepest leaf still resolves.
+        let p2 = put(r, "config/mail.php", "<?php\nreturn [\n  'from' => ['address' => 'a@x', 'name' => 'N'],\n];\n");
+        assert_eq!(resolve_config(r, "mail.from.address"), Some((p2.clone(), 2)));
+        assert_eq!(resolve_config(r, "mail.from.nope"), Some((p2.clone(), 2)));
     }
 
     #[test]
