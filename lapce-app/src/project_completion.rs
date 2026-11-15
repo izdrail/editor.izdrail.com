@@ -263,6 +263,10 @@ pub enum Kind {
     /// i18n functions (`__('text', 'shop')`, ...) and the
     /// `load_*_textdomain` calls (item 440).
     WpTextDomain,
+    /// WordPress theme support feature (`post-thumbnails`):
+    /// the first argument of the `add_theme_support` family
+    /// (item 441).
+    WpThemeFeature,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1914,6 +1918,16 @@ fn call_context(line: &str) -> Option<Kind> {
         {
             Kind::WpTextDomain
         }
+        // WordPress theme support features (item 441): the feature
+        // is the first argument of the whole family (theme.php:
+        // add_theme_support, remove_theme_support,
+        // get_theme_support, current_theme_supports).
+        "add_theme_support" | "remove_theme_support"
+        | "get_theme_support" | "current_theme_supports"
+            if arg == 0 =>
+        {
+            Kind::WpThemeFeature
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2359,6 +2373,7 @@ struct Lists {
     wp_rest_namespaces: Vec<String>,
     wp_rest_routes: Vec<String>,
     wp_text_domains: Vec<String>,
+    wp_theme_features: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3616,6 +3631,7 @@ fn lists(root: &Path) -> Lists {
     let wp_rest_namespaces = wp_rest_namespace_names(root);
     let wp_rest_routes = wp_rest_route_paths(root);
     let wp_text_domains = wp_text_domain_names(root);
+    let wp_theme_features = wp_theme_feature_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3668,6 +3684,7 @@ fn lists(root: &Path) -> Lists {
         wp_rest_namespaces,
         wp_rest_routes,
         wp_text_domains,
+        wp_theme_features,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -5349,6 +5366,62 @@ fn wp_text_domain_names(root: &Path) -> Vec<String> {
     out
 }
 
+/// The core theme support features (theme.php registers them, so
+/// project files rarely mention them - harvest-only would miss the
+/// main use case).
+const CORE_WP_THEME_FEATURES: &[&str] = &[
+    "admin-bar",
+    "align-wide",
+    "automatic-feed-links",
+    "core-block-patterns",
+    "custom-background",
+    "custom-header",
+    "custom-line-height",
+    "custom-logo",
+    "custom-spacing",
+    "custom-units",
+    "customize-selective-refresh-widgets",
+    "dark-editor-style",
+    "disable-custom-colors",
+    "disable-custom-font-sizes",
+    "disable-custom-gradients",
+    "editor-color-palette",
+    "editor-font-sizes",
+    "editor-gradient-presets",
+    "editor-styles",
+    "experimental-link-color",
+    "html5",
+    "menus",
+    "post-formats",
+    "post-thumbnails",
+    "responsive-embeds",
+    "starter-content",
+    "title-tag",
+    "widgets",
+    "widgets-block-editor",
+    "wp-block-styles",
+];
+
+/// WordPress theme support feature names (item 441): the first
+/// quoted argument of every add_theme_support family call in the
+/// project (custom features), plus the core features above.
+/// Sorted, deduped.
+fn wp_theme_feature_names(root: &Path) -> Vec<String> {
+    let mut out = first_quoted_args(
+        root,
+        &[
+            "add_theme_support(",
+            "remove_theme_support(",
+            "get_theme_support(",
+            "current_theme_supports(",
+        ],
+    );
+    out.extend(CORE_WP_THEME_FEATURES.iter().map(|s| s.to_string()));
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -6437,6 +6510,9 @@ pub fn items(
         Kind::WpRestRoute => (lists.wp_rest_routes, "REST route"),
         Kind::WpTextDomain => {
             (lists.wp_text_domains, "text domain")
+        }
+        Kind::WpThemeFeature => {
+            (lists.wp_theme_features, "theme feature")
         }
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
@@ -8558,6 +8634,62 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("text domain")
+        );
+    }
+
+    #[test]
+    fn detects_wp_theme_feature_context() {
+        let tf = Some(Kind::WpThemeFeature);
+        assert_eq!(context("add_theme_support('sh"), tf);
+        assert_eq!(context("remove_theme_support('sh"), tf);
+        assert_eq!(context("get_theme_support('sh"), tf);
+        assert_eq!(context("current_theme_supports('sh"), tf);
+        // The feature-arguments position completes nothing.
+        assert_eq!(context("add_theme_support('html5', 'sh"), None);
+        // A closed call completes nothing.
+        assert_eq!(context("add_theme_support('menus')"), None);
+        // Lookalike prefixes stay out.
+        assert_eq!(context("my_add_theme_support('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_theme_features() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/themes/shop/functions.php",
+            concat!(
+                "<?php\n",
+                "add_theme_support('shop-icons');\n",
+                "add_theme_support(\"shop-badges\");\n",
+                "// add_theme_support('ghost_feature');\n",
+                "$s = \"add_theme_support('instr_feature')\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The project's custom features complete; the commented
+        // `ghost_feature` and the in-string `instr_feature`
+        // declare none.
+        let got = labels("add_theme_support('shop-");
+        assert!(got.contains(&"shop-icons".to_string()));
+        assert!(got.contains(&"shop-badges".to_string()));
+        assert!(!got.contains(&"ghost_feature".to_string()));
+        assert!(!got.contains(&"instr_feature".to_string()));
+        // Core features are always offered, even unmentioned.
+        let got = labels("add_theme_support('post-");
+        assert!(got.contains(&"post-thumbnails".to_string()));
+        assert!(got.contains(&"post-formats".to_string()));
+        assert_eq!(
+            items(r, None, "current_theme_supports('shop-")[0]
+                .detail
+                .as_deref(),
+            Some("theme feature")
         );
     }
 
