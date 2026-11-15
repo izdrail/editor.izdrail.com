@@ -234,6 +234,10 @@ pub enum Kind {
     /// theme `.php` file without the extension, as loaded by
     /// `get_template_part('template-parts/shop')` (item 433).
     WpTemplatePart,
+    /// WordPress sidebar / widget area id: declared via
+    /// `register_sidebar(['id' => 'shop-sidebar'])` and rendered
+    /// with `dynamic_sidebar('shop-sidebar')` (item 434).
+    WpSidebar,
     /// Migration Blueprint method: `$table->str` in a schema closure.
     BlueprintMethod,
 }
@@ -1793,6 +1797,14 @@ fn call_context(line: &str) -> Option<Kind> {
         // WordPress template parts (item 433): the slug is the
         // first argument (template-tags.php: get_template_part).
         "get_template_part" if arg == 0 => Kind::WpTemplatePart,
+        // WordPress sidebars (item 434): the sidebar id is the
+        // first argument (widgets.php: dynamic_sidebar,
+        // is_active_sidebar).
+        "dynamic_sidebar" | "is_active_sidebar"
+            if arg == 0 =>
+        {
+            Kind::WpSidebar
+        }
         // Session keys (item 414): `session('...')` reads a key
         // (Laravel 12.x helpers.php:910 - an array first argument
         // puts instead, whose assoc keys name keys), and the
@@ -2231,6 +2243,7 @@ struct Lists {
     wp_meta_keys: Vec<String>,
     wp_capabilities: Vec<String>,
     wp_template_parts: Vec<String>,
+    wp_sidebars: Vec<String>,
 }
 
 static CACHE: OnceLock<Mutex<Option<Lists>>> = OnceLock::new();
@@ -3481,6 +3494,7 @@ fn lists(root: &Path) -> Lists {
     let wp_meta_keys = wp_meta_key_names(root);
     let wp_capabilities = wp_capability_names(root);
     let wp_template_parts = wp_template_part_names(root);
+    let wp_sidebars = wp_sidebar_names(root);
     let fresh = Lists {
         root: root.to_path_buf(),
         at: Instant::now(),
@@ -3526,6 +3540,7 @@ fn lists(root: &Path) -> Lists {
         wp_meta_keys,
         wp_capabilities,
         wp_template_parts,
+        wp_sidebars,
     };
     *cache.lock().unwrap() = Some(fresh.clone());
     fresh
@@ -4902,6 +4917,111 @@ fn wp_template_part_names(root: &Path) -> Vec<String> {
     out
 }
 
+/// `assoc_string_value` harvests the quoted value of a `'key' =>`
+/// pair inside `calls` (item 434 sidebar ids in
+/// `register_sidebar(['id' => 'shop-sidebar'])`). Values come from
+/// the masker's string span table, so comments and lookalike calls
+/// inside strings are skipped, and the pair must appear before the
+/// call's closing `;`. Textual scan; nothing is executed.
+fn assoc_string_value(root: &Path, calls: &[&str], key: &str) -> Vec<String> {
+    let files = project_php_files(root);
+    let mut out: Vec<String> = Vec::new();
+    'files: for f in files {
+        let Ok(meta) = std::fs::metadata(&f) else { continue };
+        if !meta.is_file() || meta.len() > MAX_FILE {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        if text.contains("<<<") {
+            // Same heredoc/nowdoc fail-closed guard as item 390d.
+            continue;
+        }
+        let (masked, strings) = mask_comments(&text);
+        let b = masked.as_bytes();
+        let in_string = |pos: usize| {
+            let i = strings.partition_point(|&(_, end)| pos > end);
+            i < strings.len() && strings[i].0 <= pos
+        };
+        for marker in calls {
+            for (i, _) in masked.match_indices(marker) {
+                // Word boundary: `my_register_sidebar(` is not a
+                // sidebar declaration.
+                if i > 0
+                    && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')
+                {
+                    continue;
+                }
+                if in_string(i) {
+                    continue;
+                }
+                // The call ends at the next `;` after the marker.
+                let start = i + marker.len();
+                let end = masked[start..]
+                    .find(';')
+                    .map(|o| start + o)
+                    .unwrap_or(masked.len());
+                // Find the `'key'` string inside the call; the value
+                // must be the very next string, with only `=>` and
+                // punctuation between.
+                let si = strings.partition_point(|&(s, _)| s < start);
+                for w in si..strings.len() {
+                    let (ks, ke) = strings[w];
+                    if ks >= end {
+                        break;
+                    }
+                    if &text[ks + 1..ke] != key {
+                        continue;
+                    }
+                    let Some(&(vs, ve)) = strings.get(w + 1) else {
+                        break;
+                    };
+                    if vs >= end {
+                        break;
+                    }
+                    if !masked[ke + 1..vs].contains("=>") {
+                        continue;
+                    }
+                    let name = &text[vs + 1..ve];
+                    if !name.is_empty()
+                        && name.len() <= 100
+                        && name.chars().all(|c| {
+                            c.is_ascii_alphanumeric()
+                                || matches!(c, '_' | '-' | '.' | '$' | ':')
+                        })
+                        && !out.iter().any(|n: &String| n == name)
+                    {
+                        out.push(name.to_string());
+                        if out.len() >= MAX_NAMES {
+                            break 'files;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// WordPress sidebar ids (item 434): the `'id' =>` values of
+/// `register_sidebar` declarations, plus ids passed to
+/// `dynamic_sidebar` / `is_active_sidebar` - a used id is worth
+/// completing even where its declaration is not visible. Core
+/// sidebars are not listed - only ids the project itself declares
+/// or uses.
+fn wp_sidebar_names(root: &Path) -> Vec<String> {
+    let mut out = assoc_string_value(root, &["register_sidebar("], "id");
+    out.extend(quoted_strings_anywhere(
+        root,
+        &["dynamic_sidebar(", "is_active_sidebar("],
+        0,
+    ));
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Session keys (item 414): the names written by
 /// `Session::put/flash/now/push('key', ...)`,
 /// `->session()->put/flash('key', ...)`, `session()->put/flash(...)`
@@ -5976,6 +6096,7 @@ pub fn items(
         Kind::WpTemplatePart => {
             (lists.wp_template_parts, "template part")
         }
+        Kind::WpSidebar => (lists.wp_sidebars, "sidebar"),
         Kind::CacheKey => (lists.cache_keys, "cache key"),
         Kind::BroadcastChannel => {
             (lists.broadcast_channels, "broadcast channel")
@@ -7794,6 +7915,50 @@ add_action('widgets_init', 'shop_widgets');
                 .detail
                 .as_deref(),
             Some("template part")
+        );
+    }
+
+    #[test]
+    fn detects_wp_sidebar_context() {
+        let sb = Some(Kind::WpSidebar);
+        assert_eq!(context("dynamic_sidebar('sh"), sb);
+        assert_eq!(context("is_active_sidebar('sh"), sb);
+        assert_eq!(context("dynamic_sidebar('a')"), None);
+        assert_eq!(context("my_dynamic_sidebar('sh"), None);
+    }
+
+    #[test]
+    fn offers_wp_sidebars() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            r,
+            "wp-content/themes/shop/functions.php",
+            concat!(
+                "<?php\n",
+                "register_sidebar(['id' => 'shop-sidebar', 'name' => 'Shop']);\n",
+                "register_sidebar(array(\"id\" => \"shop-footer\"));\n",
+                "// register_sidebar(['id' => 'ghosted']);\n",
+                "$s = \"register_sidebar(['id' => 'instr'])\";\n",
+            ),
+        );
+        let labels = |line: &str| {
+            items(r, None, line)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        // The commented `ghosted` and the in-string `instr` declare
+        // no sidebar; declarations and uses harvest alike.
+        let want = ["shop-footer", "shop-sidebar"];
+        assert_eq!(labels("dynamic_sidebar('"), want);
+        assert_eq!(labels("is_active_sidebar('"), want);
+        assert!(labels("dynamic_sidebar('a')").is_empty());
+        assert_eq!(
+            items(r, None, "dynamic_sidebar('")[0]
+                .detail
+                .as_deref(),
+            Some("sidebar")
         );
     }
 
