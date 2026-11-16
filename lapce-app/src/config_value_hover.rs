@@ -106,7 +106,7 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
     };
     let rel = path.strip_prefix(root).unwrap_or(&path);
     Some(format!(
-        "**`{key}`** = `{value}`\n\n_{}:{}\n\nFirst matching locale / first entry wins._",
+        "**`{key}`** = `{value}`\n\n_{}:{}_\n\n_First matching locale / first entry wins._",
         rel.display(),
         idx + 1,
     ))
@@ -155,7 +155,7 @@ return [
         let l = "$m = config('mail.from.address');";
         let md = help(root, l, at(l, "mail")).unwrap();
         assert!(md.contains("**`mail.from.address`** = `'a@x.test'`"), "{md}");
-        assert!(md.contains("config/mail.php:5"), "{md}");
+        assert!(md.contains("_config/mail.php:5_\n\n_First matching locale / first entry wins._"), "{md}");
 
         let l = "$m = config('mail.from.name');";
         assert!(help(root, l, at(l, "from")).unwrap().contains("env('MAIL_FROM_NAME', 'Example')"));
