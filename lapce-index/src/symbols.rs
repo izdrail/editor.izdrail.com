@@ -118,6 +118,31 @@ pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
     }
 }
 
+/// Mask PHP comments without changing byte offsets or line endings. A
+/// recovering syntax tree keeps navigation usable during unfinished edits.
+pub fn php_without_comments(source: &str) -> Result<String> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&php_language()).map_err(|e| IndexError::SymbolParse(e.to_string()))?;
+    let tree = parser.parse(source, None).ok_or_else(|| IndexError::SymbolParse("Comment parse returned no tree".into()))?;
+    let mut output = source.as_bytes().to_vec();
+    let mut cursor = tree.walk();
+    loop {
+        let node = cursor.node();
+        if node.kind() == "comment" {
+            for byte in &mut output[node.byte_range()] {
+                if !matches!(*byte, b'\n' | b'\r') { *byte = b' '; }
+            }
+        }
+        if cursor.goto_first_child() { continue; }
+        loop {
+            if cursor.goto_next_sibling() { break; }
+            if !cursor.goto_parent() {
+                return String::from_utf8(output).map_err(|e| IndexError::SymbolParse(e.to_string()));
+            }
+        }
+    }
+}
+
 /// An exact property value in the selected PHP config array, never a nearby
 /// sibling's value. Static parse only, with the caller's file-size bound.
 pub fn php_array_property(source: &str, row: usize, entry: &str, properties: &[&str]) -> Result<Option<String>> {
@@ -205,6 +230,16 @@ fn extract_definitions(path: &str, source: &str, language_id: &str, language: tr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn php_comment_mask_keeps_literal_slashes_and_positions() {
+        let source = "<?php\r\n$url = 'https://example.test/*literal*/'; // é comment\r\n/* fake */\r\n";
+        let result = php_without_comments(source).unwrap();
+        assert_eq!(result.len(), source.len());
+        assert_eq!(result.lines().count(), source.lines().count());
+        assert!(result.contains("https://example.test/*literal*/"));
+        assert!(!result.contains("é comment") && !result.contains("fake"));
+    }
 
     #[test]
     fn php_declarations_and_embedded_html_have_source_positions() {

@@ -84,6 +84,7 @@ pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> 
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&p) else { continue };
+        let Ok(text) = lapce_index::symbols::php_without_comments(&text) else { continue };
         if let Some(i) = text.lines().position(|l| declares(l, name)) {
             return Some((p, i));
         }
@@ -152,6 +153,14 @@ mod tests {
         ] {
             assert_eq!(resolve(r, l, at(l, n)), None, "{l}");
         }
+    }
+
+    #[test]
+    fn commented_alias_mappings_do_not_hide_the_live_declaration() {
+        let d = tempfile::tempdir().unwrap();
+        let path = put(d.path(), "app/Http/Kernel.php", "<?php\nclass Kernel {\n protected $middlewareAliases = [\n // 'auth' => Old::class,\n /*\n 'auth' => BlockOld::class,\n */\n # 'auth' => HashOld::class,\n 'auth' => LiveAuth::class,\n ];\n}\n");
+        let line = "->middleware('auth')";
+        assert_eq!(resolve(d.path(), line, at(line, "auth")), Some((path, 8)));
     }
 
     #[test]
