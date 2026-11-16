@@ -790,9 +790,23 @@ impl Doc {
         register: &mut Register,
         smart_tab: bool,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
+        let mut source_indent=None;
+        if matches!(cmd,EditCommand::InsertNewLine|EditCommand::InsertTab) {
+            if let Some(binding)=self.projection.get_untracked() {
+                let selection=self.buffer.with_untracked(|buffer|cursor.edit_selection(buffer));
+                let docs=binding.docs.get_untracked();
+                let style=crate::multibuffer::projection_indent_style(&binding.projection.borrow(),&selection,|excerpt| {
+                    let doc=docs.get(&excerpt.source).ok_or("Source was closed")?;
+                    if doc.buffer_id.0!=excerpt.buffer_id || doc.rev()!=excerpt.revision {return Err("Source changed; refresh before editing");}
+                    Ok(doc.buffer.with_untracked(|buffer|buffer.indent_style()))
+                });
+                match style {Ok(style)=>source_indent=Some(style),Err(error)=>{binding.notice.set(error.into());return Vec::new();}}
+            }
+        }
         if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor| {
+            if let Some(style)=source_indent {buffer.set_indent_style(style);}
             let mut clipboard=SystemClipboard::new();
-            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:&Self::comment_token_resolver(cmd,&Syntax::plaintext(),buffer),modal,smart_tab,keep_indent:true,auto_indent:false})
+            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:&Self::comment_token_resolver(cmd,&Syntax::plaintext(),buffer),modal,smart_tab,keep_indent:true,auto_indent:source_indent.is_some()})
         }) {return deltas;}
         if self.content.with_untracked(|c| c.read_only())
             && !cmd.not_changing_buffer()

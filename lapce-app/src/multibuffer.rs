@@ -797,3 +797,52 @@ mod cursor_only_pair_tests {
         live.do_undo().unwrap();assert_eq!(live.to_string(),p.text);live.do_redo().unwrap();assert!(live.to_string().contains("name()"));assert!(cursor_only_projection_deltas(&[]));
     }
 }
+
+/// Native Return/Tab share one indent unit per action. Refuse incompatible
+/// source styles instead of applying the aggregate scratch buffer's default.
+pub(crate) fn projection_indent_style(
+    projection:&Projection,
+    selection:&lapce_core::selection::Selection,
+    mut source_style:impl FnMut(&Excerpt)->Result<lapce_core::indent::IndentStyle,&'static str>,
+)->Result<lapce_core::indent::IndentStyle,&'static str> {
+    if !projection.allows_insert_selection(selection) {return Err("Headers and excerpt boundaries are read-only");}
+    let mut style=None;
+    for region in selection.regions() {
+        let excerpt=projection.excerpts.iter().find(|e|region.min()>=e.display_range.start && region.max()<=e.display_range.end).ok_or("Selection has no source")?;
+        let next=source_style(excerpt)?;
+        if style.is_some_and(|current|current!=next) {return Err("Sources use different indentation; edit them separately");}
+        style=Some(next);
+    }
+    style.ok_or("Selection has no source")
+}
+#[cfg(test)]
+mod native_indent_projection_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},editor::{Action,EditConf},selection::{Selection,SelRegion},indent::IndentStyle,register::{Clipboard,Register},command::EditCommand};
+    struct NoClipboard;
+    impl Clipboard for NoClipboard {fn get_string(&mut self)->Option<String>{None} fn put_string(&mut self,_:impl AsRef<str>) {panic!("unexpected clipboard write");}}
+    fn fixture()->Projection {let s=vec![Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"{}\n".into()},Snapshot{path:"b".into(),buffer_id:2,revision:1,read_only:false,text:"{}\n".into()}];Projection::build(&s,&[("a".into(),0..3),("b".into(),0..3)],100).unwrap()}
+    #[test] fn source_tabs_and_spaces_drive_native_newline_with_single_undo() {
+        for style in [IndentStyle::Tabs,IndentStyle::Spaces(2),IndentStyle::Spaces(4)] {
+            let p=fixture();let mut buffer=Buffer::new(&p.text);buffer.set_indent_style(style);let at=p.excerpts[0].display_range.start+1;let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);
+            let deltas=Action::do_edit(&mut cursor,&mut buffer,&EditCommand::InsertNewLine,&mut NoClipboard,&mut Register::default(),EditConf{comment_tokens:&|_|("",""),modal:false,smart_tab:true,keep_indent:true,auto_indent:true});
+            let deltas:Vec<_>=deltas.into_iter().map(|(_,d,_)|d).collect();let delta=compose_projection_deltas(&p,&deltas).unwrap();assert!(buffer.to_string().contains(&format!("{{\n{}\n}}",style.as_str())));assert_eq!(cursor.offset(),at+1+style.as_str().len());
+            let (mut staged,_)=stage_compound_projection(&Buffer::new(&p.text),&delta,&buffer.to_string()).unwrap();staged.do_undo().unwrap();assert_eq!(staged.to_string(),p.text);
+        }
+    }
+    #[test] fn source_style_selection_rejects_headers_mixed_styles_and_stale_sources() {
+        let p=fixture();let a=p.excerpts[0].display_range.start;let b=p.excerpts[1].display_range.start;let mut selected=Selection::caret(a);selected.add_region(SelRegion::caret(b));
+        assert_eq!(projection_indent_style(&p,&selected,|_|Ok(IndentStyle::Tabs)),Ok(IndentStyle::Tabs));
+        assert!(projection_indent_style(&p,&selected,|e|Ok(if e.buffer_id==1 {IndentStyle::Tabs}else{IndentStyle::Spaces(2)})).is_err());
+        assert!(projection_indent_style(&p,&Selection::caret(0),|_|panic!("must not read header source")).is_err());
+        assert!(projection_indent_style(&p,&Selection::caret(a),|_|Err("Source changed")).is_err());
+        assert!(projection_indent_style(&p,&Selection::region(a,b),|_|Ok(IndentStyle::Tabs)).is_err());
+    }
+    #[test] fn native_tab_uses_source_indent_unit() {
+        for style in [IndentStyle::Tabs,IndentStyle::Spaces(2)] {
+            let p=fixture();let at=p.excerpts[0].display_range.start;let mut buffer=Buffer::new(&p.text);buffer.set_indent_style(style);let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);
+            let deltas=Action::do_edit(&mut cursor,&mut buffer,&EditCommand::InsertTab,&mut NoClipboard,&mut Register::default(),EditConf{comment_tokens:&|_|("",""),modal:false,smart_tab:true,keep_indent:true,auto_indent:true});
+            let delta=compose_projection_deltas(&p,&deltas.into_iter().map(|(_,d,_)|d).collect::<Vec<_>>()).unwrap();let edits=display_edits_from_delta(&p.text,&delta).unwrap();assert_eq!(edits.len(),1);assert_eq!(edits[0].replacement,style.as_str());
+        }
+    }
+}
