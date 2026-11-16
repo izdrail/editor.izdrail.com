@@ -1051,3 +1051,38 @@ mod projection_ime_tests {
         let mut session=ProjectionImeSession::default();assert!(session.preedit(Ok(None)));assert!(session.commit(Ok(None)));assert!(session.commit(Ok(Some(stamp()))));assert!(session.preedit(Ok(Some(stamp()))));assert!(!session.commit(Ok(None)));
     }
 }
+
+
+impl Projection {
+    /// Rename's source range must belong to the same excerpt as its caret.
+    /// Return display coordinates only for popup placement, never LSP input.
+    pub(crate) fn rename_display_range(&self,anchor:&SourceAnchor,range:Range<usize>)->Option<Range<usize>> {
+        if range.start>range.end || anchor.offset<range.start || anchor.offset>range.end {return None;}
+        let excerpt=self.excerpts.iter().find(|e| e.source==anchor.source && e.buffer_id==anchor.buffer_id && e.revision==anchor.revision
+            && anchor.offset>=e.source_range.start && anchor.offset<=e.source_range.end
+            && range.start>=e.source_range.start && range.end<=e.source_range.end)?;
+        let display=excerpt.display_range.start+range.start-excerpt.source_range.start..excerpt.display_range.start+range.end-excerpt.source_range.start;
+        valid(&self.text,&display).then_some(display)
+    }
+}
+#[cfg(test)]
+mod projection_rename_tests {
+    use super::*;
+    fn fixture()->(Projection,SourceAnchor) {
+        let s=Snapshot{path:"one.php".into(),buffer_id:3,revision:7,read_only:false,text:"omitted\r\nλname\r\ntail".into()};
+        let p=Projection::build(&[s.clone()],&[(s.path.clone(),9..17)],100).unwrap();
+        let anchor=SourceAnchor{source:s.path,buffer_id:s.buffer_id,revision:s.revision,offset:12};(p,anchor)
+    }
+    #[test]fn maps_canonical_unicode_range_to_display_popup() {
+        let (p,a)=fixture();let start=p.excerpts[0].display_range.start;
+        assert_eq!(p.rename_display_range(&a,11..15),Some(start+2..start+6));
+    }
+    #[test]fn refuses_stale_or_wrong_source_identity() {
+        let (p,a)=fixture();let mut stale=a.clone();stale.revision+=1;assert!(p.rename_display_range(&stale,11..15).is_none());
+        let mut stale=a.clone();stale.buffer_id+=1;assert!(p.rename_display_range(&stale,11..15).is_none());
+        let mut stale=a;stale.source="other.php".into();assert!(p.rename_display_range(&stale,11..15).is_none());
+    }
+    #[test]fn refuses_ranges_outside_excerpt_or_split_unicode() {
+        let (p,a)=fixture();for range in [0..15,11..20,13..15,10..15,15..11] {assert!(p.rename_display_range(&a,range).is_none());}
+    }
+}

@@ -2180,6 +2180,9 @@ impl WindowTabData {
             InternalCommand::RunCodeAction { plugin_id, action } => {
                 self.main_split.run_code_action(plugin_id, action);
             }
+            InternalCommand::ApplySourceRename { edit, guard } => {
+                if guard.current() {self.main_split.apply_workspace_edit(&edit);}
+            }
             InternalCommand::ApplyWorkspaceEdit { edit } => {
                 self.main_split.apply_workspace_edit(&edit);
             }
@@ -2211,11 +2214,15 @@ impl WindowTabData {
             }
             InternalCommand::StartRename {
                 path,
+                editor_id,
                 placeholder,
                 position,
                 start,
+                guard,
             } => {
-                self.rename.start(path, placeholder, start, position);
+                let active_editor=self.main_split.active_editor;
+                let guard=guard.restrict(Rc::new(move ||active_editor.get_untracked().is_some_and(|editor|editor.id()==editor_id)));
+                self.rename.start(path, placeholder, start, position, guard);
             }
             InternalCommand::StartInlineAiEdit { start, end, rev } => {
                 if let Some(editor) = self.main_split.active_editor.get_untracked()

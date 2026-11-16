@@ -934,11 +934,17 @@ pub enum InternalCommand {
         mode: RunDebugMode,
         config: RunDebugConfig,
     },
+    ApplySourceRename {
+        edit: WorkspaceEdit,
+        guard: crate::rename::SourceRenameGuard,
+    },
     StartRename {
         path: PathBuf,
+        editor_id: floem::views::editor::id::EditorId,
         placeholder: String,
         start: usize,
         position: Position,
+        guard: crate::rename::SourceRenameGuard,
     },
     StartInlineAiEdit {
         start: usize,

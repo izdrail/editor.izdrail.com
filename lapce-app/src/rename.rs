@@ -19,6 +19,18 @@ use crate::{
     window_tab::{CommonData, Focus},
 };
 
+/// A live guard shared by prepare, popup confirmation and the rename result.
+#[derive(Clone)]
+pub struct SourceRenameGuard(Rc<dyn Fn()->bool>);
+impl std::fmt::Debug for SourceRenameGuard {
+    fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result {f.write_str("SourceRenameGuard")}
+}
+impl SourceRenameGuard {
+    pub(crate) fn new(current:Rc<dyn Fn()->bool>)->Self {Self(current)}
+    pub(crate) fn current(&self)->bool {(self.0)()}
+    pub(crate) fn restrict(self,active:Rc<dyn Fn()->bool>)->Self {Self::new(Rc::new(move ||self.current() && active()))}
+}
+
 #[derive(Clone, Debug)]
 pub struct RenameData {
     pub active: RwSignal<bool>,
@@ -28,6 +40,7 @@ pub struct RenameData {
     pub path: RwSignal<PathBuf>,
     pub layout_rect: RwSignal<Rect>,
     pub common: Rc<CommonData>,
+    guard: RwSignal<Option<SourceRenameGuard>>,
 }
 
 impl KeyPressFocus for RenameData {
@@ -82,6 +95,7 @@ impl RenameData {
             layout_rect,
             path,
             common,
+            guard: cx.create_rw_signal(None),
         }
     }
 
@@ -91,7 +105,10 @@ impl RenameData {
         placeholder: String,
         start: usize,
         position: Position,
+        guard: SourceRenameGuard,
     ) {
+        if !guard.current() {return;}
+        self.guard.set(Some(guard));
         self.editor.doc().reload(Rope::from(&placeholder), true);
         self.editor.cursor().update(|cursor| {
             cursor.set_insert(Selection::region(0, placeholder.len()))
@@ -117,6 +134,7 @@ impl RenameData {
     }
 
     fn cancel(&self) {
+        self.guard.set(None);
         self.active.set(false);
         if let Focus::Rename = self.common.focus.get_untracked() {
             self.common.focus.set(Focus::Workbench);
@@ -124,6 +142,7 @@ impl RenameData {
     }
 
     fn confirm(&self) {
+        let Some(guard)=self.guard.get_untracked().filter(|guard|guard.current()) else {self.cancel();return;};
         let new_name = self
             .editor
             .doc()
@@ -135,9 +154,10 @@ impl RenameData {
             let position = self.position.get_untracked();
             let internal_command = self.common.internal_command;
             let send = create_ext_action(self.common.scope, move |result| {
+                if !guard.current() {return;}
                 if let Ok(ProxyResponse::Rename { edit }) = result {
                     internal_command
-                        .send(InternalCommand::ApplyWorkspaceEdit { edit });
+                        .send(InternalCommand::ApplySourceRename { edit, guard:guard.clone() });
                 }
             });
             self.common.proxy.rename(
@@ -150,5 +170,24 @@ impl RenameData {
             );
         }
         self.cancel();
+    }
+}
+
+#[cfg(test)]
+mod source_rename_guard_tests {
+    use super::*;
+    #[test]fn cloned_guard_rechecks_current_state_at_every_stage() {
+        let revision=Rc::new(std::cell::Cell::new(7));let live=revision.clone();
+        let prepare=SourceRenameGuard::new(Rc::new(move ||live.get()==7));let confirm=prepare.clone();let response=prepare.clone();
+        assert!(prepare.current());assert!(confirm.current());revision.set(8);assert!(!confirm.current());assert!(!response.current());
+    }
+    #[test]fn switched_active_editor_restricts_all_guard_clones() {
+        let active=Rc::new(std::cell::Cell::new(true));let live=active.clone();
+        let guard=SourceRenameGuard::new(Rc::new(||true)).restrict(Rc::new(move ||live.get()));let result=guard.clone();
+        assert!(guard.current());active.set(false);assert!(!guard.current());assert!(!result.current());
+    }
+    #[test]fn moved_or_closed_origin_refuses_pending_result() {
+        let active=Rc::new(std::cell::Cell::new(true));let live=active.clone();let guard=SourceRenameGuard::new(Rc::new(move ||live.get()));
+        assert!(guard.current());active.set(false);assert!(!guard.current());
     }
 }

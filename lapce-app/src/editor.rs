@@ -4275,7 +4275,10 @@ impl EditorData {
     }
 
     fn rename(&self) {
-        let doc = self.doc();
+        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
+        let origin=self.doc();
+        let editor_id=self.id();
+        let guard=crate::rename::SourceRenameGuard::new(request_current);
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -4285,12 +4288,10 @@ impl EditorData {
             None => return,
         };
 
-        let offset = self.cursor().with_untracked(|c| c.offset());
         let (position, rev) = doc
             .buffer
             .with_untracked(|buffer| (buffer.offset_to_position(offset), doc.rev()));
 
-        let cursor = self.cursor();
         let buffer = doc.buffer;
         let internal_command = self.common.internal_command;
         let local_path = path.clone();
@@ -4300,11 +4301,9 @@ impl EditorData {
                     return;
                 }
 
-                if cursor.with_untracked(|c| c.offset()) != offset {
-                    return;
-                }
+                if !guard.current() {return;}
 
-                let (start, _end, position, placeholder) =
+                let (start, end, position, placeholder) =
                     buffer.with_untracked(|buffer| match resp {
                         lsp_types::PrepareRenameResponse::Range(range) => (
                             buffer.offset_of_position(&range.start),
@@ -4340,11 +4339,18 @@ impl EditorData {
                         buffer.slice_to_cow(start..end).to_string()
                     })
                 });
+                let display_start=if let Some(binding)=origin.projection.get_untracked() {
+                    let anchor=crate::multibuffer::SourceAnchor{source:local_path.clone(),buffer_id:doc.buffer_id.0,revision:rev,offset};
+                    let Some(range)=binding.projection.borrow().rename_display_range(&anchor,start..end) else {return;};
+                    range.start
+                } else {start};
                 internal_command.send(InternalCommand::StartRename {
                     path: local_path.clone(),
+                    editor_id,
                     placeholder,
-                    start,
+                    start:display_start,
                     position,
+                    guard:guard.clone(),
                 });
             }
         });
