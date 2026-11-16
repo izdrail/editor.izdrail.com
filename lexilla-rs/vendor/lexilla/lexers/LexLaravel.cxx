@@ -341,28 +341,6 @@ static const char *MagicConstantName(const char *lower) {
 
 using NumberScanner = PHPNumberScanner<SCE_LARAVEL_NUMBER, SCE_LARAVEL_LEXERROR>;
 
-static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max, WordList *keywords) {
-	const Sci_Position start = pos;
-	while (pos < max && IsIdentifierContinue(styler.SafeGetCharAt(pos, '\0')))
-		pos++;
-
-	char s[MAX_LARAVEL_IDENT_CHARS + 1];
-	Sci_Position len = pos - start;
-	len = len > MAX_LARAVEL_IDENT_CHARS ? MAX_LARAVEL_IDENT_CHARS : len;
-	GrabString(s, styler, start, len);
-	char lower[MAX_LARAVEL_IDENT_CHARS + 1];
-	for (Sci_Position i = 0; i <= len; i++) lower[i] = MakeLowerCase(s[i]);
-
-	for (int ii = 0; ii < NUM_LARAVEL_KEYWORD_LISTS; ii++) {
-		if (keywords[ii].InList(ii < 3 ? lower : s) ||
-		    (ii == 3 && MagicConstantName(lower) && keywords[ii].InList(MagicConstantName(lower)))) {
-			styler.ColourTo(pos - 1, SCE_LARAVEL_WORD + ii);
-			return;
-		}
-	}
-	styler.ColourTo(pos - 1, SCE_LARAVEL_IDENTIFIER);
-}
-
 using HeredocScanner = PHPHeredocScanner<SCE_LARAVEL_HEREDOC, SCE_LARAVEL_NOWDOC, SCE_LARAVEL_STRING_VARIABLE, SCE_LARAVEL_LEXERROR>;
 
 static bool IsOperatorChar(int c) {
@@ -673,9 +651,17 @@ void LexerLaravel::PhpToken(Accessor &styler, Sci_Position &pos, Sci_Position ma
 			/*    (handled below in the identifier loop)             */
 		}
 
+		/* Reserved words are legal member names. Preserve Laravel-specific
+		 * method colouring above, but never paint ->match() as control flow.
+		 * Require an actual operator style, not text inside a comment. */
+		const bool member = pb >= 1 && styler.BufferStyleAt(pb) == SCE_LARAVEL_OPERATOR &&
+			((styler.SafeGetCharAt(pb - 1, '\0') == '-' && styler.SafeGetCharAt(pb, '\0') == '>') ||
+			 (styler.SafeGetCharAt(pb - 1, '\0') == ':' && styler.SafeGetCharAt(pb, '\0') == ':'));
 		/* Fall back to the plain PHP word lists. */
 		bool keyword = false;
 		for (int ii = 0; ii < 4; ii++) {   /* WL_PHP_* */
+			if (member && ii == 0)
+				continue;
 			if (keywords[ii].InList(ii < 3 ? lower : s) ||
 			    (ii == 3 && MagicConstantName(lower) && keywords[ii].InList(MagicConstantName(lower)))) {
 				styler.ColourTo(identEnd - 1, SCE_LARAVEL_WORD + ii);

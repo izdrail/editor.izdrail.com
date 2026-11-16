@@ -579,3 +579,38 @@ mod web_regressions {
         }
     }
 }
+
+#[cfg(test)]
+mod php_member_keyword_tests {
+    use super::*;
+    #[test]
+    fn php_member_names_do_not_become_control_flow_keywords() {
+        for lexer in ["php", "laravel"] {
+            for member in ["match", "clone", "list", "empty", "readonly", "return"] {
+                for prefix in ["$object->", "$object?->", "Example::", "$object-> \n    "] {
+                    let source = format!("<?php {prefix}{member}(); return true;");
+                    let snapshot = Snapshot::lex(lexer, &source, &["clone empty list match readonly return", "", "true"]).unwrap();
+                    let at = source.find(member).unwrap();
+                    assert_ne!(snapshot.scope(snapshot.styles()[at]), Some("keyword"), "{lexer}: {source}");
+                    let at = source.rfind("return").unwrap();
+                    assert_eq!(snapshot.scope(snapshot.styles()[at]), Some("keyword"));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod php_member_comment_tests {
+    use super::*;
+    #[test]
+    fn member_operators_inside_comments_do_not_hide_keywords() {
+        for lexer in ["php", "laravel"] {
+            for source in ["<?php // ->\nmatch ($x) {}", "<?php # ::\nmatch ($x) {}", "<?php '->';\nmatch ($x) {}"] {
+                let s = Snapshot::lex(lexer, source, &["match"]).unwrap();
+                let at = source.find("match").unwrap();
+                assert_eq!(s.scope(s.styles()[at]), Some("keyword"), "{lexer}: {source}");
+            }
+        }
+    }
+}

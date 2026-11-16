@@ -288,7 +288,22 @@ static void ScanIdentifier(Accessor &styler, Sci_Position &pos, Sci_Position max
 	char lower[MAX_PHP_IDENT_CHARS + 1];
 	for (Sci_Position i = 0; i <= len; i++) lower[i] = MakeLowerCase(s[i]);
 
+	// PHP allows reserved words as member names (for example ->match()).
+	// Look only behind the current token, across whitespace, so real control
+	// flow elsewhere and strings/comments never affect keyword classification.
+	Sci_Position previous = start;
+	while (previous > 0 && IsWhitespace(styler.SafeGetCharAt(previous - 1, '\0')))
+		previous--;
+	const bool member = previous >= 2 &&
+		styler.BufferStyleAt(previous - 1) == SCE_PHP_OPERATOR &&
+		((styler.SafeGetCharAt(previous - 2, '\0') == '-' &&
+		  styler.SafeGetCharAt(previous - 1, '\0') == '>') ||
+		 (styler.SafeGetCharAt(previous - 2, '\0') == ':' &&
+		  styler.SafeGetCharAt(previous - 1, '\0') == ':'));
+
 	for (int ii = 0; ii < NUM_PHP_KEYWORD_LISTS; ii++) {
+		if (member && ii == 0)
+			continue;
 		if (keywords[ii].InList(ii < 3 ? lower : s) ||
 		    (ii == 3 && MagicConstantName(lower) && keywords[ii].InList(MagicConstantName(lower)))) {
 			styler.ColourTo(pos - 1, SCE_PHP_WORD + ii);
