@@ -1506,12 +1506,22 @@ impl EditorData {
             .collect()
     }
 
+    /// Resolve projection coordinates before entering the existing source-aware
+    /// definition path (including framework resolvers and LSP fallback).
+    fn definition_source(&self)->Option<(Rc<Doc>,usize)> {
+        let doc=self.doc();let offset=self.cursor().with_untracked(|c|c.offset());
+        if doc.projection.get_untracked().is_some() {doc.projection_navigation_source(offset)}
+        else {Some((doc,offset))}
+    }
+
     fn go_to_definition(&self) {
         // The source tooltip must not follow us to the destination, nor may
         // an already scheduled hover or late LSP response bring it back.
         self.common.mouse_hover_timer.set(TimerToken::INVALID);
         self.common.hover.dismiss();
-        let doc = self.doc();
+        let origin=self.doc();let origin_rev=origin.rev();let origin_id=origin.buffer_id;
+        let Some((doc,offset))=self.definition_source() else {return;};
+        let source_id=doc.buffer_id;let source_rev=doc.rev();
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -1521,7 +1531,7 @@ impl EditorData {
             None => return,
         };
 
-        let offset = self.cursor().with_untracked(|c| c.offset());
+
         // A Blade/Twig template or component under the cursor opens directly,
         // before any language server is asked.
         if let Some(root) = self.common.workspace.path.as_ref() {
@@ -1973,12 +1983,12 @@ impl EditorData {
         }
 
         let internal_command = self.common.internal_command;
-        let cursor = self.cursor().read_only();
+        let request_editor=self.clone();
         let send = create_ext_action(self.scope, move |d| {
-            let current_offset = cursor.with_untracked(|c| c.offset());
-            if current_offset != offset {
-                return;
-            }
+            let current=request_editor.doc();
+            if current.buffer_id!=origin_id || current.rev()!=origin_rev {return;}
+            let Some((source,current_offset))=request_editor.definition_source() else {return;};
+            if source.buffer_id!=source_id || source.rev()!=source_rev || current_offset!=offset {return;}
 
             match d {
                 DefinitionOrReference::Location(location) => {
@@ -2023,7 +2033,7 @@ impl EditorData {
                             }
                         }
                         GotoDefinitionResponse::Link(location_links) => {
-                            let location_link = location_links[0].clone();
+                            let Some(location_link) = location_links.first().cloned() else {return;};
                             Some(Location {
                                 uri: location_link.target_uri,
                                 range: location_link.target_selection_range,

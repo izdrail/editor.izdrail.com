@@ -583,3 +583,27 @@ mod projected_line_number_tests {
         let p=build("x",0..1);assert_eq!(p.source_line_anchor(p.excerpts[0].display_range.start).unwrap().offset,0);
     }
 }
+
+impl Projection {
+    /// Navigation is valid inside code bytes, never at a separator that also
+    /// happens to equal an excerpt's insertion boundary.
+    pub(crate) fn navigation_anchor(&self,display:usize)->Option<SourceAnchor> {
+        self.excerpts.iter().find(|e|e.display_range.contains(&display))?;
+        self.anchor(display)
+    }
+}
+#[cfg(test)]
+mod projection_navigation_tests {
+    use super::*;
+    #[test] fn maps_code_with_original_identity_and_utf8_byte_offset() {
+        let s=Snapshot{path:"a.php".into(),buffer_id:8,revision:9,read_only:false,text:"omit\nλname\r\n".into()};
+        let p=Projection::build(&[s],&[("a.php".into(),5..13)],100).unwrap();let at=p.excerpts[0].display_range.start;
+        let a=p.navigation_anchor(at+2).unwrap();assert_eq!(a.offset,7);assert_eq!(a.source,PathBuf::from("a.php"));assert_eq!((a.buffer_id,a.revision),(8,9));
+        assert!(p.navigation_anchor(at+1).is_none());
+    }
+    #[test] fn headers_and_separator_boundaries_never_become_lsp_paths() {
+        let s=Snapshot{path:"a.php".into(),buffer_id:8,revision:9,read_only:false,text:"abc\n".into()};
+        let p=Projection::build(&[s],&[("a.php".into(),0..4)],100).unwrap();
+        assert!(p.navigation_anchor(0).is_none());assert!(p.navigation_anchor(1).is_none());assert!(p.navigation_anchor(p.excerpts[0].display_range.end).is_none());assert!(p.navigation_anchor(p.text.len()).is_none());
+    }
+}

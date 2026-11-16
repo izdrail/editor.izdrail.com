@@ -1195,6 +1195,15 @@ impl Doc {
         Some(Arc::new(painted))
     }
 
+    pub(crate) fn projection_navigation_source(&self,display:usize)->Option<(Rc<Doc>,usize)> {
+        let binding=self.projection.get_untracked()?;
+        let anchor=binding.projection.borrow().navigation_anchor(display)?;
+        let current=binding.docs.get_untracked();let source=current.get(&anchor.source)?;
+        if !source.loaded() || source.buffer_id.0!=anchor.buffer_id || source.rev()!=anchor.revision
+            || source.content.with_untracked(|c|c.path()!=Some(&anchor.source)) {return None;}
+        Some((source.clone(),anchor.offset))
+    }
+
     /// Outer None means an ordinary document; inner None hides a projection
     /// header, separator or stale source number instead of inventing a row.
     pub(crate) fn projection_source_line(&self,line:usize)->Option<Option<usize>> {
