@@ -84,6 +84,7 @@ pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> 
         return None;
     }
     let text = std::fs::read_to_string(&p).ok()?;
+    let text = lapce_index::symbols::php_without_comments(&text).ok()?;
     let i = text.lines().position(|l| {
         ['\'', '"'].iter().any(|q| {
             let key = format!("{q}{name}{q}");
@@ -143,6 +144,14 @@ mod tests {
         ] {
             assert_eq!(resolve(r, l, at(l, n)), None, "{l}");
         }
+    }
+
+    #[test]
+    fn commented_config_entries_are_not_targets() {
+        let d = tempfile::tempdir().unwrap();
+        let p = put(d.path(), "config/filesystems.php", "<?php\nreturn ['disks' => [\n// 's3' => ['driver' => 'old'],\n/* 's3' => ['driver' => 'stale'], */\n's3' => ['driver' => 's3'],\n]];\n");
+        let line = "Storage::disk('s3')";
+        assert_eq!(resolve(d.path(), line, at(line, "s3")), Some((p, 4)));
     }
 
     #[test]
