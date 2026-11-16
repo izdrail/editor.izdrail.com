@@ -516,3 +516,37 @@ pub(crate) struct ProjectionBinding {
     pub docs: floem::reactive::RwSignal<im::HashMap<PathBuf,std::rc::Rc<crate::doc::Doc>>>,
     pub notice: floem::reactive::RwSignal<String>,
 }
+/// Clip source-relative lexer runs into one visible projection segment.
+/// Both ranges use byte offsets in their respective lines, not UTF-16 columns.
+pub(crate) fn projected_line_styles(
+    source: &[lapce_rpc::style::LineStyle],
+    source_columns: std::ops::Range<usize>,
+    display_column: usize,
+) -> Vec<lapce_rpc::style::LineStyle> {
+    source.iter().filter_map(|run| {
+        let start=run.start.max(source_columns.start);
+        let end=run.end.min(source_columns.end);
+        if start>=end {return None;}
+        Some(lapce_rpc::style::LineStyle {
+            start:display_column+start-source_columns.start,
+            end:display_column+end-source_columns.start,
+            style:run.style.clone(),
+        })
+    }).collect()
+}
+#[cfg(test)]
+mod projected_style_tests {
+    use super::*;
+    use lapce_rpc::style::{LineStyle,Style};
+    #[test] fn clips_runs_and_keeps_style_identity() {
+        let source=vec![LineStyle{start:0,end:4,style:Style{fg_color:Some("keyword".into())}},LineStyle{start:4,end:8,style:Style{fg_color:Some("string".into())}}];
+        let result=projected_line_styles(&source,2..6,10);
+        assert_eq!(result.len(),2);assert_eq!((result[0].start,result[0].end),(10,12));assert_eq!((result[1].start,result[1].end),(12,14));assert_eq!(result[1].style,source[1].style);
+    }
+    #[test] fn excludes_empty_and_outside_runs() {
+        let source=vec![LineStyle{start:2,end:5,style:Style{fg_color:None}}];
+        assert!(projected_line_styles(&source,5..8,0).is_empty());
+        assert!(projected_line_styles(&source,0..2,0).is_empty());
+        assert!(projected_line_styles(&source,3..3,0).is_empty());
+    }
+}

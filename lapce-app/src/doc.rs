@@ -1163,7 +1163,54 @@ impl Doc {
 
     /// Get the style information for the particular line from semantic/syntax highlighting.
     /// This caches the result if possible.
+    /// Paint each excerpt with its canonical source's current lexer snapshot.
+    /// Never reuse a style from a different source identity/revision.
+    fn projection_line_style(&self,line:usize)->Option<Arc<Vec<LineStyle>>> {
+        let binding=self.projection.get_untracked()?;
+        let current=binding.docs.get_untracked();
+        let projection=binding.projection.borrow();
+        let (from,to)=self.buffer.with_untracked(|b|(b.offset_of_line(line),b.offset_of_line(line+1).min(b.len())));
+        let mut painted=Vec::new();
+        for excerpt in &projection.excerpts {
+            let begin=from.max(excerpt.display_range.start);let end=to.min(excerpt.display_range.end);
+            if begin>=end {continue;}
+            let Some(source)=current.get(&excerpt.source) else {continue;};
+            if source.buffer_id.0!=excerpt.buffer_id || source.rev()!=excerpt.revision {continue;}
+            let source_start=excerpt.source_range.start+begin-excerpt.display_range.start;
+            let source_end=source_start+end-begin;
+            let pieces=source.buffer.with_untracked(|b| {
+                let mut pieces=Vec::new();let mut offset=source_start;
+                while offset<source_end {
+                    let source_line=b.line_of_offset(offset);let line_start=b.offset_of_line(source_line);
+                    let stop=b.offset_of_line(source_line+1).min(source_end);
+                    if stop<=offset {break;}
+                    pieces.push((source_line,offset-line_start..stop-line_start,begin-from+offset-source_start));offset=stop;
+                }
+                pieces
+            });
+            for (source_line,columns,display_column) in pieces {
+                painted.extend(crate::multibuffer::projected_line_styles(&source.line_style(source_line),columns,display_column));
+            }
+        }
+        Some(Arc::new(painted))
+    }
+
+    pub(crate) fn track_projection_styles(&self) {
+        let doc=self.clone();
+        self.scope.create_effect(move |_| {
+            let Some(binding)=doc.projection.get() else {return;};
+            let current=binding.docs.get();
+            // Aggregate edits can move excerpt anchors without changing the
+            // binding signal. Track the aggregate buffer revision as well.
+            let _=doc.buffer.with(|buffer|buffer.rev());
+            let paths:Vec<_>=binding.projection.borrow().excerpts.iter().map(|e|e.source.clone()).collect();
+            for path in paths {if let Some(source)=current.get(&path) {let _=source.cache_rev.get();let _=source.buffer.with(|buffer|buffer.rev());}}
+            doc.clear_style_cache();
+        });
+    }
+
     pub fn line_style(&self, line: usize) -> Arc<Vec<LineStyle>> {
+        if let Some(styles)=self.projection_line_style(line) {return styles;}
         if let Some(styles) = self.line_styles.borrow().get(&line).cloned() {
             return styles;
         }

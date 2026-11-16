@@ -4065,6 +4065,7 @@ impl WindowTabData {
                             doc.content.update(|content|if let DocContent::Scratch{read_only,name,..}=content {*read_only=true;*name="Diagnostics Excerpts (Preview)".into();});
                             let notice=floem::reactive::create_rw_signal("Editable diagnostics preview: headers protected, Save writes source buffers".into());
                             doc.projection.set(Some(crate::multibuffer::ProjectionBinding{projection:Rc::new(std::cell::RefCell::new(projection)),docs:tab.main_split.docs,notice}));
+                            doc.track_projection_styles();
                         }
                     }
                 }
