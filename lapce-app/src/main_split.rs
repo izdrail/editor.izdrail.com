@@ -2321,23 +2321,26 @@ impl MainSplitData {
         }
     }
 
+    /// A projection header or stale source is not an absent active file: do
+    /// not silently wrap to a different file's diagnostic in that case.
+    fn diagnostic_navigation_origin(&self)->Result<Option<(PathBuf,usize,Position)>,()> {
+        let Some(editor)=self.active_editor.get_untracked() else {return Ok(None);};
+        let origin=editor.doc();let display=editor.cursor().with_untracked(|c|c.offset());
+        let (doc,offset)=if origin.projection.get_untracked().is_some() {
+            origin.projection_navigation_source(display).ok_or(())?
+        } else {(origin,display)};
+        let Some(path)=doc.content.with_untracked(|content|content.path().cloned()) else {return Ok(None);};
+        let position=doc.buffer.with_untracked(|buffer|buffer.offset_to_position(offset));
+        Ok(Some((path,offset,position)))
+    }
+
     pub fn next_error(&self) {
         let file_diagnostics =
             self.file_diagnostics_items(DiagnosticSeverity::ERROR);
         if file_diagnostics.is_empty() {
             return;
         }
-        let active_editor = self.active_editor.get_untracked();
-        let active_path = active_editor
-            .map(|editor| (editor.doc(), editor.cursor()))
-            .and_then(|(doc, cursor)| {
-                let offset = cursor.with_untracked(|c| c.offset());
-                let (path, position) = (
-                    doc.content.get_untracked().path().cloned(),
-                    doc.buffer.with_untracked(|b| b.offset_to_position(offset)),
-                );
-                path.map(|path| (path, offset, position))
-            });
+        let Ok(active_path)=self.diagnostic_navigation_origin() else {return;};
         let (path, position) =
             next_in_file_errors_offset(active_path, &file_diagnostics);
         let location = EditorLocation {
@@ -2357,17 +2360,7 @@ impl MainSplitData {
         if file_diagnostics.is_empty() {
             return;
         }
-        let active_editor = self.active_editor.get_untracked();
-        let active_path = active_editor
-            .map(|editor| (editor.doc(), editor.cursor()))
-            .and_then(|(doc, cursor)| {
-                let offset = cursor.with_untracked(|c| c.offset());
-                let (path, position) = (
-                    doc.content.get_untracked().path().cloned(),
-                    doc.buffer.with_untracked(|b| b.offset_to_position(offset)),
-                );
-                path.map(|path| (path, offset, position))
-            });
+        let Ok(active_path)=self.diagnostic_navigation_origin() else {return;};
         let (path, position) =
             prev_in_file_errors_offset(active_path, &file_diagnostics);
         let location = EditorLocation {
@@ -3404,6 +3397,29 @@ mod tests {
                 format!("error at {offset}"),
             ),
         }
+    }
+
+    fn projection_error_origin()->(crate::multibuffer::Projection,usize,Vec<(PathBuf,Vec<EditorDiagnostic>)>) {
+        use crate::multibuffer::{Projection,Snapshot};
+        let source=Snapshot{path:"/p/b.php".into(),buffer_id:8,revision:3,read_only:false,text:format!("{}$first = BROKEN;\necho $first;\n","// omitted\n".repeat(200))};
+        let at=source.text.find("$first").unwrap();let end=source.text.len();
+        let projection=Projection::build(&[source.clone()],&[(source.path.clone(),at..end)],4096).unwrap();
+        let display=projection.excerpts[0].display_range.start;
+        let files=vec![("/p/a.php".into(),vec![err_at(5,0,5)]),(source.path,vec![err_at(at+9,200,9),err_at(at+24,201,7)])];
+        (projection,display,files)
+    }
+    #[test]fn projection_error_next_uses_hidden_canonical_offset() {
+        let (projection,display,files)=projection_error_origin();let anchor=projection.navigation_anchor(display+10).unwrap();
+        let (path,pos)=next_in_file_errors_offset(Some((anchor.source,anchor.offset,Position::new(200,10))),&files);
+        assert_eq!(path,PathBuf::from("/p/b.php"));assert!(matches!(pos,EditorPosition::Offset(offset) if offset==2224));
+    }
+    #[test]fn projection_error_previous_stays_in_canonical_source() {
+        let (projection,display,files)=projection_error_origin();let anchor=projection.navigation_anchor(display+20).unwrap();
+        let (path,pos)=prev_in_file_errors_offset(Some((anchor.source,anchor.offset,Position::new(201,4))),&files);
+        assert_eq!(path,PathBuf::from("/p/b.php"));assert!(matches!(pos,EditorPosition::Offset(offset) if offset==2209));
+    }
+    #[test]fn projection_error_headers_have_no_navigation_origin() {
+        let (projection,_,_)=projection_error_origin();assert!(projection.navigation_anchor(0).is_none());assert!(projection.navigation_anchor(projection.text.len()).is_none());
     }
 
     #[test]
