@@ -9,26 +9,6 @@ use std::path::Path;
 
 const MAX_LINE: usize = 4096;
 const MAX_FILE: u64 = 1 << 20;
-/// The quoted string content covering byte `col`.
-fn name_at(line: &str, col: usize) -> Option<String> {
-    let mut col = col.min(line.len());
-    while !line.is_char_boundary(col) {
-        col -= 1;
-    }
-    for q in ['\'', '"'] {
-        let quotes: Vec<usize> = line.match_indices(q).map(|(i, _)| i).collect();
-        for pair in quotes.chunks_exact(2) {
-            let start = pair[0] + 1;
-            let end = pair[1];
-            if col + 1 >= start && col <= end {
-                let s = &line[start..end];
-                return (s.len() <= 60).then(|| s.to_string());
-            }
-        }
-    }
-    None
-}
-
 fn label(stem: &str) -> &str {
     match stem {
         "filesystems" => "filesystem disk",
@@ -48,7 +28,7 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
     if line.len() > MAX_LINE {
         return None;
     }
-    let name = name_at(line, col)?;
+    let (name, _) = crate::config_channels::target_at(line, col)?;
     let (path, idx) = crate::config_channels::resolve(root, line, col)?;
     let meta = std::fs::metadata(&path).ok()?;
     if meta.len() > MAX_FILE {
@@ -151,6 +131,15 @@ return ['disks' => [
             assert!(md.contains(&format!("driver `{driver}`")), "{md}");
             assert!(!md.contains("root") && !md.contains("bucket"), "{md}");
         }
+    }
+
+    #[test]
+    fn mixed_quotes_before_call_keep_hover_name() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "config/filesystems.php", "<?php\nreturn ['s3' => ['driver' => 's3']];\n");
+        let line = r#"$label = "Sam's disk"; Storage::disk('s3');"#;
+        let md = help(Some(d.path()), line, at(line, "s3")).unwrap();
+        assert!(md.contains("**`s3`** - filesystem disk, driver `s3`"), "{md}");
     }
 
     #[test]

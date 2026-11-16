@@ -25,7 +25,7 @@ const CALLS: &[(&str, &[&str], &str)] = &[
     ("connection", &["Queue"], "queue"),
 ];
 
-fn target_at(line: &str, col: usize) -> Option<(&str, &'static str)> {
+pub(crate) fn target_at(line: &str, col: usize) -> Option<(&str, &'static str)> {
     let mut col = col.min(line.len());
     while !line.is_char_boundary(col) {
         col -= 1;
@@ -43,7 +43,11 @@ fn target_at(line: &str, col: usize) -> Option<(&str, &'static str)> {
         let start = i + 1;
         let mut j = start;
         while j < bytes.len() && bytes[j] != q {
-            j += 1;
+            if bytes[j] == b'\\' {
+                j = (j + 2).min(bytes.len());
+            } else {
+                j += 1;
+            }
         }
         if j >= bytes.len() {
             return None;
@@ -152,6 +156,14 @@ mod tests {
         let p = put(d.path(), "config/filesystems.php", "<?php\nreturn ['disks' => [\n// 's3' => ['driver' => 'old'],\n/* 's3' => ['driver' => 'stale'], */\n's3' => ['driver' => 's3'],\n]];\n");
         let line = "Storage::disk('s3')";
         assert_eq!(resolve(d.path(), line, at(line, "s3")), Some((p, 4)));
+    }
+
+    #[test]
+    fn escaped_quotes_before_driver_call_do_not_shift_argument() {
+        let d = tempfile::tempdir().unwrap();
+        let p = put(d.path(), "config/filesystems.php", "<?php\nreturn ['s3' => []];\n");
+        let line = r#"$label = 'Sam\'s disk'; Storage::disk('s3');"#;
+        assert_eq!(resolve(d.path(), line, line.rfind("s3").unwrap()), Some((p, 1)));
     }
 
     #[test]
