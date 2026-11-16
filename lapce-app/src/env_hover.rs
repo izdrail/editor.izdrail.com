@@ -34,13 +34,26 @@ fn default_arg(line: &str, key: &str, col: usize) -> Option<String> {
             let Some(after) = after.strip_prefix(',') else { return None };
             let v = after.trim_start();
             if let Some(q2) = v.chars().next().filter(|c| *c == '\'' || *c == '"') {
-                let Some(e2) = v[1..].find(q2) else { return None };
-                let d = &v[1..1 + e2];
+                let mut end = 1;
+                let bytes = v.as_bytes();
+                while end < bytes.len() && bytes[end] != q2 as u8 {
+                    if bytes[end] == b'\\' { end += 1; }
+                    else if q2 == '"' && bytes[end] == b'$' { return None; }
+                    end += 1;
+                }
+                if end >= bytes.len() { return None; }
+                let tail = v[end + 1..].trim_start();
+                if !tail.starts_with([',', ')']) { return None; }
+                let d = &v[1..end];
                 return (d.len() <= 80).then(|| d.to_string());
             }
-            let stop = v.find([',', ')']).unwrap_or(v.len());
+            let stop = v.find([',', ')'])?;
             let d = v[..stop].trim();
-            return (!d.is_empty() && d.len() <= 40).then(|| d.to_string());
+            let scalar = ["true", "false", "null"].iter().any(|s| d.eq_ignore_ascii_case(s))
+                || (d.bytes().any(|b| b.is_ascii_digit())
+                    && d.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.' | b'e' | b'E'))
+                    && d.parse::<f64>().is_ok_and(|n| n.is_finite()));
+            return (scalar && d.len() <= 40).then(|| d.to_string());
         }
     }
     None
@@ -138,6 +151,27 @@ mod tests {
         let line = "getenv('APP_NAME', 'first'); env('APP_NAME', 'second')";
         let md = help(Some(d.path()), line, line.find("APP_NAME").unwrap()).unwrap();
         assert!(md.contains("Code default: `first`."), "{md}");
+    }
+
+    #[test]
+    fn only_complete_literal_defaults_are_reported() {
+        let d = tempfile::tempdir().unwrap();
+        for line in [
+            "env('KEY', makeDefault())", "env('KEY', $fallback)",
+            "env('KEY', 'prefix' . $suffix)", "env('KEY', 2 + 3)",
+            "env('KEY', true && false)", "env('KEY', 'unfinished)",
+        ] {
+            let md = help(Some(d.path()), line, at(line, "KEY")).unwrap();
+            assert!(!md.contains("Code default"), "{line}: {md}");
+        }
+        for (literal, shown) in [
+            (r"'it\'s ready'", r"it\'s ready"),
+            ("-1.25e+2", "-1.25e+2"), ("false", "false"), ("null", "null"),
+        ] {
+            let line = format!("env('KEY', {literal})");
+            let md = help(Some(d.path()), &line, at(&line, "KEY")).unwrap();
+            assert!(md.contains(&format!("Code default: `{shown}`.")), "{md}");
+        }
     }
 
     #[test]
