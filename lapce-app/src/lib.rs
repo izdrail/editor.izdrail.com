@@ -1,3 +1,5 @@
+pub(crate) mod buffer_transaction;
+pub(crate) mod multibuffer;
 pub mod blade_props;
 pub mod chat;
 pub mod chat_credentials;

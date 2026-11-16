@@ -223,6 +223,7 @@ pub struct Doc {
     pub cache_rev: RwSignal<u64>,
     /// Whether the buffer's content has been loaded/initialized into the buffer.
     pub loaded: RwSignal<bool>,
+    pub(crate) projection: RwSignal<Option<crate::multibuffer::ProjectionBinding>>,
     pub buffer: RwSignal<Buffer>,
     pub syntax: RwSignal<Syntax>,
     semantic_styles: RwSignal<Option<Spans<Style>>>,
@@ -288,6 +289,7 @@ impl Doc {
         Doc {
             scope: cx,
             buffer_id: BufferId::next(),
+            projection: cx.create_rw_signal(None),
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(syntax),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
@@ -341,6 +343,7 @@ impl Doc {
         Self {
             scope: cx,
             buffer_id: BufferId::next(),
+            projection: cx.create_rw_signal(None),
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(Syntax::plaintext()),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
@@ -395,6 +398,7 @@ impl Doc {
         Self {
             scope: cx,
             buffer_id: BufferId::next(),
+            projection: cx.create_rw_signal(None),
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(syntax),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
@@ -587,12 +591,86 @@ impl Doc {
         }
     }
 
+
+
+    /// Save the canonical edited source buffers, never the projection text.
+    pub(crate) fn save_projection(&self, after_action:impl FnOnce()+'static)->bool {
+        let Some(binding)=self.projection.get_untracked() else {return false;};
+        let current=binding.docs.get_untracked();let projection=binding.projection.borrow();
+        let mut dirty=std::collections::BTreeMap::new();
+        for excerpt in &projection.excerpts {
+            let Some(doc)=current.get(&excerpt.source) else {binding.notice.set("Source was closed; refresh diagnostics before saving".into());return true;};
+            if doc.buffer_id.0!=excerpt.buffer_id || doc.rev()!=excerpt.revision || !doc.loaded() || doc.content.with_untracked(|c|c.path()!=Some(&excerpt.source)) {
+                binding.notice.set("Source changed; refresh diagnostics before saving".into());return true;
+            }
+            if !doc.is_pristine() {
+                if doc.content.with_untracked(|c|c.read_only()) {binding.notice.set("Source is read-only".into());return true;}
+                dirty.insert(excerpt.source.clone(),doc.clone());
+            }
+        }
+        drop(projection);
+        if dirty.is_empty() {self.buffer.update(|b|b.set_pristine());after_action();return true;}
+        let remaining=Rc::new(std::cell::Cell::new(dirty.len()));
+        let finished:Rc<RefCell<Option<Box<dyn FnOnce()>>>>=Rc::new(RefCell::new(Some(Box::new(after_action))));
+        binding.notice.set("Saving source buffers".into());
+        let aggregate_buffer=self.buffer;
+        let pending=remaining.clone();let timeout_binding=binding.clone();
+        floem::action::exec_after(std::time::Duration::from_secs(30),move |_| {
+            if pending.get()>0 {timeout_binding.notice.set("Source save is not confirmed. Keep these buffers open and retry Save.".into());}
+        });
+        for (_,doc) in dirty {
+            let remaining=remaining.clone();let finished=finished.clone();let binding=binding.clone();
+            doc.save(move || {
+                remaining.set(remaining.get().saturating_sub(1));
+                if remaining.get()==0 {
+                    let current=binding.docs.get_untracked();
+                    let clean=binding.projection.borrow().excerpts.iter().all(|e|current.get(&e.source).is_some_and(|d|d.buffer_id.0==e.buffer_id && d.rev()==e.revision && d.is_pristine()));
+                    if !clean {binding.notice.set("Sources changed while saving; review before closing".into());return;}
+                    aggregate_buffer.update(|b|b.set_pristine());
+                    binding.notice.set("Source buffers saved".into());if let Some(done)=finished.borrow_mut().take(){done();}
+                }
+            });
+        }
+        true
+    }
+    /// Controlled projection edits stage both synthetic and native buffers.
+    /// Every unhandled path still sees a read-only scratch document.
+    fn edit_projection(
+        &self,
+        cursor: &mut Cursor,
+        action: impl FnOnce(&mut Buffer,&mut Cursor)->Vec<(Rope,RopeDelta,InvalLines)>,
+    )->Option<Vec<(Rope,RopeDelta,InvalLines)>> {
+        let binding=self.projection.get_untracked()?;
+        let mut candidate=self.buffer.with_untracked(|b|b.detached_edit_clone());
+        let mut next_cursor=cursor.clone();
+        let old_cursor=cursor.offset();
+        let deltas=action(&mut candidate,&mut next_cursor);
+        if deltas.is_empty() { *cursor=next_cursor;return Some(Vec::new()); }
+        // Multi-stage native actions need a composed transaction; fail closed
+        // rather than flattening their changes across protected headers.
+        if deltas.len()!=1 {binding.notice.set("This compound edit is not available in diagnostics yet".into());return Some(Vec::new());}
+        let current:std::collections::BTreeMap<_,_>=binding.docs.get_untracked().into_iter().collect();
+        let prepared=crate::multibuffer::prepare_projection_edit(&binding.projection.borrow(),&current,&deltas[0].1,old_cursor,4*1024*1024);
+        let prepared=match prepared {Ok(value)=>value,Err(error)=>{binding.notice.set(error);return Some(Vec::new());}};
+        if candidate.to_string()!=prepared.projection.text {binding.notice.set("Projection changed during edit staging".into());return Some(Vec::new());}
+        batch(|| {
+            crate::buffer_transaction::commit_buffers(&current,prepared.staged);
+            self.buffer.with_untracked(|live|candidate.adopt_revision_clock(live));
+            self.buffer.set(candidate);
+            *binding.projection.borrow_mut()=prepared.projection;
+            *cursor=next_cursor;
+            binding.notice.set(String::new());
+            self.apply_deltas(&deltas);
+        });
+        Some(deltas)
+    }
     pub fn do_insert(
         &self,
         cursor: &mut Cursor,
         s: &str,
         config: &LapceConfig,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
+        if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert(cursor,buffer,s,&|_,_,_|None,false,false)) {return deltas;}
         if self.content.with_untracked(|c| c.read_only()) {
             return Vec::new();
         }
@@ -694,6 +772,10 @@ impl Doc {
         register: &mut Register,
         smart_tab: bool,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
+        if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor| {
+            let mut clipboard=SystemClipboard::new();
+            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:&Self::comment_token_resolver(cmd,&Syntax::plaintext(),buffer),modal,smart_tab,keep_indent:true,auto_indent:false})
+        }) {return deltas;}
         if self.content.with_untracked(|c| c.read_only())
             && !cmd.not_changing_buffer()
         {
@@ -865,6 +947,10 @@ impl Doc {
     }
 
     pub fn is_pristine(&self) -> bool {
+        if let Some(binding)=self.projection.get() {
+            let current=binding.docs.get();
+            return binding.projection.borrow().excerpts.iter().all(|e|current.get(&e.source).is_some_and(|doc|doc.buffer_id.0==e.buffer_id && doc.buffer.with(|b|b.is_pristine())));
+        }
         self.buffer.with_untracked(|b| b.is_pristine())
     }
 
@@ -1989,6 +2075,7 @@ impl Document for Doc {
         iter: &mut dyn Iterator<Item = (Selection, &str)>,
         edit_type: EditType,
     ) {
+        if self.content.with_untracked(|c|c.read_only()) {return;}
         let delta = self
             .buffer
             .try_update(|buffer| buffer.edit(iter, edit_type))
@@ -2271,6 +2358,7 @@ impl CommonAction for Doc {
         is_vertical: bool,
         register: &mut Register,
     ) {
+        if self.projection.get_untracked().is_some() {return;}
         let deltas = self
             .buffer
             .try_update(move |buffer| {

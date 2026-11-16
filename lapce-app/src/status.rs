@@ -277,6 +277,11 @@ pub fn status(
                 s.max_width(280.0).min_width(0.0).text_ellipsis().padding_horiz(6.0)
                     .color(config.get().color(LapceColor::STATUS_FOREGROUND))
             }),
+            label(move || {
+                let Some(active)=editor.get() else {return String::new();};
+                let Some(binding)=active.doc().projection.get() else {return String::new();};
+                binding.notice.get()
+            }).style(move |s|s.max_width(480.0).min_width(0.0).text_ellipsis().padding_horiz(6.0).color(config.get().color(LapceColor::STATUS_FOREGROUND))),
             label(ghost_hint).style(move |s| {
                 s.max_width(260.0).min_width(0.0).text_ellipsis()
                     .padding_horiz(6.0)

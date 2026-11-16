@@ -1686,6 +1686,7 @@ impl WindowTabData {
             PreviousError => {
                 self.main_split.previous_error();
             }
+            OpenEditableProjectDiagnostics => {self.open_editable_project_diagnostics();}
             OpenProjectDiagnostics => {
                 self.open_project_diagnostics();
             }
@@ -4014,6 +4015,63 @@ impl WindowTabData {
         });
     }
 
+
+    /// Experimental editable excerpts. Keep the existing diagnostics document
+    /// command separate until this view's full editing contract is accepted.
+    fn open_editable_project_diagnostics(&self) {
+        let files=self.main_split.all_diagnostics_items();
+        if files.is_empty() {self.open_project_diagnostics();return;}
+        if files.len()>128 {self.show_message("Diagnostics",&ShowMessageParams{typ:lsp_types::MessageType::WARNING,message:"Too many diagnostic files for the editable preview (limit 128).".into()});return;}
+        let mut sources=Vec::new();
+        for (path,diags) in files {let (doc,_)=self.main_split.get_doc(path.clone(),None);sources.push((path,doc,diags));}
+        let tab=self.clone();let opened=std::rc::Rc::new(std::cell::Cell::new(false));
+        let timed_out=opened.clone();let timeout_tab=self.clone();
+        floem::action::exec_after(std::time::Duration::from_secs(15),move |_| {
+            if !timed_out.replace(true) {timeout_tab.show_message("Diagnostics",&ShowMessageParams{typ:lsp_types::MessageType::WARNING,message:"Source loading timed out. The existing files are unchanged; reopen the preview to retry.".into()});}
+        });
+        floem::reactive::create_effect(move |_| {
+            if opened.get() {return;}
+            if sources.iter().any(|(_,doc,_)|!doc.loaded.get()) {return;}
+            opened.set(true);
+            let build=(|| -> Result<crate::multibuffer::Projection,String> {
+                use lapce_core::rope_text_pos::RopeTextPosition;
+                let mut snapshots=Vec::new();let mut windows=Vec::new();let mut total=0usize;
+                for (path,doc,diags) in &sources {
+                    let len=doc.buffer.with_untracked(|b|b.len());total=total.checked_add(len).ok_or("Source size overflow")?;
+                    if len>4*1024*1024 || total>16*1024*1024 {return Err("Diagnostics source snapshots exceed the preview budget".into());}
+                    let snapshot=crate::multibuffer::Snapshot{path:path.clone(),buffer_id:doc.buffer_id.0,revision:doc.rev(),read_only:doc.content.with_untracked(|c|c.read_only()),text:doc.buffer.with_untracked(|b|b.to_string())};
+                    let ranges:Vec<_>=doc.buffer.with_untracked(|buffer|diags.iter().take(1025).map(|d| {
+                        let start=buffer.offset_of_position(&d.diagnostic.range.start);
+                        let end=buffer.offset_of_position(&d.diagnostic.range.end);
+                        start..end
+                    }).collect());
+                    for range in crate::multibuffer::context_windows(&snapshot,&ranges,2,1024)? {windows.push((path.clone(),range));}
+                    snapshots.push(snapshot);
+                }
+                crate::multibuffer::Projection::build(&snapshots,&windows,4*1024*1024).map_err(str::to_string)
+            })();
+            match build {
+                Ok(projection)=>{
+                    // Keep real source tabs confirmed so normal window recovery,
+                    // Save All and close warnings retain every edited source.
+                    for (path,_,_) in &sources {
+                        tab.main_split.go_to_location(crate::editor::location::EditorLocation{path:path.clone(),position:None,scroll_offset:None,ignore_unconfirmed:true,same_editor_tab:false},None);
+                        if let Some(editor)=tab.main_split.active_editor.get_untracked() {editor.confirmed.set(true);}
+                    }
+                    let child=tab.main_split.new_file();
+                    if let EditorTabChild::Editor(editor_id)=child {
+                        if let Some(editor)=tab.main_split.editors.editor_untracked(editor_id) {
+                            let doc=editor.doc();doc.reload(Rope::from(projection.text.as_str()),true);
+                            doc.content.update(|content|if let DocContent::Scratch{read_only,name,..}=content {*read_only=true;*name="Diagnostics Excerpts (Preview)".into();});
+                            let notice=floem::reactive::create_rw_signal("Editable diagnostics preview: headers protected, Save writes source buffers".into());
+                            doc.projection.set(Some(crate::multibuffer::ProjectionBinding{projection:Rc::new(std::cell::RefCell::new(projection)),docs:tab.main_split.docs,notice}));
+                        }
+                    }
+                }
+                Err(error)=>tab.show_message("Diagnostics",&ShowMessageParams{typ:lsp_types::MessageType::WARNING,message:error}),
+            }
+        });
+    }
     /// `Diagnostics: Open Project Diagnostics Document`: render every
     /// workspace diagnostic into a read-only scratch document, grouped by
     /// file (Zed-style project diagnostics view, read-only slice). Same

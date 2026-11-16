@@ -470,13 +470,22 @@ impl EditorTabData {
     }
 
     pub fn tab_info(&self, data: &WindowTabData) -> EditorTabInfo {
+        // Projection bindings contain live buffer identities and cannot be
+        // serialized as ordinary scratch files. Confirmed source tabs carry
+        // all edited source content through normal workspace recovery.
+        let keep=|child:&EditorTabChild| match child {
+            EditorTabChild::Editor(id)=>data.main_split.editors.editor_untracked(*id).is_none_or(|editor|editor.doc().projection.get_untracked().is_none()),
+            _=>true,
+        };
+        let active=self.children.iter().take(self.active+1).filter(|(_,_,child)|keep(child)).count().saturating_sub(1);
         EditorTabInfo {
-            active: self.active,
+            active,
             is_focus: data.main_split.active_editor_tab.get_untracked()
                 == Some(self.editor_tab_id),
             children: self
                 .children
                 .iter()
+                .filter(|(_,_,child)|keep(child))
                 .map(|(_, _, child)| child.child_info(data))
                 .collect(),
         }

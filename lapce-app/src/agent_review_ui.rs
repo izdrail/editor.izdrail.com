@@ -482,17 +482,7 @@ impl ReviewData {
         Ok(())
     }
 }
-type StagedBuffers = BTreeMap<
-    String,
-    (
-        lapce_core::buffer::Buffer,
-        (
-            lapce_xi_rope::Rope,
-            lapce_xi_rope::RopeDelta,
-            lapce_core::buffer::InvalLines,
-        ),
-    ),
->;
+type StagedBuffers = crate::buffer_transaction::StagedBuffers<String>;
 fn staged_buffers(
     docs: &BTreeMap<String, Rc<Doc>>,
     states: &BTreeMap<String, BufferState>,
@@ -516,22 +506,7 @@ fn staged_buffers(
         })
         .collect()
 }
-fn commit_buffers(docs: &BTreeMap<String, Rc<Doc>>, mut staged: StagedBuffers) {
-    floem::reactive::batch(|| {
-        // Publish every staged owned buffer before notifying dependent views/proxy.
-        for (path, (buffer, _)) in &mut staged {
-            docs[path]
-                .buffer
-                .with_untracked(|live| buffer.adopt_revision_clock(live));
-        }
-        for (path, (buffer, _)) in &staged {
-            docs[path].buffer.set(buffer.clone());
-        }
-        for (path, (_, delta)) in staged {
-            docs[&path].apply_deltas(&[delta]);
-        }
-    });
-}
+use crate::buffer_transaction::commit_buffers;
 pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.review.clone();
     let prepare = data.clone();

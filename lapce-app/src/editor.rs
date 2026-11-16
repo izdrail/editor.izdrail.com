@@ -150,7 +150,7 @@ impl EditorInfo {
             }
             DocContent::Local => editors.new_local(data.scope, common),
             DocContent::History(_) => editors.new_local(data.scope, common),
-            DocContent::Scratch { name, .. } => {
+            DocContent::Scratch { name, read_only, .. } => {
                 let doc = data
                     .scratch_docs
                     .try_update(|scratch_docs| {
@@ -160,7 +160,7 @@ impl EditorInfo {
                         let content = DocContent::Scratch {
                             id: BufferId::next(),
                             name: name.to_string(),
-                            read_only: false,
+                            read_only: *read_only,
                         };
                         let doc = Doc::new_content(
                             data.scope,
@@ -3959,6 +3959,7 @@ impl EditorData {
         after_action: impl FnOnce() + 'static,
     ) {
         let doc = self.doc();
+        if doc.projection.get_untracked().is_some() {doc.save_projection(after_action);return;}
         let is_pristine = doc.is_pristine();
         let content = doc.content.get_untracked();
 

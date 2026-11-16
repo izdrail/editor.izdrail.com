@@ -802,6 +802,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "open_project_diagnostics")]
     OpenProjectDiagnostics,
 
+    #[strum(message = "Diagnostics: Open Editable Excerpts (Preview)")]
+    #[strum(serialize = "open_editable_project_diagnostics")]
+    OpenEditableProjectDiagnostics,
+
     #[strum(message = "Diff Files")]
     #[strum(serialize = "diff_files")]
     DiffFiles,

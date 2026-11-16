@@ -2066,6 +2066,14 @@ impl MainSplitData {
 
                 let doc_content = doc.content.get_untracked();
                 let save_button = match doc_content {
+                    DocContent::Scratch { .. } if doc.projection.get_untracked().is_some() => {
+                        let child=child.clone();let doc=doc.clone();
+                        Some(AlertButton{text:"Save Source Buffers".into(),action:Rc::new(move || {
+                            let main_split=main_split.clone();let child=child.clone();
+                            internal_command.send(InternalCommand::HideAlert);
+                            doc.save_projection(move || {main_split.editor_tab_child_close(editor_tab_id,child,true);});
+                        })})
+                    }
                     DocContent::Scratch { .. } => {
                         let child = child.clone();
                         let doc = doc.clone();
@@ -2135,6 +2143,8 @@ impl MainSplitData {
                     DocContent::History(_) => None,
                 };
                 if let Some(save_button) = save_button {
+                    let projection_binding=doc.projection.get_untracked();
+                    let keep_projection=projection_binding.is_some();
                     let main_split = self.clone();
                     let child = child.clone();
                     self.common
@@ -2148,10 +2158,14 @@ impl MainSplitData {
                             buttons: vec![
                                 save_button,
                                 AlertButton {
-                                    text: "Don't Save".to_string(),
+                                    text: if keep_projection {"Keep Editing".to_string()} else {"Don't Save".to_string()},
                                     action: Rc::new(move || {
                                         internal_command
                                             .send(InternalCommand::HideAlert);
+                                        if let Some(binding)=&projection_binding {
+                                            binding.notice.set("Unsaved source buffers are kept open in this preview; save them before closing".into());
+                                            return;
+                                        }
                                         main_split.editor_tab_child_close(
                                             editor_tab_id,
                                             child.clone(),
@@ -2549,6 +2563,7 @@ impl MainSplitData {
     }
 
     pub fn save_as(&self, doc: Rc<Doc>, path: PathBuf, action: impl Fn() + 'static) {
+        if let Some(binding)=doc.projection.get_untracked() {binding.notice.set("Use Save to save source buffers; the diagnostics projection is not a source file".into());return;}
         let (buffer_id, doc_content, rev, content) = (
             doc.buffer_id,
             doc.content.get_untracked(),
@@ -2604,6 +2619,7 @@ impl MainSplitData {
         path: PathBuf,
         action: impl Fn() + 'static,
     ) {
+        if let Some(binding)=doc.projection.get_untracked() {binding.notice.set("Use Save to save source buffers; the diagnostics projection is not a source file".into());return;}
         let (buffer_id, doc_content, rev, content) = (
             doc.buffer_id,
             doc.content.get_untracked(),
@@ -2665,18 +2681,15 @@ impl MainSplitData {
                 .filter_map(|doc| {
                     doc.content.with_untracked(|content| match content {
                         DocContent::Scratch { name, .. } => {
-                            // The unwraps are safe because scratch docs are always
-                            // titled the same format and the user cannot change the name.
-                            let num_part = name.strip_prefix(PREFIX).unwrap();
-                            let num = num_part.parse::<i32>().unwrap();
-                            Some(num)
+                            // Read-only result views may have descriptive titles.
+                            scratch_number(name)
                         }
                         _ => None,
                     })
                 })
                 .max()
                 .unwrap_or(0)
-                + 1
+                .saturating_add(1)
         });
 
         format!("{PREFIX}{new_num}")
@@ -2703,6 +2716,7 @@ impl MainSplitData {
     }
 
     pub fn save_scratch_doc(&self, doc: Rc<Doc>) {
+        if doc.projection.get_untracked().is_some() {doc.save_projection(||{});return;}
         let main_split = self.clone();
         save_as(
             FileDialogOptions::new().title("Save File"),
@@ -2724,6 +2738,7 @@ impl MainSplitData {
     }
 
     pub fn save_scratch_doc2(&self, doc: Rc<Doc>) {
+        if doc.projection.get_untracked().is_some() {doc.save_projection(||{});return;}
         let main_split = self.clone();
         save_as(
             FileDialogOptions::new().title("Save File"),
@@ -3542,3 +3557,14 @@ second")],
     }
 }
 
+
+fn scratch_number(name:&str)->Option<i32> {
+    name.strip_prefix("Untitled-").and_then(|part|part.parse::<i32>().ok()).filter(|number|*number>=0)
+}
+#[cfg(test)] mod scratch_title_tests {
+    use super::scratch_number;
+    #[test] fn descriptive_restored_result_titles_do_not_crash_new_file() {
+        for name in ["Diagnostics Excerpts (Preview)","Git Blame","Untitled-x","Untitled-99999999999999999999999999","Untitled--1",""] {assert_eq!(scratch_number(name),None);}
+        assert_eq!(scratch_number("Untitled-12"),Some(12));
+    }
+}
