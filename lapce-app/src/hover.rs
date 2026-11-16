@@ -107,3 +107,24 @@ mod tests {
         cx.dispose();
     }
 }
+
+/// Freeze both coordinate spaces for a hover response. Tooltip placement is
+/// display-relative; the requested text and LSP position remain source-relative.
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+pub(crate) struct SourceHoverStamp {
+    pub origin_id:u64,
+    pub origin_revision:u64,
+    pub source_id:u64,
+    pub source_revision:u64,
+    pub source_offset:usize,
+    pub cursor_offset:usize,
+}
+#[cfg(test)]
+mod source_stamp_tests {
+    use super::*;
+    #[test] fn source_origin_and_caret_changes_each_invalidate_response() {
+        let current=SourceHoverStamp{origin_id:1,origin_revision:2,source_id:3,source_revision:4,source_offset:12345,cursor_offset:80};
+        assert_eq!(current,current);
+        for changed in [SourceHoverStamp{origin_id:9,..current},SourceHoverStamp{origin_revision:9,..current},SourceHoverStamp{source_id:9,..current},SourceHoverStamp{source_revision:9,..current},SourceHoverStamp{source_offset:9,..current},SourceHoverStamp{cursor_offset:9,..current}] {assert_ne!(current,changed);}
+    }
+}

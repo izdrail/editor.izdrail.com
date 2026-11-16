@@ -4888,7 +4888,29 @@ impl EditorData {
     fn update_hover(&self, offset: usize) {
         // Every new hover supersedes in-flight language-server responses.
         let request_id = self.common.hover.next_request_id();
-        let doc = self.doc();
+        let origin = self.doc();
+        let display_offset=offset;
+        let projected=origin.projection.get_untracked().is_some();
+        let Some((doc,offset))=(if projected {origin.projection_navigation_source(display_offset)} else {Some((origin.clone(),display_offset))}) else {
+            self.common.hover.active.set(false);
+            return;
+        };
+        let request_stamp=crate::hover::SourceHoverStamp {
+            origin_id:origin.buffer_id.0, origin_revision:origin.rev(),
+            source_id:doc.buffer_id.0,source_revision:doc.rev(),source_offset:offset,
+            cursor_offset:self.cursor().with_untracked(|cursor|cursor.offset()),
+        };
+        let editor=self.clone();
+        let request_current=move || {
+            let origin=editor.doc();
+            let source=if projected {origin.projection_navigation_source(display_offset)} else {Some((origin.clone(),display_offset))};
+            let Some((source,source_offset))=source else {return false;};
+            request_stamp==crate::hover::SourceHoverStamp {
+                origin_id:origin.buffer_id.0,origin_revision:origin.rev(),source_id:source.buffer_id.0,
+                source_revision:source.rev(),source_offset,
+                cursor_offset:editor.cursor().with_untracked(|cursor|cursor.offset()),
+            }
+        };
         let path = doc
             .content
             .with_untracked(|content| content.path().cloned());
@@ -4915,7 +4937,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -4937,7 +4959,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -4962,7 +4984,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -4983,7 +5005,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5005,7 +5027,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5027,7 +5049,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5049,7 +5071,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5072,7 +5094,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5095,7 +5117,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5118,7 +5140,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5141,7 +5163,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5163,7 +5185,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5186,7 +5208,7 @@ impl EditorData {
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
                 hover_data.content.set(content);
-                hover_data.offset.set(offset);
+                hover_data.offset.set(display_offset);
                 hover_data.editor_id.set(self.id());
                 hover_data.active.set(true);
                 return;
@@ -5215,6 +5237,7 @@ impl EditorData {
         })
         .flatten();
         let send = create_ext_action(self.scope, move |resp| {
+            if !request_current() {return;}
             if !crate::hover::response_is_current(
                 request_id,
                 hover_data.request_id.get_untracked(),
@@ -5237,7 +5260,7 @@ impl EditorData {
                 _ => return,
             };
             hover_data.content.set(content);
-            hover_data.offset.set(offset);
+            hover_data.offset.set(display_offset);
             hover_data.editor_id.set(editor_id);
             hover_data.active.set(true);
         });
