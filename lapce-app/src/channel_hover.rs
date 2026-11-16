@@ -9,9 +9,6 @@ use std::path::Path;
 
 const MAX_LINE: usize = 4096;
 const MAX_FILE: u64 = 1 << 20;
-/// Lines scanned past the entry for the driver key.
-const SCAN: usize = 12;
-
 /// The quoted string content covering byte `col`.
 fn name_at(line: &str, col: usize) -> Option<String> {
     let mut col = col.min(line.len());
@@ -45,16 +42,6 @@ fn label(stem: &str) -> &str {
     }
 }
 
-/// `'key' => 'value'` (or `=> Something::class`) on a line.
-fn entry_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let i = line.find(&format!("'{key}'"))?;
-    let mut rest = line[i..].split_once("=>")?.1.trim();
-    while let Some(r) = rest.strip_suffix([',', ']', '}']) {
-        rest = r.trim_end();
-    }
-    Some(rest.trim_matches(['\'', '"']))
-}
-
 /// Markdown hover for the driver name at byte `col` of `line`.
 pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
     let root = root?;
@@ -68,18 +55,12 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
         return None;
     }
     let text = std::fs::read_to_string(&path).ok()?;
-    let lines: Vec<&str> = text.lines().collect();
-    // The entry may be one line or the head of a nested array; scan a small
-    // window for the driver (mail entries use `transport` instead).
-    let driver = lines
-        .iter()
-        .skip(idx)
-        .take(SCAN)
-        .find_map(|&l| entry_value(l, "driver").or_else(|| entry_value(l, "transport")));
+    let driver = lapce_index::symbols::php_array_property(&text, idx, &name, &["driver", "transport"])
+        .ok().flatten();
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let rel = path.strip_prefix(root).unwrap_or(&path);
     let what = match driver {
-        Some(d) => format!("{}, driver `{d}`", label(stem)),
+        Some(d) => format!("{}, driver `{}`", label(stem), d.trim_matches(['\'', '"'])),
         None => label(stem).to_string(),
     };
     Some(format!(
@@ -146,6 +127,29 @@ return [
         let l = "foo('s3')";
         assert_eq!(help(root, l, at(l, "s3")), None);
         assert_eq!(help(None, "Storage::disk('s3')", 18), None);
+    }
+
+    #[test]
+    fn driver_belongs_to_the_selected_config_array() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "config/filesystems.php", r#"<?php
+return ['disks' => [
+    'custom' => [
+        'root' => '/tmp/custom',
+    ],
+    'local' => ['driver' => 'local', 'root' => '/tmp'],
+    'remote' => ["driver" => "s3", "bucket" => "assets"],
+]];
+"#);
+        let line = "Storage::disk('custom')";
+        let md = help(Some(d.path()), line, at(line, "custom")).unwrap();
+        assert!(!md.contains("driver `"), "{md}");
+        for (name, driver) in [("local", "local"), ("remote", "s3")] {
+            let line = format!("Storage::disk('{name}')");
+            let md = help(Some(d.path()), &line, at(&line, name)).unwrap();
+            assert!(md.contains(&format!("driver `{driver}`")), "{md}");
+            assert!(!md.contains("root") && !md.contains("bucket"), "{md}");
+        }
     }
 
     #[test]

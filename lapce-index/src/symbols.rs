@@ -118,6 +118,48 @@ pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
     }
 }
 
+/// An exact property value in the selected PHP config array, never a nearby
+/// sibling's value. Static parse only, with the caller's file-size bound.
+pub fn php_array_property(source: &str, row: usize, entry: &str, properties: &[&str]) -> Result<Option<String>> {
+    fn literal(node: tree_sitter::Node<'_>, source: &str) -> Option<String> {
+        if !matches!(node.kind(), "string" | "encapsed_string") { return None; }
+        let raw = node.utf8_text(source.as_bytes()).ok()?;
+        let q = raw.chars().next()?;
+        if !matches!(q, '\'' | '"') || !raw.ends_with(q) || raw.len() < 2 { return None; }
+        let value = &raw[1..raw.len() - 1];
+        (!value.contains(['\\', '$'])).then(|| value.to_owned())
+    }
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&php_language()).map_err(|e| IndexError::SymbolParse(e.to_string()))?;
+    let tree = parser.parse(source, None).ok_or_else(|| IndexError::SymbolParse("Config parse returned no tree".into()))?;
+    if tree.root_node().has_error() { return Ok(None); }
+    let mut cursor = tree.walk();
+    loop {
+        let node = cursor.node();
+        if node.kind() == "array_element_initializer" && node.start_position().row == row {
+            if let (Some(key), Some(value)) = (node.named_child(0), node.named_child(1)) {
+                if literal(key, source).as_deref() == Some(entry) && value.kind() == "array_creation_expression" {
+                    let mut fields = value.walk();
+                    for field in value.named_children(&mut fields) {
+                        if field.kind() != "array_element_initializer" { continue; }
+                        if let (Some(key), Some(value)) = (field.named_child(0), field.named_child(1)) {
+                            if literal(key, source).is_some_and(|key| properties.contains(&key.as_str())) {
+                                return Ok(value.utf8_text(source.as_bytes()).ok().filter(|v| v.len() <= 140).map(str::to_owned));
+                            }
+                        }
+                    }
+                    return Ok(None);
+                }
+            }
+        }
+        if cursor.goto_first_child() { continue; }
+        loop {
+            if cursor.goto_next_sibling() { break; }
+            if !cursor.goto_parent() { return Ok(None); }
+        }
+    }
+}
+
 fn extract_definitions(path: &str, source: &str, language_id: &str, language: tree_sitter::Language) -> Result<Vec<IndexEntry>> {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&language)
