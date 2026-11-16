@@ -71,12 +71,12 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
             }
             None => match c {
                 '\'' | '"' => quote = Some(c),
-                '[' | '(' => depth += 1,
-                ']' | ')' if depth == 0 => {
+                '[' | '(' | '{' => depth += 1,
+                ']' | ')' | '}' if depth == 0 => {
                     end = i;
                     break;
                 }
-                ']' | ')' => depth -= 1,
+                ']' | ')' | '}' => depth -= 1,
                 ',' if depth <= 0 => {
                     end = i;
                     break;
@@ -204,6 +204,17 @@ return [
             let md = help(Some(d.path()), line, at(line, "app.name")).unwrap();
             assert!(md.contains(&format!("= `{expected}`")), "{md}");
         }
+    }
+
+    #[test]
+    fn final_json_translation_value_excludes_object_closer() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "lang/en.json", r#"{
+"Welcome": "Hello"}
+"#);
+        let line = "__('Welcome')";
+        let md = help(Some(d.path()), line, at(line, "Welcome")).unwrap();
+        assert!(md.contains("= `\"Hello\"`"), "{md}");
     }
 
     #[test]
