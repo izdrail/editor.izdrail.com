@@ -266,6 +266,9 @@ pub fn editor_view(
     });
 
     let doc = e_data.doc_signal();
+    let ime_doc=doc;
+    let ime_session=Rc::new(std::cell::RefCell::new(crate::multibuffer::ProjectionImeSession::default()));
+    let ime_preedit=ime_session.clone();
     EditorView {
         id,
         editor: e_data,
@@ -281,10 +284,14 @@ pub fn editor_view(
 
         if let Event::ImePreedit { text, cursor } = event {
             if text.is_empty() {
+                ime_preedit.borrow_mut().clear_preedit();
                 ed2.clear_preedit();
             } else {
-                let offset = editor_cursor.with_untracked(|c| c.offset());
-                ed2.set_preedit(text.clone(), *cursor, offset);
+                let current=editor_cursor.get_untracked();
+                let source=ime_doc.get_untracked();
+                if ime_preedit.borrow_mut().preedit(source.projection_ime_stamp(&current)) {
+                    ed2.set_preedit(text.clone(), *cursor, current.offset());
+                } else {ed2.clear_preedit();source.refuse_projection_ime();}
             }
         }
         EventPropagation::Stop
@@ -296,7 +303,10 @@ pub fn editor_view(
 
         if let Event::ImeCommit(text) = event {
             ed3.clear_preedit();
-            ed3.receive_char(text);
+            let source=ime_doc.get_untracked();
+            let current=editor_cursor.get_untracked();
+            if ime_session.borrow_mut().commit(source.projection_ime_stamp(&current)) {ed3.receive_char(text);}
+            else {source.refuse_projection_ime();}
         }
         EventPropagation::Stop
     })

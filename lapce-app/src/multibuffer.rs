@@ -981,3 +981,73 @@ mod closer_indent_projection_tests {
         let source=Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"    \n".into()};let p=Projection::build(&[source],&[("a".into(),0..5)],100).unwrap();assert!(projection_closer_indent(&p,0,'{',|_,_|panic!("header source lookup")).is_none());let at=p.excerpts[0].display_range.start+4;assert!(projection_closer_indent(&p,at,'{',|_,_|None).is_none());let mut live=Buffer::new(&p.text);let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);Action::insert_with_closer_indent(&mut cursor,&mut live,"}",&|_,_,_|panic!("disabled pair lookup"),false,true);assert!(live.to_string().contains("    }"));
     }
 }
+
+
+#[derive(Clone,Debug,PartialEq,Eq)]
+pub(crate) struct ProjectionImeStamp {
+    pub origin_id:u64,
+    pub origin_revision:u64,
+    pub source:SourceAnchor,
+    pub selection:Range<usize>,
+}
+/// Composition text is a display overlay, never a source edit. A commit must
+/// still belong to the exact selection/source revision where preedit began.
+#[derive(Default)]
+pub(crate) struct ProjectionImeSession {
+    stamp:Option<ProjectionImeStamp>,
+    refused:bool,
+    cleared:bool,
+}
+impl ProjectionImeSession {
+    pub(crate) fn clear_preedit(&mut self) {self.cleared=true;}
+    pub(crate) fn preedit(&mut self,current:Result<Option<ProjectionImeStamp>,&str>)->bool {
+        if self.cleared {self.stamp=None;self.refused=false;self.cleared=false;}
+        match current {
+            Ok(Some(stamp)) if !self.refused && self.stamp.as_ref().is_none_or(|previous|previous==&stamp)=>{self.stamp=Some(stamp);true}
+            Ok(None) if self.stamp.is_none() && !self.refused=>true,
+            _=>{self.refused=true;false}
+        }
+    }
+    pub(crate) fn commit(&mut self,current:Result<Option<ProjectionImeStamp>,&str>)->bool {
+        let allowed=!self.refused && match (&self.stamp,current) {
+            (Some(previous),Ok(Some(current)))=>previous==&current,
+            (None,Ok(_))=>true,
+            _=>false,
+        };
+        self.stamp=None;self.refused=false;self.cleared=false;allowed
+    }
+}
+
+pub(crate) fn projection_ime_anchor(projection:&Projection,selection:&lapce_core::selection::Selection)->Result<SourceAnchor,&'static str> {
+    if selection.regions().len()!=1 || !projection.allows_insert_selection(selection) {return Err("IME composition needs one selection inside a source excerpt");}
+    projection.anchor(selection.regions()[0].end).ok_or("IME composition has no source")
+}
+#[cfg(test)]
+mod projection_ime_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},selection::{Selection,SelRegion},editor::Action};
+    fn fixture()->(Vec<Snapshot>,Projection) {let s=vec![Snapshot{path:"a.php".into(),buffer_id:7,revision:9,read_only:false,text:"<?php\r\n// λ\r\nold\r\n".into()}];let start=s[0].text.find("old").unwrap();let p=Projection::build(&s,&[("a.php".into(),start..s[0].text.len())],100).unwrap();(s,p)}
+    fn stamp()->ProjectionImeStamp {ProjectionImeStamp{origin_id:1,origin_revision:2,source:SourceAnchor{source:"a".into(),buffer_id:7,revision:9,offset:13},selection:20..23}}
+    #[test] fn composition_overlay_is_not_an_edit_and_commit_replaces_unicode_crlf_source_selection() {
+        let (sources,p)=fixture();let at=p.excerpts[0].display_range.start;let selected=Selection::region(at,at+3);let anchor=projection_ime_anchor(&p,&selected).unwrap();assert_eq!(anchor.offset,sources[0].text.find("old").unwrap()+3);
+        let mut session=ProjectionImeSession::default();let state=stamp();assert!(session.preedit(Ok(Some(state.clone()))));assert!(session.preedit(Ok(Some(state.clone()))));assert!(session.commit(Ok(Some(state))));
+        let mut live=Buffer::new(&p.text);let mut cursor=Cursor::new(CursorMode::Insert(selected),None,None);let deltas=Action::insert(&mut cursor,&mut live,"日本語",&|_,_,_|None,true,true);let delta=compose_projection_deltas(&p,&deltas.into_iter().map(|(_,d,_)|d).collect::<Vec<_>>()).unwrap();let plan=p.plan(&sources,&display_edits_from_delta(&p.text,&delta).unwrap()).unwrap();assert_eq!(expected_sources(&sources,&plan).unwrap()[&PathBuf::from("a.php")],sources[0].text.replace("old","日本語"));live.do_undo().unwrap();assert_eq!(live.to_string(),p.text);live.do_redo().unwrap();assert!(live.to_string().contains("日本語\r\n"));
+    }
+    #[test] fn changed_cursor_origin_source_or_revision_refuses_late_commit_and_resets() {
+        let initial=stamp();let mut changes=Vec::new();let mut x=initial.clone();x.origin_id+=1;changes.push(x);let mut x=initial.clone();x.origin_revision+=1;changes.push(x);let mut x=initial.clone();x.source.buffer_id+=1;changes.push(x);let mut x=initial.clone();x.source.revision+=1;changes.push(x);let mut x=initial.clone();x.source.offset+=1;changes.push(x);let mut x=initial.clone();x.selection=21..24;changes.push(x);
+        for changed in changes {let mut session=ProjectionImeSession::default();assert!(session.preedit(Ok(Some(initial.clone()))));assert!(!session.commit(Ok(Some(changed))));assert!(session.preedit(Ok(Some(initial.clone()))));assert!(session.commit(Ok(Some(initial.clone()))));}
+    }
+    #[test] fn headers_crossings_multicursors_and_refused_preedit_never_authorize_commit() {
+        let (_,p)=fixture();let at=p.excerpts[0].display_range.start;assert!(projection_ime_anchor(&p,&Selection::caret(0)).is_err());assert!(projection_ime_anchor(&p,&Selection::region(0,at+1)).is_err());let mut selection=Selection::caret(at);selection.add_region(SelRegion::caret(at+1));assert!(projection_ime_anchor(&p,&selection).is_err());
+        let mut session=ProjectionImeSession::default();assert!(!session.preedit(Err("Source changed")));assert!(!session.commit(Ok(Some(stamp()))));assert!(session.commit(Ok(Some(stamp()))));assert!(!session.commit(Err("Source closed")));
+    }
+    #[test] fn cleared_overlay_keeps_commit_guard_but_allows_a_fresh_composition() {
+        let mut session=ProjectionImeSession::default();let mut changed=stamp();changed.source.revision+=1;
+        assert!(session.preedit(Ok(Some(stamp()))));session.clear_preedit();assert!(!session.commit(Ok(Some(changed.clone()))));
+        assert!(!session.preedit(Err("Header")));session.clear_preedit();assert!(session.preedit(Ok(Some(changed.clone()))));assert!(session.commit(Ok(Some(changed))));
+        assert!(session.preedit(Ok(Some(stamp()))));session.clear_preedit();assert!(session.commit(Ok(Some(stamp()))));
+    }
+    #[test] fn ordinary_source_and_direct_projection_commits_keep_existing_path() {
+        let mut session=ProjectionImeSession::default();assert!(session.preedit(Ok(None)));assert!(session.commit(Ok(None)));assert!(session.commit(Ok(Some(stamp()))));assert!(session.preedit(Ok(Some(stamp()))));assert!(!session.commit(Ok(None)));
+    }
+}

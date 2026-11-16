@@ -1288,6 +1288,19 @@ impl Doc {
         Some(Arc::new(painted))
     }
 
+    pub(crate) fn projection_ime_stamp(&self,cursor:&Cursor)->Result<Option<crate::multibuffer::ProjectionImeStamp>,&'static str> {
+        let Some(binding)=self.projection.get_untracked() else {return Ok(None);};
+        let lapce_core::cursor::CursorMode::Insert(selection)=&cursor.mode else {return Err("IME composition requires insert mode");};
+        let source=crate::multibuffer::projection_ime_anchor(&binding.projection.borrow(),selection)?;
+        let docs=binding.docs.get_untracked();let doc=docs.get(&source.source).ok_or("Source was closed")?;
+        if !doc.loaded() || doc.buffer_id.0!=source.buffer_id || doc.rev()!=source.revision {return Err("Source changed; restart composition after refreshing");}
+        if doc.content.with_untracked(|content|content.read_only()) {return Err("Source is read-only");}
+        let region=selection.regions()[0];
+        Ok(Some(crate::multibuffer::ProjectionImeStamp{origin_id:self.buffer_id.0,origin_revision:self.rev(),source,selection:region.start..region.end}))
+    }
+    pub(crate) fn refuse_projection_ime(&self) {
+        if let Some(binding)=self.projection.get_untracked() {binding.notice.set("IME composition moved or source changed; restart inside one source excerpt".into());}
+    }
     pub(crate) fn projection_navigation_source(&self,display:usize)->Option<(Rc<Doc>,usize)> {
         let binding=self.projection.get_untracked()?;
         let anchor=binding.projection.borrow().navigation_anchor(display)?;
@@ -2270,10 +2283,10 @@ impl DocumentPhantom for Doc {
         line: usize,
     ) -> PhantomTextLine {
         // Reuse only the source's diagnostic lens, never its inlays, completion
-        // text or IME overlay. Phantom text cannot enter saved source bytes.
+        // text or IME overlay. The projection owns its local composition overlay.
         if self.projection.get_untracked().is_some() {
             let display=self.buffer.with_untracked(|b|b.offset_of_line(line));
-            let text=self.projection_navigation_source(display).map(|(source,offset)| {
+            let mut text:Vec<PhantomText>=self.projection_navigation_source(display).map(|(source,offset)| {
                 let (source_line,source_col)=source.buffer.with_untracked(|b|b.offset_to_line_col(offset));
                 let display_len=self.buffer.with_untracked(|b|b.offset_of_line(line+1)-display);
                 source.phantom_text(editor_id,editor_style,source_line).text.into_iter()
@@ -2283,7 +2296,12 @@ impl DocumentPhantom for Doc {
                         (text.col<=display_len).then_some(text)
                     }).collect()
             }).unwrap_or_default();
-            return PhantomTextLine{text};
+            if let Some(preedit)=self.preedit_phantom(Some(self.common.config.get_untracked().color(LapceColor::EDITOR_FOREGROUND)),line) {
+                let offset=self.preedit.preedit.with_untracked(|value|value.as_ref().map(|value|value.offset));
+                if offset.is_some_and(|offset|self.projection_ime_stamp(&Cursor::new(lapce_core::cursor::CursorMode::Insert(Selection::caret(offset)),None,None)).is_ok()) {text.push(preedit);}
+            }
+            text.sort_by_key(|text|text.col);
+            return PhantomTextLine{text:text.into()};
         }
         let config = &self.common.config.get_untracked();
 
