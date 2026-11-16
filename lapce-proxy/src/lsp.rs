@@ -844,6 +844,7 @@ mod tests {
         let registry = || registry::Registry {
             enabled: true,
             auto_install: false,
+            phpactor_opt_in: true,
             servers: HashMap::from([(
                 "mock-laravel".into(),
                 registry::Server {
@@ -904,6 +905,7 @@ mod tests {
         let registry = || registry::Registry {
             enabled: true,
             auto_install: false,
+            phpactor_opt_in: true,
             servers: HashMap::from([(
                 "php".into(),
                 registry::Server {
@@ -1084,6 +1086,7 @@ mod dispatch_tests {
         let registry = registry::Registry {
             enabled: true,
             auto_install: false,
+            phpactor_opt_in: true,
             servers: HashMap::from([(
                 "mock".into(),
                 registry::Server {

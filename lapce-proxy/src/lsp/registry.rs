@@ -36,6 +36,9 @@ impl Default for Server {
 #[serde(default, rename_all = "kebab-case")]
 pub struct Registry {
     pub enabled: bool,
+    /// Separate consent gate: old auto-generated enabled PHP entries are not
+    /// proof that the user opted into running phpactor.
+    pub phpactor_opt_in: bool,
     pub auto_install: bool,
     pub servers: HashMap<String, Server>,
 }
@@ -112,12 +115,13 @@ impl Default for Registry {
                     args: args.into_iter().map(str::to_owned).collect(),
                     packages: packages.into_iter().map(str::to_owned).collect(),
                     initialization_options,
+                    enabled: name != "php",
                     ..Server::default()
                 },
             );
         }
-        // Official Laravel language server. Disabled by default: phpactor
-        // stays the PHP server until the user switches in
+        // Official Laravel language server. Both PHP servers are opt-in.
+        // Choose and enable a server in
         // language-servers.toml (docs/language-servers.md). Self-contained
         // managed binary, so no php is needed to run the server itself.
         servers.insert(
@@ -136,6 +140,7 @@ impl Default for Registry {
         );
         Self {
             enabled: true,
+            phpactor_opt_in: false,
             auto_install: true,
             servers,
         }
@@ -290,6 +295,7 @@ impl Registry {
         names.into_iter().find_map(|name| {
             let server = &self.servers[name];
             (server.enabled
+                && (self.phpactor_opt_in || server.command != "phpactor")
                 && (!server.requires_laravel || laravel_project)
                 && server.languages.iter().any(|lang| lang == language))
             .then(|| (name.clone(), server.clone()))
@@ -599,6 +605,32 @@ impl Registry {
 mod tests {
     use super::*;
     #[test]
+    fn phpactor_requires_explicit_opt_in_in_fresh_and_legacy_registries() {
+        let fresh = Registry::default();
+        assert!(!fresh.servers["php"].enabled);
+        assert!(fresh.server("php", true).is_none());
+        assert!(fresh.server("blade", false).is_none());
+        let legacy: Registry = toml::from_str(r#"
+[servers.php]
+languages = ["php", "blade"]
+command = "phpactor"
+args = ["language-server"]
+enabled = true
+"#).unwrap();
+        assert!(legacy.server("php", true).is_none());
+        let opted_in: Registry = toml::from_str(r#"
+phpactor-opt-in = true
+[servers.php]
+languages = ["php", "blade"]
+command = "phpactor"
+args = ["language-server"]
+enabled = true
+"#).unwrap();
+        assert_eq!(opted_in.server("php", true).unwrap().0, "php");
+        assert_eq!(opted_in.server("blade", false).unwrap().0, "php");
+    }
+
+    #[test]
     fn missing_direct_server_is_detected_and_managed_is_not() {
         let registry = Registry::default();
         let mut server = registry.servers["php"].clone();
@@ -696,9 +728,9 @@ command = "/opt/my-phpactor"
             false
         );
         assert!(is_laravel_lsp_default(server));
-        // phpactor stays the PHP server, in and out of Laravel projects.
-        assert_eq!(registry.server("php", true).unwrap().0, "php");
-        assert_eq!(registry.server("blade", false).unwrap().0, "php");
+        // Neither PHP server runs before the user explicitly opts in.
+        assert!(registry.server("php", true).is_none());
+        assert!(registry.server("blade", false).is_none());
         let mut own = server.clone();
         own.command = "/opt/laravel-lsp".into();
         assert!(!is_laravel_lsp_default(&own));
@@ -710,7 +742,10 @@ command = "/opt/my-phpactor"
         registry.servers.get_mut("laravel-lsp").unwrap().enabled = true;
         assert_eq!(registry.server("php", true).unwrap().0, "laravel-lsp");
         assert_eq!(registry.server("blade", true).unwrap().0, "laravel-lsp");
-        // Outside a Laravel project the gated entry falls through to phpactor.
+        // Outside Laravel there is no implicitly enabled fallback.
+        assert!(registry.server("php", false).is_none());
+        registry.phpactor_opt_in = true;
+        registry.servers.get_mut("php").unwrap().enabled = true;
         assert_eq!(registry.server("php", false).unwrap().0, "php");
         registry.servers.get_mut("php").unwrap().enabled = false;
         assert!(registry.server("php", false).is_none());

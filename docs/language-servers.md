@@ -20,6 +20,7 @@ specifications. Restart the workspace after editing this file. Config:
 
 ```toml
 enabled = true
+phpactor-opt-in = false
 auto-install = true
 
 [servers.custom]
@@ -33,7 +34,8 @@ packages = []
 
 The seeded registry covers npm-managed TypeScript/JavaScript, Python (Pyright),
 HTML, CSS/SCSS/Less and JSON/JSONC. Rust (rust-analyzer), Go (gopls) and PHP
-(phpactor language-server) are command-managed and must already be installed.
+(phpactor language-server) are command-managed. PHP is disabled until explicitly
+opted in; phpactor has a pinned managed-phar fallback described below.
 An entry for the stock `phpactor` command that omits `args` is backfilled to
 `["language-server"]` on load: a bare `phpactor` invocation prints usage and
 exits instead of serving LSP (item 384). Custom commands keep their own args.
@@ -119,7 +121,32 @@ Sources inspected:
 
 ## PHP (phpactor)
 
-The stock `php` entry runs `phpactor language-server`. If `phpactor` is on PATH it
+PHP semantic services are strictly opt-in. New registries seed `servers.php.enabled = false`.
+The separate top-level `phpactor-opt-in` flag defaults to false even when an older
+registry already has `servers.php.enabled = true`. Opening a PHP/Blade file does
+not download or launch phpactor until both switches are explicitly enabled.
+Offline PHP/Blade highlighting and local completion/hover/navigation stay available.
+
+To opt in, edit the global `language-servers.toml` and restart the workspace:
+
+```toml
+# Top level, before any [servers.*] table:
+phpactor-opt-in = true
+
+[servers.php]
+languages = ["php", "blade"]
+command = "phpactor"
+args = ["language-server"]
+enabled = true
+packages = []
+initialization-options = { "language_server.code_action_outsource" = false }
+```
+
+Set either switch false to stop future phpactor launches after a workspace restart.
+This consent flag gates the exact `phpactor` command, including renamed registry
+entries. Explicit custom server commands keep their configured enabled state.
+
+Once opted in, the stock `php` entry runs `phpactor language-server`. If `phpactor` is on PATH it
 is used as is. If not, and `php` is on PATH, the editor downloads the pinned
 phpactor 2026.10.07.0 phar from the phpactor GitHub release into
 `language-servers/phpactor/` under the editor data directory, checks its SHA-256
