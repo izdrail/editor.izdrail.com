@@ -85,7 +85,7 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
         (format!("`{} {}`", first.verb, first.uri), action)
     };
     Some(format!(
-        "**Route** `{name}` - {what}\n\n{action}\n\n_{}:{}\n\nGroup prefixes are not tracked; the URI shows as written._",
+        "**Route** `{name}` - {what}\n\n{action}\n\n_{}:{}_\n\n_Group prefixes are not tracked; the URI shows as written._",
         rel.display(),
         idx + 1,
     ))
@@ -131,7 +131,7 @@ Route::get('/users', [UserController::class, 'index'])->name('users.index');
         let l = "return to_route('users.index');";
         let md = help(root, l, at(l, "users.index")).unwrap();
         assert!(md.contains("`GET /users`") && md.contains("UserController@index"), "{md}");
-        assert!(md.contains("routes/web.php:3"), "{md}");
+        assert!(md.contains("_routes/web.php:3_\n\n_Group prefixes are not tracked; the URI shows as written._"), "{md}");
 
         // Name on its own line still finds the enclosing call.
         let l = "route('users.store')";
