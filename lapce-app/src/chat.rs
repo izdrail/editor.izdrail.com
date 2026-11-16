@@ -102,11 +102,18 @@ pub fn knowledge_excerpt(text: &str) -> Option<String> {
 /// the official Agent Client Protocol adapters
 /// (@agentclientprotocol/claude-agent-acp and
 /// @agentclientprotocol/codex-acp, invoked via npx).
-pub const ACP_AGENTS: [(&str, &str); 3] = [
+pub const ACP_AGENTS: [(&str, &str); 4] = [
     ("opencode", "opencode acp"),
     ("Claude Code", "npx @agentclientprotocol/claude-agent-acp"),
     ("Codex", "npx @agentclientprotocol/codex-acp"),
+    ("Antigravity", "agy acp --sandbox --disable-telemetry"),
 ];
+
+pub fn acp_agent_name(command: &str) -> &'static str {
+    ACP_AGENTS.iter().find(|(_, spec)| *spec == command.trim())
+        .map(|(name, _)| *name).unwrap_or("ACP")
+}
+
 
 /// `@path` composer mentions (Antigravity parity: context mentions).
 /// A mention is `@` at the start or after whitespace, followed by a
@@ -264,6 +271,89 @@ pub(crate) fn with_auth(
         None => req,
     }
 }
+/// Automatic failover is limited to the user's own canonical primary.
+/// Never treat arbitrary configured endpoints as permission to disclose prompts.
+pub(crate) const FALLBACK_ENDPOINT: &str = "https://llm.izdrail.com";
+fn fallback_target(endpoint: &str) -> Option<&'static str> {
+    let parsed = url::Url::parse(&completion_url(endpoint).ok()?).ok()?;
+    (parsed.scheme() == "https" && parsed.host_str() == Some("ai.izdrail.com")
+        && parsed.port_or_known_default() == Some(443)
+        && parsed.path() == "/v1/chat/completions")
+        .then_some(FALLBACK_ENDPOINT)
+}
+fn retryable_status(status: u16) -> bool {
+    matches!(status, 408 | 502 | 503 | 504)
+}
+fn endpoint_auth(req: reqwest::RequestBuilder, endpoint: &str, fallback: bool) -> reqwest::RequestBuilder {
+    if !fallback { return with_auth(req, endpoint); }
+    // A runtime environment override belongs to the selected PRIMARY only.
+    match fallback_key(crate::chat_credentials::saved_key(endpoint), build_default_key(endpoint)) {
+        Some(key) => req.bearer_auth(key),
+        None => req,
+    }
+}
+fn fallback_key(saved: Option<String>, build: Option<String>) -> Option<String> {
+    saved.or(build)
+}
+fn fallback_body(body: Option<&Value>) -> Option<Value> {
+    body.cloned().map(|mut body| {
+        // Ollama-specific model IDs are not portable to the gateway.
+        if body.get("model").is_some() { body["model"] = json!("auto"); }
+        body
+    })
+}
+/// Both app chat and Act already speak OpenAI wire format. Rebuild the
+/// request at the gateway, retaining messages/tools but not primary auth/model.
+/// Retry only before any response bytes have been consumed, never a partial turn.
+pub(crate) async fn send_with_fallback(
+    client: &reqwest::Client, endpoint: &str, body: Option<&Value>,
+) -> Result<(reqwest::Response, String), String> {
+    send_with_target(client, endpoint, body, fallback_target(endpoint)).await
+}
+async fn send_with_target(
+    client: &reqwest::Client, endpoint: &str, body: Option<&Value>, fallback: Option<&str>,
+) -> Result<(reqwest::Response, String), String> {
+    send_with_target_timeout(client, endpoint, body, fallback, std::time::Duration::from_secs(30)).await
+}
+async fn send_with_target_timeout(
+    client: &reqwest::Client, endpoint: &str, body: Option<&Value>, fallback: Option<&str>, header_timeout: std::time::Duration,
+) -> Result<(reqwest::Response, String), String> {
+    let make = |target: &str, body: Option<&Value>, is_fallback| {
+        let req = match body {
+            Some(value) => client.post(completion_url(target)?).json(value),
+            None => client.get(models_url(target)?),
+        };
+        Ok::<_, String>(endpoint_auth(req, target, is_fallback).send())
+    };
+    // Bound waiting for primary headers so the outer 180s turn deadline
+    // still leaves time to attempt the gateway. Once headers arrive, normal
+    // streaming/body limits apply and a broken partial turn is never replayed.
+    let primary = if fallback.is_some() {
+        tokio::time::timeout(header_timeout, make(endpoint, body, false)?).await
+    } else { Ok(make(endpoint, body, false)?.await) };
+    let reason = match primary {
+        Err(_) if fallback.is_some() => "no response headers within 30 seconds".into(),
+        Err(_) => return Err("The AI endpoint did not respond within 30 seconds".into()),
+        Ok(primary) => match primary {
+        Ok(response) if fallback.is_none() || !retryable_status(response.status().as_u16()) => return Ok((response, endpoint.into())),
+        Ok(response) => format!("HTTP {}", response.status().as_u16()),
+        Err(err) if fallback.is_some() && (err.is_connect() || err.is_timeout()) => "connection unavailable".into(),
+        Err(err) => return Err(err.to_string()),
+        },
+    };
+    let target = fallback.expect("retry requires target");
+    let replacement = fallback_body(body);
+    let response = make(target, replacement.as_ref(), true)?.await
+        .map_err(|_| format!("{endpoint} failed ({reason}); fallback {target} is also unreachable"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("{endpoint} failed ({reason}); {}", http_failure(
+            &format!("fallback {target}"), status.as_u16(), &body,
+            "Save a separate gateway key in Settings > AI if authentication is required.")));
+    }
+    Ok((response, target.into()))
+}
 fn select_key(environment: Option<String>, saved: Option<String>) -> Option<String> {
     environment.or(saved)
 }
@@ -330,7 +420,10 @@ pub fn models_url(endpoint: &str) -> Result<String, String> {
 /// native {"models":[...]} shape). On demand only - never fetched at
 /// startup, and never used to second-guess a configured model.
 pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
-    let url = models_url(endpoint)?;
+    models_with_source(endpoint).map(|(models, _)| models)
+}
+pub fn models_with_source(endpoint: &str) -> Result<(Vec<String>, String), String> {
+    models_url(endpoint)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -342,10 +435,7 @@ pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
-        let mut response = with_auth(client.get(&url), endpoint)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let (mut response, source) = send_with_fallback(&client, endpoint, None).await?;
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
@@ -365,7 +455,7 @@ pub fn models(endpoint: &str) -> Result<Vec<String>, String> {
             }
             bytes.extend_from_slice(&chunk);
         }
-        parse_model_names(&bytes)
+        parse_model_names(&bytes).map(|models| (models, source))
     })
 }
 /// Parse a model-list body: OpenAI {"data":[{"id":...}]} or Ollama
@@ -549,6 +639,7 @@ pub fn model_capabilities(
 }
 #[derive(Clone)]
 pub enum Update {
+    Status(String),
     Delta(String),
     /// ACP writes staged during the turn, awaiting owner review:
     /// (workspace-relative path, full new content).
@@ -569,7 +660,8 @@ pub fn ollama(
     send: impl Fn(Update),
 ) -> Result<(), String> {
     use std::sync::atomic::Ordering;
-    let url = completion_url(endpoint)?;
+    completion_url(endpoint)?;
+    if cancelled.load(Ordering::Acquire) { return Err("Cancelled".into()); }
     if model.trim().is_empty() {
         return Err("Set a chat model in AI Chat settings".into());
     }
@@ -580,9 +672,13 @@ pub fn ollama(
     runtime.block_on(async {
         let request = async {
             let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
-            let make = |stream| with_auth(client.post(&url).json(&json!({"model": model, "messages": messages, "stream": stream, "max_tokens": CHAT_MAX_TOKENS})), endpoint).send();
-            let mut response = make(true).await.map_err(|e| e.to_string())?;
-            if [400,405,422,501].contains(&response.status().as_u16()) { response = make(false).await.map_err(|e| e.to_string())?; }
+            let body = |stream| json!({"model": model, "messages": messages, "stream": stream, "max_tokens": CHAT_MAX_TOKENS});
+            let (mut response, source) = send_with_fallback(&client, endpoint, Some(&body(true))).await?;
+            if source != endpoint { send(Update::Status(format!("Primary unavailable. Using {source} (model: auto)."))); }
+            if [400,405,422,501].contains(&response.status().as_u16()) {
+                let request = if source != endpoint { fallback_body(Some(&body(false))).unwrap() } else { body(false) };
+                response = endpoint_auth(client.post(completion_url(&source)?).json(&request), &source, source != endpoint).send().await.map_err(|e|e.to_string())?;
+            }
             if !response.status().is_success() { let status = response.status(); let body = response.text().await.unwrap_or_default(); return Err(http_failure("The chat server", status.as_u16(), &body, &format!("Check endpoint and model.{}", auth_hint(status)))); }
             let streaming = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).is_some_and(|h| h.contains("text/event-stream"));
             if streaming {
@@ -1282,5 +1378,112 @@ mod connection_tests {
         assert!(super::connection_status(401).starts_with("401 Unauthorized:"));
         assert!(super::connection_status(500).starts_with("HTTP 500:"));
         assert!(super::auth_hint(reqwest::StatusCode::UNAUTHORIZED).contains("Settings > AI, save an API key"));
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+    use std::{io::{Read, Write}, net::TcpListener};
+    #[test]
+    fn fallback_is_canonical_and_transient_only() {
+        assert_eq!(fallback_target("https://ai.izdrail.com/v1"), Some(FALLBACK_ENDPOINT));
+        for endpoint in ["http://ai.izdrail.com", "https://ai.izdrail.com:444", "https://ai.izdrail.com/other", "https://other.test", FALLBACK_ENDPOINT] {
+            assert_eq!(fallback_target(endpoint), None, "{endpoint}");
+        }
+        for status in [408, 502, 503, 504] { assert!(retryable_status(status)); }
+        for status in [200, 301, 400, 401, 403, 404, 409, 422, 429, 500, 501] { assert!(!retryable_status(status)); }
+    }
+    #[test]
+    fn fallback_never_inherits_primary_key_and_translates_model() {
+        assert_eq!(fallback_key(None, None), None);
+        assert_eq!(fallback_key(Some("gateway-only".into()), None), Some("gateway-only".into()));
+        let primary = json!({"model":"qwen3:4b", "messages":[{"role":"user","content":"test"}], "tools":[{"type":"function"}], "stream":false});
+        let translated = fallback_body(Some(&primary)).unwrap();
+        assert_eq!(translated["model"], "auto");
+        assert_eq!(translated["messages"], primary["messages"]);
+        assert_eq!(translated["tools"], primary["tools"]);
+        assert_eq!(translated["stream"], false);
+        assert_eq!(primary["model"], "qwen3:4b");
+    }
+    fn server(status: u16, response: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            let mut data = Vec::new(); let mut buf = [0;8192];
+            loop {
+                let n = socket.read(&mut buf).unwrap(); if n == 0 { break; } data.extend_from_slice(&buf[..n]);
+                if let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&data[..end]);
+                    let length = head.lines().find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length: ").and_then(|v| v.parse::<usize>().ok())).unwrap_or(0);
+                    if data.len() >= end + 4 + length { break; }
+                }
+            }
+            write!(socket, "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            String::from_utf8(data).unwrap()
+        });
+        (endpoint, handle)
+    }
+    #[test]
+    fn fallback_wire_rebuilds_post_and_get_at_gateway() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap();
+            for post in [true, false] {
+                let (primary, first) = server(503, "down");
+                let (gateway, second) = server(200, "{}");
+                let body = json!({"model":"native:model", "messages":[{"role":"user","content":"hi"}]});
+                let (response, source) = send_with_target(&client, &primary, post.then_some(&body), Some(&gateway)).await.unwrap();
+                assert!(response.status().is_success()); assert_eq!(source, gateway);
+                let first = first.join().unwrap(); let second = second.join().unwrap();
+                if post {
+                    assert!(first.starts_with("POST /v1/chat/completions "));
+                    assert!(second.starts_with("POST /v1/chat/completions "));
+                    let sent: Value = serde_json::from_str(second.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+                    assert_eq!(sent["model"], "auto"); assert_eq!(sent["messages"], body["messages"]);
+                } else { assert!(second.starts_with("GET /v1/models ")); }
+                assert!(!second.to_ascii_lowercase().contains("authorization:"));
+            }
+        });
+    }
+    #[test]
+    fn fallback_failure_names_both_destinations() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let (primary, first) = server(502, "down"); let (gateway, second) = server(502, "down");
+            let error = send_with_target(&reqwest::Client::new(), &primary, None, Some(&gateway)).await.err().unwrap();
+            assert!(error.contains(&primary)); assert!(error.contains(&gateway));
+            first.join().unwrap(); second.join().unwrap();
+        });
+    }
+}
+
+#[cfg(test)]
+mod fallback_deadline_tests {
+    use super::*;
+    #[test]
+    fn a_stalled_primary_leaves_time_for_gateway_attempt() {
+        use std::{io::{Read,Write},net::TcpListener};
+        let primary = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", primary.local_addr().unwrap());
+        let first = std::thread::spawn(move || {
+            let (mut socket, _) = primary.accept().unwrap(); let mut bytes=[0;4096];
+            socket.read(&mut bytes).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        });
+        let gateway=TcpListener::bind("127.0.0.1:0").unwrap();
+        let fallback=format!("http://{}",gateway.local_addr().unwrap());
+        let second=std::thread::spawn(move || {
+            let(mut socket,_)=gateway.accept().unwrap();let mut bytes=[0;4096];socket.read(&mut bytes).unwrap();
+            write!(socket,"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").unwrap();
+        });
+        let runtime=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let (_, source)=send_with_target_timeout(&reqwest::Client::new(),&endpoint,None,Some(&fallback),std::time::Duration::from_millis(25)).await.unwrap();
+            assert_eq!(source,fallback);
+        });
+        first.join().unwrap();second.join().unwrap();
     }
 }

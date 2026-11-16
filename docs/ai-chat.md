@@ -122,3 +122,23 @@ The Endpoint field is a dropdown with the two key-less endpoints Stefan
 runs: `https://ai.izdrail.com` (his Ollama, the default) and
 `https://freellm.izdrail.com`. A custom URL typed in settings.toml stays
 selectable. The same dropdown exists under AI Autocomplete.
+
+### Automatic self-hosted gateway fallback
+
+For the canonical HTTPS ai.izdrail.com connection only, Chat, inline edits and
+Ask/Plan/Act retry a connection failure, timeout or HTTP 408/502/503/504 once at
+https://llm.izdrail.com. Model listing uses the same fallback. No other configured
+host opts in. Authentication errors, rate limits, bad model requests and partial
+streams do not trigger failover. Requests stay OpenAI-compatible, with messages
+and tool definitions retained and the gateway model set to `auto` rather than an
+Ollama-specific model ID. The active fallback appears in the chat status, Act
+step log or model list. Configuration is not silently rewritten.
+
+The gateway uses only its own saved endpoint-bound key or canonical distributor
+build default. The primary connection key and LAPCE_LLM_API_KEY override are
+never forwarded. Save a separate gateway key by selecting llm.izdrail.com in
+Settings > AI, saving its key, then restoring the desired primary endpoint.
+There is no failover loop and no retry after a partial response. Both endpoint
+failures are named when neither is available. Fallback does not repair an outage
+shared by both servers. Native inline FIM completion is a separate transport
+and is not covered by this app-chat fallback.

@@ -17,6 +17,17 @@ pub fn ollama(
     max_output: u32,
     cancelled: Arc<AtomicBool>,
 ) -> Result<Reply, String> {
+    ollama_with_status(endpoint, model, messages, tools, max_output, cancelled, |_| {})
+}
+pub fn ollama_with_status(
+    endpoint: &str,
+    model: &str,
+    messages: &[AgentMessage],
+    tools: &[Value],
+    max_output: u32,
+    cancelled: Arc<AtomicBool>,
+    status: impl Fn(&str),
+) -> Result<Reply, String> {
     let request = agent_wire::request(model, messages, tools, max_output)?;
     let allowed: Vec<&str> = tools
         .iter()
@@ -26,7 +37,7 @@ pub fn ollama(
                 .ok_or("Missing tool name")
         })
         .collect::<Result<_, _>>()?;
-    let url = completion_url(endpoint)?;
+    completion_url(endpoint)?;
     if cancelled.load(Ordering::Acquire) {
         return Err("Cancelled".into());
     }
@@ -37,7 +48,8 @@ pub fn ollama(
     runtime.block_on(async {
         let run=async {
             let client=reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).timeout(std::time::Duration::from_secs(180)).build().map_err(|e|e.to_string())?;
-            let mut response=crate::chat::with_auth(client.post(url).json(&request), endpoint).send().await.map_err(|e|e.to_string())?;
+            let (mut response, source)=crate::chat::send_with_fallback(&client, endpoint, Some(&request)).await?;
+            if source != endpoint { status(&format!("Primary unavailable. Using {source} (model: auto).")); }
             if !response.status().is_success() {
                 let status = response.status();
                 // The provider's error body says WHY (unknown model,

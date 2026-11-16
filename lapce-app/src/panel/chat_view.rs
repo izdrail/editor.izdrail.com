@@ -523,6 +523,7 @@ fn send(tab: &WindowTabData) {
                 return;
             }
             match update {
+                Update::Status(text) => done_data.error.set(text),
                 Update::Delta(text) => reply.set(text),
                 // Staged writes are drained for owner review at turn
                 // end by the other Update consumer.
@@ -1146,7 +1147,7 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                 cancelled.clone(),
                 approval_wait.clone(),
                 |messages, tools| {
-                    crate::agent_transport::ollama(
+                    crate::agent_transport::ollama_with_status(
                         &settings.endpoint,
                         &settings.model,
                         messages,
@@ -1156,6 +1157,11 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
                         // runs with finish_reason "length" (host QA).
                         4096,
                         cancelled.clone(),
+                        |message| journal_and_send(&journal, &tx, AgentUpdate::Step(AgentStepRow {
+                            title: "AI fallback".into(),
+                            detail: message.into(),
+                            error: false,
+                        })),
                     )
                 },
                 |call| match call.name.as_str() {
@@ -1925,6 +1931,7 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
                 return;
             }
             match update {
+                Update::Status(text) => done.error.set(text),
                 Update::Delta(text) => reply.set(text),
                 Update::StagedWrites(writes) => {
                     *staged_writes_effect.borrow_mut() = writes;
@@ -2119,7 +2126,7 @@ fn drive_acp_turn(
             return Err("Agent closed the session during setup".into());
         }
         if events.iter().any(|e| matches!(e, TurnEvent::NeedsAuth { .. })) {
-            return Err("Agent needs terminal authentication first".into());
+            return Err("Agent needs terminal authentication first. For Antigravity, run `agy acp --login` in a terminal, then retry. No sign-in tokens belong in editor settings.".into());
         }
         if session.phase() == Phase::Ready {
             break;
@@ -2314,7 +2321,11 @@ fn is_limit_error(error: &str) -> bool {
 
 /// Connection/auth failures are the only errors the settings shortcut and
 /// 401/403 hint help with; limit errors get a plain message instead.
+fn is_fallback_notice(text: &str) -> bool {
+    text.starts_with("Primary unavailable. Using ")
+}
 fn is_connection_error(error: &str) -> bool {
+    if is_fallback_notice(error) { return false; }
     let e = error.to_ascii_lowercase();
     !is_limit_error(&e)
         && (e.contains("401")
@@ -2327,7 +2338,9 @@ fn is_connection_error(error: &str) -> bool {
 }
 
 fn chat_error_title(error: &str) -> &'static str {
-    if is_limit_error(error) {
+    if is_fallback_notice(error) {
+        "AI fallback active"
+    } else if is_limit_error(error) {
         "Stopped at the agent limit"
     } else if is_connection_error(error) {
         "Can't reach the AI endpoint"
@@ -2417,7 +2430,7 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
             .style(move |s| {
                 s.width_full().min_width(0.0)
                     .text_overflow(floem::style::TextOverflow::Wrap)
-                    .color(config.get().color(LapceColor::LAPCE_ERROR))
+                    .color(config.get().color(if is_fallback_notice(&error.get()) { LapceColor::EDITOR_FOREGROUND } else { LapceColor::LAPCE_ERROR }))
             }),
         ).style(|s| s.width_full().max_height(100.0)),
         label(|| "Open AI connection settings".to_string())
@@ -2545,12 +2558,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // Endpoint model list (item 206): fetched on demand when the model
     // chip opens against the ollama backend - never at startup.
     let endpoint_models = floem::reactive::create_rw_signal(Vec::<String>::new());
+    let endpoint_models_source = floem::reactive::create_rw_signal(String::new());
     let endpoint_models_error =
         floem::reactive::create_rw_signal(Option::<String>::None);
     let endpoint_models_loading = floem::reactive::create_rw_signal(false);
     let (models_tx, models_rx) = std::sync::mpsc::channel::<(
         String,
-        Result<Vec<String>, String>,
+        Result<(Vec<String>, String), String>,
     )>();
     // Capability probes (item 232 patch B): when the endpoint model
     // list arrives, each model's tool support is probed once in the
@@ -2586,7 +2600,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             if let Some((endpoint, result)) = models_result.get() {
                 endpoint_models_loading.set(false);
                 match result {
-                    Ok(list) => {
+                    Ok((list, source)) => {
+                        let is_fallback = source != endpoint;
+                        endpoint_models_source.set(source.clone());
+                        let endpoint = source;
                         // Probe tool support once per (endpoint,
                         // model): chat.rs caches completed probes and
                         // the in-flight set keeps concurrent opens
@@ -2595,7 +2612,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             == Some(crate::agent_loop::Mode::Act);
                         let selected =
                             config.get_untracked().ai_chat.model.clone();
-                        for model in &models_to_probe(&list, &selected, act) {
+                        // A capability probe would use primary environment auth.
+                        // Never make that cross-host request on a fallback listing.
+                        let probes = if is_fallback { Vec::new() } else { models_to_probe(&list, &selected, act) };
+                        for model in &probes {
                             {
                                 let mut inflight =
                                     cap_inflight.lock().unwrap();
@@ -2817,6 +2837,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 crate::chat::ACP_AGENTS[2].0,
                                 crate::chat::ACP_AGENTS[2].1,
                             ),
+                            acp_agent_row(
+                                picker_data.clone(),
+                                picker_set_config,
+                                config,
+                                mode_expanded,
+                                crate::chat::ACP_AGENTS[3].0,
+                                crate::chat::ACP_AGENTS[3].1,
+                            ),
                         )),
                     ))
                     .style(|s| s.flex_col().width_full());
@@ -2852,7 +2880,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let rows = dyn_stack(
                         move || {
                             let c = config.get();
-                            if c.ai_chat.backend == "local" {
+                            if items_data.acp.get() {
+                                vec![("ACP models are controlled by the agent, not this API endpoint.".to_string(), String::new(), false, None)]
+                            } else if c.ai_chat.backend == "local" {
                                 lapce_ai::catalog::MODELS
                                     .iter()
                                     .filter(|m| m.chat)
@@ -2885,11 +2915,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 )]
                             } else {
                                 let caps = capability_map.get();
-                                let endpoint =
-                                    c.ai_chat.endpoint.clone();
+                                let endpoint = endpoint_models_source.get();
                                 let act = items_data.mode.get()
                                     == Some(crate::agent_loop::Mode::Act);
-                                endpoint_models
+                                let mut rows = Vec::new();
+                                if endpoint != c.ai_chat.endpoint {
+                                    rows.push((format!("Fallback: {endpoint} (model: auto)"), String::new(), false, None));
+                                }
+                                rows.extend(endpoint_models
                                     .get()
                                     .into_iter()
                                     .map(|m| {
@@ -2903,8 +2936,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         let (text, pickable) =
                                             model_row_pick(&m, cap, act);
                                         (text, m, pickable, cap)
-                                    })
-                                    .collect()
+                                    }));
+                                rows
                             }
                         },
                         |(text, _, _, _): &(String, String, bool, Option<bool>)| {
@@ -4154,7 +4187,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             if data.acp.get() && data.acp_resume.get() {
                                 format!("Resume ({})", resume_count2())
                             } else if data.acp.get() {
-                                "ACP".to_string()
+                                crate::chat::acp_agent_name(&config.get().ai_chat.acp_command).to_string()
                             } else {
                                 match data.mode.get() {
                                     None => "Chat".to_string(),
@@ -4210,7 +4243,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     h_stack((
                         label(move || {
                             let c = config.get();
-                            if c.ai_chat.backend == "local" {
+                            if data.acp.get() {
+                                "Agent models".to_string()
+                            } else if c.ai_chat.backend == "local" {
                                 c.ai_chat.local_model.clone()
                             } else {
                                 format!("{} (endpoint)", c.ai_chat.model)
@@ -4249,14 +4284,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         // Endpoint backend (item 206): the chip opens an
                         // on-demand model list from the configured
                         // endpoint instead of being display-only.
-                        if open && settings.backend != "local" {
+                        if open && settings.backend != "local" && !data.acp.get_untracked() {
                             endpoint_models_loading.set(true);
                             endpoint_models_error.set(None);
                             let tx = models_tx.clone();
                             let endpoint = settings.endpoint.clone();
                             std::thread::spawn(move || {
                                 let result =
-                                    crate::chat::models(&endpoint);
+                                    crate::chat::models_with_source(&endpoint);
                                 let _ = tx.send((endpoint, result));
                             });
                         }
@@ -4913,5 +4948,17 @@ mod resume_tests {
         let p = resume_prefill("Add a comment to User.php");
         assert!(p.contains("Original request: Add a comment to User.php"));
         assert!(p.contains("nothing from the previous run is carried over"));
+    }
+}
+
+#[cfg(test)]
+mod fallback_notice_tests {
+    use super::*;
+    #[test]
+    fn successful_failover_is_not_rendered_as_a_connection_error() {
+        let text = "Primary unavailable. Using https://llm.izdrail.com (model: auto).";
+        assert_eq!(chat_error_title(text), "AI fallback active");
+        assert!(!is_connection_error(text));
+        assert!(is_connection_error("https://ai.izdrail.com failed (HTTP502); fallback https://llm.izdrail.com returned HTTP502"));
     }
 }

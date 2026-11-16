@@ -71,6 +71,7 @@ pub struct AcpSession {
     resume_id: Option<String>,
     /// The agent's loadSession capability, from its hello.
     can_load: bool,
+    auth_methods: Vec<String>,
 }
 
 fn err(code: i64, message: impl Into<String>) -> AcpError {
@@ -121,6 +122,7 @@ impl AcpSession {
             prompt_id: None,
             resume_id: resume,
             can_load: false,
+            auth_methods: Vec::new(),
         };
         (session, hello)
     }
@@ -145,6 +147,9 @@ impl AcpSession {
             return Err(err(-32002, "agent is not awaiting authentication"));
         }
         let id = next_id();
+        if !self.auth_methods.iter().any(|method| method == method_id) {
+            return Err(err(-32602, "authentication method was not advertised"));
+        }
         self.auth_id = Some(id);
         Ok(agent_acp::authenticate(id, method_id))
     }
@@ -181,6 +186,12 @@ impl AcpSession {
             AcpMessage::Response { id, result, error } => {
                 let numeric = id.as_i64();
                 if let Some(e) = error {
+                    if numeric == self.new_id && e.code == -32000 && !self.auth_methods.is_empty() {
+                        self.new_id = None;
+                        self.phase = Phase::Initializing;
+                        events.push(TurnEvent::NeedsAuth { methods: self.auth_methods.clone() });
+                        return (events, out);
+                    }
                     events.push(TurnEvent::Error { message: e.message.clone() });
                     if numeric == self.prompt_id {
                         self.prompt_id = None;
@@ -256,6 +267,17 @@ impl AcpSession {
                         out.push(error_response(id, -32602, "bad fs/write_text_file params"));
                     }
                 },
+                "session/request_permission" => {
+                    if params.get("sessionId").and_then(Value::as_str) != self.session_id.as_deref() || self.phase != Phase::Prompting {
+                        out.push(error_response(id, -32602, "permission request is not for the active turn"));
+                        return (events, out);
+                    }
+                    // No native approval card yet. Cancel the turn and answer
+                    // with the ACP cancellation outcome, never select Allow.
+                    if let Some(cancel) = self.cancel() { out.push(cancel); }
+                    out.push(result_response(id.clone(), json!({"outcome":{"outcome":"cancelled"}})));
+                    events.push(TurnEvent::Notice { text: "Permission request cancelled: native ACP approval is not available. No operation was approved.".into() });
+                }
                 other => {
                     out.push(error_response(
                         id,
@@ -301,10 +323,9 @@ impl AcpSession {
                         });
                         self.resume_id = None;
                     }
-                    if !hello.auth_methods.is_empty() {
-                        events.push(TurnEvent::NeedsAuth { methods: hello.auth_methods });
-                        return; // stay Initializing until begin_auth answers
-                    }
+                    // Supported login methods are not proof that login is needed.
+                    // Antigravity advertises them even with cached credentials.
+                    self.auth_methods = hello.auth_methods;
                     self.begin_session(events, out);
                 }
                 Err(e) => {
@@ -665,19 +686,32 @@ mod tests {
     }
 
     #[test]
-    fn hello_with_auth_waits_then_proceeds() {
-        let root = temp_workspace("auth");
-        let (mut session, init) = AcpSession::start(root, "lapce", "0.1");
-        let init_id = init["id"].as_i64().unwrap();
-        let (events, out) = session.handle(&response(init_id, hello_result(true)));
-        assert_eq!(events.len(), 2);
+    fn advertised_auth_methods_allow_cached_credentials() {
+        let root = temp_workspace("auth-cached");
+        let (mut session, init) = AcpSession::start(root, "gravity", "0.1");
+        let (events, out) = session.handle(&response(init["id"].as_i64().unwrap(), hello_result(true)));
+        assert_eq!(events.len(), 1);
+        assert_eq!(out[0]["method"], json!("session/new"));
+        let (events, _) = session.handle(&response(out[0]["id"].as_i64().unwrap(), json!({"sessionId":"cached"})));
+        assert!(matches!(events.as_slice(), [TurnEvent::SessionStarted { .. }]));
+        assert_eq!(session.phase(), Phase::Ready);
+    }
+    #[test]
+    fn authentication_required_waits_then_proceeds() {
+        let root = temp_workspace("auth-needed");
+        let (mut session, init) = AcpSession::start(root, "gravity", "0.1");
+        let (_, out) = session.handle(&response(init["id"].as_i64().unwrap(), hello_result(true)));
+        let (events, out) = session.handle(&AcpMessage::Response {
+            id: out[0]["id"].clone(), result: None,
+            error: Some(err(-32000, "Authentication required")),
+        });
+        assert!(matches!(events.as_slice(), [TurnEvent::NeedsAuth { .. }]));
         assert!(out.is_empty());
         assert_eq!(session.phase(), Phase::Initializing);
+        assert!(session.begin_auth("unadvertised").is_err());
         let auth = session.begin_auth("oauth").unwrap();
         assert_eq!(auth["method"], json!("authenticate"));
-        let auth_id = auth["id"].as_i64().unwrap();
-        let (_, out) = session.handle(&response(auth_id, json!({})));
-        assert_eq!(out.len(), 1);
+        let (_, out) = session.handle(&response(auth["id"].as_i64().unwrap(), json!({})));
         assert_eq!(out[0]["method"], json!("session/new"));
         assert_eq!(session.phase(), Phase::Starting);
     }
@@ -905,5 +939,25 @@ mod tests {
         assert!(wrapped.contains("<editor_context>\nlíne 🦀\n</editor_context>"));
         // Same fence as chat::assemble so agents see one convention.
         assert!(wrapped.contains("bytes"));
+    }
+}
+
+#[cfg(test)]
+mod antigravity_permission_tests {
+    use super::*;
+    #[test]
+    fn pending_permission_is_cancelled_without_selecting_allow() {
+        let (mut session, _) = AcpSession::start(std::env::temp_dir(), "gravity", "0.1");
+        session.phase = Phase::Prompting;
+        session.session_id = Some("real-session".into());
+        let (events, out) = session.handle(&AcpMessage::Request {
+            id: json!("permission-1"), method: "session/request_permission".into(),
+            params: json!({"sessionId":"real-session", "options":[{"optionId":"allow","kind":"allow_always"}], "toolCall":{"toolCallId":"t1","title":"write file"}}),
+        });
+        assert!(matches!(events.as_slice(), [TurnEvent::Notice { .. }]));
+        assert_eq!(out[0]["method"], "session/cancel");
+        assert_eq!(out[1]["id"], "permission-1");
+        assert_eq!(out[1]["result"]["outcome"]["outcome"], "cancelled");
+        assert!(out[1]["result"]["outcome"].get("optionId").is_none());
     }
 }
