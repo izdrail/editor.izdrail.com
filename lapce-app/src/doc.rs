@@ -645,7 +645,11 @@ impl Doc {
         let mut next_cursor=cursor.clone();
         let old_cursor=cursor.offset();
         let mut deltas=action(&mut candidate,&mut next_cursor);
-        if deltas.is_empty() { *cursor=next_cursor;return Some(Vec::new()); }
+        if crate::multibuffer::cursor_only_projection_deltas(&deltas.iter().map(|(_,delta,_)|delta.clone()).collect::<Vec<_>>()) {
+            // Native closing-pair skip can return an identity edit. Keep only
+            // the cursor, never its synthetic undo entry or revision clock.
+            *cursor=next_cursor;return Some(Vec::new());
+        }
         let sequential:Vec<_>=deltas.iter().map(|(_,delta,_)|delta.clone()).collect();
         let composed=match crate::multibuffer::compose_projection_deltas(&binding.projection.borrow(),&sequential) {
             Ok(delta)=>delta,Err(error)=>{binding.notice.set(error.into());return Some(Vec::new());}
@@ -676,7 +680,15 @@ impl Doc {
         s: &str,
         config: &LapceConfig,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
-        if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert(cursor,buffer,s,&|_,_,_|None,false,false)) {return deltas;}
+        if let Some(binding)=self.projection.get_untracked() {
+            if let lapce_core::cursor::CursorMode::Insert(selection)=&cursor.mode {
+                if !binding.projection.borrow().allows_insert_selection(selection) {
+                    binding.notice.set("Headers and excerpt boundaries are read-only".into());
+                    return Vec::new();
+                }
+            }
+        }
+        if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert(cursor,buffer,s,&|_,_,_|None,config.editor.auto_closing_matching_pairs,config.editor.auto_surround)) {return deltas;}
         if self.content.with_untracked(|c| c.read_only()) {
             return Vec::new();
         }

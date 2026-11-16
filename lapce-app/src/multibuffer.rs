@@ -46,6 +46,14 @@ fn snapshots(sources: &[Snapshot]) -> Result<BTreeMap<&PathBuf, &Snapshot>, &'st
     Ok(found)
 }
 impl Projection {
+    /// Native surround writes only at selection endpoints. Validate the whole
+    /// selection first so endpoints in separate excerpts cannot bracket headers.
+    pub(crate) fn allows_insert_selection(&self, selection:&lapce_core::selection::Selection)->bool {
+        selection.regions().iter().all(|region| {
+            let range=region.min()..region.max();
+            valid(&self.text,&range) && self.excerpts.iter().any(|e|range.start>=e.display_range.start && range.end<=e.display_range.end)
+        })
+    }
     /// Callers supply already bounded, line-aligned context windows. Overlapping
     /// windows merge so the same source bytes never appear twice in this view.
     pub fn build(sources: &[Snapshot], windows: &[(PathBuf, Range<usize>)], byte_limit: usize) -> Result<Self, &'static str> {
@@ -717,5 +725,75 @@ mod compound_undo_tests {
         let composed=compose_projection_deltas(&p,&[a,b]).unwrap();let expected=composed.apply(&Rope::from(p.text.as_str())).to_string();
         let (mut candidate,_)=stage_compound_projection(&live,&composed,&expected).unwrap();assert_eq!(live.rev(),revision);assert_eq!(live.to_string(),p.text);
         candidate.do_undo().unwrap();assert_eq!(candidate.to_string(),p.text);candidate.do_redo().unwrap();assert_eq!(candidate.to_string(),expected);
+    }
+}
+
+#[cfg(test)]
+mod native_pair_projection_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},editor::Action,selection::Selection};
+    fn fixture()->(Projection,Vec<Snapshot>,Buffer,Cursor) {
+        let source=Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"name\n".into()};
+        let p=Projection::build(&[source.clone()],&[("a".into(),0..5)],100).unwrap();let at=p.excerpts[0].display_range.start;
+        let buffer=Buffer::new(&p.text);let cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);(p,vec![source],buffer,cursor)
+    }
+    #[test] fn native_pair_insert_and_closer_skip_are_source_mapped() {
+        let (p,s,mut buffer,mut cursor)=fixture();
+        cursor.set_insert(Selection::caret(p.excerpts[0].display_range.start+4));
+        let deltas=Action::insert(&mut cursor,&mut buffer,"(",&|_,_,_|None,true,true);
+        let delta=compose_projection_deltas(&p,&deltas.iter().map(|(_,d,_)|d.clone()).collect::<Vec<_>>()).unwrap();
+        let plan=p.plan(&s,&display_edits_from_delta(&p.text,&delta).unwrap()).unwrap();assert_eq!(plan.len(),1);assert_eq!(plan[0].replacement,"()");assert_eq!(cursor.offset(),p.excerpts[0].display_range.start+5);
+        let before=buffer.to_string();let old=cursor.offset();let deltas=Action::insert(&mut cursor,&mut buffer,")",&|_,_,_|None,true,true);assert!(deltas.is_empty() || deltas.iter().all(|(_,d,_)|d.is_identity()));assert_eq!(buffer.to_string(),before);assert_eq!(cursor.offset(),old+1);
+    }
+    #[test] fn native_surround_remains_inside_one_source() {
+        let (p,s,mut buffer,mut cursor)=fixture();let at=p.excerpts[0].display_range.start;cursor.set_insert(Selection::region(at,at+4));
+        let deltas=Action::insert(&mut cursor,&mut buffer,"[",&|_,_,_|None,true,true);
+        let delta=compose_projection_deltas(&p,&deltas.iter().map(|(_,d,_)|d.clone()).collect::<Vec<_>>()).unwrap();let edits=display_edits_from_delta(&p.text,&delta).unwrap();let plan=p.plan(&s,&edits).unwrap();assert_eq!(plan.len(),2);assert!(buffer.to_string().contains("[name]"));
+    }
+    #[test] fn surround_over_headers_is_rejected_even_if_final_text_keeps_them() {
+        let (p,_,mut buffer,mut cursor)=fixture();cursor.set_insert(Selection::region(0,p.text.len()));let deltas=Action::insert(&mut cursor,&mut buffer,"[",&|_,_,_|None,true,true);
+        assert!(compose_projection_deltas(&p,&deltas.iter().map(|(_,d,_)|d.clone()).collect::<Vec<_>>()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod native_pair_guard_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},editor::Action,selection::Selection};
+    #[test] fn surround_selection_cannot_span_metadata_even_with_valid_endpoints() {
+        let sources=vec![Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"one\n".into()},Snapshot{path:"b".into(),buffer_id:2,revision:1,read_only:false,text:"two\n".into()}];
+        let p=Projection::build(&sources,&[("a".into(),0..4),("b".into(),0..4)],100).unwrap();
+        let a=p.excerpts[0].display_range.clone();let b=p.excerpts[1].display_range.clone();
+        assert!(p.allows_insert_selection(&Selection::region(a.start,a.end)));
+        assert!(!p.allows_insert_selection(&Selection::region(a.start,b.end)));
+        assert!(!p.allows_insert_selection(&Selection::region(b.end,a.start)));
+        assert!(!p.allows_insert_selection(&Selection::caret(1)));
+        let mut selected=Selection::region(a.start,a.end);selected.add_region(lapce_core::selection::SelRegion::new(b.start,b.end,None));
+        assert!(p.allows_insert_selection(&selected));
+    }
+    #[test] fn disabled_pair_and_surround_settings_preserve_plain_insertion() {
+        let mut buffer=Buffer::new("name\n");let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(4)),None,None);
+        Action::insert(&mut cursor,&mut buffer,"(",&|_,_,_|None,false,false);assert_eq!(buffer.to_string(),"name(\n");
+        cursor.set_insert(Selection::region(0,4));Action::insert(&mut cursor,&mut buffer,"[",&|_,_,_|None,false,false);assert_eq!(buffer.to_string(),"[(\n");
+    }
+}
+
+/// Cursor-only actions must not publish native identity undo revisions.
+pub(crate) fn cursor_only_projection_deltas(deltas:&[lapce_xi_rope::RopeDelta])->bool {
+    deltas.iter().all(|delta|delta.is_identity())
+}
+#[cfg(test)]
+mod cursor_only_pair_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},editor::Action,selection::Selection};
+    #[test] fn closer_skip_does_not_publish_an_empty_undo_revision() {
+        let s=Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"name\n".into()};
+        let p=Projection::build(&[s],&[("a".into(),0..5)],100).unwrap();let at=p.excerpts[0].display_range.start+4;
+        let live=Buffer::new(&p.text);let mut candidate=live.detached_edit_clone();let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);
+        let pair=Action::insert(&mut cursor,&mut candidate,"(",&|_,_,_|None,true,true);let pair:Vec<_>=pair.into_iter().map(|(_,d,_)|d).collect();assert!(!cursor_only_projection_deltas(&pair));
+        let composed=compose_projection_deltas(&p,&pair).unwrap();let (mut live,_)=stage_compound_projection(&live,&composed,&candidate.to_string()).unwrap();let revision=live.rev();
+        let mut detached=live.detached_edit_clone();let skipped=Action::insert(&mut cursor,&mut detached,")",&|_,_,_|None,true,true);let skipped:Vec<_>=skipped.into_iter().map(|(_,d,_)|d).collect();assert!(cursor_only_projection_deltas(&skipped));assert_eq!(cursor.offset(),at+2);assert_eq!(live.rev(),revision);
+        // Discard detached, as the document does for identity-only actions.
+        live.do_undo().unwrap();assert_eq!(live.to_string(),p.text);live.do_redo().unwrap();assert!(live.to_string().contains("name()"));assert!(cursor_only_projection_deltas(&[]));
     }
 }
