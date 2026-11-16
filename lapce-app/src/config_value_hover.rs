@@ -30,6 +30,12 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
         return None;
     }
     let text = std::fs::read_to_string(&path).ok()?;
+    let json = path.extension().is_some_and(|e| e == "json");
+    let text = if json {
+        text
+    } else {
+        lapce_index::symbols::php_without_comments(&text).ok()?
+    };
     let found = text.lines().nth(idx)?.trim();
     // The found line must be the deepest requested key, not a shallower
     // prefix (an unknown leaf resolves to its parent line).
@@ -39,7 +45,6 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
             return None;
         }
     }
-    let json = path.extension().is_some_and(|e| e == "json");
     let raw = if json {
         found.split_once(':')?.1
     } else {
@@ -215,6 +220,28 @@ return [
         let line = "__('Welcome')";
         let md = help(Some(d.path()), line, at(line, "Welcome")).unwrap();
         assert!(md.contains("= `\"Hello\"`"), "{md}");
+    }
+
+    #[test]
+    fn commented_config_and_translation_keys_are_skipped() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "config/app.php", "<?php\nreturn [\n// 'name' => 'Old',\n'name' => 'Live',\n];\n");
+        put(d.path(), "lang/en/messages.php", "<?php\nreturn [\n/* 'welcome' => 'Old', */\n'welcome' => 'Live',\n];\n");
+        for line in ["config('app.name')", "__('messages.welcome')"] {
+            let col = line.find('\'').unwrap() + 1;
+            let md = help(Some(d.path()), line, col).unwrap();
+            assert!(md.contains("= `'Live'`"), "{md}");
+            assert!(md.contains(".php:4_"), "{md}");
+        }
+    }
+
+    #[test]
+    fn same_line_commented_key_cannot_override_live_value() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "config/app.php", "<?php\nreturn [/* 'name' => 'Old', */ 'name' => 'Live'];\n");
+        let line = "config('app.name')";
+        let md = help(Some(d.path()), line, at(line, "app.name")).unwrap();
+        assert!(md.contains("= `'Live'`"), "{md}");
     }
 
     #[test]
