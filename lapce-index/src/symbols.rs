@@ -61,6 +61,7 @@ pub struct PhpMigrationSyntax {
     pub methods: Vec<(String, std::ops::Range<usize>)>,
     pub comments: Vec<std::ops::Range<usize>>,
     pub call_starts: std::collections::BTreeSet<usize>,
+    pub closure_bodies: std::collections::BTreeMap<usize, std::ops::Range<usize>>,
 }
 
 pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
@@ -76,10 +77,24 @@ pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
     let mut bodies = Vec::new();
     let mut comments = Vec::new();
     let mut call_starts = std::collections::BTreeSet::new();
+    let mut closure_bodies = std::collections::BTreeMap::new();
     loop {
         let node = cursor.node();
         if matches!(node.kind(), "scoped_call_expression" | "member_call_expression") {
             call_starts.insert(node.start_byte());
+            if let Some(args) = node.child_by_field_name("arguments") {
+                let mut args_cursor = args.walk();
+                for arg in args.named_children(&mut args_cursor) {
+                    let mut arg_cursor = arg.walk();
+                    for value in arg.named_children(&mut arg_cursor) {
+                        if value.kind() == "anonymous_function" {
+                            if let Some(body) = value.child_by_field_name("body") {
+                                closure_bodies.insert(node.start_byte(), body.byte_range());
+                            }
+                        }
+                    }
+                }
+            }
         }
         if node.kind() == "comment" {
             comments.push(node.byte_range());
@@ -98,7 +113,7 @@ pub fn php_migration_syntax(source: &str) -> Result<PhpMigrationSyntax> {
         if cursor.goto_first_child() { continue; }
         loop {
             if cursor.goto_next_sibling() { break; }
-            if !cursor.goto_parent() { return Ok(PhpMigrationSyntax { methods: bodies, comments, call_starts }); }
+            if !cursor.goto_parent() { return Ok(PhpMigrationSyntax { methods: bodies, comments, call_starts, closure_bodies }); }
         }
     }
 }

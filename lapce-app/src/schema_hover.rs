@@ -9,7 +9,7 @@ const MAX_LINE: usize = 4096;
 const MAX_FILE: u64 = 512 * 1024;
 const MAX_FILES: usize = 300;
 const MAX_DEPTH: usize = 2;
-/// Lines scanned for `$table->...` calls after a `Schema::create/table`.
+/// Maximum lines scanned within a syntax-confirmed schema closure.
 const BODY: usize = 120;
 const MAX_COLUMNS: usize = 64;
 
@@ -175,16 +175,6 @@ fn column_ops(l: &str) -> Vec<(String, String)> {
     }
 }
 
-/// Lines of the closure body following the `Schema::create/table` at `start`.
-fn body_lines<'a>(lines: &'a [&'a str], start: usize) -> impl Iterator<Item = &'a str> + 'a {
-    lines
-        .iter()
-        .skip(start + 1)
-        .take(BODY)
-        .take_while(|l| !l.contains("});") && !l.contains("Schema::"))
-        .copied()
-}
-
 fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth > MAX_DEPTH || out.len() >= MAX_FILES {
         return;
@@ -214,7 +204,7 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 
 /// Keep only forward method bodies, preserving line/byte positions. Older
 /// migration snippets without methods retain their top-level behavior.
-fn forward_source(text: &str) -> Option<String> {
+fn migration_source(text: &str) -> Option<(String, std::collections::BTreeMap<usize, std::ops::Range<usize>>)> {
     let syntax = lapce_index::symbols::php_migration_syntax(text).ok()?;
     let mut source = text.as_bytes().to_vec();
     if !syntax.methods.is_empty() {
@@ -243,7 +233,12 @@ fn forward_source(text: &str) -> Option<String> {
             }
         }
     }
-    String::from_utf8(source).ok()
+    Some((String::from_utf8(source).ok()?, syntax.closure_bodies))
+}
+
+#[cfg(test)]
+fn forward_source(text: &str) -> Option<String> {
+    migration_source(text).map(|(text, _)| text)
 }
 
 /// Rebuild the column list for `table` from migrations, oldest first.
@@ -263,9 +258,11 @@ fn columns_for(root: &Path, table: &str) -> Option<(Vec<(String, String)>, PathB
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&f) else { continue };
-        let Some(text) = forward_source(&text) else { continue };
-        let lines: Vec<&str> = text.lines().collect();
-        for (i, l) in lines.iter().enumerate() {
+        let Some((text, bodies)) = migration_source(&text) else { continue };
+        let mut offset = 0;
+        for l in text.split_inclusive('\n') {
+            let line_start = offset;
+            offset += l.len();
             for verb in ["create", "table"] {
                 let needle = format!("Schema::{verb}(");
                 let Some(p) = l.find(&needle) else { continue };
@@ -278,13 +275,14 @@ fn columns_for(root: &Path, table: &str) -> Option<(Vec<(String, String)>, PathB
                 if &args[1..1 + end] != table {
                     continue;
                 }
+                let Some(body) = bodies.get(&(line_start + p)) else { continue };
                 touched = true;
                 if verb == "create" {
                     columns.clear();
                     dropped_by = None;
                     create_file = Some(f.clone());
                 }
-                for op in body_lines(&lines, i).flat_map(column_ops) {
+                for op in text[body.clone()].lines().take(BODY).flat_map(column_ops) {
                     if let Some(name) = op.0.strip_prefix('-') {
                         columns.retain(|(n, _)| n != name);
                     } else if let Some((a, b)) = op.0.split_once('>') {
@@ -665,6 +663,33 @@ EXAMPLE;
         assert!(!md.contains("table dropped"), "{md}");
         assert!(md.contains("2 columns from migrations"), "{md}");
         assert!(md.contains("`id`, `email` string"), "{md}");
+    }
+
+    #[test]
+    fn schema_body_boundaries_come_from_syntax_not_quoted_terminators() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "database/migrations/2026_01_create.php", r#"<?php
+return new class {
+    public function up(): void {
+        Schema::create('users', function ($table) {
+            $table->id();
+            $table->string('pattern')->default('});');
+            $table->string('email');
+        });
+        $table->string('outside');
+        Schema::create('other', function ($table) { $table->id(); });
+    }
+};
+"#);
+        let line = "DB::table('users')";
+        let md = help(Some(d.path()), line, at(line, "users")).unwrap();
+        assert!(md.contains("3 columns from migrations"), "{md}");
+        assert!(md.contains("`id`, `pattern` string, `email` string"), "{md}");
+        assert!(!md.contains("`outside`"), "{md}");
+        let line = "DB::table('other')";
+        let md = help(Some(d.path()), line, at(line, "other")).unwrap();
+        assert!(md.contains("1 column from migrations"), "{md}");
+        assert!(md.contains("`id`"), "{md}");
     }
 
     #[test]
