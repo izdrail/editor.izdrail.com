@@ -104,6 +104,18 @@ impl Action {
         auto_closing_matching_pairs: bool,
         auto_surround: bool,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
+        Self::insert_with_closer_indent(cursor,buffer,s,&|buffer,c,offset| {
+            prev_unmatched(buffer,c,offset).map(|opening|buffer.indent_on_line(buffer.line_of_offset(opening)))
+        },auto_closing_matching_pairs,auto_surround)
+    }
+
+    /// The caller can resolve indentation in a canonical source buffer when
+    /// the displayed buffer contains only excerpts of that source.
+    pub fn insert_with_closer_indent(
+        cursor:&mut Cursor, buffer:&mut Buffer, s:&str,
+        closer_indent:&dyn Fn(&Buffer,char,usize)->Option<String>,
+        auto_closing_matching_pairs:bool, auto_surround:bool,
+    )->Vec<(Rope,RopeDelta,InvalLines)> {
         let mut deltas = Vec::new();
         if let CursorMode::Insert(selection) = &cursor.mode {
             if s.chars().count() != 1 {
@@ -175,12 +187,10 @@ impl Action {
                             let line_start = buffer.offset_of_line(line);
                             if buffer.slice_to_cow(line_start..offset).trim() == "" {
                                 let opening_character = matching_char(c).unwrap();
-                                if let Some(previous_offset) =
-                                    prev_unmatched(buffer, opening_character, offset)
+                                if let Some(line_indent) =
+                                    closer_indent(buffer, opening_character, offset)
                                 {
                                     // Auto-indent closing character to the same level as the opening.
-                                    let previous_line = buffer.line_of_offset(previous_offset);
-                                    let line_indent = buffer.indent_on_line(previous_line);
 
                                     let current_selection = Selection::region(line_start, offset);
 

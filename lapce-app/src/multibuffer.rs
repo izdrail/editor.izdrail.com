@@ -948,3 +948,36 @@ mod modal_projection_tests {
         assert!(projection_motion_selection(&p,&live,at..at,true,&MotionMode::Yank{count:1}).is_err());
     }
 }
+
+
+/// Resolve the opening delimiter in its complete source, even when the opener
+/// lies outside the displayed context window. Headers have no source syntax.
+pub(crate) fn projection_closer_indent(
+    projection:&Projection, display:usize, opening:char,
+    resolve:impl FnOnce(&SourceAnchor,char)->Option<String>,
+)->Option<String> {
+    let anchor=projection.anchor(display)?;
+    resolve(&anchor,opening)
+}
+#[cfg(test)]
+mod closer_indent_projection_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},selection::{Selection,SelRegion},editor::Action};
+    #[test] fn omitted_openers_align_closers_using_canonical_source_indents() {
+        for indent in ["  ","\t",""] {
+            let source=format!("{indent}{{\n// omitted\n        \n");let start=source.rfind("        ").unwrap();
+            let snapshots=vec![Snapshot{path:"a".into(),buffer_id:7,revision:9,read_only:false,text:source.clone()}];let p=Projection::build(&snapshots,&[("a".into(),start..source.len())],200).unwrap();let at=p.excerpts[0].display_range.start+8;
+            let mut live=Buffer::new(&p.text);let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);
+            let deltas=Action::insert_with_closer_indent(&mut cursor,&mut live,"}",&|_,c,offset|projection_closer_indent(&p,offset,c,|anchor,opening|{assert_eq!((anchor.offset,anchor.buffer_id,anchor.revision),(start+8,7,9));assert_eq!(opening,'{');Some(indent.into())}),true,true);
+            let delta=compose_projection_deltas(&p,&deltas.into_iter().map(|(_,d,_)|d).collect::<Vec<_>>()).unwrap();let edits=display_edits_from_delta(&p.text,&delta).unwrap();let plan=p.plan(&snapshots,&edits).unwrap();let expected=expected_sources(&snapshots,&plan).unwrap();assert_eq!(expected[&PathBuf::from("a")],format!("{indent}{{\n// omitted\n{indent}}}\n"));assert_eq!(cursor.offset(),p.excerpts[0].display_range.start+indent.len()+1);
+            live.do_undo().unwrap();assert_eq!(live.to_string(),p.text);live.do_redo().unwrap();assert!(live.to_string().contains(&format!("{indent}}}")));
+        }
+    }
+    #[test] fn multiple_sources_can_supply_distinct_closing_indents() {
+        let sources=vec![Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"    \n".into()},Snapshot{path:"b".into(),buffer_id:2,revision:1,read_only:false,text:"    \n".into()}];let p=Projection::build(&sources,&[("a".into(),0..5),("b".into(),0..5)],200).unwrap();let mut selection=Selection::caret(p.excerpts[0].display_range.start+4);selection.add_region(SelRegion::caret(p.excerpts[1].display_range.start+4));let mut cursor=Cursor::new(CursorMode::Insert(selection),None,None);let mut live=Buffer::new(&p.text);
+        let deltas=Action::insert_with_closer_indent(&mut cursor,&mut live,"}",&|_,c,at|projection_closer_indent(&p,at,c,|anchor,_|Some(if anchor.buffer_id==1 {"\t"}else{"  "}.into())),true,true);let delta=compose_projection_deltas(&p,&deltas.into_iter().map(|(_,d,_)|d).collect::<Vec<_>>()).unwrap();let plan=p.plan(&sources,&display_edits_from_delta(&p.text,&delta).unwrap()).unwrap();let after=expected_sources(&sources,&plan).unwrap();assert_eq!(after[&PathBuf::from("a")],"\t}\n");assert_eq!(after[&PathBuf::from("b")],"  }\n");
+    }
+    #[test] fn headers_stale_resolver_and_disabled_pair_setting_do_not_align() {
+        let source=Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"    \n".into()};let p=Projection::build(&[source],&[("a".into(),0..5)],100).unwrap();assert!(projection_closer_indent(&p,0,'{',|_,_|panic!("header source lookup")).is_none());let at=p.excerpts[0].display_range.start+4;assert!(projection_closer_indent(&p,at,'{',|_,_|None).is_none());let mut live=Buffer::new(&p.text);let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(at)),None,None);Action::insert_with_closer_indent(&mut cursor,&mut live,"}",&|_,_,_|panic!("disabled pair lookup"),false,true);assert!(live.to_string().contains("    }"));
+    }
+}
