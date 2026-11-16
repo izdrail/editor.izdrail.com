@@ -702,7 +702,10 @@ impl Doc {
 
         let mut clipboard = SystemClipboard::new();
         let old_cursor = cursor.mode.clone();
-        let deltas = self.syntax.with_untracked(|syntax| {
+        let docblock = if *cmd == EditCommand::InsertTab {
+            self.php_docblock_tab(cursor)
+        } else { None };
+        let deltas = if let Some(delta) = docblock { vec![delta] } else { self.syntax.with_untracked(|syntax| {
             self.buffer
                 .try_update(|buffer| {
                     let comment_tokens = Self::comment_token_resolver(cmd, syntax, buffer);
@@ -722,7 +725,7 @@ impl Doc {
                     )
                 })
                 .unwrap()
-        });
+        }) };
 
         let mut deltas = deltas;
         if matches!(cmd, EditCommand::InsertNewLine)
@@ -743,6 +746,31 @@ impl Doc {
         }
 
         deltas
+    }
+
+    /// Tab after a standalone PHP docblock opener closes it in one undo step.
+    fn php_docblock_tab(&self, cursor: &mut Cursor) -> Option<(Rope, RopeDelta, InvalLines)> {
+        if !self.syntax.with_untracked(|syntax| matches!(syntax.language, LapceLanguage::Php)) {
+            return None;
+        }
+        let offset = match &cursor.mode {
+            lapce_core::cursor::CursorMode::Insert(selection) if selection.regions().len() == 1 => {
+                let region = &selection.regions()[0];
+                if !region.is_caret() { return None; }
+                region.end
+            }
+            _ => return None,
+        };
+        let expansion = self.buffer.with_untracked(|buffer| {
+            if buffer.len() > 4 * 1024 * 1024 { return None; }
+            crate::php_docblock::expansion(&buffer.text().to_string(), offset)
+        })?;
+        let selection = Selection::caret(offset);
+        let delta = self.buffer.try_update(|buffer| buffer.edit(
+            &[(&selection, expansion.insert.as_str())], EditType::InsertChars,
+        ))?;
+        cursor.mode = lapce_core::cursor::CursorMode::Insert(Selection::caret(offset + expansion.caret));
+        Some(delta)
     }
 
     /// After Enter on a Blade block directive line: adds the matching

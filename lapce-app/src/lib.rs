@@ -113,6 +113,7 @@ pub mod project_scripts;
 pub mod editorconfig;
 pub mod test_runner;
 pub mod php_imports;
+pub mod php_docblock;
 pub mod php_organize;
 pub mod props_draft;
 pub mod route_hover;
