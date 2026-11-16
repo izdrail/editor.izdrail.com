@@ -846,3 +846,25 @@ mod native_indent_projection_tests {
         }
     }
 }
+
+type CommentResolver=Box<dyn Fn(usize)->(&'static str,&'static str)>;
+/// Token resolution stays source-relative. Synthetic metadata has no comment
+/// syntax, even if its file name happens to look like a comment delimiter.
+pub(crate) fn projection_comment_resolver(projection:Projection,resolvers:BTreeMap<PathBuf,CommentResolver>)->CommentResolver {
+    Box::new(move |display| {
+        let Some(anchor)=projection.navigation_anchor(display) else {return ("","");};
+        resolvers.get(&anchor.source).map(|resolve|resolve(anchor.offset)).unwrap_or(("",""))
+    })
+}
+#[cfg(test)]
+mod source_comment_projection_tests {
+    use super::*;
+    #[test] fn comment_resolver_maps_canonical_source_offsets_and_blanks_metadata() {
+        let source=Snapshot{path:"a.php".into(),buffer_id:1,revision:1,read_only:false,text:"omit\ncode\n".into()};let p=Projection::build(&[source],&[("a.php".into(),5..10)],100).unwrap();let at=p.excerpts[0].display_range.start;let end=p.excerpts[0].display_range.end;
+        let resolvers:BTreeMap<PathBuf,CommentResolver>=[("a.php".into(),Box::new(|source:usize|if source==5 {("//","")}else{("","")}) as CommentResolver)].into_iter().collect();let resolve=projection_comment_resolver(p,resolvers);assert_eq!(resolve(at),("//",""));assert_eq!(resolve(0),("",""));assert_eq!(resolve(end),("",""));
+    }
+    #[test] fn comment_resolver_keeps_languages_and_missing_sources_separate() {
+        let sources=vec![Snapshot{path:"a.php".into(),buffer_id:1,revision:1,read_only:false,text:"code\n".into()},Snapshot{path:"b.html".into(),buffer_id:2,revision:1,read_only:false,text:"<div>\n".into()}];let p=Projection::build(&sources,&[("a.php".into(),0..5),("b.html".into(),0..6)],100).unwrap();let a=p.excerpts[0].display_range.start;let b=p.excerpts[1].display_range.start;
+        let resolvers:BTreeMap<PathBuf,CommentResolver>=[("a.php".into(),Box::new(|_|("//","")) as CommentResolver),("b.html".into(),Box::new(|_|("<!--","-->")) as CommentResolver)].into_iter().collect();let resolve=projection_comment_resolver(p.clone(),resolvers);assert_eq!(resolve(a),("//",""));assert_eq!(resolve(b),("<!--","-->"));assert_eq!(projection_comment_resolver(p,BTreeMap::new())(a),("",""));
+    }
+}

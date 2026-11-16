@@ -803,10 +803,32 @@ impl Doc {
                 match style {Ok(style)=>source_indent=Some(style),Err(error)=>{binding.notice.set(error.into());return Vec::new();}}
             }
         }
+        let mut source_comments=None;
+        if matches!(cmd,EditCommand::ToggleLineComment) {
+            if let Some(binding)=self.projection.get_untracked() {
+                let selection=self.buffer.with_untracked(|buffer|cursor.edit_selection(buffer));
+                if !binding.projection.borrow().allows_insert_selection(&selection) {
+                    binding.notice.set("Headers and excerpt boundaries are read-only".into());return Vec::new();
+                }
+                let mut resolvers=std::collections::BTreeMap::new();let docs=binding.docs.get_untracked();
+                for excerpt in &binding.projection.borrow().excerpts {
+                    if !selection.regions().iter().any(|r|r.min()>=excerpt.display_range.start && r.max()<=excerpt.display_range.end) {continue;}
+                    let Some(doc)=docs.get(&excerpt.source) else {binding.notice.set("Source was closed".into());return Vec::new();};
+                    if doc.buffer_id.0!=excerpt.buffer_id || doc.rev()!=excerpt.revision {binding.notice.set("Source changed; refresh before editing".into());return Vec::new();}
+                    if !resolvers.contains_key(&excerpt.source) {
+                        let resolver=doc.syntax.with_untracked(|syntax|doc.buffer.with_untracked(|buffer|Self::comment_token_resolver(cmd,syntax,buffer)));
+                        resolvers.insert(excerpt.source.clone(),resolver);
+                    }
+                }
+                source_comments=Some(crate::multibuffer::projection_comment_resolver(binding.projection.borrow().clone(),resolvers));
+            }
+        }
         if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor| {
             if let Some(style)=source_indent {buffer.set_indent_style(style);}
+            let plain=Self::comment_token_resolver(cmd,&Syntax::plaintext(),buffer);
+            let comments=source_comments.as_ref().map(|resolver|resolver.as_ref()).unwrap_or(plain.as_ref());
             let mut clipboard=SystemClipboard::new();
-            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:&Self::comment_token_resolver(cmd,&Syntax::plaintext(),buffer),modal,smart_tab,keep_indent:true,auto_indent:source_indent.is_some()})
+            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:comments,modal,smart_tab,keep_indent:true,auto_indent:source_indent.is_some()})
         }) {return deltas;}
         if self.content.with_untracked(|c| c.read_only())
             && !cmd.not_changing_buffer()
