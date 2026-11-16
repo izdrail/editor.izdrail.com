@@ -13,27 +13,58 @@ use std::path::{Path, PathBuf};
 const FILES: &[&str] = &["bootstrap/app.php", "app/Http/Kernel.php"];
 const MAX_FILE_BYTES: u64 = 1_000_000;
 
+/// Only a direct first string argument or a string in the first literal
+/// array is an alias. Nested calls and later arguments belong elsewhere.
+fn argument_context(before: &str) -> bool {
+    for method in ["->middleware", "::middleware", "->withoutMiddleware", "::withoutMiddleware"] {
+        for (pos, _) in before.match_indices(method) {
+            let Some(rest) = before[pos + method.len()..].trim_start().strip_prefix('(') else { continue };
+            let mut rest = rest.trim_start();
+            if rest.is_empty() { return true; }
+            let Some(array) = rest.strip_prefix('[') else { continue };
+            rest = array.trim_start();
+            loop {
+                if rest.is_empty() { return true; }
+                let Some(q) = rest.chars().next().filter(|c| matches!(c, '\'' | '"')) else { break };
+                let bytes = rest.as_bytes();
+                let mut end = 1;
+                while end < bytes.len() && bytes[end] != q as u8 {
+                    if bytes[end] == b'\\' { end += 1; }
+                    end += 1;
+                }
+                if end >= bytes.len() { break; }
+                let Some(next) = rest[end + 1..].trim_start().strip_prefix(',') else { break };
+                rest = next.trim_start();
+            }
+        }
+    }
+    false
+}
+
 pub fn alias_at(line: &str, col: usize) -> Option<&str> {
-    let mut col = col.min(line.len());
-    while !line.is_char_boundary(col) {
-        col -= 1;
+    if line.len() > 4096 { return None; }
+    let col = col.min(line.len());
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !matches!(bytes[i], b'\'' | b'"') { i += 1; continue; }
+        let quote = bytes[i];
+        let mut end = i + 1;
+        while end < bytes.len() && bytes[end] != quote {
+            if bytes[end] == b'\\' { end += 1; }
+            end += 1;
+        }
+        if end >= bytes.len() { return None; }
+        if col >= i && col <= end {
+            if !argument_context(&line[..i]) { return None; }
+            let name = line[i + 1..end].split(':').next()?;
+            return (!name.is_empty() && name.len() <= 60
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+                .then_some(name);
+        }
+        i = end + 1;
     }
-    let i = line[..col].rfind(['\'', '"'])?;
-    let q = line[i..].chars().next()?;
-    let end = col + line[col..].find(q)?;
-    let s = &line[i + 1..end];
-    let before = &line[..i];
-    let m = before.rfind("iddleware")?;
-    let between = &before[m..];
-    // Still inside the argument list: no closing paren yet.
-    if between.contains(')') || between.contains(';') {
-        return None;
-    }
-    let name = s.split(':').next()?;
-    (!name.is_empty()
-        && name.len() <= 60
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
-    .then_some(name)
+    None
 }
 
 fn declares(l: &str, name: &str) -> bool {
@@ -73,6 +104,22 @@ mod tests {
 
     fn at(line: &str, needle: &str) -> usize {
         line.find(needle).unwrap() + 1
+    }
+
+    #[test]
+    fn alias_quotes_and_exact_middleware_argument_context() {
+        for line in ["->middleware('auth')", "Route::middleware(['auth', 'verified'])",
+            "->withoutMiddleware('auth:sanctum')"] {
+            let open = line.find("'auth").unwrap();
+            for col in [open, open + 1, open + 4] {
+                assert_eq!(alias_at(line, col), Some("auth"), "{line} at {col}");
+            }
+        }
+        for line in ["customMiddleware('auth')", "->notMiddleware('auth')",
+            "->middleware(foo('auth'))", "->middleware($name, 'auth')",
+            "->middleware('guest')->name('auth')", "->middleware(['guest'], 'auth')"] {
+            assert_eq!(alias_at(line, line.find("auth").unwrap()), None, "{line}");
+        }
     }
 
     #[test]
