@@ -803,6 +803,32 @@ impl Doc {
                 match style {Ok(style)=>source_indent=Some(style),Err(error)=>{binding.notice.set(error.into());return Vec::new();}}
             }
         }
+        if matches!(cmd,EditCommand::InsertTab) && self.projection.get_untracked().is_some() {
+            let caret=match &cursor.mode {
+                lapce_core::cursor::CursorMode::Insert(selection) if selection.regions().len()==1 && selection.regions()[0].is_caret()=>Some(selection.regions()[0].end),
+                _=>None,
+            };
+            if let Some(display)=caret {
+                if let Some((source,offset))=self.projection_navigation_source(display) {
+                    if source.syntax.with_untracked(|syntax|matches!(syntax.language,LapceLanguage::Php)) {
+                        let expansion=source.buffer.with_untracked(|buffer| {
+                            if buffer.len()>4*1024*1024 {return None;}
+                            crate::php_docblock::expansion(&buffer.to_string(),offset)
+                        });
+                        if let Some(expansion)=expansion {
+                            if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor| {
+                                let selection=Selection::caret(display);
+                                let delta=buffer.edit(&[(&selection,expansion.insert.as_str())],EditType::Other);
+                                buffer.set_cursor_before(cursor.mode.clone());
+                                cursor.set_insert(Selection::caret(display+expansion.caret));
+                                buffer.set_cursor_after(cursor.mode.clone());
+                                vec![delta]
+                            }) {return deltas;}
+                        }
+                    }
+                }
+            }
+        }
         let mut source_comments=None;
         if matches!(cmd,EditCommand::ToggleLineComment) {
             if let Some(binding)=self.projection.get_untracked() {

@@ -93,3 +93,32 @@ mod tests {
         assert!(expansion(source, source.len()).is_some());
     }
 }
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    use crate::multibuffer::{Projection,Snapshot,display_edits_from_delta,compose_projection_deltas,stage_compound_projection};
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},selection::Selection,editor::EditType};
+    #[test] fn excerpt_uses_canonical_php_context_and_one_source_mapped_undo() {
+        let text="<?php\n// omitted context\n  /**\n";let start=text.find("  /**").unwrap();let offset=text.find("/**").unwrap()+3;
+        let source=Snapshot{path:"a.php".into(),buffer_id:1,revision:1,read_only:false,text:text.into()};let p=Projection::build(&[source.clone()],&[("a.php".into(),start..text.len())],100).unwrap();let display=p.excerpts[0].display_range.start+offset-start;
+        assert!(expansion(&p.text,display).is_none());let anchor=p.navigation_anchor(display).unwrap();assert_eq!(anchor.offset,offset);let expanded=expansion(&source.text,anchor.offset).unwrap();
+        let live=Buffer::new(&p.text);let mut candidate=live.detached_edit_clone();let (_,delta,_)=candidate.edit(&[(&Selection::caret(display),expanded.insert.as_str())],EditType::InsertChars);let delta=compose_projection_deltas(&p,&[delta]).unwrap();let plan=p.plan(&[source],&display_edits_from_delta(&p.text,&delta).unwrap()).unwrap();assert_eq!(plan.len(),1);assert_eq!(plan[0].range,offset..offset);assert_eq!(plan[0].replacement,"\n   * \n   */");
+        let (mut staged,_)=stage_compound_projection(&live,&delta,&candidate.to_string()).unwrap();staged.do_undo().unwrap();assert_eq!(staged.to_string(),p.text);staged.do_redo().unwrap();assert_eq!(staged.to_string(),candidate.to_string());assert_eq!(&expanded.insert[..expanded.caret],"\n   * ");
+    }
+    #[test] fn php_looking_excerpt_in_html_still_does_not_expand() {
+        let text="<div>outside PHP</div>\n/**\n";let source=Snapshot{path:"a.php".into(),buffer_id:1,revision:1,read_only:false,text:text.into()};let start=text.find("/**").unwrap();let p=Projection::build(&[source.clone()],&[("a.php".into(),start..text.len())],100).unwrap();let display=p.excerpts[0].display_range.start+3;let anchor=p.navigation_anchor(display).unwrap();assert!(expansion(&source.text,anchor.offset).is_none());assert!(p.navigation_anchor(1).is_none());
+    }
+}
+
+#[cfg(test)]
+mod expansion_undo_boundary_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},selection::Selection,editor::EditType};
+    #[test] fn tab_expansion_undo_preserves_freshly_typed_opener() {
+        let mut buffer=Buffer::new("<?php\n");
+        for ch in ["/","*","*"] {let at=buffer.len();buffer.edit(&[(&Selection::caret(at),ch)],EditType::InsertChars);}
+        let opener=buffer.to_string();let at=buffer.len();let expanded=expansion(&opener,at).unwrap();buffer.edit(&[(&Selection::caret(at),expanded.insert.as_str())],EditType::Other);
+        buffer.do_undo().unwrap();assert_eq!(buffer.to_string(),opener);buffer.do_redo().unwrap();assert_eq!(buffer.to_string(),format!("{}{}",opener,expanded.insert));
+    }
+}
