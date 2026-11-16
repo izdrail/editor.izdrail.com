@@ -27,14 +27,22 @@ fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
+pub(crate) fn string_at(line: &str, col: usize) -> Option<(&str, &str)> {
     let bytes = line.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'\'' || bytes[i] == b'"' {
             let q = bytes[i] as char;
             let start = i + 1;
-            let end = start + line[start..].find(q)?;
+            let mut end = start;
+            while end < bytes.len() && bytes[end] != q as u8 {
+                if bytes[end] == b'\\' {
+                    end = (end + 2).min(bytes.len());
+                } else {
+                    end += 1;
+                }
+            }
+            if end == bytes.len() { return None; }
             if col + 1 >= start && col <= end {
                 return Some((&line[start..end], &line[..i]));
             }

@@ -13,22 +13,8 @@ const MAX_VALUE: usize = 140;
 
 /// The quoted string content covering byte `col`, if it is a key-like token.
 fn key_at(line: &str, col: usize) -> Option<String> {
-    let mut col = col.min(line.len());
-    while !line.is_char_boundary(col) {
-        col -= 1;
-    }
-    for q in ['\'', '"'] {
-        let quotes: Vec<usize> = line.match_indices(q).map(|(i, _)| i).collect();
-        for pair in quotes.chunks_exact(2) {
-            let start = pair[0] + 1;
-            let end = pair[1];
-            if col + 1 >= start && col <= end {
-                let s = &line[start..end];
-                return (s.len() <= 200).then(|| s.to_string());
-            }
-        }
-    }
-    None
+    let (key, _) = crate::laravel_keys::string_at(line, col.min(line.len()))?;
+    (key.len() <= 200).then(|| key.to_string())
 }
 
 /// Markdown hover for the config/translation key at byte `col` of `line`.
@@ -193,6 +179,16 @@ return [
         assert_eq!(help(root, l, at(l, "mail")), None);
         let l = "$m = config('mail.from.address');";
         assert_eq!(help(None, l, at(l, "mail")), None);
+    }
+
+    #[test]
+    fn preceding_mixed_or_escaped_quotes_do_not_hide_config_hover() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "config/app.php", "<?php\nreturn ['name' => 'QA',];\n");
+        for line in [r#"$s = "Sam's app"; config('app.name');"#, r#"$s = 'Sam\'s app'; config('app.name');"#] {
+            let md = help(Some(d.path()), line, line.rfind("app.name").unwrap()).unwrap();
+            assert!(md.contains("**`app.name`** = `'QA'`"), "{md}");
+        }
     }
 
     #[test]
