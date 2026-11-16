@@ -868,3 +868,83 @@ mod source_comment_projection_tests {
         let resolvers:BTreeMap<PathBuf,CommentResolver>=[("a.php".into(),Box::new(|_|("//","")) as CommentResolver),("b.html".into(),Box::new(|_|("<!--","-->")) as CommentResolver)].into_iter().collect();let resolve=projection_comment_resolver(p.clone(),resolvers);assert_eq!(resolve(a),("//",""));assert_eq!(resolve(b),("<!--","-->"));assert_eq!(projection_comment_resolver(p,BTreeMap::new())(a),("",""));
     }
 }
+
+
+/// Validate the full native motion range, including line expansion, before
+/// staging a register change. Header text must never become a yank/delete.
+pub(crate) fn projection_motion_selection(
+    projection:&Projection, buffer:&lapce_core::buffer::Buffer,
+    range:Range<usize>, vertical:bool, mode:&lapce_core::mode::MotionMode,
+)->Result<lapce_core::selection::Selection,&'static str> {
+    use lapce_core::{buffer::rope_text::RopeText,mode::MotionMode,selection::Selection};
+    let start=range.start.min(range.end);let end=range.start.max(range.end);
+    if !valid(&projection.text,&(start..end)) {return Err("Invalid motion range");}
+    let linewise=vertical || matches!(mode,MotionMode::Indent|MotionMode::Outdent);
+    let range=if linewise {
+        let first=buffer.line_of_offset(start);let mut last=buffer.line_of_offset(end);
+        if matches!(mode,MotionMode::Indent|MotionMode::Outdent) && last>first && buffer.offset_of_line(last)==end {last-=1;}
+        buffer.offset_of_line(first)..buffer.offset_of_line(last+1)
+    } else {start..end};
+    let selection=Selection::region(range.start,range.end);
+    if !projection.allows_insert_selection(&selection) {return Err("Headers and excerpt boundaries are read-only");}
+    Ok(selection)
+}
+
+pub(crate) fn stage_projection_motion(
+    projection:&Projection, live:&lapce_core::buffer::Buffer, cursor:&lapce_core::cursor::Cursor,
+    mode:lapce_core::mode::MotionMode, range:Range<usize>, vertical:bool,
+    register:&lapce_core::register::Register, style:lapce_core::indent::IndentStyle,
+)->Result<(lapce_core::buffer::Buffer,lapce_core::cursor::Cursor,lapce_core::register::Register,Vec<(lapce_xi_rope::Rope,lapce_xi_rope::RopeDelta,lapce_core::buffer::InvalLines)>),&'static str> {
+    projection_motion_selection(projection,live,range.clone(),vertical,&mode)?;
+    let mut staged=live.detached_edit_clone();staged.set_indent_style(style);
+    let mut next=cursor.clone();let mut registers=register.clone();
+    let deltas=lapce_core::editor::Action::execute_motion_mode(&mut next,&mut staged,mode,range,vertical,&mut registers);
+    if !deltas.is_empty() {compose_projection_deltas(projection,&deltas.iter().map(|(_,delta,_)|delta.clone()).collect::<Vec<_>>())?;}
+    staged.set_cursor_before(cursor.mode.clone());staged.set_cursor_after(next.mode.clone());
+    Ok((staged,next,registers,deltas))
+}
+
+#[cfg(test)]
+mod modal_projection_tests {
+    use super::*;
+    use lapce_core::{buffer::{Buffer,rope_text::RopeText},cursor::{Cursor,CursorMode},mode::MotionMode,register::Register,indent::IndentStyle};
+    fn fixture()->Projection {
+        let s=vec![Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"alpha β\nsecond\n".into()},Snapshot{path:"b".into(),buffer_id:2,revision:1,read_only:false,text:"other\n".into()}];
+        Projection::build(&s,&[("a".into(),0..s[0].text.len()),("b".into(),0..6)],200).unwrap()
+    }
+    #[test] fn delete_and_yank_keep_source_text_and_native_register_mode() {
+        let p=fixture();let live=Buffer::new(&p.text);let at=p.excerpts[0].display_range.start;let cursor=Cursor::new(CursorMode::Normal(at),None,None);let mut reg=Register::default();reg.unnamed.content="old".into();
+        for mode in [MotionMode::Delete{count:1},MotionMode::Yank{count:1}] {
+            let (mut staged,_,next,deltas)=stage_projection_motion(&p,&live,&cursor,mode.clone(),at..at,true,&reg,IndentStyle::Spaces(2)).unwrap();
+            assert_eq!(next.unnamed.content,"alpha β\n");assert_eq!(reg.unnamed.content,"old");assert_eq!(live.to_string(),p.text);
+            if matches!(mode,MotionMode::Delete{..}) {
+                let delta=compose_projection_deltas(&p,&deltas.into_iter().map(|(_,d,_)|d).collect::<Vec<_>>()).unwrap();let edits=display_edits_from_delta(&p.text,&delta).unwrap();assert_eq!(edits[0].range,at..at+9);
+                staged.do_undo().unwrap();assert_eq!(staged.to_string(),p.text);staged.do_redo().unwrap();assert!(staged.to_string().contains("second"));
+            } else {assert!(deltas.is_empty());assert_eq!(staged.to_string(),p.text);}
+        }
+    }
+    #[test] fn rejected_motions_cannot_replace_register_or_edit_revision() {
+        let p=fixture();let live=Buffer::new(&p.text);let at=p.excerpts[0].display_range.start;let end=p.excerpts[1].display_range.start;let cursor=Cursor::new(CursorMode::Normal(at),None,None);let mut reg=Register::default();reg.unnamed.content="keep".into();let rev=live.rev();
+        for mode in [MotionMode::Delete{count:1},MotionMode::Yank{count:1},MotionMode::Indent,MotionMode::Outdent] {
+            for range in [0..at,at..end,at+7..at+8] {
+                assert!(stage_projection_motion(&p,&live,&cursor,mode.clone(),range,false,&reg,IndentStyle::Tabs).is_err());
+                assert_eq!(reg.unnamed.content,"keep");assert_eq!(live.rev(),rev);assert_eq!(live.to_string(),p.text);
+            }
+        }
+    }
+    #[test] fn indent_and_outdent_use_canonical_style_and_exclude_endpoint_line() {
+        let p=fixture();let live=Buffer::new(&p.text);let at=p.excerpts[0].display_range.start;let end=at+9;let cursor=Cursor::new(CursorMode::Normal(at),None,None);
+        for style in [IndentStyle::Tabs,IndentStyle::Spaces(2)] {
+            let (mut indented,_,_,_)=stage_projection_motion(&p,&live,&cursor,MotionMode::Indent,at..end,false,&Register::default(),style).unwrap();
+            assert!(indented.to_string().contains(&format!("{}alpha β\nsecond",style.as_str())));
+            let mut updated=p.clone();updated.text=indented.to_string();for excerpt in &mut updated.excerpts {if excerpt.buffer_id==1 {excerpt.display_range.end+=style.as_str().len();} else {excerpt.display_range.start+=style.as_str().len();excerpt.display_range.end+=style.as_str().len();}}
+            let (mut outdented,_,_,_)=stage_projection_motion(&updated,&indented,&cursor,MotionMode::Outdent,at..end+style.as_str().len(),false,&Register::default(),style).unwrap();assert_eq!(outdented.to_string(),p.text);
+            outdented.do_undo().unwrap();assert_eq!(outdented.to_string(),indented.to_string());
+            indented.do_undo().unwrap();assert_eq!(indented.to_string(),p.text);
+        }
+    }
+    #[test] fn vertical_yank_at_unterminated_excerpt_end_refuses_synthetic_separator() {
+        let sources=vec![Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"tail".into()}];let p=Projection::build(&sources,&[("a".into(),0..4)],100).unwrap();let live=Buffer::new(&p.text);let at=p.excerpts[0].display_range.start;
+        assert!(projection_motion_selection(&p,&live,at..at,true,&MotionMode::Yank{count:1}).is_err());
+    }
+}

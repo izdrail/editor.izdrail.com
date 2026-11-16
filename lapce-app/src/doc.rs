@@ -2539,7 +2539,27 @@ impl CommonAction for Doc {
         is_vertical: bool,
         register: &mut Register,
     ) {
-        if self.projection.get_untracked().is_some() {return;}
+        if let Some(binding)=self.projection.get_untracked() {
+            let selected=self.buffer.with_untracked(|buffer|crate::multibuffer::projection_motion_selection(&binding.projection.borrow(),buffer,range.clone(),is_vertical,&motion_mode));
+            let selected=match selected {Ok(value)=>value,Err(error)=>{binding.notice.set(error.into());return;}};
+            let docs=binding.docs.get_untracked();
+            let style=crate::multibuffer::projection_indent_style(&binding.projection.borrow(),&selected,|excerpt| {
+                let doc=docs.get(&excerpt.source).ok_or("Source was closed")?;
+                if !doc.loaded() {return Err("Source is still loading");}
+                if doc.buffer_id.0!=excerpt.buffer_id || doc.rev()!=excerpt.revision {return Err("Source changed; refresh before editing");}
+                if doc.content.with_untracked(|content|content.read_only()) {return Err("Source is read-only");}
+                Ok(doc.buffer.with_untracked(|buffer|buffer.indent_style()))
+            });
+            let style=match style {Ok(value)=>value,Err(error)=>{binding.notice.set(error.into());return;}};
+            let staged=self.buffer.with_untracked(|buffer|crate::multibuffer::stage_projection_motion(&binding.projection.borrow(),buffer,cursor,motion_mode.clone(),range,is_vertical,register,style));
+            let (candidate,next,next_register,deltas)=match staged {Ok(value)=>value,Err(error)=>{binding.notice.set(error.into());return;}};
+            if matches!(motion_mode,MotionMode::Yank{..}) {
+                *register=next_register;binding.notice.set(String::new());return;
+            }
+            let applied=self.edit_projection(cursor,|buffer,cursor|{*buffer=candidate;*cursor=next;deltas}).unwrap_or_default();
+            if !applied.is_empty() {*register=next_register;}
+            return;
+        }
         let deltas = self
             .buffer
             .try_update(move |buffer| {
