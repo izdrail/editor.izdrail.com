@@ -644,13 +644,19 @@ impl Doc {
         let mut candidate=self.buffer.with_untracked(|b|b.detached_edit_clone());
         let mut next_cursor=cursor.clone();
         let old_cursor=cursor.offset();
-        let deltas=action(&mut candidate,&mut next_cursor);
+        let mut deltas=action(&mut candidate,&mut next_cursor);
         if deltas.is_empty() { *cursor=next_cursor;return Some(Vec::new()); }
-        // Multi-stage native actions need a composed transaction; fail closed
-        // rather than flattening their changes across protected headers.
-        if deltas.len()!=1 {binding.notice.set("This compound edit is not available in diagnostics yet".into());return Some(Vec::new());}
+        let sequential:Vec<_>=deltas.iter().map(|(_,delta,_)|delta.clone()).collect();
+        let composed=match crate::multibuffer::compose_projection_deltas(&binding.projection.borrow(),&sequential) {
+            Ok(delta)=>delta,Err(error)=>{binding.notice.set(error.into());return Some(Vec::new());}
+        };
+        if deltas.len()>1 {
+            let staged=self.buffer.with_untracked(|live|crate::multibuffer::stage_compound_projection(live,&composed,&candidate.to_string()));
+            let (buffer,delta)=match staged {Ok(value)=>value,Err(error)=>{binding.notice.set(error.into());return Some(Vec::new());}};
+            candidate=buffer;candidate.set_cursor_before(cursor.mode.clone());candidate.set_cursor_after(next_cursor.mode.clone());deltas=vec![delta];
+        }
         let current:std::collections::BTreeMap<_,_>=binding.docs.get_untracked().into_iter().collect();
-        let prepared=crate::multibuffer::prepare_projection_edit(&binding.projection.borrow(),&current,&deltas[0].1,old_cursor,4*1024*1024);
+        let prepared=crate::multibuffer::prepare_projection_edit(&binding.projection.borrow(),&current,&composed,old_cursor,4*1024*1024);
         let prepared=match prepared {Ok(value)=>value,Err(error)=>{binding.notice.set(error);return Some(Vec::new());}};
         if candidate.to_string()!=prepared.projection.text {binding.notice.set("Projection changed during edit staging".into());return Some(Vec::new());}
         batch(|| {

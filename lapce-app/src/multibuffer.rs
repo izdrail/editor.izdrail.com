@@ -607,3 +607,115 @@ mod projection_navigation_tests {
         assert!(p.navigation_anchor(0).is_none());assert!(p.navigation_anchor(1).is_none());assert!(p.navigation_anchor(p.excerpts[0].display_range.end).is_none());assert!(p.navigation_anchor(p.text.len()).is_none());
     }
 }
+
+/// Compose sequential native deltas without collapsing unchanged header bytes
+/// into a replacement. Every intermediate action must itself stay in code.
+pub(crate) fn compose_projection_deltas(
+    projection:&Projection,
+    deltas:&[lapce_xi_rope::RopeDelta],
+)->Result<lapce_xi_rope::RopeDelta,&'static str> {
+    use lapce_xi_rope::{DeltaElement,RopeDelta};
+    if deltas.is_empty() || deltas.len()>128 {return Err("Invalid compound edit count");}
+    let mut pieces=vec![DeltaElement::Copy(0,projection.text.len())];
+    let mut text=projection.text.clone();let mut ranges:Vec<_>=projection.excerpts.iter().map(|e|e.display_range.clone()).collect();
+    for delta in deltas {
+        let edits=display_edits_from_delta(&text,delta)?;
+        for edit in &edits {
+            if !ranges.iter().any(|range|edit.range.start>=range.start && edit.range.end<=range.end) {
+                return Err("Compound edit touches protected excerpt metadata");
+            }
+        }
+        let mut next=Vec::new();
+        for element in &delta.els {
+            match element {
+                DeltaElement::Insert(rope)=>next.push(DeltaElement::Insert(rope.clone())),
+                DeltaElement::Copy(from,to)=> {
+                    let mut at=0usize;
+                    for piece in &pieces {
+                        let len=match piece {DeltaElement::Copy(a,b)=>b-a,DeltaElement::Insert(rope)=>rope.len()};
+                        let begin=(*from).max(at);let end=(*to).min(at+len);
+                        if begin<end {
+                            next.push(match piece {
+                                DeltaElement::Copy(a,_)=>DeltaElement::Copy(a+begin-at,a+end-at),
+                                DeltaElement::Insert(rope)=>DeltaElement::Insert(rope.subseq(begin-at..end-at)),
+                            });
+                        }
+                        at+=len;if at>=*to {break;}
+                    }
+                }
+            }
+            if next.len()>16384 {return Err("Compound edit exceeds piece budget");}
+        }
+        // Each edit is checked in that stage's coordinates, so an action that
+        // changes then restores a header still fails rather than hiding it.
+        for range in &mut ranges {
+            let mut transformer=lapce_xi_rope::Transformer::new(delta);
+            range.start=transformer.transform(range.start,false);
+            range.end=transformer.transform(range.end,true);
+        }
+        let next_len=delta.new_document_len();
+        if next_len>4*1024*1024 {return Err("Compound edit exceeds projection budget");}
+        text=delta.apply(&lapce_xi_rope::Rope::from(text.as_str())).to_string();pieces=next;
+    }
+    let result=RopeDelta{base_len:projection.text.len(),els:pieces};
+    if result.apply(&lapce_xi_rope::Rope::from(projection.text.as_str())).to_string()!=text {return Err("Compound edit composition mismatch");}
+    Ok(result)
+}
+#[cfg(test)]
+mod compound_projection_tests {
+    use super::*;
+    use lapce_xi_rope::{Rope,RopeDelta};
+    fn fixture()->(Projection,Vec<Snapshot>) {
+        let sources=vec![Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"λabc\n".into()},Snapshot{path:"b".into(),buffer_id:2,revision:1,read_only:false,text:"def\n".into()}];
+        let p=Projection::build(&sources,&[("a".into(),0..6),("b".into(),0..4)],100).unwrap();(p,sources)
+    }
+    #[test] fn composes_insert_then_edit_inserted_text_without_consuming_headers() {
+        let (p,s)=fixture();let at=p.excerpts[0].display_range.start+2;
+        let a=RopeDelta::simple_edit(at..at,Rope::from("XY"),p.text.len());
+        let b=RopeDelta::simple_edit(at+1..at+2,Rope::from("Z"),a.new_document_len());
+        let delta=compose_projection_deltas(&p,&[a,b]).unwrap();let edits=display_edits_from_delta(&p.text,&delta).unwrap();let plan=p.plan(&s,&edits).unwrap();assert_eq!(plan.len(),1);assert_eq!(plan[0].range,2..2);assert_eq!(plan[0].replacement,"XZ");
+    }
+    #[test] fn disjoint_sources_and_sequential_deletions_keep_metadata() {
+        let (p,s)=fixture();let a=p.excerpts[0].display_range.start+2;let b=p.excerpts[1].display_range.start;
+        let first=RopeDelta::simple_edit(a..a+1,Rope::from(""),p.text.len());
+        let second=RopeDelta::simple_edit(b-1..b,Rope::from("!"),first.new_document_len());
+        let delta=compose_projection_deltas(&p,&[first,second]).unwrap();let edits=display_edits_from_delta(&p.text,&delta).unwrap();let plan=p.plan(&s,&edits).unwrap();assert_eq!(plan.len(),2);
+    }
+    #[test] fn header_edits_cannot_be_laundered_by_restoring_them_later() {
+        let (p,_)=fixture();let first=RopeDelta::simple_edit(1..2,Rope::from("X"),p.text.len());let second=RopeDelta::simple_edit(1..2,Rope::from("a"),p.text.len());assert!(compose_projection_deltas(&p,&[first,second]).is_err());
+    }
+    #[test] fn rejects_wrong_lengths_cross_excerpt_changes_and_split_utf8() {
+        let (p,_)=fixture();let at=p.excerpts[0].display_range.start;
+        for delta in [RopeDelta::simple_edit(at..at,Rope::from("x"),1),RopeDelta::simple_edit(at..p.excerpts[1].display_range.start,Rope::from("x"),p.text.len()),RopeDelta::simple_edit(at+1..at+1,Rope::from("x"),p.text.len())] {assert!(compose_projection_deltas(&p,&[delta]).is_err());}
+    }
+}
+
+/// Publish a compound action with one aggregate undo entry, matching the one
+/// canonical-source transaction rather than exposing intermediate revisions.
+pub(crate) fn stage_compound_projection(
+    live:&lapce_core::buffer::Buffer,
+    composed:&lapce_xi_rope::RopeDelta,
+    expected:&str,
+)->Result<(lapce_core::buffer::Buffer,(lapce_xi_rope::Rope,lapce_xi_rope::RopeDelta,lapce_core::buffer::InvalLines)),&'static str> {
+    use lapce_core::{buffer::rope_text::RopeText,selection::Selection,editor::EditType};
+    let edits=display_edits_from_delta(&live.to_string(),composed)?;
+    let edits:Vec<_>=edits.iter().map(|edit|(Selection::region(edit.range.start,edit.range.end),edit.replacement.as_str())).collect();
+    let mut candidate=live.detached_edit_clone();let delta=candidate.edit(&edits,EditType::Other);
+    if candidate.to_string()!=expected {return Err("Compound projection line endings changed during staging");}
+    Ok((candidate,delta))
+}
+#[cfg(test)]
+mod compound_undo_tests {
+    use super::*;
+    use lapce_core::buffer::{Buffer,rope_text::RopeText};
+    use lapce_xi_rope::{Rope,RopeDelta};
+    #[test] fn one_undo_redo_covers_all_sequential_deltas_without_touching_live_clock() {
+        let source=Snapshot{path:"a".into(),buffer_id:1,revision:1,read_only:false,text:"{}\n".into()};
+        let p=Projection::build(&[source],&[("a".into(),0..3)],100).unwrap();let at=p.excerpts[0].display_range.start+1;
+        let live=Buffer::new(&p.text);let revision=live.rev();
+        let a=RopeDelta::simple_edit(at..at,Rope::from("\n"),p.text.len());let b=RopeDelta::simple_edit(at+1..at+1,Rope::from("\n"),a.new_document_len());
+        let composed=compose_projection_deltas(&p,&[a,b]).unwrap();let expected=composed.apply(&Rope::from(p.text.as_str())).to_string();
+        let (mut candidate,_)=stage_compound_projection(&live,&composed,&expected).unwrap();assert_eq!(live.rev(),revision);assert_eq!(live.to_string(),p.text);
+        candidate.do_undo().unwrap();assert_eq!(candidate.to_string(),p.text);candidate.do_redo().unwrap();assert_eq!(candidate.to_string(),expected);
+    }
+}
