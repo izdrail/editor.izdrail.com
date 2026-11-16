@@ -72,6 +72,10 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
             None => match c {
                 '\'' | '"' => quote = Some(c),
                 '[' | '(' => depth += 1,
+                ']' | ')' if depth == 0 => {
+                    end = i;
+                    break;
+                }
                 ']' | ')' => depth -= 1,
                 ',' if depth <= 0 => {
                     end = i;
@@ -188,6 +192,17 @@ return [
         for line in [r#"$s = "Sam's app"; config('app.name');"#, r#"$s = 'Sam\'s app'; config('app.name');"#] {
             let md = help(Some(d.path()), line, line.rfind("app.name").unwrap()).unwrap();
             assert!(md.contains("**`app.name`** = `'QA'`"), "{md}");
+        }
+    }
+
+    #[test]
+    fn final_inline_values_stop_at_the_containing_array_end() {
+        let d = tempfile::tempdir().unwrap();
+        for (value, expected) in [("'QA'", "'QA'"), ("['x', 'y']", "['x', 'y']"), ("env('APP_NAME', 'QA')", "env('APP_NAME', 'QA')")] {
+            put(d.path(), "config/app.php", &format!("<?php return ['name' => {value}];\n"));
+            let line = "config('app.name')";
+            let md = help(Some(d.path()), line, at(line, "app.name")).unwrap();
+            assert!(md.contains(&format!("= `{expected}`")), "{md}");
         }
     }
 
