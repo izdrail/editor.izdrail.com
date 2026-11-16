@@ -12,8 +12,8 @@ const MAX_FILE_BYTES: u64 = 1024 * 1024;
 const FILES: &[&str] = &[".env", ".env.local", ".env.example", ".env.dist"];
 
 const PREFIXES: &[&str] = &[
-    "env('", "env(\"", "getenv('", "getenv(\"", "_ENV['", "_ENV[\"", "_SERVER['",
-    "_SERVER[\"", "process.env.", "import.meta.env.", "${", "%env(",
+    "env('", "env(\"", "getenv('", "getenv(\"", "$_ENV['", "$_ENV[\"", "$_SERVER['",
+    "$_SERVER[\"", "process.env.", "import.meta.env.", "${", "%env(",
 ];
 
 fn is_key_char(c: char) -> bool {
@@ -57,7 +57,13 @@ pub fn key_at(line: &str, col: usize) -> Option<&str> {
         .rfind("%env(")
         .filter(|i| before[i + 5..].chars().all(|c| is_key_char(c) || c == ':'))
         .map(|_| "%env(");
-    let hit = before_proc.is_some() || PREFIXES.iter().any(|p| before.ends_with(p));
+    let hit = before_proc.is_some() || PREFIXES.iter().any(|p| {
+        let Some(prefix) = before.strip_suffix(p) else { return false };
+        if matches!(*p, "${" | "%env(") { return true; }
+        prefix.chars().next_back().is_none_or(|c| {
+            !(c.is_alphanumeric() || matches!(c, '_' | '$' | '>' | ':' | '.'))
+        })
+    });
     hit.then(|| &line[start..end])
 }
 
@@ -112,6 +118,21 @@ pub fn resolve(root: &Path, line: &str, col: usize) -> Option<(PathBuf, usize)> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn references_require_complete_receiver_names() {
+        for line in ["myenv('APP_NAME')", "forgetenv('APP_NAME')", "$obj->env('APP_NAME')",
+            "Config::env('APP_NAME')", "_ENV['APP_NAME']", "OTHER_ENV['APP_NAME']",
+            "$OTHER_ENV['APP_NAME']", "myprocess.env.APP_NAME", "obj.process.env.APP_NAME",
+            "ximport.meta.env.APP_NAME"] {
+            assert_eq!(key_at(line, line.find("APP_NAME").unwrap()), None, "{line}");
+        }
+        for line in ["env('APP_NAME')", "getenv('APP_NAME')", "$_ENV['APP_NAME']",
+            "$_SERVER['APP_NAME']", "process.env.APP_NAME", "import.meta.env.APP_NAME",
+            "fn(process.env.APP_NAME)", "$_ENV['APP_NAME'] ?? null"] {
+            assert_eq!(key_at(line, line.find("APP_NAME").unwrap()), Some("APP_NAME"), "{line}");
+        }
+    }
 
     #[test]
     fn quotes_count_as_inside() {
