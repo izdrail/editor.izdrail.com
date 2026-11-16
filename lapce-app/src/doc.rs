@@ -2172,10 +2172,26 @@ impl Document for Doc {
 impl DocumentPhantom for Doc {
     fn phantom_text(
         &self,
-        _: EditorId,
-        _: &EditorStyle,
+        editor_id: EditorId,
+        editor_style: &EditorStyle,
         line: usize,
     ) -> PhantomTextLine {
+        // Reuse only the source's diagnostic lens, never its inlays, completion
+        // text or IME overlay. Phantom text cannot enter saved source bytes.
+        if self.projection.get_untracked().is_some() {
+            let display=self.buffer.with_untracked(|b|b.offset_of_line(line));
+            let text=self.projection_navigation_source(display).map(|(source,offset)| {
+                let (source_line,source_col)=source.buffer.with_untracked(|b|b.offset_to_line_col(offset));
+                let display_len=self.buffer.with_untracked(|b|b.offset_of_line(line+1)-display);
+                source.phantom_text(editor_id,editor_style,source_line).text.into_iter()
+                    .filter_map(|mut text| {
+                        if text.kind!=PhantomTextKind::Diagnostic || text.col<source_col {return None;}
+                        text.col-=source_col;
+                        (text.col<=display_len).then_some(text)
+                    }).collect()
+            }).unwrap_or_default();
+            return PhantomTextLine{text};
+        }
         let config = &self.common.config.get_untracked();
 
         let (start_offset, end_offset) = self.buffer.with_untracked(|buffer| {
