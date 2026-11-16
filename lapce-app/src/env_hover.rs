@@ -11,17 +11,22 @@ const MAX_FILE: u64 = 1 << 20;
 /// The second argument of `env('KEY', ...)` / `getenv('KEY', ...)` when the
 /// first argument is exactly `key`. Quoted strings and bare scalars
 /// (`true`, `false`, `null`, numbers); capped so a huge default is skipped.
-fn default_arg(line: &str, key: &str) -> Option<String> {
+fn default_arg(line: &str, key: &str, col: usize) -> Option<String> {
     for func in ["env(", "getenv("] {
         for (fi, _) in line.match_indices(func) {
-            let rest = &line[fi + func.len()..];
-            let rest = rest.trim_start();
+            if line[..fi].chars().next_back().is_some_and(|c| {
+                c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '>' | ':')
+            }) {
+                continue;
+            }
+            let rest = line[fi + func.len()..].trim_start();
+            let quote_at = line.len() - rest.len();
             let Some(q) = rest.chars().next().filter(|c| *c == '\'' || *c == '"')
             else {
                 continue;
             };
             let Some(end) = rest[1..].find(q) else { continue };
-            if &rest[1..1 + end] != key {
+            if &rest[1..1 + end] != key || col < quote_at || col > quote_at + end + 1 {
                 continue;
             }
             // This call is the one; the default decides the result.
@@ -48,7 +53,7 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
         return None;
     }
     let key = crate::env_refs::key_at(line, col)?.to_string();
-    let default = default_arg(line, &key);
+    let default = default_arg(line, &key, col.min(line.len()));
     let (where_, detail) = match crate::env_refs::find_definition(root, &key) {
         Some((path, idx)) => {
             // Re-read just enough to tell a live definition from a
@@ -117,6 +122,22 @@ mod tests {
         let l = "'APP_NAME' => 1,";
         assert_eq!(help(root, l, at(l, "APP_NAME")), None);
         assert_eq!(help(None, "env('APP_NAME')", 6), None);
+    }
+
+    #[test]
+    fn defaults_belong_to_the_exact_hovered_reference() {
+        let d = tempfile::tempdir().unwrap();
+        let line = "env('APP_NAME', 'first'); env('APP_NAME', 'second'); process.env.APP_NAME";
+        let first = help(Some(d.path()), line, line.find("APP_NAME").unwrap()).unwrap();
+        assert!(first.contains("Code default: `first`."), "{first}");
+        let second_col = line.match_indices("APP_NAME").nth(1).unwrap().0;
+        let second = help(Some(d.path()), line, second_col).unwrap();
+        assert!(second.contains("Code default: `second`."), "{second}");
+        let bare = help(Some(d.path()), line, line.rfind("APP_NAME").unwrap()).unwrap();
+        assert!(!bare.contains("Code default"), "{bare}");
+        let line = "getenv('APP_NAME', 'first'); env('APP_NAME', 'second')";
+        let md = help(Some(d.path()), line, line.find("APP_NAME").unwrap()).unwrap();
+        assert!(md.contains("Code default: `first`."), "{md}");
     }
 
     #[test]
