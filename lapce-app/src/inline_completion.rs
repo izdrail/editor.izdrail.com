@@ -92,6 +92,7 @@ pub enum InlineCompletionStatus {
 
 #[derive(Clone)]
 pub struct InlineCompletionData {
+    pub provider_notice: String,
     pub status: InlineCompletionStatus,
     /// The active inline completion index in the list of completions.
     pub active: RwSignal<usize>,
@@ -102,6 +103,7 @@ pub struct InlineCompletionData {
 impl InlineCompletionData {
     pub fn new(cx: Scope) -> Self {
         Self {
+            provider_notice: String::new(),
             status: InlineCompletionStatus::Inactive,
             active: cx.create_rw_signal(0),
             items: im::vector![],

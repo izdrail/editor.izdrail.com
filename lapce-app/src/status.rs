@@ -268,6 +268,15 @@ pub fn status(
                     .color(config.get().color(LapceColor::STATUS_FOREGROUND))
                     .selectable(false)
             }),
+            label(move || {
+                let ai = config.get().effective_ai_autocomplete();
+                if ai.enabled && ["ollama", "openai"].contains(&ai.backend.as_str()) && crate::chat::fallback_target(&ai.endpoint).is_some() {
+                    inline.with(|data| data.provider_notice.clone())
+                } else { String::new() }
+            }).style(move |s| {
+                s.max_width(280.0).min_width(0.0).text_ellipsis().padding_horiz(6.0)
+                    .color(config.get().color(LapceColor::STATUS_FOREGROUND))
+            }),
             label(ghost_hint).style(move |s| {
                 s.max_width(260.0).min_width(0.0).text_ellipsis()
                     .padding_horiz(6.0)

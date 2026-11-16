@@ -274,17 +274,17 @@ pub(crate) fn with_auth(
 /// Automatic failover is limited to the user's own canonical primary.
 /// Never treat arbitrary configured endpoints as permission to disclose prompts.
 pub(crate) const FALLBACK_ENDPOINT: &str = "https://llm.izdrail.com";
-fn fallback_target(endpoint: &str) -> Option<&'static str> {
+pub(crate) fn fallback_target(endpoint: &str) -> Option<&'static str> {
     let parsed = url::Url::parse(&completion_url(endpoint).ok()?).ok()?;
     (parsed.scheme() == "https" && parsed.host_str() == Some("ai.izdrail.com")
         && parsed.port_or_known_default() == Some(443)
         && parsed.path() == "/v1/chat/completions")
         .then_some(FALLBACK_ENDPOINT)
 }
-fn retryable_status(status: u16) -> bool {
+pub(crate) fn retryable_status(status: u16) -> bool {
     matches!(status, 408 | 502 | 503 | 504)
 }
-fn endpoint_auth(req: reqwest::RequestBuilder, endpoint: &str, fallback: bool) -> reqwest::RequestBuilder {
+pub(crate) fn endpoint_auth(req: reqwest::RequestBuilder, endpoint: &str, fallback: bool) -> reqwest::RequestBuilder {
     if !fallback { return with_auth(req, endpoint); }
     // A runtime environment override belongs to the selected PRIMARY only.
     match fallback_key(crate::chat_credentials::saved_key(endpoint), build_default_key(endpoint)) {

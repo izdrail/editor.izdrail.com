@@ -5,15 +5,15 @@ use structdesc::FieldNames;
 #[serde(rename_all = "kebab-case", default)]
 pub struct AiConfig {
     #[field_names(
-        desc = "AI ghost text at the cursor. Local backend keeps inference on this device by default. Selecting ollama sends code around the cursor to the configured endpoint."
+        desc = "AI ghost text at the cursor. Local backend keeps inference on this device by default. Selecting ollama sends code around the cursor to the configured endpoint. The canonical ai.izdrail.com endpoint may retry once at llm.izdrail.com when unavailable."
     )]
     pub enabled: bool,
     #[field_names(
-        desc = "Ghost text backend: local (default, on-device CPU inference) or ollama (opt-in, code around the cursor sent to the configured endpoint)."
+        desc = "Ghost text backend: local (on-device CPU inference) or ollama (opt-in remote inference). Canonical ai.izdrail.com falls back to llm.izdrail.com on transient connection/server failure."
     )]
     pub backend: String,
     #[field_names(
-        desc = "Ollama endpoint root for ghost text. Key-less; no API key needed or used. Ignored when backend = local."
+        desc = "Ollama endpoint root for ghost text. Native requests use no API key. Canonical ai.izdrail.com may fall back to llm.izdrail.com using only that gateway's separate saved/build-default key. Ignored when backend = local."
     )]
     pub endpoint: String,
     #[field_names(desc = "Ollama model for ghost text.")]

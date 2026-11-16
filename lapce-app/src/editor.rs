@@ -2322,6 +2322,19 @@ impl EditorData {
         }
     }
 
+    /// Publish one bounded endpoint/error hint without writing model output
+    /// into the chat lane or leaking credential/response bodies into status.
+    fn native_ai_status_action(&self, generation: u64) -> impl FnOnce(String) + Send + 'static {
+        let editor = self.clone();
+        let config_id = self.common.config.get_untracked().id;
+        create_ext_action(self.scope, move |notice: String| {
+            if editor.ai_generation.get_untracked() == generation
+                && editor.common.config.get_untracked().id == config_id {
+                editor.common.inline_completion.update(|data| data.provider_notice = notice);
+            }
+        })
+    }
+
     fn next_inline_completion(&self) {
         if self
             .common
@@ -2588,9 +2601,9 @@ impl EditorData {
         } else { None };
         let gateway_suffix = suffix.clone();
         let request = if ai.backend == "ollama" {
-            // Network lane: the worker POSTs this bounded context to the
-            // configured key-less endpoint. No local model is resolved, and
-            // the explicit shared OpenAI branch is handled app-side below.
+            // Native network lane, with bounded context and no local model.
+            // Canonical primary/fallback transport is handled app-side below;
+            // other key-less endpoints retain the existing worker path.
             // Unknown backend strings stay on the on-device lane.
             lapce_ai::Request {
                 model: std::path::PathBuf::new(),
@@ -2712,20 +2725,53 @@ impl EditorData {
 
         inline_completion.update(|c| c.status = InlineCompletionStatus::Started);
 
+        if ai.backend == "ollama" && crate::chat::fallback_target(&ai.endpoint).is_some() {
+            if let Some(old) = self.ai_gateway_cancel.get_untracked() { old.store(true, std::sync::atomic::Ordering::Release); }
+            let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            self.ai_gateway_cancel.set(Some(cancelled.clone()));
+            let status = self.native_ai_status_action(generation);
+            std::thread::spawn(move || {
+                let result = crate::ghost_gateway::native_with_fallback(&request, cancelled);
+                let items = match result {
+                    Ok((text, source)) => {
+                        status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                        let text = lapce_ai::ollama::clean(&text, &gateway_suffix);
+                        if text.is_empty() { Vec::new() } else { vec![lsp_types::InlineCompletionItem {
+                            insert_text: text, filter_text: None, range: Some(lsp_types::Range::new(position, position)),
+                            command: None, insert_text_format: Some(lsp_types::InsertTextFormat::PLAIN_TEXT),
+                        }] }
+                    }
+                    Err(error) => { if error != "Cancelled" { status("Ghost AI: request failed".into()); } Vec::new() }
+                };
+                send(items);
+            });
+            return;
+        }
         if let Some(messages) = gateway_messages {
             if let Some(old) = self.ai_gateway_cancel.get_untracked() {
                 old.store(true, std::sync::atomic::Ordering::Release);
             }
             let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
             self.ai_gateway_cancel.set(Some(cancelled.clone()));
+            let status = self.native_ai_status_action(generation);
             std::thread::spawn(move || {
-                let result = crate::ghost_gateway::complete(
+                let result = crate::ghost_gateway::complete_with_source(
                     &ai.endpoint, &ai.remote_model, &messages,
                     ai.max_tokens, ai.timeout_ms, cancelled,
                 );
-                let items = result.ok().map(|text| {
-                    lapce_ai::ollama::clean(&text, &gateway_suffix)
-                }).filter(|text| !text.is_empty()).map(|text| {
+                let text = match result {
+                    Ok((text, source)) => {
+                        if crate::chat::fallback_target(&ai.endpoint).is_some() {
+                            status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                        }
+                        Some(text)
+                    }
+                    Err(error) => {
+                        if error != "Cancelled" && crate::chat::fallback_target(&ai.endpoint).is_some() { status("Ghost AI: request failed".into()); }
+                        None
+                    }
+                };
+                let items = text.map(|text| lapce_ai::ollama::clean(&text, &gateway_suffix)).filter(|text| !text.is_empty()).map(|text| {
                     vec![lsp_types::InlineCompletionItem {
                         insert_text: text, filter_text: None,
                         range: Some(lsp_types::Range::new(position, position)),
@@ -2911,17 +2957,44 @@ impl EditorData {
                 c.update_doc(&doc, offset);
             });
         });
+        if ai.backend == "ollama" && crate::chat::fallback_target(&ai.endpoint).is_some() {
+            if let Some(old) = self.ai_gateway_cancel.get_untracked() { old.store(true, std::sync::atomic::Ordering::Release); }
+            let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            self.ai_gateway_cancel.set(Some(cancelled.clone()));
+            let status = self.native_ai_status_action(generation);
+            std::thread::spawn(move || {
+                match crate::ghost_gateway::native_with_fallback(&request, cancelled) {
+                    Ok((raw, source)) => {
+                        status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                        send(raw);
+                    }
+                    Err(error) => { if error != "Cancelled" { status("Ghost AI: request failed".into()); } }
+                }
+            });
+            return;
+        }
         if ai.backend == "openai" {
             if let Some(old) = self.ai_gateway_cancel.get_untracked() {
                 old.store(true, std::sync::atomic::Ordering::Release);
             }
             let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
             self.ai_gateway_cancel.set(Some(cancelled.clone()));
+            let status = self.native_ai_status_action(generation);
             std::thread::spawn(move || {
-                if let Ok(raw) = crate::ghost_gateway::complete(
+                match crate::ghost_gateway::complete_with_source(
                     &ai.endpoint, &ai.remote_model, &messages,
                     256, ai.timeout_ms, cancelled,
-                ) { send(raw); }
+                ) {
+                    Ok((raw, source)) => {
+                        if crate::chat::fallback_target(&ai.endpoint).is_some() {
+                            status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                        }
+                        send(raw);
+                    }
+                    Err(error) => {
+                        if error != "Cancelled" && crate::chat::fallback_target(&ai.endpoint).is_some() { status("Ghost AI: request failed".into()); }
+                    }
+                }
             });
             return;
         }

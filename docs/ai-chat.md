@@ -140,5 +140,11 @@ never forwarded. Save a separate gateway key by selecting llm.izdrail.com in
 Settings > AI, saving its key, then restoring the desired primary endpoint.
 There is no failover loop and no retry after a partial response. Both endpoint
 failures are named when neither is available. Fallback does not repair an outage
-shared by both servers. Native inline FIM completion is a separate transport
-and is not covered by this app-chat fallback.
+shared by both servers. Native inline FIM completion and next-edit prediction use the same canonical
+primary/fallback policy through an app-side adapter. Native raw-FIM requests
+are translated to bounded OpenAI chat messages with model auto at the gateway.
+Only initial connection/status failure retries; malformed, incomplete or partial
+responses do not. The status bar identifies the active endpoint/fallback or a
+failed request. All other native endpoints retain their existing worker path;
+no key is added to worker RPC. Cancellation covers both attempts, each bounded
+by the configured timeout (at most twice that timeout for both combined).
