@@ -64,7 +64,7 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
         None => label(stem).to_string(),
     };
     Some(format!(
-        "**`{name}`** - {what}\n\n_{}:{}\n\nFirst matching entry wins._",
+        "**`{name}`** - {what}\n\n_{}:{}_\n\n_First matching entry wins._",
         rel.display(),
         idx + 1,
     ))
@@ -115,6 +115,7 @@ return [
         let md = help(root, l, at(l, "s3")).unwrap();
         assert!(md.contains("**`s3`** - filesystem disk, driver `s3`"), "{md}");
         assert!(md.contains("config/filesystems.php:4"), "{md}");
+        assert!(md.contains("_config/filesystems.php:4_\n\n_First matching entry wins._"), "{md}");
 
         // Single-line entry, and mail uses `transport`.
         let l = "Mail::mailer('ses')->send($m);";
