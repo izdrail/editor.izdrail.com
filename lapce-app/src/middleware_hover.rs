@@ -48,6 +48,7 @@ pub fn help(root: Option<&Path>, line: &str, col: usize) -> Option<String> {
         return None;
     }
     let text = std::fs::read_to_string(&path).ok()?;
+    let text = lapce_index::symbols::php_without_comments(&text).ok()?;
     let decl = text.lines().nth(idx)?;
     let rel = path.strip_prefix(root).unwrap_or(&path);
     let what = mapped_class(decl, &name)
@@ -110,6 +111,16 @@ mod tests {
         assert_eq!(mapped_class(line, "guest"), Some("Guest".into()));
         assert_eq!(mapped_class("'auth' => resolveClass(),", "auth"), None);
         assert_eq!(mapped_class("'auth' => Auth::class . $suffix,", "auth"), None);
+    }
+
+    #[test]
+    fn inline_commented_mapping_cannot_override_live_hover_class() {
+        let d = tempfile::tempdir().unwrap();
+        put(d.path(), "app/Http/Kernel.php", "<?php\nclass Kernel {\n protected $middlewareAliases = [/* 'auth' => Old::class, */ 'auth' => LiveAuth::class];\n}\n");
+        let line = "Route::middleware('auth')";
+        let md = help(Some(d.path()), line, at(line, "auth")).unwrap();
+        assert!(md.contains("alias -> `LiveAuth`"), "{md}");
+        assert!(!md.contains("Old"), "{md}");
     }
 
     #[test]
