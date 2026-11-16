@@ -1932,7 +1932,7 @@ fn editor_gutter(
             empty().style(move |s| s.width(icon_total_width() * 2.0 - 8.0)),
             label(move || {
                 let doc = doc.get();
-                doc.buffer.with(|b| b.last_line() + 1).to_string()
+                doc.gutter_line_number_max().to_string()
             }),
             empty().style(move |s| s.width(gutter_padding_right.get())),
         ))

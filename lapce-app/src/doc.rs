@@ -1195,6 +1195,35 @@ impl Doc {
         Some(Arc::new(painted))
     }
 
+    /// Outer None means an ordinary document; inner None hides a projection
+    /// header, separator or stale source number instead of inventing a row.
+    pub(crate) fn projection_source_line(&self,line:usize)->Option<Option<usize>> {
+        let binding=self.projection.get_untracked()?;
+        let projection=binding.projection.borrow();
+        let display=self.buffer.with_untracked(|b|b.offset_of_line(line));
+        let number=projection.source_line_anchor(display).and_then(|anchor| {
+            let current=binding.docs.get_untracked();let source=current.get(&anchor.source)?;
+            if source.buffer_id.0!=anchor.buffer_id || source.rev()!=anchor.revision {return None;}
+            Some(source.buffer.with_untracked(|b|b.line_of_offset(anchor.offset)))
+        });
+        Some(number)
+    }
+
+    /// Reserve enough gutter space for source numbers, which can be far larger
+    /// than the short excerpt document's own line count. Reads are reactive.
+    pub(crate) fn gutter_line_number_max(&self)->usize {
+        let aggregate=self.buffer.with(|b|b.last_line()+1);
+        let Some(binding)=self.projection.get() else {return aggregate;};
+        let current=binding.docs.get();let projection=binding.projection.borrow();
+        projection.excerpts.iter().filter_map(|excerpt| {
+            let source=current.get(&excerpt.source)?;
+            source.buffer.with(|b| {
+                (source.buffer_id.0==excerpt.buffer_id && b.rev()==excerpt.revision)
+                    .then(||b.line_of_offset(excerpt.source_range.end)+1)
+            })
+        }).max().unwrap_or(1)
+    }
+
     pub(crate) fn track_projection_styles(&self) {
         let doc=self.clone();
         self.scope.create_effect(move |_| {

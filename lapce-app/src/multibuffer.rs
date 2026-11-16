@@ -1,4 +1,4 @@
-//! Experimental diagnostics projection core. Not connected to the UI yet.
+//! Editable diagnostics projection core, with guarded source mappings.
 //! Planning is read-only: callers must preflight every source identity/revision
 //! and apply the whole plan in one UI-thread transaction, or apply nothing.
 use std::{collections::BTreeMap, ops::Range, path::PathBuf};
@@ -548,5 +548,38 @@ mod projected_style_tests {
         assert!(projected_line_styles(&source,5..8,0).is_empty());
         assert!(projected_line_styles(&source,0..2,0).is_empty());
         assert!(projected_line_styles(&source,3..3,0).is_empty());
+    }
+}
+
+impl Projection {
+    /// Map only actual code-line starts. Headers and separator rows have no
+    /// source number, even when an excerpt ends at a source newline.
+    pub(crate) fn source_line_anchor(&self, display:usize)->Option<SourceAnchor> {
+        if display>self.text.len() || (display>0 && self.text.as_bytes().get(display-1)!=Some(&b'\n')) {return None;}
+        let excerpt=self.excerpts.iter().find(|e|e.display_range.contains(&display) || (e.display_range.is_empty() && display==e.display_range.start))?;
+        self.anchor(excerpt.display_range.start.max(display))
+    }
+}
+#[cfg(test)]
+mod projected_line_number_tests {
+    use super::*;
+    fn build(text:&str,range:Range<usize>)->Projection {
+        let source=Snapshot{path:"test.php".into(),buffer_id:12,revision:5,read_only:false,text:text.into()};
+        Projection::build(&[source],&[("test.php".into(),range)],1000).unwrap()
+    }
+    #[test] fn source_offsets_preserve_nonzero_windows_and_unicode_crlf() {
+        let text="omitted\r\nλx\r\ny\r\n";let start=text.find('λ').unwrap();let p=build(text,start..text.len());let display=p.excerpts[0].display_range.start;
+        let a=p.source_line_anchor(display).unwrap();assert_eq!(a.offset,start);assert_eq!((a.buffer_id,a.revision),(12,5));
+        assert_eq!(p.source_line_anchor(display+5).unwrap().offset,start+5);
+        assert!(p.source_line_anchor(display+2).is_none());
+    }
+    #[test] fn headers_separators_and_out_of_range_have_no_source_number() {
+        let p=build("code\n",0..5);let e=&p.excerpts[0];
+        assert!(p.source_line_anchor(0).is_none());assert!(p.source_line_anchor(1).is_none());
+        assert!(p.source_line_anchor(e.display_range.end).is_none());assert!(p.source_line_anchor(p.text.len()+1).is_none());
+    }
+    #[test] fn empty_and_unterminated_source_lines_remain_numbered() {
+        let p=build("",0..0);assert_eq!(p.source_line_anchor(p.excerpts[0].display_range.start).unwrap().offset,0);
+        let p=build("x",0..1);assert_eq!(p.source_line_anchor(p.excerpts[0].display_range.start).unwrap().offset,0);
     }
 }

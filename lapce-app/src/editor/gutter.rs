@@ -188,7 +188,10 @@ impl View for EditorGutterView {
                     break;
                 }
 
-                let text = if show_relative {
+                let text = if let Some(source_line) = doc.projection_source_line(line) {
+                    let Some(source_line) = source_line else {continue;};
+                    (source_line + 1).to_string()
+                } else { if show_relative {
                     if line == current_line {
                         line + 1
                     } else {
@@ -197,7 +200,7 @@ impl View for EditorGutterView {
                 } else {
                     line + 1
                 }
-                .to_string();
+                .to_string() };
 
                 let mut text_layout = TextLayout::new();
                 if line == current_line {
