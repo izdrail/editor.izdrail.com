@@ -19,15 +19,17 @@ fn mapped_class(l: &str, name: &str) -> Option<String> {
             else {
                 continue;
             };
-            let v = rest.trim();
-            let v = v.trim_end_matches([',', ']', ')']).trim();
-            if !v.is_empty() && v.len() <= 80 {
-                return Some(
-                    v.trim_start_matches('\\')
-                        .trim_end_matches("::class")
-                        .to_string(),
-                );
-            }
+            let Some((class, tail)) = rest.trim_start().split_once("::class") else { continue };
+            let class = class.trim_start_matches('\\');
+            let tail = tail.trim_start();
+            let complete = tail.is_empty() || tail.starts_with([',', ']', ')'])
+                || tail.starts_with("//") || tail.starts_with("/*");
+            let valid = !class.is_empty() && class.len() <= 80 && class.split('\\').all(|part| {
+                let mut chars = part.chars();
+                chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+                    && chars.all(|c| c.is_alphanumeric() || c == '_')
+            });
+            if complete && valid { return Some(class.to_owned()); }
         }
     }
     None
@@ -99,6 +101,15 @@ mod tests {
         let l = "$x = 'auth';";
         assert_eq!(help(root, l, at(l, "auth")), None);
         assert_eq!(help(None, "->middleware('auth')", 16), None);
+    }
+
+    #[test]
+    fn inline_alias_class_does_not_include_neighboring_entries() {
+        let line = "'auth' => \\App\\Auth::class, 'guest' => Guest::class,";
+        assert_eq!(mapped_class(line, "auth"), Some("App\\Auth".into()));
+        assert_eq!(mapped_class(line, "guest"), Some("Guest".into()));
+        assert_eq!(mapped_class("'auth' => resolveClass(),", "auth"), None);
+        assert_eq!(mapped_class("'auth' => Auth::class . $suffix,", "auth"), None);
     }
 
     #[test]
