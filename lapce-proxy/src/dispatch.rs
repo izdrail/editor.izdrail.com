@@ -1159,7 +1159,7 @@ impl ProxyHandler for Dispatcher {
                 });
                 self.lsp_request(
                     path,
-                    "callHierarchy/prepare",
+                    "textDocument/prepareCallHierarchy",
                     serde_json::json!({"position": position}),
                     move |result| {
                         merge.deliver(result.and_then(|(_, value)| {

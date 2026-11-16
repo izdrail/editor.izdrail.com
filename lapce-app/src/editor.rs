@@ -1506,12 +1506,27 @@ impl EditorData {
             .collect()
     }
 
-    /// Resolve projection coordinates before entering the existing source-aware
-    /// definition path (including framework resolvers and LSP fallback).
-    fn definition_source(&self)->Option<(Rc<Doc>,usize)> {
+    /// Resolve projection coordinates before entering existing source-aware
+    /// navigation paths (including framework resolvers and LSP fallback).
+    fn navigation_source(&self)->Option<(Rc<Doc>,usize)> {
         let doc=self.doc();let offset=self.cursor().with_untracked(|c|c.offset());
         if doc.projection.get_untracked().is_some() {doc.projection_navigation_source(offset)}
         else {Some((doc,offset))}
+    }
+
+    /// Freeze the request origin while leaving the response guard live. Each
+    /// async stage rechecks it, including references/implementation resolution.
+    fn navigation_request(&self)->Option<(Rc<Doc>,usize,Rc<dyn Fn()->bool>)> {
+        let origin=self.doc();let origin_rev=origin.rev();let origin_id=origin.buffer_id;
+        let (source,offset)=self.navigation_source()?;
+        let source_id=source.buffer_id;let source_rev=source.rev();let editor=self.clone();
+        let current=Rc::new(move || {
+            let origin=editor.doc();
+            if origin.buffer_id!=origin_id || origin.rev()!=origin_rev {return false;}
+            let Some((source,current_offset))=editor.navigation_source() else {return false;};
+            source.buffer_id==source_id && source.rev()==source_rev && current_offset==offset
+        });
+        Some((source,offset,current))
     }
 
     fn go_to_definition(&self) {
@@ -1519,9 +1534,7 @@ impl EditorData {
         // an already scheduled hover or late LSP response bring it back.
         self.common.mouse_hover_timer.set(TimerToken::INVALID);
         self.common.hover.dismiss();
-        let origin=self.doc();let origin_rev=origin.rev();let origin_id=origin.buffer_id;
-        let Some((doc,offset))=self.definition_source() else {return;};
-        let source_id=doc.buffer_id;let source_rev=doc.rev();
+        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -1983,12 +1996,8 @@ impl EditorData {
         }
 
         let internal_command = self.common.internal_command;
-        let request_editor=self.clone();
         let send = create_ext_action(self.scope, move |d| {
-            let current=request_editor.doc();
-            if current.buffer_id!=origin_id || current.rev()!=origin_rev {return;}
-            let Some((source,current_offset))=request_editor.definition_source() else {return;};
-            if source.buffer_id!=source_id || source.rev()!=source_rev || current_offset!=offset {return;}
+            if !request_current() {return;}
 
             match d {
                 DefinitionOrReference::Location(location) => {
@@ -2098,7 +2107,7 @@ impl EditorData {
     }
 
     pub fn call_hierarchy(&self, window_tab_data: WindowTabData) {
-        let doc = self.doc();
+        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -2108,7 +2117,7 @@ impl EditorData {
             None => return,
         };
 
-        let offset = self.cursor().with_untracked(|c| c.offset());
+
         let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
             let start_position = buffer.offset_to_position(start_offset);
@@ -2124,6 +2133,7 @@ impl EditorData {
             path,
             position,
             create_ext_action(self.scope, move |result| {
+                if !request_current() {return;}
                 if let Ok(ProxyResponse::ShowCallHierarchyResponse {
                     items, ..
                 }) = result
@@ -2154,7 +2164,7 @@ impl EditorData {
     }
 
     pub fn find_reference(&self, window_tab_data: WindowTabData) {
-        let doc = self.doc();
+        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -2164,7 +2174,7 @@ impl EditorData {
             None => return,
         };
 
-        let offset = self.cursor().with_untracked(|c| c.offset());
+
         let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
             let start_position = buffer.offset_to_position(start_offset);
@@ -2172,9 +2182,11 @@ impl EditorData {
             (start_position, position)
         });
         let scope = window_tab_data.scope;
+        let response_current=request_current.clone();
         let update_implementation = create_ext_action(self.scope, {
             let window_tab_data = window_tab_data.clone();
             move |result| {
+                if !response_current() {return;}
                 if let Ok(ProxyResponse::ReferencesResolveResponse { items }) =
                     result
                 {
@@ -2191,6 +2203,7 @@ impl EditorData {
             path,
             position,
             create_ext_action(self.scope, move |result| {
+                if !request_current() {return;}
                 if let Ok(ProxyResponse::GetReferencesResponse { references }) =
                     result
                 {
@@ -2210,7 +2223,7 @@ impl EditorData {
     }
 
     pub fn go_to_implementation(&self, window_tab_data: WindowTabData) {
-        let doc = self.doc();
+        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -2220,7 +2233,7 @@ impl EditorData {
             None => return,
         };
 
-        let offset = self.cursor().with_untracked(|c| c.offset());
+
         let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
             let start_position = buffer.offset_to_position(start_offset);
@@ -2228,9 +2241,11 @@ impl EditorData {
             (start_position, position)
         });
         let scope = window_tab_data.scope;
+        let response_current=request_current.clone();
         let update_implementation = create_ext_action(self.scope, {
             let window_tab_data = window_tab_data.clone();
             move |result| {
+                if !response_current() {return;}
                 if let Ok(ProxyResponse::ReferencesResolveResponse { items }) =
                     result
                 {
@@ -2248,6 +2263,7 @@ impl EditorData {
             position,
             create_ext_action(self.scope, {
                 move |result| {
+                    if !request_current() {return;}
                     if let Ok(ProxyResponse::GotoImplementationResponse {
                         resp,
                         ..
