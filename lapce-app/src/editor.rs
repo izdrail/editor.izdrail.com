@@ -4202,6 +4202,29 @@ impl EditorData {
         );
     }
 
+    pub(crate) fn show_projection_code_lens(&self, line: usize) {
+        let origin = self.doc();
+        let Some((plugin_id, offset, lenses)) = origin.display_code_lenses().get(&line).cloned() else { return; };
+        let Some((source, source_offset)) = origin.projection_navigation_source(offset) else { return; };
+        let origin_id = origin.buffer_id; let origin_rev = origin.rev();
+        let source_id = source.buffer_id; let source_rev = source.rev();
+        let cursor = self.cursor(); let caret = cursor.with_untracked(|cursor| cursor.offset());
+        let editor = self.clone();
+        let guard = crate::rename::SourceRenameGuard::new(Rc::new(move || {
+            if !cursor.try_get_untracked().is_some_and(|cursor| cursor.offset() == caret) { return false; }
+            let current = editor.doc();
+            current.buffer_id == origin_id && current.rev() == origin_rev
+                && current.projection_navigation_source(offset).is_some_and(|(source, current_offset)| {
+                    source.buffer_id == source_id && source.rev() == source_rev && current_offset == source_offset
+                })
+        }));
+        self.common.internal_command.send(InternalCommand::ShowCodeActions {
+            offset, mouse_click: true, plugin_id,
+            code_actions: lenses.into_iter().filter_map(|lens| lens.command.map(lsp_types::CodeActionOrCommand::Command)).collect(),
+            guard: Some((self.id(), guard)),
+        });
+    }
+
     pub fn show_code_actions(&self, mouse_click: bool) {
         let offset = self.cursor().with_untracked(|c| c.offset());
         let Some((doc,source_offset,current))=self.navigation_request() else {return;};

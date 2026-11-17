@@ -1480,6 +1480,24 @@ impl Doc {
         });
     }
 
+    pub(crate) fn display_code_lenses(&self) -> AllCodeLens {
+        let Some(binding) = self.projection.get() else { return self.code_lens.get(); };
+        let docs = binding.docs.get();
+        let projection = binding.projection.borrow();
+        let mut result = AllCodeLens::new();
+        self.buffer.with(|buffer| {
+            for excerpt in &projection.excerpts {
+                let Some(source) = docs.get(&excerpt.source) else { continue; };
+                if source.buffer_id.0 != excerpt.buffer_id || source.buffer.with(|buffer| buffer.rev()) != excerpt.revision { continue; }
+                for (_, (plugin_id, source_offset, lenses)) in source.code_lens.get() {
+                    let Some(offset) = projected_lens_offset(excerpt.source_range.clone(), excerpt.display_range.start, source_offset) else { continue; };
+                    result.insert(buffer.line_of_offset(offset), (plugin_id, offset, lenses));
+                }
+            }
+        });
+        result
+    }
+
     pub fn get_code_lens(&self) {
         let cx = self.scope;
         let doc = self.clone();
@@ -3449,6 +3467,27 @@ mod toggle_comment_tests {
         let commented = toggle(text, "<!--", "-->");
         assert_eq!(commented, "<!-- a -->\n<!-- b -->");
         assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+}
+
+/// Code-lens line starts must belong to the excerpt, not its separator.
+fn projected_lens_offset(source: std::ops::Range<usize>, display_start: usize, offset: usize) -> Option<usize> {
+    source.contains(&offset).then(|| offset - source.start).and_then(|delta| display_start.checked_add(delta))
+}
+
+#[cfg(test)]
+mod projection_code_lens_tests {
+    use super::projected_lens_offset;
+    #[test] fn projection_code_lens_maps_canonical_offsets() {
+        assert_eq!(projected_lens_offset(280000..280100, 80, 280020), Some(100));
+        assert_eq!(projected_lens_offset(280000..280100, 80, 280000), Some(80));
+    }
+    #[test] fn projection_code_lens_refuses_headers_separators_and_empty() {
+        for offset in [19, 30, 31] { assert_eq!(projected_lens_offset(20..30, 80, offset), None); }
+        assert_eq!(projected_lens_offset(20..20, 80, 20), None);
+    }
+    #[test] fn projection_code_lens_refuses_overflow() {
+        assert_eq!(projected_lens_offset(20..30, usize::MAX, 21), None);
     }
 }
 

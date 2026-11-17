@@ -1650,6 +1650,7 @@ fn editor_gutter_breakpoints(
 
 fn editor_gutter_code_lens_view(
     window_tab_data: Rc<WindowTabData>,
+    e_data: RwSignal<EditorData>,
     line: usize,
     lens: (PluginId, usize, im::Vector<CodeLens>),
     screen_lines: RwSignal<ScreenLines>,
@@ -1681,8 +1682,13 @@ fn editor_gutter_code_lens_view(
     })
     .on_click_stop({
         move |_| {
-            let (plugin_id, offset, lens) = lens.clone();
-            window_tab_data.show_code_lens(true, plugin_id, offset, lens);
+            let editor = e_data.get_untracked();
+            if editor.doc().projection.get_untracked().is_some() {
+                editor.show_projection_code_lens(line);
+            } else {
+                let (plugin_id, offset, lens) = lens.clone();
+                window_tab_data.show_code_lens(true, plugin_id, offset, lens);
+            }
         }
     });
     container(view).style(move |s| {
@@ -1757,6 +1763,7 @@ fn editor_gutter_folding_view(
 
 fn editor_gutter_code_lens(
     window_tab_data: Rc<WindowTabData>,
+    e_data: RwSignal<EditorData>,
     doc: DocSignal,
     screen_lines: RwSignal<ScreenLines>,
     viewport: RwSignal<Rect>,
@@ -1767,12 +1774,13 @@ fn editor_gutter_code_lens(
     dyn_stack(
         move || {
             let doc = doc.get();
-            doc.code_lens.get()
+            doc.display_code_lenses()
         },
         move |(line, _)| (*line, doc.with_untracked(|doc| doc.rev())),
         move |(line, lens)| {
             editor_gutter_code_lens_view(
                 window_tab_data.clone(),
+                e_data,
                 line,
                 lens,
                 screen_lines,
@@ -1950,13 +1958,6 @@ fn editor_gutter(
         editor_gutter_breakpoints(window_tab_data.clone(), e_data, icon_padding),
         clip(
             stack((
-                editor_gutter_code_lens(
-                    window_tab_data.clone(),
-                    doc,
-                    screen_lines,
-                    viewport,
-                    icon_padding,
-                ),
                 editor_gutter_view(e_data.get_untracked(), gutter_padding_right)
                     .on_resize(move |rect| {
                         gutter_rect.set(rect);
@@ -1967,6 +1968,14 @@ fn editor_gutter(
                         }
                     })
                     .style(|s| s.size_pct(100.0, 100.0)),
+                editor_gutter_code_lens(
+                    window_tab_data.clone(),
+                    e_data,
+                    doc,
+                    screen_lines,
+                    viewport,
+                    icon_padding,
+                ),
                 editor_gutter_code_actions(e_data, gutter_width, icon_padding),
             ))
             .style(|s| s.size_pct(100.0, 100.0)),
