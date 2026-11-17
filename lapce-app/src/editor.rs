@@ -3057,6 +3057,12 @@ impl EditorData {
     }
 
     pub fn select_completion(&self) {
+        let source_guard = self.common.completion.with_untracked(|completion| completion.source_guard.clone());
+        if source_guard.as_ref().is_some_and(|guard| !guard.current())
+            || self.common.completion.with_untracked(|completion| completion.source_guard.is_some() && completion.latest_editor_id != Some(self.id())) {
+            self.cancel_completion();
+            return;
+        }
         let item = self
             .common
             .completion
@@ -3072,6 +3078,7 @@ impl EditorData {
                 let buffer = doc.buffer;
                 let content = doc.content;
                 let send = create_ext_action(self.scope, move |item| {
+                    if source_guard.as_ref().is_some_and(|guard| !guard.current()) { return; }
                     if editor.cursor().with_untracked(|c| c.offset() != offset) {
                         return;
                     }
@@ -3080,6 +3087,10 @@ impl EditorData {
                             content.path() != path.as_ref()
                         })
                     {
+                        return;
+                    }
+                    if let Some(guard) = source_guard {
+                        editor.common.internal_command.send(InternalCommand::ApplyProjectionCompletion { editor_id: editor.id(), item, guard });
                         return;
                     }
                     if let Err(err) = editor.apply_completion_item(&item) {
@@ -3129,6 +3140,16 @@ impl EditorData {
         start_offset: usize,
         offset: usize,
     ) -> im::Vector<crate::completion::ScoredCompletionItem> {
+        self.local_completion_items_for(&self.doc(), path, start_offset, offset)
+    }
+
+    fn local_completion_items_for(
+        &self,
+        doc: &Doc,
+        path: &std::path::Path,
+        start_offset: usize,
+        offset: usize,
+    ) -> im::Vector<crate::completion::ScoredCompletionItem> {
         use crate::{
             completion::ScoredCompletionItem,
             completion_sources::{
@@ -3136,7 +3157,6 @@ impl EditorData {
                 php_variable_items, profile_items, snippet_items, word_items,
             },
         };
-        let doc = self.doc();
         let (words, snippets, keywords, line_before, blade_vars, alpine_props, json_items, yaml_items) =
             doc.buffer.with_untracked(|buffer| {
                 let end_offset = buffer.next_code_boundary(offset);
@@ -3328,6 +3348,10 @@ impl EditorData {
     /// Update the displayed autocompletion box
     /// Sends a request to the LSP for completion information
     fn update_completion(&self, display_if_empty_input: bool) {
+        if self.doc().projection.get_untracked().is_some() {
+            self.update_projection_completion(display_if_empty_input);
+            return;
+        }
         if self.get_mode() != Mode::Insert {
             self.cancel_completion();
             return;
@@ -3485,6 +3509,44 @@ impl EditorData {
         });
     }
 
+    fn update_projection_completion(&self, display_if_empty_input: bool) {
+        self.cancel_completion();
+        if self.get_mode() != Mode::Insert { return; }
+        let Some((source, offset, current)) = self.navigation_request() else { return; };
+        if !source.loaded() { return; }
+        let Some(path) = source.content.with_untracked(|content| content.path().cloned()) else { return; };
+        let (start, input, trigger) = source.buffer.with_untracked(|buffer| {
+            let start = completion_word_start(buffer, Some(&path), offset);
+            let end = buffer.next_code_boundary(offset);
+            let trigger = start > 0 && matches!(buffer.text().byte_at(start-1), b'.' | b':');
+            (start, buffer.slice_to_cow(start..end).to_string(), trigger)
+        });
+        if !display_if_empty_input && input.is_empty() && !trigger { return; }
+        let origin = self.doc();
+        let display = self.cursor().with_untracked(|cursor| cursor.offset());
+        let Some(binding) = origin.projection.get_untracked() else { return; };
+        let Some(anchor) = binding.projection.borrow().navigation_anchor(display) else { return; };
+        let Some(range) = binding.projection.borrow().completion_display_range(&anchor, start..offset) else { return; };
+        let cursor = self.cursor();
+        let guard = crate::rename::SourceRenameGuard::new(Rc::new(move || {
+            cursor.try_get_untracked().is_some() && current()
+        }));
+        let locals = self.local_completion_items_for(&source, &path, start, offset);
+        let position = source.buffer.with_untracked(|buffer|buffer.offset_to_position(offset));
+        self.common.completion.update(|completion| {
+            completion.path = path.clone();
+            completion.offset = range.start;
+            completion.input = input.clone();
+            completion.status = CompletionStatus::Started;
+            completion.source_guard = Some(guard);
+            completion.input_items.clear();
+            completion.local_items = locals;
+            completion.request_id += 1;
+            completion.request(self.id(), &self.common.proxy, path, input, position);
+            completion.filter_items();
+        });
+    }
+
     /// Check if there are completions that are being rendered
     fn has_completions(&self) -> bool {
         self.common.completion.with_untracked(|completion| {
@@ -3493,7 +3555,45 @@ impl EditorData {
         })
     }
 
-    fn apply_completion_item(&self, item: &CompletionItem) -> anyhow::Result<()> {
+    pub(crate) fn apply_completion_item(&self, item: &CompletionItem) -> anyhow::Result<()> {
+        if self.doc().projection.get_untracked().is_some() {
+            let item = self.projection_completion_item(item)?;
+            self.apply_completion_item_to_view(&item)
+        } else { self.apply_completion_item_to_view(item) }
+    }
+
+    fn projection_completion_item(&self, item: &CompletionItem) -> anyhow::Result<CompletionItem> {
+        let origin = self.doc();
+        let display = self.cursor().with_untracked(|cursor| cursor.offset());
+        let (source, offset) = origin.projection_navigation_source(display).ok_or_else(||anyhow::anyhow!("stale completion source"))?;
+        let binding = origin.projection.get_untracked().ok_or_else(||anyhow::anyhow!("missing projection"))?;
+        let projection = binding.projection.borrow();
+        let anchor = projection.navigation_anchor(display).ok_or_else(||anyhow::anyhow!("completion header"))?;
+        let map = |edit: &lsp_types::TextEdit| -> anyhow::Result<lsp_types::TextEdit> {
+            let range = source.buffer.with_untracked(|buffer| {
+                let start = buffer.offset_of_position(&edit.range.start);
+                let end = buffer.offset_of_position(&edit.range.end);
+                (buffer.offset_to_position(start) == edit.range.start && buffer.offset_to_position(end) == edit.range.end).then_some(start..end)
+            }).ok_or_else(||anyhow::anyhow!("invalid completion range"))?;
+            let range = projection.completion_display_range(&anchor, range).ok_or_else(||anyhow::anyhow!("completion edit outside current excerpt"))?;
+            let range = origin.buffer.with_untracked(|buffer|lsp_types::Range::new(buffer.offset_to_position(range.start), buffer.offset_to_position(range.end)));
+            Ok(lsp_types::TextEdit::new(range, edit.new_text.clone()))
+        };
+        let mut mapped = item.clone();
+        let primary = match &item.text_edit {
+            Some(CompletionTextEdit::Edit(edit)) => edit.clone(),
+            Some(CompletionTextEdit::InsertAndReplace(_)) => anyhow::bail!("insert/replace completion not supported in excerpts"),
+            None => source.buffer.with_untracked(|buffer| {
+                let path = source.content.with_untracked(|content|content.path().cloned());
+                lsp_types::TextEdit::new(lsp_types::Range::new(buffer.offset_to_position(completion_word_start(buffer, path.as_deref(), offset)), buffer.offset_to_position(buffer.next_code_boundary(offset))), item.insert_text.clone().unwrap_or_else(||item.label.clone()))
+            }),
+        };
+        mapped.text_edit = Some(CompletionTextEdit::Edit(map(&primary)?));
+        mapped.additional_text_edits = item.additional_text_edits.as_ref().map(|edits|edits.iter().map(map).collect::<anyhow::Result<Vec<_>>>()).transpose()?;
+        Ok(mapped)
+    }
+
+    fn apply_completion_item_to_view(&self, item: &CompletionItem) -> anyhow::Result<()> {
         let doc = self.doc();
         let buffer = doc.buffer.get_untracked();
         let cursor = self.cursor().get_untracked();
@@ -3636,13 +3736,13 @@ impl EditorData {
         let old_cursor = cursor.mode.clone();
         let (b_text, delta, inval_lines) = self
             .doc()
-            .do_raw_edit(
+            .do_completion_raw_edit(
+                &cursor,
                 &[
                     &[(selection.clone(), text.as_str())][..],
                     &additional_edit[..],
                 ]
                 .concat(),
-                EditType::Completion,
             )
             .ok_or_else(|| anyhow::anyhow!("not edited"))?;
 
@@ -3720,7 +3820,7 @@ impl EditorData {
         let mut cursor = self.cursor().get_untracked();
         let doc = self.doc();
         let (text, delta, inval_lines) =
-            match doc.do_raw_edit(edits, EditType::Completion) {
+            match doc.do_completion_raw_edit(&cursor, edits) {
                 Some(e) => e,
                 None => return,
             };

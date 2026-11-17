@@ -1056,6 +1056,19 @@ mod projection_ime_tests {
 impl Projection {
     /// Rename's source range must belong to the same excerpt as its caret.
     /// Return display coordinates only for popup placement, never LSP input.
+    /// Completion edits may be disjoint, but all must remain inside the same
+    /// current excerpt as the caret. Never map an auto-import outside it.
+    pub(crate) fn completion_display_range(&self, anchor: &SourceAnchor, range: Range<usize>) -> Option<Range<usize>> {
+        if range.start > range.end { return None; }
+        let excerpt = self.excerpts.iter().find(|excerpt|
+            excerpt.source == anchor.source && excerpt.buffer_id == anchor.buffer_id && excerpt.revision == anchor.revision
+            && anchor.offset >= excerpt.source_range.start && anchor.offset <= excerpt.source_range.end
+            && range.start >= excerpt.source_range.start && range.end <= excerpt.source_range.end)?;
+        let display = excerpt.display_range.start + range.start - excerpt.source_range.start
+            ..excerpt.display_range.start + range.end - excerpt.source_range.start;
+        valid(&self.text, &display).then_some(display)
+    }
+
     pub(crate) fn rename_display_range(&self,anchor:&SourceAnchor,range:Range<usize>)->Option<Range<usize>> {
         if range.start>range.end || anchor.offset<range.start || anchor.offset>range.end {return None;}
         let excerpt=self.excerpts.iter().find(|e| e.source==anchor.source && e.buffer_id==anchor.buffer_id && e.revision==anchor.revision
@@ -1084,5 +1097,30 @@ mod projection_rename_tests {
     }
     #[test]fn refuses_ranges_outside_excerpt_or_split_unicode() {
         let (p,a)=fixture();for range in [0..15,11..20,13..15,10..15,15..11] {assert!(p.rename_display_range(&a,range).is_none());}
+    }
+}
+
+#[cfg(test)]
+mod projection_completion_tests {
+    use super::*;
+    fn fixture() -> (Projection, SourceAnchor) {
+        let source = Snapshot { path: "one.php".into(), buffer_id: 4, revision: 7, read_only: false, text: "omitted\nλname tail\n".into() };
+        let projection = Projection::build(&[source.clone()], &[(source.path.clone(), 8..source.text.len())], 4096).unwrap();
+        let anchor = SourceAnchor { source: source.path, buffer_id: 4, revision: 7, offset: 14 };
+        (projection, anchor)
+    }
+    #[test] fn maps_primary_and_disjoint_completion_edits_in_same_excerpt() {
+        let (p, a) = fixture(); let start = p.excerpts[0].display_range.start;
+        assert_eq!(p.completion_display_range(&a, 8..14), Some(start..start+6));
+        assert_eq!(p.completion_display_range(&a, 15..19), Some(start+7..start+11));
+    }
+    #[test] fn refuses_import_outside_excerpt_and_split_unicode() {
+        let (p, a) = fixture();
+        for range in [0..0, 7..10, 9..14, 14..100, 14..12] { assert!(p.completion_display_range(&a, range).is_none()); }
+    }
+    #[test] fn refuses_stale_or_other_source_completion() {
+        let (p, mut a) = fixture(); a.revision += 1;
+        assert!(p.completion_display_range(&a, 8..14).is_none()); a.revision = 7; a.source = "two.php".into();
+        assert!(p.completion_display_range(&a, 8..14).is_none());
     }
 }

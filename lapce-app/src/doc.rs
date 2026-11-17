@@ -778,6 +778,22 @@ impl Doc {
         Some(edit)
     }
 
+    /// Completion uses the same staged source transaction as native typing.
+    /// Keep the scratch read-only for callers without an explicit cursor.
+    pub(crate) fn do_completion_raw_edit(
+        &self,
+        cursor: &Cursor,
+        edits: &[(impl AsRef<Selection>, &str)],
+    ) -> Option<(Rope, RopeDelta, InvalLines)> {
+        if self.projection.get_untracked().is_none() {
+            return self.do_raw_edit(edits, EditType::Completion);
+        }
+        let mut cursor = cursor.clone();
+        self.edit_projection(&mut cursor, |buffer, _| {
+            vec![buffer.edit(edits, EditType::Completion)]
+        })?.into_iter().next()
+    }
+
     pub fn do_raw_edit(
         &self,
         edits: &[(impl AsRef<Selection>, &str)],

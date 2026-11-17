@@ -936,6 +936,11 @@ pub enum InternalCommand {
         mode: RunDebugMode,
         config: RunDebugConfig,
     },
+    ApplyProjectionCompletion {
+        editor_id: floem::views::editor::id::EditorId,
+        item: lsp_types::CompletionItem,
+        guard: crate::rename::SourceRenameGuard,
+    },
     ApplySourceFormat {
         editor_id: floem::views::editor::id::EditorId,
         edit: lsp_types::WorkspaceEdit,

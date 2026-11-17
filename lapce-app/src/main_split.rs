@@ -1368,24 +1368,15 @@ impl MainSplitData {
                     );
                 }
             }
-            if let DocContent::Scratch { name, .. } = content {
+            if let DocContent::Scratch { .. } = content {
                 let doc_exists = self.editors.with_editors_untracked(|editors| {
-                    editors.iter().any(|(_, editor_data)| {
-                        let doc = editor_data.doc();
-
-                        if let DocContent::Scratch {
-                            name: current_name, ..
-                        } = &doc.content.get_untracked()
-                        {
-                            current_name == &name
-                        } else {
-                            false
-                        }
-                    })
+                    editors.values().any(|editor| editor.doc().buffer_id == doc.buffer_id)
                 });
                 if !doc_exists {
+                    // Result views can change their title after insertion. The
+                    // registry key is not their identity, and may still be Untitled.
                     self.scratch_docs.update(|scratch_docs| {
-                        scratch_docs.remove(&name);
+                        scratch_docs.retain(|_, current| current.buffer_id != doc.buffer_id);
                     });
                 }
             }

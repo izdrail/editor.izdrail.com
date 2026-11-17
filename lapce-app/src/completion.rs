@@ -50,6 +50,7 @@ pub struct CompletionData {
     pub status: CompletionStatus,
     /// The current request id. This is used to discard old requests.
     pub request_id: usize,
+    pub source_guard: Option<crate::rename::SourceRenameGuard>,
     /// An input id that is used for keeping track of whether the input has changed.
     pub input_id: usize,
     // TODO: A `PathBuf` has the issue that the proxy may not have the same format.
@@ -86,6 +87,7 @@ impl CompletionData {
         Self {
             status: CompletionStatus::Inactive,
             request_id: 0,
+            source_guard: None,
             input_id: 0,
             path: PathBuf::new(),
             offset: 0,
@@ -113,6 +115,11 @@ impl CompletionData {
         // If we've been canceled or the request id is old, ignore the response.
         if self.status == CompletionStatus::Inactive || self.request_id != request_id
         {
+            return;
+        }
+
+        if self.source_guard.as_ref().is_some_and(|guard| !guard.current()) {
+            self.cancel();
             return;
         }
 
@@ -157,6 +164,7 @@ impl CompletionData {
             return;
         }
         self.status = CompletionStatus::Inactive;
+        self.source_guard = None;
         self.input_id = 0;
         self.latest_editor_id = None;
         self.active.set(0);

@@ -2183,6 +2183,13 @@ impl WindowTabData {
             InternalCommand::RunCodeAction { plugin_id, action,guard } => {
                 self.main_split.run_code_action(plugin_id, action,guard);
             }
+            InternalCommand::ApplyProjectionCompletion { editor_id, item, guard } => {
+                if let Some(editor) = self.main_split.active_editor.get_untracked().filter(|editor|editor.id() == editor_id) {
+                    if guard.current() {
+                        if let Err(err) = editor.apply_completion_item(&item) { tracing::error!("{:?}",err); }
+                    }
+                }
+            }
             InternalCommand::ApplySourceFormat { editor_id, edit, guard } => {
                 let active = self.main_split.active_editor.get_untracked();
                 if active.is_some_and(|editor| editor.id() == editor_id) && guard.current() {
@@ -2471,7 +2478,12 @@ impl WindowTabData {
                 resp,
                 plugin_id,
             } => {
+                let active_id = self.main_split.active_editor.get_untracked().map(|editor|editor.id());
                 self.common.completion.update(|completion| {
+                    if completion.source_guard.is_some() && completion.latest_editor_id != active_id {
+                        completion.cancel();
+                        return;
+                    }
                     completion.receive(*request_id, input, resp, *plugin_id);
                 });
 
