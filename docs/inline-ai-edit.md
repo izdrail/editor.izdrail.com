@@ -34,10 +34,7 @@ confirm.
 
 ## Prompt budget
 
-Every request is bounded: the selection is clipped at 8 KB, the
-surrounding context at 4 KB and the instruction at 1 KB, always on a char
-boundary with an explicit truncation marker, so a whole-file selection can
-never blow up the request.
+The selected code must fit in 8,000 UTF-8 bytes and the instruction in 1,000 bytes. Larger selections show a notice without contacting the model or changing source; select less code and reopen. Longer instructions stay in the input so you can shorten them and press Enter again. Neither selected code nor instructions are silently truncated during an edit. Surrounding context alone may be clipped at 4,000 bytes on a character boundary with an explicit marker.
 
 ## Keybindings
 

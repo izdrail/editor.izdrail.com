@@ -3500,19 +3500,26 @@ fn rename(window_tab_data: Rc<WindowTabData>) -> impl View {
 fn inline_ai_edit(window_tab_data: Rc<WindowTabData>) -> impl View {
     let editor = window_tab_data.inline_ai_edit.editor.clone();
     let active = window_tab_data.inline_ai_edit.active;
+    let notice = window_tab_data.inline_ai_edit.notice;
     let layout_rect = window_tab_data.inline_ai_edit.layout_rect;
     let config = window_tab_data.common.config;
 
     container(
-        container(
-            TextInputBuilder::new()
+        stack((
+            container(TextInputBuilder::new()
                 .is_focused(move || active.get())
                 .build_editor(editor)
-                .style(|s| s.width(300.0)),
-        )
+                .style(|s| s.width(300.0))),
+            label(move || notice.get()).style(move |s| s
+                .width(360.0).flex_shrink(0.0)
+                .min_height(config.get().editor.font_size() as f32 * 3.0 + 12.0)
+                .padding_vert(6.0)
+                .color(config.get().color(LapceColor::LAPCE_WARN))
+                .apply_if(notice.get().is_empty(), |s| s.hide())),
+        ))
         .style(move |s| {
             let config = config.get();
-            s.font_family(config.editor.font_family.clone())
+            s.flex_col().font_family(config.editor.font_family.clone())
                 .font_size(config.editor.font_size() as f32)
                 .border(1.0)
                 .border_radius(6.0)

@@ -40,6 +40,7 @@ pub const INLINE_EDIT_INSTRUCTION_CAP: usize = 1_000;
 #[derive(Clone, Debug)]
 pub struct InlineAiEditData {
     pub active: RwSignal<bool>,
+    pub notice: RwSignal<String>,
     context: RwSignal<Option<InlineEditContext>>,
     generation: RwSignal<u64>,
     pub editor: EditorData,
@@ -109,6 +110,7 @@ impl InlineAiEditData {
         let editor = editors.make_local(cx, common.clone());
         Self {
             active,
+            notice: cx.create_rw_signal(String::new()),
             context: cx.create_rw_signal(None),
             generation: cx.create_rw_signal(0),
             editor,
@@ -133,8 +135,14 @@ impl InlineAiEditData {
     ) {
         self.generation.update(|generation| *generation = generation.wrapping_add(1));
         self.context.set(None);
-        let Some(context) = capture_inline_edit_context(&target, start..end, rev, active) else { return; };
-        self.context.set(Some(context));
+        self.notice.set(String::new());
+        let over_budget = inline_edit_budget(end.saturating_sub(start), 0);
+        if let Some(notice) = over_budget {
+            self.notice.set(notice.into());
+        } else {
+            let Some(context) = capture_inline_edit_context(&target, start..end, rev, active) else { return; };
+            self.context.set(Some(context));
+        }
         self.editor.doc().reload(Rope::from(""), true);
         self.editor
             .cursor()
@@ -186,6 +194,12 @@ impl InlineAiEditData {
             .buffer
             .with_untracked(|buffer| buffer.to_string());
         let instruction = instruction.trim().to_string();
+        let Some(context) = self.context.get_untracked() else { return; };
+        if let Some(notice) = inline_edit_budget(context.code.len(), instruction.len()) {
+            self.notice.set(notice.into());
+            return;
+        }
+        self.notice.set(String::new());
         self.active.set(false);
         if let Focus::InlineAiEdit = self.common.focus.get_untracked() {
             self.common.focus.set(Focus::Workbench);
@@ -201,7 +215,6 @@ impl InlineAiEditData {
             return;
         };
         let (start, end, rev) = (self.start.get_untracked(), self.end.get_untracked(), self.rev.get_untracked());
-        let Some(context) = self.context.get_untracked() else { return; };
         if !context.guard.current() { return; }
         let messages = inline_edit_messages(&context.code, &instruction, &context.context);
         let generation = self.generation.get_untracked();
@@ -505,5 +518,27 @@ mod inline_replacement_tests {
     #[test] fn inline_replacement_does_not_add_newline_to_partial_selection_or_empty_reply() {
         assert_eq!(inline_edit_replacement("old", "new\n"), "new");
         assert_eq!(inline_edit_replacement("old\n", ""), "");
+    }
+}
+
+/// Never replace a larger selection using only its truncated prefix, or silently
+/// discard the tail of the user's instruction. Context may still be clipped.
+fn inline_edit_budget(code_bytes: usize, instruction_bytes: usize) -> Option<&'static str> {
+    if code_bytes > INLINE_EDIT_CODE_CAP { Some("Selection exceeds 8,000 bytes. Select less code and reopen.") }
+    else if instruction_bytes > INLINE_EDIT_INSTRUCTION_CAP { Some("Instruction exceeds 1,000 bytes. Shorten it and press Enter.") }
+    else { None }
+}
+#[cfg(test)]
+mod inline_budget_tests {
+    use super::*;
+    #[test] fn inline_budget_accepts_exact_limits_and_refuses_one_byte_over() {
+        assert!(inline_edit_budget(8000, 1000).is_none());
+        assert!(inline_edit_budget(8001, 1000).unwrap().starts_with("Selection"));
+        assert!(inline_edit_budget(8000, 1001).unwrap().starts_with("Instruction"));
+    }
+    #[test] fn inline_budget_counts_utf8_bytes_not_characters_and_checks_code_first() {
+        assert!(inline_edit_budget("λ".repeat(4000).len(), 1).is_none());
+        assert!(inline_edit_budget("λ".repeat(4001).len(), 2000).unwrap().starts_with("Selection"));
+        assert!(inline_edit_budget(1, "😀".repeat(251).len()).unwrap().starts_with("Instruction"));
     }
 }
