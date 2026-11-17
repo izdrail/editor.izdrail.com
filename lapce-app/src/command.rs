@@ -936,6 +936,11 @@ pub enum InternalCommand {
         mode: RunDebugMode,
         config: RunDebugConfig,
     },
+    ApplySourceFormat {
+        editor_id: floem::views::editor::id::EditorId,
+        edit: lsp_types::WorkspaceEdit,
+        guard: crate::rename::SourceRenameGuard,
+    },
     ApplySourceRename {
         edit: WorkspaceEdit,
         guard: crate::rename::SourceRenameGuard,

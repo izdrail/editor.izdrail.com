@@ -4090,6 +4090,12 @@ impl EditorData {
     }
 
     pub fn format(&self) {
+        // A projection is not a file. Format only the complete canonical file
+        // beneath the caret, never aggregate headers or the other excerpts.
+        if self.doc().projection.get_untracked().is_some() {
+            self.format_projection_source();
+            return;
+        }
         let doc = self.doc();
         let rev = doc.rev();
         let content = doc.content.get_untracked();
@@ -4119,6 +4125,32 @@ impl EditorData {
                 send(result);
             });
         }
+    }
+
+    fn format_projection_source(&self) {
+        let Some((doc, _, current)) = self.navigation_request() else { return; };
+        if !doc.loaded() { return; }
+        let Some(path) = doc.content.with_untracked(|content| content.path().cloned()) else { return; };
+        let guard = crate::rename::SourceRenameGuard::new(current);
+        let editor_id = self.id();
+        let internal_command = self.common.internal_command;
+        let format_path = path.clone();
+        let send = create_ext_action(self.scope, move |result| {
+            if !guard.current() { return; }
+            if let Ok(Ok(ProxyResponse::GetDocumentFormatting { edits })) = result {
+                if let Some(edit) = source_format_edit(&path, edits) {
+                    internal_command.send(InternalCommand::ApplySourceFormat { editor_id, edit, guard });
+                }
+            }
+        });
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let proxy = self.common.proxy.clone();
+        std::thread::spawn(move || {
+            proxy.get_document_formatting(format_path, move |result| {
+                if let Err(err) = tx.send(result) { tracing::error!("{:?}", err); }
+            });
+            send(rx.recv_timeout(std::time::Duration::from_secs(1)));
+        });
     }
 
     fn search_whole_word_forward(&self, mods: Modifiers) {
@@ -6249,5 +6281,48 @@ mod code_action_context_tests {
         assert_eq!(containing_spans(&sp, 5), vec![1]);
         let empty = spans(&[]);
         assert!(containing_spans(&empty, 10).is_empty());
+    }
+}
+
+/// Keep formatter edits in canonical coordinates, including edits outside the
+/// visible excerpt. The existing workspace-edit path owns source Undo/Redo.
+fn source_format_edit(path: &std::path::Path, edits: Vec<lsp_types::TextEdit>) -> Option<lsp_types::WorkspaceEdit> {
+    if edits.is_empty() { return None; }
+    let uri = lsp_types::Url::from_file_path(path).ok()?;
+    Some(lsp_types::WorkspaceEdit {
+        changes: Some([(uri, edits)].into_iter().collect()),
+        ..Default::default()
+    })
+}
+
+#[cfg(test)]
+mod projection_format_tests {
+    use super::source_format_edit;
+    use lsp_types::{Position, Range, TextEdit, Url};
+
+    #[test]
+    fn canonical_file_keeps_edits_outside_excerpt_and_unicode_path() {
+        let path = std::path::Path::new("/tmp/format space/日本語.php");
+        let edits = vec![TextEdit::new(Range::new(Position::new(0, 0), Position::new(0, 0)), "<?php\n".into()), TextEdit::new(Range::new(Position::new(12342, 9), Position::new(12342, 15)), "FIXED".into())];
+        let edit = source_format_edit(path, edits.clone()).unwrap();
+        let changes = edit.changes.unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[&Url::from_file_path(path).unwrap()], edits);
+    }
+
+    #[test]
+    fn empty_format_response_does_not_open_a_source() {
+        assert!(source_format_edit(std::path::Path::new("/tmp/one.php"), vec![]).is_none());
+    }
+
+    #[test]
+    fn late_format_response_uses_live_origin_guard() {
+        use std::{cell::Cell, rc::Rc};
+        let revision = Rc::new(Cell::new(7));
+        let live = revision.clone();
+        let guard = crate::rename::SourceRenameGuard::new(Rc::new(move || live.get() == 7));
+        assert!(guard.current());
+        revision.set(8);
+        assert!(!guard.current());
     }
 }
