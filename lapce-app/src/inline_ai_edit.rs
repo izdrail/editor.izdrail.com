@@ -300,7 +300,7 @@ pub fn strip_code_fence(text: &str) -> String {
             None => "",
         }
     } else {
-        trimmed
+        text
     };
     // Drop a closing fence only when it is the last non-empty content.
     let body = if body.trim_end().ends_with("```") {
@@ -314,7 +314,15 @@ pub fn strip_code_fence(text: &str) -> String {
     } else {
         body
     };
-    body.trim().to_string()
+    // Blank wrapper lines are not code, but indentation on the first code
+    // line is. trim() used to silently outdent that line (notably in Python).
+    let body = body.trim_end();
+    let mut start = 0;
+    for line in body.split_inclusive('\n') {
+        if !line.trim().is_empty() { break; }
+        start += line.len();
+    }
+    body[start..].to_string()
 }
 
 /// Chat messages for one inline edit request. Bounded: the selection,
@@ -574,5 +582,21 @@ mod inline_completion_tests {
         let text = "  λ();\r\n";
         assert_eq!(completed_inline_edit(Ok(()), text.into()).unwrap(), text);
         assert_eq!(completed_inline_edit(Ok(()), String::new()).unwrap(), "");
+    }
+}
+
+#[cfg(test)]
+mod inline_indentation_tests {
+    use super::*;
+    #[test] fn first_code_line_indentation_survives_plain_and_fenced_replies() {
+        for reply in ["    return 42;\n", "```php\n    return 42;\n```", "\n  \n    return 42;\n", "\treturn 42;\n"] {
+            let indent = if reply.starts_with('\t') { "\t" } else { "    " };
+            assert_eq!(inline_edit_replacement("    old;\n", reply), format!("{indent}return 42;\n"));
+        }
+    }
+    #[test] fn multiline_relative_indentation_and_unicode_are_preserved() {
+        assert_eq!(strip_code_fence("```python\n    if λ:\n        run()\n```"), "    if λ:\n        run()");
+        assert_eq!(strip_code_fence(" \n\t\r\n"), "");
+        assert_eq!(inline_edit_replacement("old\r\n", "    λ();\r\n"), "    λ();\r\n");
     }
 }

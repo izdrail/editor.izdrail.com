@@ -50,3 +50,6 @@ An incomplete or failed model response never changes source, even if some code
 arrived before the error. When the original editor and selection are still
 current, a failure notice keeps the instruction available for Enter to retry.
 Moving to a different editor or panel does not reopen the input or steal focus.
+
+Replacement code retains the first code line's indentation, including tabs.
+Blank wrapper lines and markdown fences are removed without outdenting code.
