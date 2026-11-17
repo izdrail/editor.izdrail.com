@@ -202,6 +202,70 @@ impl EditorViewKind {
     }
 }
 
+/// Excerpts use the editor's replace-word acceptance behavior. A server's
+/// insert/replace pair must still satisfy both LSP ranges before mapping.
+fn projection_completion_replace_edit(
+    edit: &lsp_types::InsertReplaceEdit,
+    caret: lsp_types::Position,
+) -> Option<lsp_types::TextEdit> {
+    let insert = edit.insert;
+    let replace = edit.replace;
+    (insert.start == replace.start
+        && insert.start.line == insert.end.line
+        && replace.start.line == replace.end.line
+        && insert.start.line == caret.line
+        && insert.start.character <= caret.character
+        && caret.character <= insert.end.character
+        && insert.end.character <= replace.end.character)
+        .then(|| lsp_types::TextEdit::new(replace, edit.new_text.clone()))
+}
+
+#[cfg(test)]
+mod projection_insert_replace_tests {
+    use super::projection_completion_replace_edit;
+    use lsp_types::{InsertReplaceEdit, Position, Range};
+    fn pos(character: u32) -> Position { Position::new(12342, character) }
+    fn edit() -> InsertReplaceEdit {
+        InsertReplaceEdit { new_text: "replacement".into(), insert: Range::new(pos(9), pos(12)), replace: Range::new(pos(9), pos(15)) }
+    }
+    #[test]
+    fn projection_insert_replace_accepts_canonical_prefix_and_preserves_text() {
+        let edit = edit();
+        let mapped = projection_completion_replace_edit(&edit, pos(12)).unwrap();
+        assert_eq!(mapped.range, edit.replace);
+        assert_eq!(mapped.new_text, "replacement");
+        assert!(projection_completion_replace_edit(&edit, pos(9)).is_some());
+    }
+    #[test]
+    fn projection_insert_replace_accepts_equal_and_empty_ranges() {
+        let mut edit = edit(); edit.replace = edit.insert;
+        assert!(projection_completion_replace_edit(&edit, pos(12)).is_some());
+        edit.insert = Range::new(pos(9), pos(9)); edit.replace = edit.insert;
+        assert!(projection_completion_replace_edit(&edit, pos(9)).is_some());
+    }
+    #[test]
+    fn projection_insert_replace_refuses_malformed_pairs() {
+        let base = edit();
+        for variant in 0..5 {
+            let mut edit = base.clone();
+            match variant {
+                0 => edit.replace.start = pos(8),
+                1 => edit.insert.end = pos(16),
+                2 => edit.insert.end.line += 1,
+                3 => edit.replace.end.line += 1,
+                _ => edit.insert.end = pos(8),
+            }
+            assert!(projection_completion_replace_edit(&edit, pos(12)).is_none(), "variant {variant}");
+        }
+    }
+    #[test]
+    fn projection_insert_replace_refuses_caret_outside_insert() {
+        for caret in [pos(8), pos(13), Position::new(4, 12)] {
+            assert!(projection_completion_replace_edit(&edit(), caret).is_none());
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct OnScreenFind {
     pub active: bool,
@@ -3582,7 +3646,15 @@ impl EditorData {
         let mut mapped = item.clone();
         let primary = match &item.text_edit {
             Some(CompletionTextEdit::Edit(edit)) => edit.clone(),
-            Some(CompletionTextEdit::InsertAndReplace(_)) => anyhow::bail!("insert/replace completion not supported in excerpts"),
+            Some(CompletionTextEdit::InsertAndReplace(edit)) => {
+                let position = source.buffer.with_untracked(|buffer| buffer.offset_to_position(offset));
+                let replace = projection_completion_replace_edit(edit, position)
+                    .ok_or_else(|| anyhow::anyhow!("invalid insert/replace completion"))?;
+                // Both alternatives must round-trip in the source and fit the
+                // current excerpt, even though acceptance uses replace semantics.
+                map(&lsp_types::TextEdit::new(edit.insert, String::new()))?;
+                replace
+            },
             None => source.buffer.with_untracked(|buffer| {
                 let path = source.content.with_untracked(|content|content.path().cloned());
                 lsp_types::TextEdit::new(lsp_types::Range::new(buffer.offset_to_position(completion_word_start(buffer, path.as_deref(), offset)), buffer.offset_to_position(buffer.next_code_boundary(offset))), item.insert_text.clone().unwrap_or_else(||item.label.clone()))
