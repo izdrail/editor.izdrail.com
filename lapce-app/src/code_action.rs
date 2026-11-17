@@ -49,6 +49,7 @@ pub struct CodeActionData {
     pub filtered_items: im::Vector<ScoredCodeActionItem>,
     pub layout_rect: Rect,
     pub mouse_click: bool,
+    guard: Option<crate::rename::SourceRenameGuard>,
     pub common: Rc<CommonData>,
 }
 
@@ -99,6 +100,7 @@ impl CodeActionData {
             filtered_items: im::Vector::new(),
             layout_rect: Rect::ZERO,
             mouse_click: false,
+            guard: None,
             common,
         };
 
@@ -170,7 +172,10 @@ impl CodeActionData {
         code_actions: im::Vector<CodeActionOrCommand>,
         offset: usize,
         mouse_click: bool,
+        guard: Option<crate::rename::SourceRenameGuard>,
     ) {
+        if !source_action_current(&guard) {return;}
+        self.guard=guard;
         self.active.set(0);
         self.status.set(CodeActionStatus::Active);
         self.offset = offset;
@@ -195,12 +200,14 @@ impl CodeActionData {
     }
 
     pub fn select(&self) {
+        if !source_action_current(&self.guard) {self.cancel();return;}
         if let Some(item) = self.filtered_items.get(self.active.get_untracked()) {
             self.common
                 .internal_command
                 .send(InternalCommand::RunCodeAction {
                     plugin_id: item.plugin_id,
                     action: item.item.clone(),
+                    guard:self.guard.clone(),
                 });
         }
         self.cancel();
@@ -229,5 +236,26 @@ impl CodeActionData {
             _ => return CommandExecuted::No,
         }
         CommandExecuted::Yes
+    }
+}
+
+
+/// Shared gate for menu selection, immediate execution and delayed resolve.
+pub(crate) fn source_action_current(guard:&Option<crate::rename::SourceRenameGuard>)->bool {
+    guard.as_ref().is_none_or(|guard|guard.current())
+}
+#[cfg(test)]
+mod projection_code_action_tests {
+    use super::*;
+    #[test]fn code_lens_without_source_guard_keeps_existing_behavior() {assert!(source_action_current(&None));}
+    #[test]fn stale_source_refuses_menu_selection_and_delayed_resolve() {
+        let rev=Rc::new(std::cell::Cell::new(7));let live=rev.clone();
+        let guard=Some(crate::rename::SourceRenameGuard::new(Rc::new(move ||live.get()==7)));
+        assert!(source_action_current(&guard));let resolve=guard.clone();rev.set(8);assert!(!source_action_current(&guard));assert!(!source_action_current(&resolve));
+    }
+    #[test]fn active_editor_change_refuses_even_unchanged_source() {
+        let active=Rc::new(std::cell::Cell::new(true));let live=active.clone();
+        let guard=Some(crate::rename::SourceRenameGuard::new(Rc::new(||true)).restrict(Rc::new(move ||live.get())));
+        assert!(source_action_current(&guard));active.set(false);assert!(!source_action_current(&guard));
     }
 }

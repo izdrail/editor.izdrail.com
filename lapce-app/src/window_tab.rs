@@ -2172,13 +2172,16 @@ impl WindowTabData {
                 mouse_click,
                 plugin_id,
                 code_actions,
+                guard,
             } => {
+                let active_editor=self.main_split.active_editor;
+                let guard=guard.map(|(editor_id,guard)|guard.restrict(Rc::new(move ||active_editor.get_untracked().is_some_and(|editor|editor.id()==editor_id))));
                 let mut code_action = self.code_action.get_untracked();
-                code_action.show(plugin_id, code_actions, offset, mouse_click);
+                code_action.show(plugin_id, code_actions, offset, mouse_click,guard);
                 self.code_action.set(code_action);
             }
-            InternalCommand::RunCodeAction { plugin_id, action } => {
-                self.main_split.run_code_action(plugin_id, action);
+            InternalCommand::RunCodeAction { plugin_id, action,guard } => {
+                self.main_split.run_code_action(plugin_id, action,guard);
             }
             InternalCommand::ApplySourceRename { edit, guard } => {
                 if guard.current() {self.main_split.apply_workspace_edit(&edit);}
@@ -4516,6 +4519,7 @@ impl WindowTabData {
             .internal_command
             .send(InternalCommand::ShowCodeActions {
                 offset,
+                guard:None,
                 mouse_click,
                 plugin_id,
                 code_actions: lens

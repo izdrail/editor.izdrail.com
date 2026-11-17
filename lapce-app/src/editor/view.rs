@@ -1849,9 +1849,8 @@ fn editor_gutter_code_actions(
         let doc = doc.get();
         let (offset, affinity) =
             cursor.with(|cursor| (cursor.offset(), cursor.affinity));
-        let has_code_actions = doc
-            .code_actions()
-            .with(|c| c.get(&offset).map(|c| !c.1.is_empty()).unwrap_or(false));
+        let source=if doc.projection.get().is_some() {doc.projection_navigation_source(offset)} else {Some((doc,offset))};
+        let has_code_actions=source.is_some_and(|(source,offset)|source.code_actions().with(|c|c.get(&offset).is_some_and(|c|!c.1.is_empty())));
         if has_code_actions {
             let vline = ed.vline_of_offset(offset, affinity);
             Some(vline)

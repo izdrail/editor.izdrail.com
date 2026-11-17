@@ -2244,7 +2244,8 @@ impl MainSplitData {
         Some(())
     }
 
-    pub fn run_code_action(&self, plugin_id: PluginId, action: CodeActionOrCommand) {
+    pub fn run_code_action(&self, plugin_id: PluginId, action: CodeActionOrCommand,guard:Option<crate::rename::SourceRenameGuard>) {
+        if !crate::code_action::source_action_current(&guard) {return;}
         match action {
             CodeActionOrCommand::Command(command) => {
                 self.run_code_lens(
@@ -2256,7 +2257,7 @@ impl MainSplitData {
                 if let Some(edit) = action.edit.as_ref() {
                     self.apply_workspace_edit(edit);
                 } else {
-                    self.resolve_code_action(plugin_id, action);
+                    self.resolve_code_action(plugin_id, action,guard);
                 }
             }
         }
@@ -2267,10 +2268,10 @@ impl MainSplitData {
     }
 
     /// Resolve a code action and apply its held workspace edit
-    fn resolve_code_action(&self, plugin_id: PluginId, action: CodeAction) {
+    fn resolve_code_action(&self, plugin_id: PluginId, action: CodeAction,guard:Option<crate::rename::SourceRenameGuard>) {
         let main_split = self.clone();
         let send = create_ext_action(self.scope, move |edit| {
-            main_split.apply_workspace_edit(&edit);
+            if crate::code_action::source_action_current(&guard) {main_split.apply_workspace_edit(&edit);}
         });
         self.common
             .proxy

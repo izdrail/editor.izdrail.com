@@ -3875,7 +3875,7 @@ impl EditorData {
     }
 
     pub fn get_code_actions(&self) {
-        let doc = self.doc();
+        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -3885,7 +3885,6 @@ impl EditorData {
             None => return,
         };
 
-        let offset = self.cursor().with_untracked(|c| c.offset());
         let exists = doc
             .code_actions()
             .with_untracked(|c| c.contains_key(&offset));
@@ -3922,7 +3921,8 @@ impl EditorData {
             move |resp: (PluginId, CodeActionResponse)| {
                 if doc.rev() == rev {
                     doc.code_actions().update(|c| {
-                        c.insert(offset, (resp.0, resp.1.into()));
+                        if request_current() {c.insert(offset, (resp.0, resp.1.into()));}
+                        else {c.remove(&offset);}
                     });
                 }
             },
@@ -3957,10 +3957,12 @@ impl EditorData {
 
     pub fn show_code_actions(&self, mouse_click: bool) {
         let offset = self.cursor().with_untracked(|c| c.offset());
-        let doc = self.doc();
+        let Some((doc,source_offset,current))=self.navigation_request() else {return;};
+        let guard=crate::rename::SourceRenameGuard::new(current);
+        let editor_id=self.id();
         let code_actions = doc
             .code_actions()
-            .with_untracked(|c| c.get(&offset).cloned());
+            .with_untracked(|c| c.get(&source_offset).cloned());
         if let Some((plugin_id, code_actions)) = code_actions {
             if !code_actions.is_empty() {
                 self.common.internal_command.send(
@@ -3969,6 +3971,7 @@ impl EditorData {
                         mouse_click,
                         plugin_id,
                         code_actions,
+                        guard:Some((editor_id,guard)),
                     },
                 );
             }
@@ -6205,6 +6208,15 @@ fn find_hint(mut pre_hint_len: u32, index: u32, hint: &InlayHint) -> FindHintRs 
 
 #[cfg(test)]
 mod code_action_context_tests {
+    #[test]fn projection_code_action_context_uses_canonical_offset_not_header_offset() {
+        use crate::multibuffer::{Projection,Snapshot};
+        use lapce_xi_rope::{spans::SpansBuilder,Interval};
+        let source=Snapshot{path:"one.php".into(),buffer_id:4,revision:7,read_only:false,text:format!("{}$first = BROKEN;\n","// omitted\n".repeat(100))};
+        let at=source.text.find("$first").unwrap();let projection=Projection::build(&[source.clone()],&[(source.path.clone(),at..source.text.len())],4096).unwrap();
+        let display=projection.excerpts[0].display_range.start+9;let anchor=projection.navigation_anchor(display).unwrap();
+        let mut spans=SpansBuilder::new(source.text.len());spans.add_span(Interval::new(at+9,at+15),1);let spans=spans.build();
+        assert_eq!(super::containing_spans(&spans,anchor.offset),vec![1]);assert!(super::containing_spans(&spans,display).is_empty());assert!(projection.navigation_anchor(0).is_none());
+    }
     use super::containing_spans;
     use lapce_xi_rope::{Interval, spans::Spans, spans::SpansBuilder};
 

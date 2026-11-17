@@ -922,10 +922,12 @@ pub enum InternalCommand {
         mouse_click: bool,
         plugin_id: PluginId,
         code_actions: im::Vector<CodeActionOrCommand>,
+        guard: Option<(floem::views::editor::id::EditorId,crate::rename::SourceRenameGuard)>,
     },
     RunCodeAction {
         plugin_id: PluginId,
         action: CodeActionOrCommand,
+        guard: Option<crate::rename::SourceRenameGuard>,
     },
     ApplyWorkspaceEdit {
         edit: WorkspaceEdit,
