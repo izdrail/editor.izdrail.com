@@ -23,6 +23,7 @@ pub struct Excerpt {
 pub struct Projection {
     pub text: String,
     pub excerpts: Vec<Excerpt>,
+    message_rows: Vec<String>,
 }
 #[derive(Clone, Debug)]
 pub struct DisplayEdit { pub range: Range<usize>, pub replacement: String }
@@ -91,6 +92,39 @@ impl Projection {
         }
         Ok(view)
     }
+    /// Add protected snapshot rows before each excerpt without changing the
+    /// canonical source bytes. Rows stay frozen until the preview is reopened.
+    pub(crate) fn with_diagnostic_rows(self, diagnostics: &[(PathBuf, usize, String)], byte_limit: usize) -> Result<Self, &'static str> {
+        let rows = self.excerpts.iter().map(|excerpt| {
+            diagnostics.iter().filter(|(path, offset, _)| path == &excerpt.source
+                && (excerpt.source_range.contains(offset) || (excerpt.source_range.is_empty() && *offset == excerpt.source_range.start)))
+                .map(|(_, _, row)| row.as_str()).collect::<String>()
+        }).collect();
+        self.with_message_rows(rows, byte_limit)
+    }
+
+    fn with_message_rows(mut self, rows: Vec<String>, byte_limit: usize) -> Result<Self, &'static str> {
+        if rows.len() != self.excerpts.len() { return Err("Diagnostic row identity changed; reopen the preview"); }
+        let extra = rows.iter().try_fold(0usize, |sum, row| sum.checked_add(row.len())).ok_or("Projection size overflow")?;
+        if extra > byte_limit.saturating_sub(self.text.len()) { return Err("Diagnostic rows exceed the preview budget"); }
+        let mut text = String::with_capacity(self.text.len() + extra);
+        let mut previous = 0;
+        for (excerpt, row) in self.excerpts.iter_mut().zip(&rows) {
+            let old_start = excerpt.display_range.start;
+            let old_end = excerpt.display_range.end;
+            text.push_str(&self.text[previous..old_start]);
+            text.push_str(row);
+            let start = text.len();
+            text.push_str(&self.text[old_start..old_end]);
+            excerpt.display_range = start..text.len();
+            previous = old_end;
+        }
+        text.push_str(&self.text[previous..]);
+        self.text = text;
+        self.message_rows = rows;
+        Ok(self)
+    }
+
     /// Reject header edits, edits spanning excerpts, stale buffers, invalid
     /// UTF-8 boundaries and overlapping operations before returning any plan.
     pub fn plan(&self, current: &[Snapshot], edits: &[DisplayEdit]) -> Result<Vec<SourceEdit>, &'static str> {
@@ -371,7 +405,8 @@ impl Projection {
             let to=transform_offset(excerpt.source_range.end,&relevant,true)?;
             windows.push((excerpt.source.clone(),from..to));
         }
-        Self::build(after,&windows,byte_limit)
+        let next = Self::build(after,&windows,byte_limit)?;
+        if self.message_rows.is_empty() { Ok(next) } else { next.with_message_rows(self.message_rows.clone(), byte_limit) }
     }
 }
 /// Transform an old source offset through one simultaneous source edit batch.
@@ -1122,5 +1157,65 @@ mod projection_completion_tests {
         let (p, mut a) = fixture(); a.revision += 1;
         assert!(p.completion_display_range(&a, 8..14).is_none()); a.revision = 7; a.source = "two.php".into();
         assert!(p.completion_display_range(&a, 8..14).is_none());
+    }
+}
+
+/// Keep external diagnostic text on a visibly labelled protected row. Control
+/// characters are escaped and long messages are explicitly bounded.
+pub(crate) fn diagnostic_snapshot_row(line: u32, column: u32, severity: &str, message: &str) -> String {
+    let mut text = String::new();
+    for (index, ch) in message.chars().enumerate() {
+        if index == 2048 { text.push_str(" [truncated]"); break; }
+        if ch.is_control() { text.extend(ch.escape_default()); } else { text.push(ch); }
+    }
+    format!("  [snapshot {severity} {}:{}] {text}\n", u64::from(line) + 1, u64::from(column) + 1)
+}
+
+#[cfg(test)]
+mod diagnostic_rows_tests {
+    use super::*;
+    fn source() -> Snapshot { Snapshot { path: "test.php".into(), buffer_id: 7, revision: 3, read_only: false, text: "before\nαvalue\nafter\n".into() } }
+    #[test] fn diagnostic_rows_protected_and_never_saved_as_source() {
+        let source = source();
+        let row = diagnostic_snapshot_row(1, 0, "error", "Fix this");
+        let projection = Projection::build(&[source.clone()], &[(source.path.clone(), 7..15)], 4096).unwrap().with_diagnostic_rows(&[(source.path.clone(), 7, row.clone())], 4096).unwrap();
+        let excerpt = &projection.excerpts[0];
+        assert_eq!(&projection.text[excerpt.display_range.clone()], "αvalue\n");
+        let row_offset = projection.text.find("[snapshot").unwrap();
+        assert!(projection.navigation_anchor(row_offset).is_none());
+        assert!(projection.source_line_anchor(row_offset - 2).is_none());
+        assert!(projection.plan(&[source.clone()], &[DisplayEdit { range: row_offset..row_offset + 1, replacement: "x".into() }]).is_err());
+        let plan = projection.plan(&[source.clone()], &[DisplayEdit { range: excerpt.display_range.start + 2..excerpt.display_range.start + 7, replacement: "fixed".into() }]).unwrap();
+        let expected = expected_sources(&[source], &plan).unwrap();
+        assert_eq!(expected[&PathBuf::from("test.php")], "before\nαfixed\nafter\n");
+        assert!(!expected.values().any(|text| text.contains("snapshot")));
+    }
+    #[test] fn diagnostic_rows_survive_source_edits_without_rewriting_metadata() {
+        let source = source();
+        let row = diagnostic_snapshot_row(1, 2, "warning", "Frozen until reopen");
+        let projection = Projection::build(&[source.clone()], &[(source.path.clone(), 7..15)], 4096).unwrap().with_diagnostic_rows(&[(source.path.clone(), 7, row.clone())], 4096).unwrap();
+        let plan = projection.plan(&[source.clone()], &[DisplayEdit { range: projection.excerpts[0].display_range.start..projection.excerpts[0].display_range.start, replacement: "new\n".into() }]).unwrap();
+        let after = Snapshot { revision: 4, text: "before\nnew\nαvalue\nafter\n".into(), ..source.clone() };
+        let next = projection.after_edit(&[source], &[after], &plan, 4096).unwrap();
+        assert!(next.text.contains(&row));
+        assert_eq!(&next.text[next.excerpts[0].display_range.clone()], "new\nαvalue\n");
+    }
+    #[test] fn diagnostic_rows_escape_controls_and_bound_long_messages() {
+        let row = diagnostic_snapshot_row(u32::MAX, 0, "error", "λ\nname\r\t\u{1b}[31m");
+        assert!(row.contains("λ\\nname\\r\\t\\u{1b}"));
+        assert_eq!(row.lines().count(), 1);
+        let row = diagnostic_snapshot_row(0, 0, "error", &"λ".repeat(3000));
+        assert!(row.ends_with(" [truncated]\n"));
+        assert!(row.len() < 4200);
+    }
+    #[test] fn diagnostic_rows_outside_excerpt_are_omitted_and_budget_checked() {
+        let source = source();
+        let projection = Projection::build(&[source.clone()], &[(source.path.clone(), 7..15)], 4096).unwrap();
+        let original = projection.text.clone();
+        let rows = [(source.path.clone(), 0, "OUTSIDE\n".into()), (source.path.clone(), 7, "MESSAGE\n".into())];
+        assert!(projection.clone().with_diagnostic_rows(&rows, original.len()).is_err());
+        let projection = projection.with_diagnostic_rows(&rows, 4096).unwrap();
+        assert!(!projection.text.contains("OUTSIDE"));
+        assert!(projection.text.contains("MESSAGE"));
     }
 }

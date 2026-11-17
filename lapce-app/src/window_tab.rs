@@ -4075,7 +4075,7 @@ impl WindowTabData {
             opened.set(true);
             let build=(|| -> Result<crate::multibuffer::Projection,String> {
                 use lapce_core::rope_text_pos::RopeTextPosition;
-                let mut snapshots=Vec::new();let mut windows=Vec::new();let mut total=0usize;
+                let mut snapshots=Vec::new();let mut windows=Vec::new();let mut diagnostic_rows=Vec::new();let mut diagnostic_row_bytes=0usize;let mut rows_over_budget=false;let mut total=0usize;
                 for (path,doc,diags) in &sources {
                     let len=doc.buffer.with_untracked(|b|b.len());total=total.checked_add(len).ok_or("Source size overflow")?;
                     if len>4*1024*1024 || total>16*1024*1024 {return Err("Diagnostics source snapshots exceed the preview budget".into());}
@@ -4083,12 +4083,24 @@ impl WindowTabData {
                     let ranges:Vec<_>=doc.buffer.with_untracked(|buffer|diags.iter().take(1025).map(|d| {
                         let start=buffer.offset_of_position(&d.diagnostic.range.start);
                         let end=buffer.offset_of_position(&d.diagnostic.range.end);
+                        let severity = match d.diagnostic.severity {
+                            Some(lsp_types::DiagnosticSeverity::ERROR) => "error",
+                            Some(lsp_types::DiagnosticSeverity::WARNING) => "warning",
+                            Some(lsp_types::DiagnosticSeverity::INFORMATION) => "info",
+                            Some(lsp_types::DiagnosticSeverity::HINT) => "hint",
+                            _ => "diagnostic",
+                        };
+                        let row = crate::multibuffer::diagnostic_snapshot_row(d.diagnostic.range.start.line, d.diagnostic.range.start.character, severity, &d.diagnostic.message);
+                        if row.len() > (4usize*1024*1024).saturating_sub(diagnostic_row_bytes) { rows_over_budget = true; }
+                        else { diagnostic_row_bytes += row.len(); diagnostic_rows.push((path.clone(), start, row)); }
                         start..end
                     }).collect());
+                    if rows_over_budget { return Err("Diagnostic rows exceed the preview budget".into()); }
                     for range in crate::multibuffer::context_windows(&snapshot,&ranges,2,1024)? {windows.push((path.clone(),range));}
                     snapshots.push(snapshot);
                 }
-                crate::multibuffer::Projection::build(&snapshots,&windows,4*1024*1024).map_err(str::to_string)
+                crate::multibuffer::Projection::build(&snapshots,&windows,4*1024*1024)
+                    .and_then(|projection| projection.with_diagnostic_rows(&diagnostic_rows, 4*1024*1024)).map_err(str::to_string)
             })();
             match build {
                 Ok(projection)=>{
