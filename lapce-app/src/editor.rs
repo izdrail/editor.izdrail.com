@@ -202,6 +202,36 @@ impl EditorViewKind {
     }
 }
 
+/// Reject ambiguous completion batches before any source buffer is changed.
+fn projection_completion_disjoint(ranges: impl IntoIterator<Item = lsp_types::Range>) -> bool {
+    let mut ranges: Vec<_> = ranges.into_iter().collect();
+    ranges.sort_by_key(|range| (range.start.line, range.start.character, range.end.line, range.end.character));
+    ranges.iter().all(|range| range.start <= range.end) && ranges.windows(2).all(|pair| {
+        let left = pair[0]; let right = pair[1];
+        left.end < right.start || (left.end == right.start && left.start != left.end && right.start != right.end)
+    })
+}
+
+#[cfg(test)]
+mod projection_disjoint_completion_tests {
+    use super::projection_completion_disjoint;
+    use lsp_types::{Position, Range};
+    fn r(start: u32, end: u32) -> Range { Range::new(Position::new(4,start),Position::new(4,end)) }
+    #[test] fn projection_disjoint_completion_accepts_adjacent_and_unsorted() {
+        assert!(projection_completion_disjoint([r(9,12),r(3,6),r(6,9)]));
+        assert!(projection_completion_disjoint([r(3,3),r(4,5)]));
+    }
+    #[test] fn projection_disjoint_completion_refuses_overlap_duplicate_or_containment() {
+        for ranges in [[r(3,6),r(5,9)],[r(3,6),r(3,6)],[r(3,9),r(4,6)],[r(3,3),r(3,3)],[r(3,6),r(6,6)],[r(3,3),r(3,6)],[r(6,3),r(9,12)]] {
+            assert!(!projection_completion_disjoint(ranges));
+        }
+    }
+    #[test] fn projection_disjoint_completion_compares_lines_before_columns() {
+        let mut other = r(0,1); other.start.line = 5; other.end.line = 5;
+        assert!(projection_completion_disjoint([r(3,9),other]));
+    }
+}
+
 /// A primary completion edit is a single-line range containing the request.
 fn projection_completion_primary_range(range: lsp_types::Range, caret: lsp_types::Position) -> bool {
     range.start.line == caret.line && range.end.line == caret.line
@@ -3686,6 +3716,8 @@ impl EditorData {
         anyhow::ensure!(projection_completion_primary_range(primary.range, position), "invalid primary completion range");
         mapped.text_edit = Some(CompletionTextEdit::Edit(map(&primary)?));
         mapped.additional_text_edits = item.additional_text_edits.as_ref().map(|edits|edits.iter().map(map).collect::<anyhow::Result<Vec<_>>>()).transpose()?;
+        let Some(CompletionTextEdit::Edit(primary)) = &mapped.text_edit else { unreachable!() };
+        anyhow::ensure!(projection_completion_disjoint(std::iter::once(primary.range).chain(mapped.additional_text_edits.iter().flatten().map(|edit| edit.range))), "overlapping completion edits");
         Ok(mapped)
     }
 
