@@ -3661,6 +3661,7 @@ impl EditorData {
             completion.request(self.id(), &self.common.proxy, path, input, position);
             completion.filter_items();
         });
+        self.common.completion.get_untracked().update_document_completion(self, display);
     }
 
     /// Check if there are completions that are being rendered
@@ -3676,6 +3677,21 @@ impl EditorData {
             let item = self.projection_completion_item(item)?;
             self.apply_completion_item_to_view(&item)
         } else { self.apply_completion_item_to_view(item) }
+    }
+
+    pub(crate) fn projection_completion_preview(&self, item: &CompletionItem) -> Option<String> {
+        let mapped = self.projection_completion_item(item).ok()?;
+        if mapped.additional_text_edits.as_ref().is_some_and(|edits| !edits.is_empty()) { return None; }
+        let Some(CompletionTextEdit::Edit(edit)) = &mapped.text_edit else { return None; };
+        let doc = self.doc();
+        let offset = self.cursor().with_untracked(|cursor| cursor.offset());
+        let prefix = doc.buffer.with_untracked(|buffer| {
+            let start = buffer.offset_of_position(&edit.range.start);
+            let end = buffer.offset_of_position(&edit.range.end);
+            (start <= offset && end == offset && buffer.next_code_boundary(offset) == offset)
+                .then(|| buffer.slice_to_cow(start..offset).to_string())
+        })?;
+        crate::completion::projection_lens_suffix(&mapped, &prefix)
     }
 
     fn projection_completion_item(&self, item: &CompletionItem) -> anyhow::Result<CompletionItem> {

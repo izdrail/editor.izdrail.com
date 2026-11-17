@@ -2321,7 +2321,7 @@ impl DocumentPhantom for Doc {
         line: usize,
     ) -> PhantomTextLine {
         // Reuse only the source's diagnostic lens, never its inlays, completion
-        // text or IME overlay. The projection owns its local composition overlay.
+        // text or IME overlay. The projection owns local completion and composition.
         if self.projection.get_untracked().is_some() {
             let display=self.buffer.with_untracked(|b|b.offset_of_line(line));
             let mut text:Vec<PhantomText>=self.projection_navigation_source(display).map(|(source,offset)| {
@@ -2337,6 +2337,23 @@ impl DocumentPhantom for Doc {
             if let Some(preedit)=self.preedit_phantom(Some(self.common.config.get_untracked().color(LapceColor::EDITOR_FOREGROUND)),line) {
                 let offset=self.preedit.preedit.with_untracked(|value|value.as_ref().map(|value|value.offset));
                 if offset.is_some_and(|offset|self.projection_ime_stamp(&Cursor::new(lapce_core::cursor::CursorMode::Insert(Selection::caret(offset)),None,None)).is_ok()) {text.push(preedit);}
+            }
+            let config = self.common.config.get_untracked();
+            let (completion_line, completion_col) = self.completion_pos.get_untracked();
+            let current = self.common.completion.with_untracked(|completion| {
+                completion.status != crate::completion::CompletionStatus::Inactive
+                    && completion.latest_editor_id == Some(editor_id)
+                    && completion.source_guard.as_ref().is_some_and(|guard| guard.current())
+            });
+            if config.editor.enable_completion_lens && current && line == completion_line {
+                if let Some(lens) = self.completion_lens.get_untracked() {
+                    text.push(PhantomText {
+                        kind: PhantomTextKind::Completion, col: completion_col, text: lens,
+                        fg: Some(config.color(LapceColor::COMPLETION_LENS_FOREGROUND)),
+                        font_size: Some(config.editor.completion_lens_font_size()),
+                        affinity: Some(CursorAffinity::Backward), bg: None, under_line: None,
+                    });
+                }
             }
             text.sort_by_key(|text|text.col);
             return PhantomTextLine{text:text.into()};

@@ -366,6 +366,20 @@ impl CompletionData {
     ) {
         let doc = editor_data.doc();
 
+        if doc.projection.get_untracked().is_some() {
+            let valid = self.status != CompletionStatus::Inactive
+                && self.latest_editor_id == Some(editor_data.id())
+                && self.source_guard.as_ref().is_some_and(|guard| guard.current())
+                && self.config.get_untracked().editor.enable_completion_lens;
+            let lens = valid.then(|| self.current_item()).flatten()
+                .and_then(|item| editor_data.projection_completion_preview(&item.item));
+            if let Some(lens) = lens {
+                let (line, col) = editor_data.editor.offset_to_line_col(cursor_offset);
+                doc.set_completion_lens(lens, line, col);
+            } else { doc.clear_completion_lens(); }
+            return;
+        }
+
         if !doc.content.with_untracked(|content| content.is_file()) {
             return;
         }
@@ -486,6 +500,44 @@ fn rank_of(i: &ScoredCompletionItem) -> Rank<'_> {
 /// Returns `None` if the completion lens should be hidden.
 /// Returns `Some(None)` if the completion lens should be shown, but not changed.
 /// Returns `Some(Some(text))` if the completion lens should be shown and changed to the given text.
+/// Preview only text extending the exact replaced prefix. Callers validate
+/// canonical ranges and require the edit to end at the current caret.
+pub(crate) fn projection_lens_suffix(item: &CompletionItem, prefix: &str) -> Option<String> {
+    let Some(CompletionTextEdit::Edit(edit)) = &item.text_edit else { return None; };
+    let text = match item.insert_text_format.unwrap_or(InsertTextFormat::PLAIN_TEXT) {
+        InsertTextFormat::PLAIN_TEXT => edit.new_text.clone(),
+        InsertTextFormat::SNIPPET => Snippet::from_str(&edit.new_text).ok()?.text(),
+        _ => return None,
+    };
+    let suffix = text.strip_prefix(prefix)?.lines().next()?;
+    (!suffix.is_empty()).then(|| suffix.to_string())
+}
+
+#[cfg(test)]
+mod projection_lens_tests {
+    use super::*;
+    fn item(text: &str, snippet: bool) -> CompletionItem {
+        CompletionItem { label: "not the inserted text".into(),
+            text_edit: Some(CompletionTextEdit::Edit(lsp_types::TextEdit::new(lsp_types::Range::default(), text.into()))),
+            insert_text_format: Some(if snippet { InsertTextFormat::SNIPPET } else { InsertTextFormat::PLAIN_TEXT }),
+            ..Default::default() }
+    }
+    #[test] fn projection_lens_previews_exact_prefix_and_first_line() {
+        assert_eq!(projection_lens_suffix(&item("BROKEN_FIXED\nnext", false), "BROKEN"), Some("_FIXED".into()));
+        assert_eq!(projection_lens_suffix(&item("éclair", false), "é"), Some("clair".into()));
+        assert_eq!(projection_lens_suffix(&item("value", false), ""), Some("value".into()));
+    }
+    #[test] fn projection_lens_uses_snippet_text_not_syntax() {
+        assert_eq!(projection_lens_suffix(&item("BROKEN_${1:argument}($0)", true), "BROKEN"), Some("_argument()".into()));
+    }
+    #[test] fn projection_lens_refuses_replaced_prefix_or_empty_extension() {
+        assert_eq!(projection_lens_suffix(&item("FIXED", false), "BROKEN"), None);
+        assert_eq!(projection_lens_suffix(&item("BROKEN", false), "BROKEN"), None);
+        assert_eq!(projection_lens_suffix(&item("BROKEN\nnext", false), "BROKEN"), None);
+        assert_eq!(projection_lens_suffix(&CompletionItem::default(), ""), None);
+    }
+}
+
 fn completion_lens_text(
     rope_text: impl RopeText,
     cursor_offset: usize,

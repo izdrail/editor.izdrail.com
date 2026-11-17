@@ -612,12 +612,24 @@ impl WindowTabData {
         {
             let focus = window_tab_data.common.focus;
             let active_editor = window_tab_data.main_split.active_editor;
+            let completion = window_tab_data.common.completion;
+            let editors = window_tab_data.main_split.editors;
             let rename_active = window_tab_data.rename.active;
             let inline_ai_edit_active = window_tab_data.inline_ai_edit.active;
             let internal_command = window_tab_data.common.internal_command;
             cx.create_effect(move |_| {
                 let focus = focus.get();
-                active_editor.track();
+                let active_id = active_editor.get().map(|editor| editor.id());
+                let stale_editor = completion.with_untracked(|completion| {
+                    (completion.source_guard.is_some() && completion.latest_editor_id != active_id)
+                        .then_some(completion.latest_editor_id).flatten()
+                });
+                if let Some(id) = stale_editor {
+                    completion.update(|completion| completion.cancel());
+                    if let Some(editor) = editors.editor_untracked(id) {
+                        editor.doc().clear_completion_lens();
+                    }
+                }
                 internal_command.send(InternalCommand::ResetBlinkCursor);
 
                 if focus != Focus::Rename && rename_active.get_untracked() {
