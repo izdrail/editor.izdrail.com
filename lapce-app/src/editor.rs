@@ -202,6 +202,28 @@ impl EditorViewKind {
     }
 }
 
+/// A primary completion edit is a single-line range containing the request.
+fn projection_completion_primary_range(range: lsp_types::Range, caret: lsp_types::Position) -> bool {
+    range.start.line == caret.line && range.end.line == caret.line
+        && range.start.character <= caret.character && caret.character <= range.end.character
+}
+
+#[cfg(test)]
+mod projection_primary_range_tests {
+    use super::projection_completion_primary_range;
+    use lsp_types::{Position, Range};
+    fn p(line: u32, col: u32) -> Position { Position::new(line, col) }
+    #[test] fn projection_primary_range_accepts_exact_suffix_and_empty() {
+        assert!(projection_completion_primary_range(Range::new(p(12, 3),p(12, 6)),p(12, 4)));
+        assert!(projection_completion_primary_range(Range::new(p(12, 4),p(12, 4)),p(12, 4)));
+    }
+    #[test] fn projection_primary_range_refuses_reversed_multiline_or_remote() {
+        for range in [Range::new(p(12, 5),p(12, 3)),Range::new(p(11, 3),p(12, 5)),Range::new(p(12, 3),p(13, 5)),Range::new(p(12, 5),p(12, 6))] {
+            assert!(!projection_completion_primary_range(range,p(12, 4)));
+        }
+    }
+}
+
 /// Excerpts use the editor's replace-word acceptance behavior. A server's
 /// insert/replace pair must still satisfy both LSP ranges before mapping.
 fn projection_completion_replace_edit(
@@ -3660,6 +3682,8 @@ impl EditorData {
                 lsp_types::TextEdit::new(lsp_types::Range::new(buffer.offset_to_position(completion_word_start(buffer, path.as_deref(), offset)), buffer.offset_to_position(buffer.next_code_boundary(offset))), item.insert_text.clone().unwrap_or_else(||item.label.clone()))
             }),
         };
+        let position = source.buffer.with_untracked(|buffer| buffer.offset_to_position(offset));
+        anyhow::ensure!(projection_completion_primary_range(primary.range, position), "invalid primary completion range");
         mapped.text_edit = Some(CompletionTextEdit::Edit(map(&primary)?));
         mapped.additional_text_edits = item.additional_text_edits.as_ref().map(|edits|edits.iter().map(map).collect::<anyhow::Result<Vec<_>>>()).transpose()?;
         Ok(mapped)
@@ -3701,11 +3725,14 @@ impl EditorData {
                     // The edit starts at the earlier of the word start and the
                     // item's own range start (a hyphenated Blade prefix or an
                     // LSP range that begins before the word).
-                    let origin = snippet_origin(start_offset, edit_start);
-                    let selection = lapce_core::selection::Selection::region(
-                        origin,
-                        end_offset.max(edit_end),
-                    );
+                    let (origin, end) = if doc.projection.get_untracked().is_some() {
+                        // This range was checked in canonical source coordinates.
+                        // Do not widen a suffix-only server edit to the whole word.
+                        (edit_start, edit_end)
+                    } else {
+                        (snippet_origin(start_offset, edit_start), end_offset.max(edit_end))
+                    };
+                    let selection = lapce_core::selection::Selection::region(origin, end);
                     match text_format {
                         lsp_types::InsertTextFormat::PLAIN_TEXT => {
                             self.do_edit(
