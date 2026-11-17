@@ -43,3 +43,10 @@ The selected code must fit in 8,000 UTF-8 bytes and the instruction in 1,000 byt
 | `Ctrl+Shift+I` | Open the inline edit overlay |
 | `Enter` | Apply the edit |
 | `Esc` | Cancel / close |
+
+## Failed replies
+
+An incomplete or failed model response never changes source, even if some code
+arrived before the error. When the original editor and selection are still
+current, a failure notice keeps the instruction available for Enter to retry.
+Moving to a different editor or panel does not reopen the input or steal focus.

@@ -222,10 +222,24 @@ impl InlineAiEditData {
         self.pending.set(true);
         let cancelled = self.cancel.clone();
         let me = self.clone();
-        let send = create_ext_action(self.common.scope, move |text: String| {
+        let send = create_ext_action(self.common.scope, move |result: Result<String, String>| {
             if me.generation.get_untracked() != generation { return; }
             me.pending.set(false);
             if me.cancel.load(Ordering::Acquire) || !context.guard.current() { return; }
+            let text = match result {
+                Ok(text) => text,
+                Err(_) => {
+                    // A stream may have yielded code before it failed. Keep
+                    // all source unchanged and retain the instruction to retry.
+                    // Do not steal focus if the user moved to another panel.
+                    if me.common.focus.get_untracked() == Focus::Workbench {
+                        me.notice.set("AI edit failed. Source unchanged. Press Enter to retry.".into());
+                        me.active.set(true);
+                        me.common.focus.set(Focus::InlineAiEdit);
+                    }
+                    return;
+                }
+            };
             let text = inline_edit_replacement(&context.code, &text);
             if text.is_empty() {
                 return;
@@ -244,7 +258,7 @@ impl InlineAiEditData {
             // Fn(Update) callback: accumulate through a RefCell (mirrors
             // chat_view.rs).
             let text = std::cell::RefCell::new(String::new());
-            let _ = crate::chat::ollama(
+            let result = crate::chat::ollama(
                 &chat.endpoint,
                 &chat.model,
                 &messages,
@@ -255,7 +269,7 @@ impl InlineAiEditData {
                     }
                 },
             );
-            send(text.into_inner());
+            send(completed_inline_edit(result, text.into_inner()));
         });
     }
 }
@@ -540,5 +554,25 @@ mod inline_budget_tests {
         assert!(inline_edit_budget("λ".repeat(4000).len(), 1).is_none());
         assert!(inline_edit_budget("λ".repeat(4001).len(), 2000).unwrap().starts_with("Selection"));
         assert!(inline_edit_budget(1, "😀".repeat(251).len()).unwrap().starts_with("Instruction"));
+    }
+}
+
+/// A failed, incomplete, timed-out or canceled stream is never replacement code,
+/// even when it already emitted plausible deltas.
+fn completed_inline_edit(result: Result<(), String>, text: String) -> Result<String, String> {
+    result.map(|()| text)
+}
+#[cfg(test)]
+mod inline_completion_tests {
+    use super::*;
+    #[test] fn failed_streams_never_return_accumulated_code() {
+        for error in ["incomplete stream", "invalid JSON", "Cancelled", "timed out"] {
+            assert_eq!(completed_inline_edit(Err(error.into()), "$first = PARTIAL;".into()), Err(error.into()));
+        }
+    }
+    #[test] fn completed_stream_preserves_exact_replacement_bytes() {
+        let text = "  λ();\r\n";
+        assert_eq!(completed_inline_edit(Ok(()), text.into()).unwrap(), text);
+        assert_eq!(completed_inline_edit(Ok(()), String::new()).unwrap(), "");
     }
 }
