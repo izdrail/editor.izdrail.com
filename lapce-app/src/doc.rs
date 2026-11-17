@@ -2320,7 +2320,7 @@ impl DocumentPhantom for Doc {
         editor_style: &EditorStyle,
         line: usize,
     ) -> PhantomTextLine {
-        // Reuse only the source's diagnostic lens, never its inlays, completion
+        // Reuse only source diagnostics and inlays, never source completion
         // text or IME overlay. The projection owns local completion and composition.
         if self.projection.get_untracked().is_some() {
             let display=self.buffer.with_untracked(|b|b.offset_of_line(line));
@@ -2329,9 +2329,8 @@ impl DocumentPhantom for Doc {
                 let display_len=self.buffer.with_untracked(|b|b.offset_of_line(line+1)-display);
                 source.phantom_text(editor_id,editor_style,source_line).text.into_iter()
                     .filter_map(|mut text| {
-                        if text.kind!=PhantomTextKind::Diagnostic || text.col<source_col {return None;}
-                        text.col-=source_col;
-                        (text.col<=display_len).then_some(text)
+                        text.col = projected_overlay_column(text.kind, text.col, source_col, display_len)?;
+                        Some(text)
                     }).collect()
             }).unwrap_or_default();
             if let Some(preedit)=self.preedit_phantom(Some(self.common.config.get_untracked().color(LapceColor::EDITOR_FOREGROUND)),line) {
@@ -3450,6 +3449,34 @@ mod toggle_comment_tests {
         let commented = toggle(text, "<!--", "-->");
         assert_eq!(commented, "<!-- a -->\n<!-- b -->");
         assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+}
+
+/// Source overlays may contribute display-only diagnostics and hints. Editing
+/// overlays always belong to the projection's own cursor and transaction.
+fn projected_overlay_column(kind: PhantomTextKind, source_col: usize, line_start: usize, visible_len: usize) -> Option<usize> {
+    if !matches!(kind, PhantomTextKind::Diagnostic | PhantomTextKind::InlayHint) { return None; }
+    let col = source_col.checked_sub(line_start)?;
+    (col <= visible_len).then_some(col)
+}
+
+#[cfg(test)]
+mod projection_overlay_tests {
+    use super::*;
+    #[test] fn projection_overlay_maps_only_hints_and_diagnostics() {
+        for kind in [PhantomTextKind::InlayHint, PhantomTextKind::Diagnostic] {
+            assert_eq!(projected_overlay_column(kind, 15, 9, 12), Some(6));
+        }
+        assert_eq!(projected_overlay_column(PhantomTextKind::Completion, 15, 9, 12), None);
+    }
+    #[test] fn projection_overlay_clips_both_excerpt_boundaries() {
+        assert_eq!(projected_overlay_column(PhantomTextKind::InlayHint, 8, 9, 12), None);
+        assert_eq!(projected_overlay_column(PhantomTextKind::InlayHint, 22, 9, 12), None);
+        assert_eq!(projected_overlay_column(PhantomTextKind::InlayHint, 21, 9, 12), Some(12));
+    }
+    #[test] fn projection_overlay_columns_remain_utf8_byte_offsets() {
+        let prefix = "é".len();
+        assert_eq!(projected_overlay_column(PhantomTextKind::InlayHint, prefix + "変数".len(), prefix, "変数;".len()), Some(6));
     }
 }
 
