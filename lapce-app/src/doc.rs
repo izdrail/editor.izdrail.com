@@ -1301,6 +1301,28 @@ impl Doc {
     pub(crate) fn refuse_projection_ime(&self) {
         if let Some(binding)=self.projection.get_untracked() {binding.notice.set("IME composition moved or source changed; restart inside one source excerpt".into());}
     }
+    fn line_diagnostic_ranges(&self, line: usize) -> Vec<(std::ops::Range<usize>, Diagnostic)> {
+        let (display, display_end) = self.buffer.with_untracked(|buffer| {
+            (buffer.offset_of_line(line), buffer.offset_of_line(line + 1))
+        });
+        let projected = self.projection.get_untracked().is_some();
+        let mapped = if projected {
+            self.projection_navigation_source(display)
+        } else { None };
+        if projected && mapped.is_none() { return Vec::new(); }
+        let (source, start, end) = if let Some((source, offset)) = mapped {
+            let Some(binding) = self.projection.get_untracked() else { return Vec::new(); };
+            let projection = binding.projection.borrow();
+            let Some(excerpt) = projection.excerpts.iter().find(|excerpt| display >= excerpt.display_range.start && display < excerpt.display_range.end) else { return Vec::new(); };
+            let visible = (display_end - display).min(excerpt.display_range.end - display);
+            (Some(source), offset, offset + visible)
+        } else { (None, display, display_end) };
+        let diagnostics = source.as_deref().unwrap_or(self).diagnostics.diagnostics_span;
+        diagnostics.with_untracked(|spans| spans.iter_chunks(start..end)
+            .filter_map(|(range, diagnostic)| clip_diagnostic_line(start..end, range.start()..range.end()).map(|range| (range, diagnostic.clone())))
+            .collect())
+    }
+
     pub(crate) fn projection_navigation_source(&self,display:usize)->Option<(Rc<Doc>,usize)> {
         let binding=self.projection.get_untracked()?;
         let anchor=binding.projection.borrow().navigation_anchor(display)?;
@@ -2770,58 +2792,25 @@ impl Styling for DocStyling {
             });
         layout_line.extra_style.extend(phantom_styles);
 
-        let (start_offset, end_offset) = doc.buffer.with_untracked(|buffer| {
-            (buffer.offset_of_line(line), buffer.offset_of_line(line + 1))
-        });
-
         let mut max_severity: Option<DiagnosticSeverity> = None;
-        doc.diagnostics.diagnostics_span.with_untracked(|diags| {
-            diags
-                .iter_chunks(start_offset..end_offset)
-                .for_each(|(iv, diag)| {
-                    let start = iv.start();
-                    let end = iv.end();
-
-                    if start <= end_offset
-                        && end >= start_offset
-                        && diag.severity < Some(DiagnosticSeverity::HINT)
-                    {
-                        let start = start.saturating_sub(start_offset);
-                        let end = end - start_offset;
-                        let start = phantom_text.col_after(start, true);
-                        let end = phantom_text.col_after(end, false);
-
-                        match (diag.severity, max_severity) {
-                            (Some(severity), Some(max)) => {
-                                if severity < max {
-                                    max_severity = Some(severity);
-                                }
-                            }
-                            (Some(severity), None) => {
-                                max_severity = Some(severity);
-                            }
-                            _ => {}
-                        }
-
-                        let color_name = match diag.severity {
-                            Some(DiagnosticSeverity::ERROR) => {
-                                LapceColor::LAPCE_ERROR
-                            }
-                            _ => LapceColor::LAPCE_WARN,
-                        };
-                        let color = config.color(color_name);
-                        let styles = extra_styles_for_range(
-                            layout,
-                            start,
-                            end,
-                            None,
-                            None,
-                            Some(color),
-                        );
-                        layout_line.extra_style.extend(styles);
-                    }
-                });
-        });
+        // Diagnostic coordinates belong to the source, never the aggregate.
+        // Clip to this visible source line before accounting for phantom text.
+        for (range, diag) in doc.line_diagnostic_ranges(line) {
+            if diag.severity >= Some(DiagnosticSeverity::HINT) { continue; }
+            let start = phantom_text.col_after(range.start, true);
+            let end = phantom_text.col_after(range.end, false);
+            if let Some(severity) = diag.severity {
+                max_severity = Some(max_severity.map_or(severity, |max| max.min(severity)));
+            }
+            let color_name = if diag.severity == Some(DiagnosticSeverity::ERROR) {
+                LapceColor::LAPCE_ERROR
+            } else {
+                LapceColor::LAPCE_WARN
+            };
+            layout_line.extra_style.extend(extra_styles_for_range(
+                layout, start, end, None, None, Some(config.color(color_name)),
+            ));
+        }
 
         // Add the styling for the diagnostic severity, if applicable
         if let Some(max_severity) = max_severity {
@@ -3428,5 +3417,44 @@ mod toggle_comment_tests {
         let commented = toggle(text, "<!--", "-->");
         assert_eq!(commented, "<!-- a -->\n<!-- b -->");
         assert_eq!(toggle(&commented, "<!--", "-->"), text);
+    }
+}
+
+/// Return columns for the visible intersection only. A touching range does not
+/// decorate a protected header or spill into another source's first line.
+fn clip_diagnostic_line(line: std::ops::Range<usize>, diagnostic: std::ops::Range<usize>) -> Option<std::ops::Range<usize>> {
+    if diagnostic.start == diagnostic.end && line.start <= diagnostic.start && diagnostic.start < line.end {
+        let col = diagnostic.start - line.start;
+        return Some(col..col);
+    }
+    let start = line.start.max(diagnostic.start);
+    let end = line.end.min(diagnostic.end);
+    (start < end).then(|| start - line.start..end - line.start)
+}
+
+#[cfg(test)]
+mod projection_diagnostic_style_tests {
+    use super::clip_diagnostic_line;
+    #[test] fn canonical_offset_becomes_display_columns() {
+        assert_eq!(clip_diagnostic_line(270000..270020, 270009..270015), Some(9..15));
+    }
+    #[test] fn multiline_diagnostic_is_clipped_at_both_ends() {
+        assert_eq!(clip_diagnostic_line(100..120, 90..130), Some(0..20));
+        assert_eq!(clip_diagnostic_line(100..120, 90..108), Some(0..8));
+    }
+    #[test] fn adjacent_source_and_header_ranges_do_not_bleed() {
+        assert_eq!(clip_diagnostic_line(100..120, 90..100), None);
+        assert_eq!(clip_diagnostic_line(100..120, 120..125), None);
+        assert_eq!(clip_diagnostic_line(100..100, 90..130), None);
+    }
+    #[test] fn zero_width_diagnostic_keeps_its_severity_on_its_line() {
+        assert_eq!(clip_diagnostic_line(100..120, 109..109), Some(9..9));
+        assert_eq!(clip_diagnostic_line(100..120, 120..120), None);
+    }
+    #[test] fn utf8_columns_remain_byte_based() {
+        let text = "日本語 BROKEN";
+        let start = text.find("BROKEN").unwrap();
+        assert_eq!(clip_diagnostic_line(100..100+text.len(), 100+start..100+text.len()), Some(start..text.len()));
+        assert!(text.is_char_boundary(start));
     }
 }
