@@ -1615,7 +1615,13 @@ impl ProxyHandler for Dispatcher {
                     rpc.handle_response(id, result);
                 });
             }
-            GetSignature { .. } | GetDocumentHighlights { .. } => {
+            GetDocumentHighlights { path, position } => {
+                let rpc = self.proxy_rpc.clone();
+                self.lsp_request(path, "textDocument/documentHighlight", serde_json::json!({"position": position}), move |result| {
+                    rpc.handle_response(id, result.and_then(|(_, value)| decode_document_highlights(value)));
+                });
+            }
+            GetSignature { .. } => {
                 self.respond_rpc(id, Err(language_services_disabled()));
             }
         }
@@ -2837,5 +2843,35 @@ mod git_commit_tests {
             .unwrap()
             .id();
         assert_eq!(before, after);
+    }
+}
+
+/// Document highlights are supplied by the built-in LSP manager. The plugin
+/// catalog has no highlight request, so there is no competing plugin response.
+fn decode_document_highlights(value: serde_json::Value) -> Result<ProxyResponse, RpcError> {
+    serde_json::from_value::<Option<Vec<lsp_types::DocumentHighlight>>>(value)
+        .map(|highlights| ProxyResponse::GetDocumentHighlights { highlights })
+        .map_err(|error| RpcError { code: -32603, message: error.to_string() })
+}
+
+#[cfg(test)]
+mod document_highlight_dispatch_tests {
+    use super::*;
+    #[test] fn document_highlight_dispatch_preserves_source_positions_and_kind() {
+        let response = decode_document_highlights(serde_json::json!([{"range":{"start":{"line":12342,"character":1},"end":{"line":12342,"character":7}},"kind":3}])).unwrap();
+        let ProxyResponse::GetDocumentHighlights { highlights: Some(highlights) } = response else { panic!("missing highlights") };
+        assert_eq!(highlights.len(), 1);
+        assert_eq!(highlights[0].range.start, lsp_types::Position::new(12342, 1));
+        assert_eq!(highlights[0].kind, Some(lsp_types::DocumentHighlightKind::WRITE));
+    }
+    #[test] fn document_highlight_dispatch_accepts_null_and_empty() {
+        assert!(matches!(decode_document_highlights(serde_json::Value::Null).unwrap(), ProxyResponse::GetDocumentHighlights { highlights: None }));
+        let ProxyResponse::GetDocumentHighlights { highlights: Some(highlights) } = decode_document_highlights(serde_json::json!([])).unwrap() else { panic!("missing empty response") };
+        assert!(highlights.is_empty());
+    }
+    #[test] fn document_highlight_dispatch_refuses_malformed_payload() {
+        for value in [serde_json::json!({}), serde_json::json!([{"range":null}]), serde_json::json!("bad")] {
+            assert_eq!(decode_document_highlights(value).unwrap_err().code, -32603);
+        }
     }
 }

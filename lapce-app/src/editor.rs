@@ -335,6 +335,8 @@ pub struct EditorData {
     pub diff_editor_id: RwSignal<Option<(EditorTabId, DiffEditorId)>>,
     pub confirmed: RwSignal<bool>,
     pub snippet: RwSignal<Option<SnippetIndex>>,
+    projection_highlights: RwSignal<Option<ProjectionHighlights>>,
+    projection_highlight_active: RwSignal<bool>,
     pub inline_find: RwSignal<Option<InlineFindDirection>>,
     pub on_screen_find: RwSignal<OnScreenFind>,
     pub last_inline_find: RwSignal<Option<(InlineFindDirection, String)>>,
@@ -554,6 +556,8 @@ impl EditorData {
             diff_editor_id: cx.create_rw_signal(diff_editor_id),
             confirmed,
             snippet: cx.create_rw_signal(None),
+            projection_highlights: cx.create_rw_signal(None),
+            projection_highlight_active: cx.create_rw_signal(false),
             inline_find: cx.create_rw_signal(None),
             on_screen_find: cx.create_rw_signal(OnScreenFind {
                 active: false,
@@ -5785,29 +5789,57 @@ impl EditorData {
         })
     }
 
+    pub(crate) fn update_document_highlights(&self) {
+        let origin = self.doc();
+        let caret = self.cursor().with_untracked(|cursor| cursor.offset());
+        if origin.projection.get_untracked().is_none() {
+            origin.update_highlights(caret);
+            return;
+        }
+        self.projection_highlights.set(None);
+        let active = self.projection_highlight_active;
+        if !active.get_untracked() { return; }
+        let Some((source, offset, current)) = self.navigation_request() else { return; };
+        let Some(binding) = origin.projection.get_untracked() else { return; };
+        let Some(excerpt) = binding.projection.borrow().excerpts.iter()
+            .find(|excerpt| excerpt.display_range.contains(&caret)).cloned() else { return; };
+        let Some(path) = source.content.with_untracked(|content| content.path().cloned()) else { return; };
+        let position = source.buffer.with_untracked(|buffer| buffer.offset_to_position(offset));
+        let state = self.projection_highlights;
+        let guard: Rc<dyn Fn() -> bool> = Rc::new(move || active.try_get_untracked() == Some(true) && current());
+        let send = create_ext_action(self.scope, move |response| {
+            if !guard() { return; }
+            let Ok(ProxyResponse::GetDocumentHighlights { highlights: Some(highlights) }) = response else { return; };
+            let mut spans = source.buffer.with_untracked(|buffer| highlights.iter().filter_map(|highlight| {
+                let span = canonical_highlight_offsets(buffer, highlight.range)?;
+                projected_highlight_range(excerpt.source_range.clone(), excerpt.display_range.start, span)
+            }).collect::<Vec<_>>());
+            DocumentHighlight::sort(&mut spans);
+            if DocumentHighlight::find_for_offset(&spans, caret).is_some() {
+                state.set(Some(ProjectionHighlights { current: guard, spans }));
+            }
+        });
+        self.common.proxy.get_document_highlights(path, position, send);
+    }
+
+    pub(crate) fn display_document_highlights(&self) -> Vec<DocumentHighlight> {
+        if self.doc().projection.get_untracked().is_none() {
+            return self.doc().highlights.with_untracked(|highlights| highlights.clone().unwrap_or_default());
+        }
+        self.projection_highlights.with_untracked(|state| state.as_ref()
+            .filter(|state| (state.current)()).map(|state| state.spans.clone()).unwrap_or_default())
+    }
+
     pub fn jump_highlight(&self, direction: InlineFindDirection) {
-        let doc = self.doc();
         let cursor_offset = self.cursor().with_untracked(|c| c.offset());
 
-        let new_offset = doc.highlights.with_untracked(move |highlights| {
-            let Some(highlights) = highlights else {
-                return None;
-            };
-            let index =
-                DocumentHighlight::find_for_offset(highlights, cursor_offset)?;
-
+        let highlights = self.display_document_highlights();
+        let new_offset = DocumentHighlight::find_for_offset(&highlights, cursor_offset).map(|index| {
             let new_index = match direction {
-                InlineFindDirection::Left => match index {
-                    0 => highlights.len() - 1,
-                    val => val - 1,
-                },
-                InlineFindDirection::Right => match index + 1 {
-                    val if val >= highlights.len() => 0,
-                    val => val,
-                },
+                InlineFindDirection::Left => if index == 0 { highlights.len() - 1 } else { index - 1 },
+                InlineFindDirection::Right => (index + 1) % highlights.len(),
             };
-
-            Some(highlights[new_index].start)
+            highlights[new_index].start
         });
 
         if let Some(new_offset) = new_offset {
@@ -6594,5 +6626,63 @@ mod projection_format_tests {
         assert!(guard.current());
         revision.set(8);
         assert!(!guard.current());
+    }
+}
+
+#[derive(Clone)]
+struct ProjectionHighlights {
+    current: Rc<dyn Fn() -> bool>,
+    spans: Vec<DocumentHighlight>,
+}
+
+/// Highlights never cross into headers, another excerpt or hidden source text.
+fn projected_highlight_range(source: std::ops::Range<usize>, display: usize, span: std::ops::Range<usize>) -> Option<DocumentHighlight> {
+    if span.start >= span.end || span.start < source.start || span.end > source.end { return None; }
+    Some(DocumentHighlight {
+        start: display.checked_add(span.start.checked_sub(source.start)?)?,
+        end: display.checked_add(span.end.checked_sub(source.start)?)?,
+    })
+}
+
+#[cfg(test)]
+mod projection_highlight_tests {
+    use super::projected_highlight_range;
+    #[test] fn projection_highlight_maps_nonzero_source_byte_offsets() {
+        let span = projected_highlight_range(280000..280100, 80, 280020..280027).unwrap();
+        assert_eq!((span.start, span.end), (100, 107));
+        let span = projected_highlight_range(30..40, 80, 30..40).unwrap();
+        assert_eq!((span.start, span.end), (80, 90));
+    }
+    #[test] fn projection_highlight_refuses_empty_reversed_and_cross_excerpt() {
+        for span in [20..20, 24..21, 19..22, 22..31, 5..15, 35..40] {
+            assert!(projected_highlight_range(20..30, 80, span).is_none());
+        }
+    }
+    #[test] fn projection_highlight_refuses_display_overflow() {
+        assert!(projected_highlight_range(20..30, usize::MAX - 2, 21..25).is_none());
+    }
+}
+
+/// Validate before converting: the editor's general coordinate helpers clamp.
+fn canonical_highlight_offsets(buffer: &impl RopeTextPosition, range: lsp_types::Range) -> Option<std::ops::Range<usize>> {
+    if range.start >= range.end || range.end.line as usize > buffer.last_line() { return None; }
+    let start = buffer.offset_of_position(&range.start);
+    let end = buffer.offset_of_position(&range.end);
+    (buffer.offset_to_position(start) == range.start && buffer.offset_to_position(end) == range.end).then_some(start..end)
+}
+
+#[cfg(test)]
+mod projection_highlight_position_tests {
+    use super::*;
+    fn range(a: u32, b: u32) -> lsp_types::Range { lsp_types::Range::new(lsp_types::Position::new(0, a), lsp_types::Position::new(0, b)) }
+    #[test] fn projection_highlight_utf16_maps_non_ascii_to_byte_offsets() {
+        let buffer = RopeTextVal::new(Rope::from("λ😀name\r\nnext"));
+        assert_eq!(canonical_highlight_offsets(&buffer, range(1, 7)), Some(2..10));
+    }
+    #[test] fn projection_highlight_refuses_clamped_or_split_surrogate_positions() {
+        let buffer = RopeTextVal::new(Rope::from("λ😀name\r\nnext"));
+        for range in [range(1, 2), range(1, 200), range(7, 3), range(3, 3), lsp_types::Range::new(lsp_types::Position::new(0, 1), lsp_types::Position::new(u32::MAX, 0))] {
+            assert!(canonical_highlight_offsets(&buffer, range).is_none());
+        }
     }
 }

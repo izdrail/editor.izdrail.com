@@ -177,6 +177,7 @@ enum DocumentHighlightsStatus {
     Busy(usize),
 }
 
+#[derive(Clone)]
 pub struct DocumentHighlight {
     pub start: usize,
     pub end: usize,

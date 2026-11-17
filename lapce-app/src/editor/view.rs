@@ -218,14 +218,25 @@ pub fn editor_view(
     });
 
     create_effect({
-        let editor_cursor = e_data.cursor();
+        let editor = e_data.clone();
         move |_| {
-            let offset = editor_cursor.get().offset();
-            doc.with(|doc| doc.update_highlights(offset));
+            editor.cursor().track();
+            doc.with(|doc| {
+                if let Some(binding) = doc.projection.get() {
+                    editor.projection_highlight_active.track();
+                    doc.buffer.with(|buffer| buffer.rev());
+                    binding.docs.with(|docs| {
+                        for source in docs.values() { source.buffer.with(|buffer| buffer.rev()); }
+                    });
+                }
+            });
+            editor.update_document_highlights();
         }
     });
 
+    let projection_highlights = e_data.projection_highlights;
     create_effect(move |_| {
+        projection_highlights.track();
         let highlights = doc.with(|doc| doc.highlights);
         highlights.track();
         id.request_paint();
@@ -577,23 +588,9 @@ impl EditorView {
             });
 
         let ed = &self.editor.editor;
-        let doc = self.editor.doc();
-
-        doc.highlights.with_untracked(move |highlights| {
-            let Some(highlights) = highlights else {
-                return;
-            };
-            for highlight in highlights {
-                self.paint_find_region(
-                    cx,
-                    ed,
-                    &highlight.into(),
-                    color,
-                    screen_lines,
-                    line_height,
-                );
-            }
-        });
+        for highlight in &self.editor.display_document_highlights() {
+            self.paint_find_region(cx, ed, &highlight.into(), color, screen_lines, line_height);
+        }
     }
 
     fn paint_find_region(
@@ -1350,6 +1347,13 @@ pub fn editor_container_view(
                 editor.editor.clone(),
             )
         });
+
+    let active_editor = window_tab_data.main_split.active_editor;
+    create_effect(move |_| {
+        let active_id = active_editor.get().map(|editor| editor.id());
+        let editor = editor.get();
+        editor.projection_highlight_active.set(active_id == Some(editor.id()));
+    });
 
     let main_split = window_tab_data.main_split.clone();
     let editors = main_split.editors;
