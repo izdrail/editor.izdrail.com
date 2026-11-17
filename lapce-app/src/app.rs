@@ -230,9 +230,14 @@ impl AppData {
     }
 
     fn default_window_config(&self) -> WindowConfig {
-        WindowConfig::default()
+        let config = WindowConfig::default()
             .apply_default_theme(false)
-            .title("Gravity Editor")
+            .title("Gravity Editor");
+        #[cfg(target_os = "linux")]
+        let config = config
+            .application_id("dev.lapce.lapce")
+            .window_icon(linux_application_icon());
+        config
     }
 
     pub fn new_window(&self, folder: Option<PathBuf>) {
@@ -4683,4 +4688,25 @@ fn tab_secondary_click(
             });
         }));
     show_context_menu(menu, None);
+}
+
+/// Embed the existing Gravity artwork, so a directly launched Linux binary has
+/// a native X11 icon without relying on an installed desktop theme.
+#[cfg(target_os = "linux")]
+fn linux_application_icon() -> floem::window::Icon {
+    let image = image::load_from_memory(include_bytes!("../../extra/images/window-icon.png"))
+        .expect("bundled Gravity PNG is valid").into_rgba8();
+    let (width, height) = image.dimensions();
+    floem::window::Icon::from_rgba(image.into_raw(), width, height)
+        .expect("bundled Gravity RGBA dimensions are valid")
+}
+#[cfg(all(test, target_os = "linux"))]
+mod linux_icon_tests {
+    #[test] fn bundled_linux_icon_is_valid_visible_square() {
+        let image = image::load_from_memory(include_bytes!("../../extra/images/window-icon.png")).unwrap().into_rgba8();
+        assert_eq!(image.dimensions(), (128, 128));
+        assert!(image.pixels().any(|p| p.0[3] == 0));
+        assert!(image.pixels().any(|p| p.0[3] > 200 && p.0[2] > 150));
+        let _ = super::linux_application_icon();
+    }
 }

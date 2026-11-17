@@ -311,6 +311,7 @@ impl ApplicationHandle {
             transparent,
             fullscreen,
             window_icon,
+            application_id,
             title,
             enabled_buttons,
             resizable,
@@ -337,6 +338,16 @@ impl ApplicationHandle {
             .with_window_icon(window_icon)
             .with_resizable(resizable)
             .with_enabled_buttons(enabled_buttons);
+
+        #[cfg(target_os = "linux")]
+        if let Some(application_id) = application_id {
+            window_attributes = winit::platform::x11::WindowAttributesExtX11::with_name(
+                window_attributes, application_id.clone(), application_id.clone());
+            window_attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
+                window_attributes, application_id, "lapce");
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = application_id;
 
         #[cfg(target_arch = "wasm32")]
         {

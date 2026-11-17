@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Local-only regression checks for Linux packaging and build caches."""
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+class LinuxBuildTests(unittest.TestCase):
+    def test_source_mtimes_preserve_only_identical_bytes(self):
+        script = (ROOT / 'scripts/restore-source-mtimes.py').read_text()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'same.rs').write_text('same')
+            (root / 'changed.rs').write_text('before')
+            code = script.replace("root = Path('/src')", f'root = Path({tmp!r})')
+            exec(compile(code, 'cache-test', 'exec'), {})
+            original = (root / 'same.rs').stat().st_mtime_ns
+            time.sleep(.02)
+            (root / 'same.rs').touch()
+            (root / 'changed.rs').write_text('after')
+            changed = (root / 'changed.rs').stat().st_mtime_ns
+            exec(compile(code, 'cache-test', 'exec'), {})
+            self.assertEqual((root / 'same.rs').stat().st_mtime_ns, original)
+            self.assertEqual((root / 'changed.rs').stat().st_mtime_ns, changed)
+
+    def test_portable_build_cold_warm_failure_and_low_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/linux-builder.Dockerfile').write_text('FROM test\n')
+            (root / 'bin').mkdir()
+            commands = {
+                'df': '#!/bin/sh\nprintf "Filesystem Blocks Used Available Capacity Mount\\nmock 100000000 1 %s 1%% /\\n" "${FREE_KB:-90000000}"\n',
+                'git': '#!/bin/sh\nprintf archive\n',
+                'docker': '''#!/bin/bash
+printf '%s\\n' "$*" >> "$MOCK_LOG"
+case "$1" in
+ image) test "${CACHE_HIT:-0}" = 1 ;;
+ build) cat > "$MOCK_DIR/recipe" ;;
+ create) echo mock-container ;;
+ cp) if [ "$2" = - ]; then cat > "$MOCK_DIR/archive"; else printf binary > "$3"; fi ;;
+ exec) test "${FAIL_EXEC:-0}" != 1 ;;
+ *) echo mock-ok ;;
+esac
+''',
+            }
+            for name, body in commands.items():
+                path = root / 'bin' / name
+                path.write_text(body)
+                path.chmod(0o755)
+            script = ROOT / 'scripts/build-linux-portable.sh'
+            env = os.environ | {'PATH': str(root / 'bin') + ':' + os.environ['PATH'], 'MOCK_LOG': str(root / 'calls'), 'MOCK_DIR': tmp}
+            for hit in ['0', '1']:
+                env['CACHE_HIT'] = hit
+                subprocess.run(['bash', str(script)], cwd=root, env=env, check=True)
+                self.assertEqual((root / 'target/ubuntu-22.04/release/lapce').read_text(), 'binary')
+            calls = (root / 'calls').read_text()
+            self.assertEqual(calls.count('build --tag'), 1)
+            self.assertIn('gravity-editor-target-1980', calls)
+            self.assertEqual(calls.count('rm -f mock-container'), 2)
+            env['FAIL_EXEC'] = '1'
+            self.assertNotEqual(subprocess.run(['bash', str(script)], cwd=root, env=env).returncode, 0)
+            calls = (root / 'calls').read_text()
+            self.assertEqual(calls.count('rm -f mock-container'), 3)
+            env['FREE_KB'] = '1'
+            self.assertNotEqual(subprocess.run(['bash', str(script)], cwd=root, env=env).returncode, 0)
+            self.assertEqual((root / 'calls').read_text(), calls)
+
+    def test_installer_with_spaces_and_invalid_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bundle = root / 'bundle with spaces'
+            bundle.mkdir()
+            prefix = root / 'install'
+            (bundle / 'lapce').write_text('#!/bin/sh\n')
+            (bundle / 'lapce').chmod(0o755)
+            for name in ['logo.svg', 'window-icon.png']:
+                (bundle / name).write_bytes(b'test')
+            script = bundle / 'install-desktop.sh'
+            script.write_bytes((ROOT / 'extra/linux/install-desktop.sh').read_bytes())
+            subprocess.run(['sh', str(script), str(prefix)], check=True)
+            desktop = (prefix / 'share/applications/dev.lapce.lapce.desktop').read_text()
+            self.assertIn(f'Exec="{bundle}/lapce" %F', desktop)
+            self.assertIn('Icon=dev.lapce.lapce', desktop)
+            self.assertEqual((prefix / 'share/icons/hicolor/128x128/apps/dev.lapce.lapce.png').read_bytes(), b'test')
+            self.assertNotEqual(subprocess.run(['sh', str(script), 'relative-prefix']).returncode, 0)
+
+if __name__ == '__main__':
+    unittest.main()

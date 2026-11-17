@@ -29,6 +29,7 @@ pub struct WindowConfig {
     pub(crate) transparent: bool,
     pub(crate) fullscreen: Option<Fullscreen>,
     pub(crate) window_icon: Option<Icon>,
+    pub(crate) application_id: Option<String>,
     pub(crate) title: String,
     pub(crate) enabled_buttons: WindowButtons,
     pub(crate) resizable: bool,
@@ -53,6 +54,7 @@ impl Default for WindowConfig {
             transparent: false,
             fullscreen: None,
             window_icon: None,
+            application_id: None,
             title: std::env::current_exe()
                 .ok()
                 .and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()))
@@ -152,6 +154,12 @@ impl WindowConfig {
     ///
     /// The default is `None`.
     #[inline]
+    /// Desktop file ID on Linux (Wayland app_id and X11 WM_CLASS).
+    pub fn application_id(mut self, application_id: impl Into<String>) -> Self {
+        self.application_id = Some(application_id.into());
+        self
+    }
+
     pub fn window_icon(mut self, window_icon: Icon) -> Self {
         self.window_icon = Some(window_icon);
         self

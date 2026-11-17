@@ -6,14 +6,17 @@ name: Linux build
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-build-${{ github.ref }}
-  cancel-in-progress: true
+  group: linux-build-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -39,9 +42,12 @@ jobs:
           mkdir "$dir"
           cp target/ubuntu-22.04/release/lapce target/ubuntu-22.04/release/lapce-proxy "$dir/"
           strip "$dir"/lapce "$dir"/lapce-proxy
+          cp extra/linux/install-desktop.sh extra/images/window-icon.png "$dir/"
+          cp extra/images/logo_color.svg "$dir/logo.svg"
           cat > "$dir/README.txt" <<EOT
           Lapce (${GITHUB_REPOSITORY} ${short}), Linux x86_64 release build.
-          Run ./lapce. lapce-proxy must sit next to it for remote use.
+          Run ./lapce. Run ./install-desktop.sh once for the Linux app menu/dock icon.
+          lapce-proxy must sit next to it for remote use.
           Runtime libs (Debian/Ubuntu): sudo apt install libxkbcommon-x11-0 libvulkan1 libwayland-client0 libxcb-shape0 libxcb-xfixes0
           EOT
           tar cJf "${dir}.tar.xz" "$dir"
