@@ -2255,7 +2255,10 @@ impl WindowTabData {
             InternalCommand::StartInlineAiEdit { start, end, rev } => {
                 if let Some(editor) = self.main_split.active_editor.get_untracked()
                 {
-                    self.inline_ai_edit.start(editor, start, end, rev);
+                    let editor_id = editor.id();
+                    let active_editor = self.main_split.active_editor;
+                    let active = crate::rename::SourceRenameGuard::new(Rc::new(move || active_editor.get_untracked().is_some_and(|editor| editor.id() == editor_id)));
+                    self.inline_ai_edit.start(editor, start, end, rev, active);
                 }
             }
             InternalCommand::Search { pattern } => {

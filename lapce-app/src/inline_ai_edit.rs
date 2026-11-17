@@ -23,6 +23,7 @@ use crate::{
     editor::EditorData,
     keypress::{KeyPressFocus, condition::Condition},
     main_split::Editors,
+    rename::SourceRenameGuard,
     window_tab::{CommonData, Focus},
 };
 
@@ -39,6 +40,8 @@ pub const INLINE_EDIT_INSTRUCTION_CAP: usize = 1_000;
 #[derive(Clone, Debug)]
 pub struct InlineAiEditData {
     pub active: RwSignal<bool>,
+    context: RwSignal<Option<InlineEditContext>>,
+    generation: RwSignal<u64>,
     pub editor: EditorData,
     /// Byte range of the target selection in the target buffer.
     pub start: RwSignal<usize>,
@@ -106,6 +109,8 @@ impl InlineAiEditData {
         let editor = editors.make_local(cx, common.clone());
         Self {
             active,
+            context: cx.create_rw_signal(None),
+            generation: cx.create_rw_signal(0),
             editor,
             start,
             end,
@@ -124,7 +129,12 @@ impl InlineAiEditData {
         start: usize,
         end: usize,
         rev: u64,
+        active: SourceRenameGuard,
     ) {
+        self.generation.update(|generation| *generation = generation.wrapping_add(1));
+        self.context.set(None);
+        let Some(context) = capture_inline_edit_context(&target, start..end, rev, active) else { return; };
+        self.context.set(Some(context));
         self.editor.doc().reload(Rope::from(""), true);
         self.editor
             .cursor()
@@ -152,6 +162,8 @@ impl InlineAiEditData {
     }
 
     fn cancel(&self) {
+        self.generation.update(|generation| *generation = generation.wrapping_add(1));
+        self.context.set(None);
         self.cancel.store(true, Ordering::Release);
         self.pending.set(false);
         self.active.set(false);
@@ -188,41 +200,20 @@ impl InlineAiEditData {
         let Some(target) = self.target.get_untracked() else {
             return;
         };
-        let (start, end, rev) = (
-            self.start.get_untracked(),
-            self.end.get_untracked(),
-            self.rev.get_untracked(),
-        );
-        let doc = target.doc();
-        let Some((code, context)) = doc.buffer.with_untracked(|buffer| {
-            if buffer.rev() != rev {
-                // The user edited the buffer after opening the overlay;
-                // the captured range is stale, so do nothing.
-                return None;
-            }
-            let len = buffer.text().len();
-            let end = end.min(len);
-            let start = start.min(end);
-            let code = buffer.slice_to_cow(start..end).to_string();
-            // Bounded style context around the selection, aligned to code
-            // boundaries so no codepoint is ever split.
-            let ctx_start =
-                buffer.prev_code_boundary(start.saturating_sub(2_000));
-            let ctx_end =
-                buffer.next_code_boundary((end + 2_000).min(len));
-            let context = buffer.slice_to_cow(ctx_start..ctx_end).to_string();
-            Some((code, context))
-        }) else {
-            return;
-        };
-        let messages = inline_edit_messages(&code, &instruction, &context);
+        let (start, end, rev) = (self.start.get_untracked(), self.end.get_untracked(), self.rev.get_untracked());
+        let Some(context) = self.context.get_untracked() else { return; };
+        if !context.guard.current() { return; }
+        let messages = inline_edit_messages(&context.code, &instruction, &context.context);
+        let generation = self.generation.get_untracked();
         self.cancel.store(false, Ordering::Release);
         self.pending.set(true);
         let cancelled = self.cancel.clone();
         let me = self.clone();
         let send = create_ext_action(self.common.scope, move |text: String| {
+            if me.generation.get_untracked() != generation { return; }
             me.pending.set(false);
-            let text = strip_code_fence(&text);
+            if me.cancel.load(Ordering::Acquire) || !context.guard.current() { return; }
+            let text = inline_edit_replacement(&context.code, &text);
             if text.is_empty() {
                 return;
             }
@@ -431,5 +422,88 @@ mod tests {
         assert!(!user.contains("Surrounding code"));
         assert_eq!(messages[0].role, "system");
         assert_eq!(messages[1].role, "user");
+    }
+}
+
+#[derive(Clone, Debug)]
+struct InlineEditContext {
+    code: String,
+    context: String,
+    guard: SourceRenameGuard,
+}
+
+fn capture_inline_edit_context(target: &EditorData, range: std::ops::Range<usize>, rev: u64, active: SourceRenameGuard) -> Option<InlineEditContext> {
+    let origin = target.doc();
+    if origin.rev() != rev { return None; }
+    let origin_id = origin.buffer_id;
+    let mode = target.cursor().with_untracked(|cursor| cursor.mode.clone());
+    let projected = origin.projection.get_untracked().is_some();
+    if projected && matches!(&mode, lapce_core::cursor::CursorMode::Insert(selection) if selection.regions().len() != 1) { return None; }
+    let (source, source_range) = if let Some(binding) = origin.projection.get_untracked() {
+        let (_, source_range) = binding.projection.borrow().inline_ai_source_range(range.clone())?;
+        let (source, _) = origin.projection_navigation_source(range.start)?;
+        (source, source_range)
+    } else { (origin.clone(), range.clone()) };
+    if source.content.with_untracked(|content| content.read_only()) { return None; }
+    let source_id = source.buffer_id;
+    let source_rev = source.rev();
+    let (code, context) = source.buffer.with_untracked(|buffer| inline_source_context(buffer, source_range.clone()))?;
+    let editor = target.clone();
+    let guard = active.restrict(Rc::new(move || {
+        let origin = editor.doc();
+        if origin.buffer_id != origin_id || origin.rev() != rev { return false; }
+        if !editor.cursor().try_get_untracked().is_some_and(|cursor| cursor.mode == mode) { return false; }
+        if projected {
+            origin.projection_navigation_source(range.start).is_some_and(|(source, offset)| source.buffer_id == source_id && source.rev() == source_rev && offset == source_range.start)
+        } else { true }
+    }));
+    Some(InlineEditContext { code, context, guard })
+}
+
+fn inline_source_context(buffer: &impl RopeText, range: std::ops::Range<usize>) -> Option<(String, String)> {
+    let text = buffer.text();
+    if range.start >= range.end || range.end > text.len() || text.at_or_prev_codepoint_boundary(range.start) != Some(range.start) || text.at_or_prev_codepoint_boundary(range.end) != Some(range.end) { return None; }
+    let from = buffer.prev_code_boundary(range.start.saturating_sub(2000));
+    let to = buffer.next_code_boundary(range.end.saturating_add(2000).min(text.len()));
+    Some((buffer.slice_to_cow(range).to_string(), buffer.slice_to_cow(from..to).to_string()))
+}
+
+#[cfg(test)]
+mod inline_source_context_tests {
+    use super::*;
+    use lapce_core::buffer::rope_text::RopeTextVal;
+    #[test] fn inline_source_context_keeps_exact_unicode_selection_and_canonical_context() {
+        let buffer = RopeTextVal::new(Rope::from("canonical outside excerpt\nλname\ncanonical tail"));
+        let start = buffer.text.to_string().find('λ').unwrap();
+        let (code, context) = inline_source_context(&buffer, start..start+6).unwrap();
+        assert_eq!(code, "λname");
+        assert!(context.contains("canonical outside excerpt"));
+        assert!(context.contains("canonical tail"));
+    }
+    #[test] fn inline_source_context_refuses_empty_reversed_split_or_outside() {
+        let buffer = RopeTextVal::new(Rope::from("λname"));
+        for range in [0..0, 3..2, 1..3, 0..90] { assert!(inline_source_context(&buffer, range).is_none()); }
+    }
+}
+
+/// Fence removal trims blank space. A whole-line target includes its newline,
+/// so retain that boundary instead of joining the following source line.
+fn inline_edit_replacement(code: &str, reply: &str) -> String {
+    let mut text = strip_code_fence(reply);
+    if text.is_empty() { return text; }
+    if code.ends_with("\r\n") { text.push_str("\r\n"); }
+    else if code.ends_with('\n') { text.push('\n'); }
+    text
+}
+#[cfg(test)]
+mod inline_replacement_tests {
+    use super::inline_edit_replacement;
+    #[test] fn inline_replacement_preserves_lf_and_crlf_target_boundaries() {
+        assert_eq!(inline_edit_replacement("old\n", "```php\nnew\n```"), "new\n");
+        assert_eq!(inline_edit_replacement("old\r\n", "new\n"), "new\r\n");
+    }
+    #[test] fn inline_replacement_does_not_add_newline_to_partial_selection_or_empty_reply() {
+        assert_eq!(inline_edit_replacement("old", "new\n"), "new");
+        assert_eq!(inline_edit_replacement("old\n", ""), "");
     }
 }

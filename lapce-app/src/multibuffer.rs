@@ -1219,3 +1219,32 @@ mod diagnostic_rows_tests {
         assert!(projection.text.contains("MESSAGE"));
     }
 }
+
+impl Projection {
+    /// Inline AI edits target one non-empty code range, never synthetic rows.
+    pub(crate) fn inline_ai_source_range(&self, range: Range<usize>) -> Option<(SourceAnchor, Range<usize>)> {
+        if range.is_empty() || !valid(&self.text, &range) { return None; }
+        let excerpt = self.excerpts.iter().find(|excerpt| range.start >= excerpt.display_range.start && range.end <= excerpt.display_range.end)?;
+        let anchor = self.navigation_anchor(range.start)?;
+        let end = anchor.offset.checked_add(range.len())?;
+        Some((anchor.clone(), anchor.offset..end))
+    }
+}
+#[cfg(test)]
+mod projection_inline_ai_tests {
+    use super::*;
+    fn fixture() -> Projection {
+        let source = Snapshot { path: "one.php".into(), buffer_id: 3, revision: 7, read_only: false, text: "hidden\nλname\n".into() };
+        Projection::build(&[source.clone()], &[(source.path.clone(), 7..14)], 4096).unwrap().with_diagnostic_rows(&[(source.path, 7, "[snapshot message]\n".into())], 4096).unwrap()
+    }
+    #[test] fn inline_ai_maps_exact_unicode_code_range_not_metadata() {
+        let p = fixture(); let start = p.excerpts[0].display_range.start;
+        let (anchor, range) = p.inline_ai_source_range(start..start+7).unwrap();
+        assert_eq!((anchor.buffer_id, anchor.revision, anchor.offset), (3,7,7));
+        assert_eq!(range, 7..14);
+    }
+    #[test] fn inline_ai_refuses_headers_snapshot_rows_empty_split_and_boundaries() {
+        let p = fixture(); let start = p.excerpts[0].display_range.start;
+        for range in [0..1, start-2..start+2, start..start, start+1..start+3, start..start+8] { assert!(p.inline_ai_source_range(range).is_none()); }
+    }
+}
