@@ -1315,3 +1315,14 @@ mod shared_ai_tests {
         assert_eq!(config.effective_ai_autocomplete().endpoint, "http://legacy.test");
     }
 }
+
+#[cfg(test)]
+mod compact_font_defaults_tests {
+    #[test]
+    fn compact_font_defaults_keep_size_adjustable() {
+        let c = super::LapceConfig::default_lapce_config();
+        assert_eq!(c.editor.font_size(), 12);
+        assert_eq!(c.ui.font_size(), 12);
+        assert_eq!(c.terminal.font_size, 0); // inherit the editor size
+    }
+}
