@@ -1,0 +1,58 @@
+[
+  {
+    "name": "make",
+    "signature": "make(array $data, array $rules, array $messages = [], array $attributes = []) -> \\Illuminate\\Validation\\Validator"
+  },
+  {
+    "name": "validate",
+    "signature": "validate(array $data, array $rules, array $messages = [], array $attributes = []) -> array"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $rule, \\Closure|string $extension, string|null $message = null) -> void"
+  },
+  {
+    "name": "extendImplicit",
+    "signature": "extendImplicit(string $rule, \\Closure|string $extension, string|null $message = null) -> void"
+  },
+  {
+    "name": "extendDependent",
+    "signature": "extendDependent(string $rule, \\Closure|string $extension, string|null $message = null) -> void"
+  },
+  {
+    "name": "replacer",
+    "signature": "replacer(string $rule, \\Closure|string $replacer) -> void"
+  },
+  {
+    "name": "includeUnvalidatedArrayKeys",
+    "signature": "includeUnvalidatedArrayKeys() -> void"
+  },
+  {
+    "name": "excludeUnvalidatedArrayKeys",
+    "signature": "excludeUnvalidatedArrayKeys() -> void"
+  },
+  {
+    "name": "resolver",
+    "signature": "resolver(\\Closure $resolver) -> void"
+  },
+  {
+    "name": "getTranslator",
+    "signature": "getTranslator() -> \\Illuminate\\Contracts\\Translation\\Translator"
+  },
+  {
+    "name": "getPresenceVerifier",
+    "signature": "getPresenceVerifier() -> \\Illuminate\\Validation\\PresenceVerifierInterface"
+  },
+  {
+    "name": "setPresenceVerifier",
+    "signature": "setPresenceVerifier(\\Illuminate\\Validation\\PresenceVerifierInterface $presenceVerifier) -> void"
+  },
+  {
+    "name": "getContainer",
+    "signature": "getContainer() -> \\Illuminate\\Contracts\\Container\\Container|null"
+  },
+  {
+    "name": "setContainer",
+    "signature": "setContainer(\\Illuminate\\Contracts\\Container\\Container $container) -> \\Illuminate\\Validation\\Factory"
+  }
+]

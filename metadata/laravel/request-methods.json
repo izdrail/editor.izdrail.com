@@ -1,0 +1,762 @@
+[
+  {
+    "name": "capture",
+    "signature": "capture() -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "instance",
+    "signature": "instance() -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "method",
+    "signature": "method() -> string"
+  },
+  {
+    "name": "uri",
+    "signature": "uri() -> \\Illuminate\\Support\\Uri"
+  },
+  {
+    "name": "root",
+    "signature": "root() -> string"
+  },
+  {
+    "name": "url",
+    "signature": "url() -> string"
+  },
+  {
+    "name": "fullUrl",
+    "signature": "fullUrl() -> string"
+  },
+  {
+    "name": "fullUrlWithQuery",
+    "signature": "fullUrlWithQuery(array $query) -> string"
+  },
+  {
+    "name": "fullUrlWithoutQuery",
+    "signature": "fullUrlWithoutQuery(array|string $keys) -> string"
+  },
+  {
+    "name": "path",
+    "signature": "path() -> string"
+  },
+  {
+    "name": "decodedPath",
+    "signature": "decodedPath() -> string"
+  },
+  {
+    "name": "segment",
+    "signature": "segment(int $index, string|null $default = null) -> string|null"
+  },
+  {
+    "name": "segments",
+    "signature": "segments() -> array"
+  },
+  {
+    "name": "is",
+    "signature": "is(mixed ...$patterns) -> bool"
+  },
+  {
+    "name": "routeIs",
+    "signature": "routeIs(mixed ...$patterns) -> bool"
+  },
+  {
+    "name": "fullUrlIs",
+    "signature": "fullUrlIs(mixed ...$patterns) -> bool"
+  },
+  {
+    "name": "host",
+    "signature": "host() -> string"
+  },
+  {
+    "name": "httpHost",
+    "signature": "httpHost() -> string"
+  },
+  {
+    "name": "schemeAndHttpHost",
+    "signature": "schemeAndHttpHost() -> string"
+  },
+  {
+    "name": "ajax",
+    "signature": "ajax() -> bool"
+  },
+  {
+    "name": "pjax",
+    "signature": "pjax() -> bool"
+  },
+  {
+    "name": "prefetch",
+    "signature": "prefetch() -> bool"
+  },
+  {
+    "name": "secure",
+    "signature": "secure() -> bool"
+  },
+  {
+    "name": "ip",
+    "signature": "ip() -> string|null"
+  },
+  {
+    "name": "ips",
+    "signature": "ips() -> array"
+  },
+  {
+    "name": "userAgent",
+    "signature": "userAgent() -> string|null"
+  },
+  {
+    "name": "getAcceptableContentTypes",
+    "signature": "getAcceptableContentTypes() -> array"
+  },
+  {
+    "name": "merge",
+    "signature": "merge(array $input) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "mergeIfMissing",
+    "signature": "mergeIfMissing(array $input) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "replace",
+    "signature": "replace(array $input) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "json",
+    "signature": "json(string|null $key = null, mixed $default = null) -> \\Symfony\\Component\\HttpFoundation\\InputBag|mixed"
+  },
+  {
+    "name": "createFrom",
+    "signature": "createFrom(\\Illuminate\\Http\\Request $from, \\Illuminate\\Http\\Request|null $to = null) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "createFromBase",
+    "signature": "createFromBase(\\Symfony\\Component\\HttpFoundation\\Request $request) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "duplicate",
+    "signature": "duplicate(array|null $query = null, array|null $request = null, array|null $attributes = null, array|null $cookies = null, array|null $files = null, array|null $server = null) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "hasSession",
+    "signature": "hasSession(bool $skipIfUninitialized = false) -> bool"
+  },
+  {
+    "name": "getSession",
+    "signature": "getSession() -> \\Symfony\\Component\\HttpFoundation\\Session\\SessionInterface"
+  },
+  {
+    "name": "session",
+    "signature": "session() -> \\Illuminate\\Contracts\\Session\\Session"
+  },
+  {
+    "name": "setLaravelSession",
+    "signature": "setLaravelSession(\\Illuminate\\Contracts\\Session\\Session $session) -> void"
+  },
+  {
+    "name": "setRequestLocale",
+    "signature": "setRequestLocale(string $locale) -> void"
+  },
+  {
+    "name": "setDefaultRequestLocale",
+    "signature": "setDefaultRequestLocale(string $locale) -> void"
+  },
+  {
+    "name": "user",
+    "signature": "user(string|null $guard = null) -> mixed"
+  },
+  {
+    "name": "route",
+    "signature": "route(string|null $param = null, mixed $default = null) -> \\Illuminate\\Routing\\Route|object|string|null"
+  },
+  {
+    "name": "fingerprint",
+    "signature": "fingerprint() -> string"
+  },
+  {
+    "name": "setJson",
+    "signature": "setJson(\\Symfony\\Component\\HttpFoundation\\InputBag $json) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "getUserResolver",
+    "signature": "getUserResolver() -> \\Closure"
+  },
+  {
+    "name": "setUserResolver",
+    "signature": "setUserResolver(\\Closure $callback) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "getRouteResolver",
+    "signature": "getRouteResolver() -> \\Closure"
+  },
+  {
+    "name": "setRouteResolver",
+    "signature": "setRouteResolver(\\Closure $callback) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "toArray",
+    "signature": "toArray() -> array"
+  },
+  {
+    "name": "initialize",
+    "signature": "initialize(array $query = [], array $request = [], array $attributes = [], array $cookies = [], array $files = [], array $server = [], string|resource|null $content = null) -> void"
+  },
+  {
+    "name": "createFromGlobals",
+    "signature": "createFromGlobals() -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "create",
+    "signature": "create(string $uri, string $method = 'GET', array $parameters = [], array $cookies = [], array $files = [], array $server = [], string|resource|null $content = null) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "setFactory",
+    "signature": "setFactory(callable|null $callable) -> void"
+  },
+  {
+    "name": "overrideGlobals",
+    "signature": "overrideGlobals() -> void"
+  },
+  {
+    "name": "setTrustedProxies",
+    "signature": "setTrustedProxies(array $proxies, int $trustedHeaderSet) -> void"
+  },
+  {
+    "name": "getTrustedProxies",
+    "signature": "getTrustedProxies() -> string[]"
+  },
+  {
+    "name": "getTrustedHeaderSet",
+    "signature": "getTrustedHeaderSet() -> int"
+  },
+  {
+    "name": "setTrustedHosts",
+    "signature": "setTrustedHosts(array $hostPatterns) -> void"
+  },
+  {
+    "name": "getTrustedHosts",
+    "signature": "getTrustedHosts() -> string[]"
+  },
+  {
+    "name": "normalizeQueryString",
+    "signature": "normalizeQueryString(string|null $qs) -> string"
+  },
+  {
+    "name": "enableHttpMethodParameterOverride",
+    "signature": "enableHttpMethodParameterOverride() -> void"
+  },
+  {
+    "name": "getHttpMethodParameterOverride",
+    "signature": "getHttpMethodParameterOverride() -> bool"
+  },
+  {
+    "name": "setAllowedHttpMethodOverride",
+    "signature": "setAllowedHttpMethodOverride(string[]|null $methods) -> void"
+  },
+  {
+    "name": "getAllowedHttpMethodOverride",
+    "signature": "getAllowedHttpMethodOverride() -> string[]|null"
+  },
+  {
+    "name": "hasPreviousSession",
+    "signature": "hasPreviousSession() -> bool"
+  },
+  {
+    "name": "setSession",
+    "signature": "setSession(\\Symfony\\Component\\HttpFoundation\\Session\\SessionInterface $session) -> void"
+  },
+  {
+    "name": "getClientIps",
+    "signature": "getClientIps() -> array"
+  },
+  {
+    "name": "getClientIp",
+    "signature": "getClientIp() -> string|null"
+  },
+  {
+    "name": "getScriptName",
+    "signature": "getScriptName() -> string"
+  },
+  {
+    "name": "getPathInfo",
+    "signature": "getPathInfo() -> string"
+  },
+  {
+    "name": "getBasePath",
+    "signature": "getBasePath() -> string"
+  },
+  {
+    "name": "getBaseUrl",
+    "signature": "getBaseUrl() -> string"
+  },
+  {
+    "name": "getScheme",
+    "signature": "getScheme() -> string"
+  },
+  {
+    "name": "getPort",
+    "signature": "getPort() -> int|string|null"
+  },
+  {
+    "name": "getUser",
+    "signature": "getUser() -> string|null"
+  },
+  {
+    "name": "getPassword",
+    "signature": "getPassword() -> string|null"
+  },
+  {
+    "name": "getUserInfo",
+    "signature": "getUserInfo() -> string|null"
+  },
+  {
+    "name": "getHttpHost",
+    "signature": "getHttpHost() -> string"
+  },
+  {
+    "name": "getRequestUri",
+    "signature": "getRequestUri() -> string"
+  },
+  {
+    "name": "getSchemeAndHttpHost",
+    "signature": "getSchemeAndHttpHost() -> string"
+  },
+  {
+    "name": "getUri",
+    "signature": "getUri() -> string"
+  },
+  {
+    "name": "getUriForPath",
+    "signature": "getUriForPath(string $path) -> string"
+  },
+  {
+    "name": "getRelativeUriForPath",
+    "signature": "getRelativeUriForPath(string $path) -> string"
+  },
+  {
+    "name": "getQueryString",
+    "signature": "getQueryString() -> string|null"
+  },
+  {
+    "name": "isSecure",
+    "signature": "isSecure() -> bool"
+  },
+  {
+    "name": "getHost",
+    "signature": "getHost() -> string"
+  },
+  {
+    "name": "setMethod",
+    "signature": "setMethod(string $method) -> void"
+  },
+  {
+    "name": "getMethod",
+    "signature": "getMethod() -> string"
+  },
+  {
+    "name": "getRealMethod",
+    "signature": "getRealMethod() -> string"
+  },
+  {
+    "name": "getMimeType",
+    "signature": "getMimeType(string $format) -> string|null"
+  },
+  {
+    "name": "getMimeTypes",
+    "signature": "getMimeTypes(string $format) -> string[]"
+  },
+  {
+    "name": "getFormat",
+    "signature": "getFormat(string|null $mimeType, bool $subtypeFallback = null) -> string|null"
+  },
+  {
+    "name": "setFormat",
+    "signature": "setFormat(string $format, string|string[] $mimeTypes) -> void"
+  },
+  {
+    "name": "getRequestFormat",
+    "signature": "getRequestFormat(string|null $default = 'html') -> string|null"
+  },
+  {
+    "name": "setRequestFormat",
+    "signature": "setRequestFormat(string|null $format) -> void"
+  },
+  {
+    "name": "getContentTypeFormat",
+    "signature": "getContentTypeFormat() -> string|null"
+  },
+  {
+    "name": "setDefaultLocale",
+    "signature": "setDefaultLocale(string $locale) -> void"
+  },
+  {
+    "name": "getDefaultLocale",
+    "signature": "getDefaultLocale() -> string"
+  },
+  {
+    "name": "setLocale",
+    "signature": "setLocale(string $locale) -> void"
+  },
+  {
+    "name": "getLocale",
+    "signature": "getLocale() -> string"
+  },
+  {
+    "name": "isMethod",
+    "signature": "isMethod(string $method) -> bool"
+  },
+  {
+    "name": "isMethodSafe",
+    "signature": "isMethodSafe() -> bool"
+  },
+  {
+    "name": "isMethodIdempotent",
+    "signature": "isMethodIdempotent() -> bool"
+  },
+  {
+    "name": "isMethodCacheable",
+    "signature": "isMethodCacheable() -> bool"
+  },
+  {
+    "name": "getProtocolVersion",
+    "signature": "getProtocolVersion() -> string|null"
+  },
+  {
+    "name": "getContent",
+    "signature": "getContent(bool $asResource = false) -> string|resource"
+  },
+  {
+    "name": "getPayload",
+    "signature": "getPayload() -> \\Symfony\\Component\\HttpFoundation\\InputBag"
+  },
+  {
+    "name": "getETags",
+    "signature": "getETags() -> array"
+  },
+  {
+    "name": "isNoCache",
+    "signature": "isNoCache() -> bool"
+  },
+  {
+    "name": "getPreferredFormat",
+    "signature": "getPreferredFormat(string|null $default = 'html') -> string|null"
+  },
+  {
+    "name": "getPreferredLanguage",
+    "signature": "getPreferredLanguage(string[] $locales = null) -> string|null"
+  },
+  {
+    "name": "getLanguages",
+    "signature": "getLanguages() -> string[]"
+  },
+  {
+    "name": "getCharsets",
+    "signature": "getCharsets() -> string[]"
+  },
+  {
+    "name": "getEncodings",
+    "signature": "getEncodings() -> string[]"
+  },
+  {
+    "name": "isXmlHttpRequest",
+    "signature": "isXmlHttpRequest() -> bool"
+  },
+  {
+    "name": "preferSafeContent",
+    "signature": "preferSafeContent() -> bool"
+  },
+  {
+    "name": "isFromTrustedProxy",
+    "signature": "isFromTrustedProxy() -> bool"
+  },
+  {
+    "name": "filterPrecognitiveRules",
+    "signature": "filterPrecognitiveRules(array $rules) -> array"
+  },
+  {
+    "name": "isAttemptingPrecognition",
+    "signature": "isAttemptingPrecognition() -> bool"
+  },
+  {
+    "name": "isPrecognitive",
+    "signature": "isPrecognitive() -> bool"
+  },
+  {
+    "name": "isJson",
+    "signature": "isJson() -> bool"
+  },
+  {
+    "name": "expectsJson",
+    "signature": "expectsJson() -> bool"
+  },
+  {
+    "name": "wantsJson",
+    "signature": "wantsJson() -> bool"
+  },
+  {
+    "name": "wantsMarkdown",
+    "signature": "wantsMarkdown() -> bool"
+  },
+  {
+    "name": "accepts",
+    "signature": "accepts(string|array $contentTypes) -> bool"
+  },
+  {
+    "name": "prefers",
+    "signature": "prefers(string|array $contentTypes) -> string|null"
+  },
+  {
+    "name": "acceptsAnyContentType",
+    "signature": "acceptsAnyContentType() -> bool"
+  },
+  {
+    "name": "acceptsJson",
+    "signature": "acceptsJson() -> bool"
+  },
+  {
+    "name": "acceptsMarkdown",
+    "signature": "acceptsMarkdown() -> bool"
+  },
+  {
+    "name": "acceptsHtml",
+    "signature": "acceptsHtml() -> bool"
+  },
+  {
+    "name": "matchesType",
+    "signature": "matchesType(string $actual, string $type) -> bool"
+  },
+  {
+    "name": "format",
+    "signature": "format(string $default = 'html') -> string"
+  },
+  {
+    "name": "old",
+    "signature": "old(string|null $key = null, \\Illuminate\\Database\\Eloquent\\Model|string|array|null $default = null) -> string|array|null"
+  },
+  {
+    "name": "flash",
+    "signature": "flash() -> void"
+  },
+  {
+    "name": "flashOnly",
+    "signature": "flashOnly(mixed $keys) -> void"
+  },
+  {
+    "name": "flashExcept",
+    "signature": "flashExcept(mixed $keys) -> void"
+  },
+  {
+    "name": "flush",
+    "signature": "flush() -> void"
+  },
+  {
+    "name": "server",
+    "signature": "server(string|null $key = null, string|array|null $default = null) -> string|array|null"
+  },
+  {
+    "name": "hasHeader",
+    "signature": "hasHeader(string $key) -> bool"
+  },
+  {
+    "name": "header",
+    "signature": "header(string|null $key = null, string|array|null $default = null) -> string|array|null"
+  },
+  {
+    "name": "bearerToken",
+    "signature": "bearerToken() -> string|null"
+  },
+  {
+    "name": "keys",
+    "signature": "keys() -> array"
+  },
+  {
+    "name": "all",
+    "signature": "all(mixed $keys = null) -> array"
+  },
+  {
+    "name": "input",
+    "signature": "input(string|null $key = null, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "fluent",
+    "signature": "fluent(array|string|null $key = null, array $default = []) -> \\Illuminate\\Support\\Fluent"
+  },
+  {
+    "name": "query",
+    "signature": "query(string|null $key = null, string|array|null $default = null) -> string|array|null"
+  },
+  {
+    "name": "post",
+    "signature": "post(string|null $key = null, string|array|null $default = null) -> string|array|null"
+  },
+  {
+    "name": "hasCookie",
+    "signature": "hasCookie(string $key) -> bool"
+  },
+  {
+    "name": "cookie",
+    "signature": "cookie(string|null $key = null, string|array|null $default = null) -> string|array|null"
+  },
+  {
+    "name": "allFiles",
+    "signature": "allFiles() -> array"
+  },
+  {
+    "name": "hasFile",
+    "signature": "hasFile(string $key) -> bool"
+  },
+  {
+    "name": "file",
+    "signature": "file(string|null $key = null, mixed $default = null) -> array|\\Illuminate\\Http\\UploadedFile|\\Illuminate\\Http\\UploadedFile[]|null"
+  },
+  {
+    "name": "dump",
+    "signature": "dump(mixed $keys = []) -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "dd",
+    "signature": "dd(mixed ...$args) -> never"
+  },
+  {
+    "name": "exists",
+    "signature": "exists(string|array $key) -> bool"
+  },
+  {
+    "name": "has",
+    "signature": "has(string|array $key) -> bool"
+  },
+  {
+    "name": "hasAny",
+    "signature": "hasAny(string|array $keys) -> bool"
+  },
+  {
+    "name": "whenHas",
+    "signature": "whenHas(string $key, callable $callback, callable|null $default = null) -> \\Illuminate\\Http\\Request|mixed"
+  },
+  {
+    "name": "filled",
+    "signature": "filled(string|array $key) -> bool"
+  },
+  {
+    "name": "isNotFilled",
+    "signature": "isNotFilled(string|array $key) -> bool"
+  },
+  {
+    "name": "anyFilled",
+    "signature": "anyFilled(string|array $keys) -> bool"
+  },
+  {
+    "name": "whenFilled",
+    "signature": "whenFilled(string $key, callable $callback, callable|null $default = null) -> \\Illuminate\\Http\\Request|mixed"
+  },
+  {
+    "name": "missing",
+    "signature": "missing(string|array $key) -> bool"
+  },
+  {
+    "name": "whenMissing",
+    "signature": "whenMissing(string $key, callable $callback, callable|null $default = null) -> \\Illuminate\\Http\\Request|mixed"
+  },
+  {
+    "name": "str",
+    "signature": "str(string $key, mixed $default = null) -> \\Illuminate\\Support\\Stringable"
+  },
+  {
+    "name": "string",
+    "signature": "string(string $key, mixed $default = null) -> \\Illuminate\\Support\\Stringable"
+  },
+  {
+    "name": "boolean",
+    "signature": "boolean(string|null $key = null, bool $default = false) -> bool"
+  },
+  {
+    "name": "integer",
+    "signature": "integer(string $key, int $default = 0) -> int"
+  },
+  {
+    "name": "float",
+    "signature": "float(string $key, float $default = 0) -> float"
+  },
+  {
+    "name": "clamp",
+    "signature": "clamp(string $key, int|float $min, int|float $max, int|float $default = 0) -> float|int"
+  },
+  {
+    "name": "date",
+    "signature": "date(string $key, string|null $format = null, \\UnitEnum|string|null $tz = null) -> \\Illuminate\\Support\\Carbon|null"
+  },
+  {
+    "name": "interval",
+    "signature": "interval(string $key, \\Carbon\\Unit|string|null $unit = null) -> \\Carbon\\CarbonInterval|null"
+  },
+  {
+    "name": "enum",
+    "signature": "enum(string $key, string $enumClass, \\BackedEnum|null $default = null) -> \\BackedEnum|\\BackedEnum|null"
+  },
+  {
+    "name": "enums",
+    "signature": "enums(string $key, string $enumClass) -> \\BackedEnum[]"
+  },
+  {
+    "name": "array",
+    "signature": "array(array|string|null $key = null) -> array"
+  },
+  {
+    "name": "collect",
+    "signature": "collect(array|string|null $key = null) -> \\Illuminate\\Support\\Collection"
+  },
+  {
+    "name": "only",
+    "signature": "only(mixed $keys) -> array"
+  },
+  {
+    "name": "except",
+    "signature": "except(mixed $keys) -> array"
+  },
+  {
+    "name": "when",
+    "signature": "when(\\Closure|mixed|null $value = null, callable|null $callback = null, callable|null $default = null) -> \\Illuminate\\Http\\Request|mixed"
+  },
+  {
+    "name": "unless",
+    "signature": "unless(\\Closure|mixed|null $value = null, callable|null $callback = null, callable|null $default = null) -> \\Illuminate\\Http\\Request|mixed"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  },
+  {
+    "name": "validate",
+    "signature": "validate(array $rules, ...$params) -> array"
+  },
+  {
+    "name": "validateWithBag",
+    "signature": "validateWithBag(string $errorBag, array $rules, ...$params) -> array"
+  },
+  {
+    "name": "hasValidSignature",
+    "signature": "hasValidSignature(bool $absolute = true) -> bool"
+  },
+  {
+    "name": "hasValidRelativeSignature",
+    "signature": "hasValidRelativeSignature() -> bool"
+  },
+  {
+    "name": "hasValidSignatureWhileIgnoring",
+    "signature": "hasValidSignatureWhileIgnoring($ignoreQuery = [], $absolute = true) -> bool"
+  },
+  {
+    "name": "hasValidRelativeSignatureWhileIgnoring",
+    "signature": "hasValidRelativeSignatureWhileIgnoring($ignoreQuery = []) -> bool"
+  }
+]

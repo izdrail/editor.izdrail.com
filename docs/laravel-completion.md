@@ -70,3 +70,13 @@ aliases, shadowing guards and lexical checks are shared with the other facade
 packs. Sources, method counts and digests are in
 metadata/laravel/extra-facade-manifest.json. These are method suggestions only;
 selecting one never runs schema changes, writes files or sends a log message.
+
+## HTTP and validation facades
+
+Request (190 methods), Validator (14) and Response (20) have separate Laravel 12
+baseline packs. Request::input, Validator::make and Response::json include their
+full facade paths and signatures. Namespaced controller files require imports
+or an absolute facade name, so an Illuminate HTTP Request parameter class is
+not confused with the static Request facade. The standard import/scope guards
+also apply to these packs. Sources and digests are recorded in
+metadata/laravel/http-facade-manifest.json.

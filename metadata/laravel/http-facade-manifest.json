@@ -1,0 +1,29 @@
+[
+  {
+    "facade": "Request",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Request.php",
+    "source_sha256": "1ff6db43c810f0ca81bf8f7e4f2e16f67a045845a8024a2a7e0e8428d77221fa",
+    "method_count": 190,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Response",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Response.php",
+    "source_sha256": "39da5a89a1268c6adfa1822b8e78ddb74b1b87841a764ac08f37cc4b4e3a1db3",
+    "method_count": 20,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Validator",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Validator.php",
+    "source_sha256": "9edc7dc24bd76aeb2a4107386606ceb2a5cf6ccfbcaf4954ffe56e8e44f1dd7c",
+    "method_count": 14,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  }
+]

@@ -95,7 +95,7 @@ pub fn facade_items(before: &str, laravel: bool) -> Option<Vec<CompletionItem>> 
             None => receiver_path.to_string(),
         }
     };
-    let facade = ["Route", "Auth", "Cache", "DB", "Schema", "Storage", "Log"].into_iter().find(|name| {
+    let facade = ["Route", "Auth", "Cache", "DB", "Schema", "Storage", "Log", "Request", "Validator", "Response"].into_iter().find(|name| {
         resolved.eq_ignore_ascii_case(name)
             || resolved.eq_ignore_ascii_case(&format!("Illuminate\\Support\\Facades\\{name}"))
     })?;
@@ -109,6 +109,10 @@ pub fn facade_items(before: &str, laravel: bool) -> Option<Vec<CompletionItem>> 
         ("Schema", include_str!("../../metadata/laravel/schema-methods.json")),
         ("Storage", include_str!("../../metadata/laravel/storage-methods.json")),
         ("Log", include_str!("../../metadata/laravel/log-methods.json")),
+        ("Request", include_str!("../../metadata/laravel/request-methods.json")),
+        ("Validator", include_str!("../../metadata/laravel/validator-methods.json")),
+        ("Response", include_str!("../../metadata/laravel/response-methods.json")),
+
     ].into_iter().map(|(name, json)| (name, serde_json::from_str(json).expect("checked facade pack"))).collect());
     let data = &packs[facade];
     Some(data.iter().map(|v| {
@@ -154,7 +158,7 @@ mod facade_tests {
     use super::*;
     #[test]
     fn each_facade_has_own_signatures_aliases_and_path() {
-        for (facade, method) in [("Auth", "user"), ("Cache", "remember"), ("DB", "table"), ("Schema", "create"), ("Storage", "put"), ("Log", "info")] {
+        for (facade, method) in [("Auth", "user"), ("Cache", "remember"), ("DB", "table"), ("Schema", "create"), ("Storage", "put"), ("Log", "info"), ("Request", "input"), ("Validator", "make"), ("Response", "json")] {
             for code in [format!("<?php {facade}::"), format!("<?php use Illuminate\\Support\\Facades\\{facade} as Service; Service::"), format!("<?php namespace App; \\Illuminate\\Support\\Facades\\{facade}::")] {
                 let items = facade_items(&code, true).unwrap();
                 let item = items.iter().find(|i| i.label == method).unwrap();
