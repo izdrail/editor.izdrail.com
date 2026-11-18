@@ -251,3 +251,25 @@ command = "goto_definition"
         );
     }
 }
+
+#[cfg(test)]
+mod mouse_navigation_defaults_tests {
+    use super::*;
+    #[test]
+    fn mouse_navigation_defaults_work_in_modal_and_nonmodal_and_can_be_unbound() {
+        for modal in [false, true] {
+            let mut loader = KeyMapLoader::new();
+            loader.load_from_str(include_str!("../../../defaults/keymaps-common.toml"), modal).unwrap();
+            let (keys, _) = loader.finalize();
+            for (name, command) in [("MouseBackward", "jump_location_backward"), ("MouseForward", "jump_location_forward")] {
+                let matches = &keys[&KeyMapPress::parse(name)];
+                assert!(matches.iter().any(|k| k.command == command && k.modes.is_empty() && k.when.is_none()));
+            }
+            let mut loader = KeyMapLoader::new();
+            loader.load_from_str(include_str!("../../../defaults/keymaps-common.toml"), modal).unwrap();
+            loader.load_from_str("[[keymaps]]\nkey = \"MouseBackward\"\ncommand = \"-jump_location_backward\"\n", modal).unwrap();
+            let (keys, _) = loader.finalize();
+            assert!(keys.get(&KeyMapPress::parse("MouseBackward")).map(|v| v.iter().all(|k| k.command != "jump_location_backward")).unwrap_or(true));
+        }
+    }
+}

@@ -3615,6 +3615,14 @@ fn window_tab(window_tab_data: Rc<WindowTabData>) -> impl View {
     })
     .debug_name("Window Tab");
 
+    let mouse_window_tab = window_tab_data.clone();
+    let view = crate::mouse_navigation::mouse_navigation(view, move |pointer| {
+        // Use the normal keymap dispatcher, including custom bindings and the
+        // alert guard. Capture happens before tabs/editor controls move focus.
+        mouse_window_tab.key_down(pointer);
+    })
+    .style(|s| s.size_full());
+
     let view_id = view.id();
     window_tab_data.common.view_id.set(view_id);
     view

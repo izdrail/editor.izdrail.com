@@ -775,3 +775,12 @@ command = "next_error"
 [[keymaps]]
 key = "alt+shift+p"
 command = "previous_error"
+
+# Mouse side buttons use global location history, in either editing mode.
+[[keymaps]]
+key = "MouseBackward"
+command = "jump_location_backward"
+
+[[keymaps]]
+key = "MouseForward"
+command = "jump_location_forward"

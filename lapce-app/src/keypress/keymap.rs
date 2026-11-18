@@ -158,6 +158,17 @@ impl FromStr for KeyMapKey {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // These names were already displayed by the keymap UI. Parse them back
+        // into pointer keys rather than treating them as typed characters.
+        let pointer = match s.to_ascii_lowercase().as_str() {
+            "mousebackward" => Some(MouseButton::X1),
+            "mouseforward" => Some(MouseButton::X2),
+            "mousemiddle" => Some(MouseButton::Auxiliary),
+            _ => None,
+        };
+        if let Some(button) = pointer {
+            return Ok(Self::Pointer(PointerButton::Mouse(button)));
+        }
         let key = if s.starts_with('[') && s.ends_with(']') {
             let code = match s[1..s.len() - 2].to_lowercase().as_str() {
                 "esc" => KeyCode::Escape,

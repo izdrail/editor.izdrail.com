@@ -16,6 +16,10 @@ Gravity Editor (editor.izdrail.com) is a native code editor written in Rust with
 
 ![](extra/images/screenshot.png)
 
+## User guide
+
+Start with [the Markdown user guide](docs/README.md) for keyboard shortcuts, keymap presets, completion/snippet keywords, mouse Back/Forward navigation and daily workflows.
+
 ## Features
 
 ### Editing
