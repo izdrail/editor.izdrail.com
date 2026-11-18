@@ -1,0 +1,126 @@
+[
+  {
+    "name": "build",
+    "signature": "build(array $config) -> \\Psr\\Log\\LoggerInterface"
+  },
+  {
+    "name": "stack",
+    "signature": "stack(array $channels, string|null $channel = null) -> \\Psr\\Log\\LoggerInterface"
+  },
+  {
+    "name": "channel",
+    "signature": "channel(string|null $channel = null) -> \\Psr\\Log\\LoggerInterface"
+  },
+  {
+    "name": "driver",
+    "signature": "driver(string|null $driver = null) -> \\Psr\\Log\\LoggerInterface"
+  },
+  {
+    "name": "shareContext",
+    "signature": "shareContext(array $context) -> \\Illuminate\\Log\\LogManager"
+  },
+  {
+    "name": "sharedContext",
+    "signature": "sharedContext() -> array"
+  },
+  {
+    "name": "withoutContext",
+    "signature": "withoutContext(string[]|null $keys = null) -> \\Illuminate\\Log\\LogManager"
+  },
+  {
+    "name": "flushSharedContext",
+    "signature": "flushSharedContext() -> \\Illuminate\\Log\\LogManager"
+  },
+  {
+    "name": "getDefaultDriver",
+    "signature": "getDefaultDriver() -> string|null"
+  },
+  {
+    "name": "setDefaultDriver",
+    "signature": "setDefaultDriver(string $name) -> void"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $driver, \\Closure $callback) -> \\Illuminate\\Log\\LogManager"
+  },
+  {
+    "name": "forgetChannel",
+    "signature": "forgetChannel(string|null $driver = null) -> void"
+  },
+  {
+    "name": "getChannels",
+    "signature": "getChannels() -> array"
+  },
+  {
+    "name": "emergency",
+    "signature": "emergency(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "alert",
+    "signature": "alert(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "critical",
+    "signature": "critical(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "error",
+    "signature": "error(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "warning",
+    "signature": "warning(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "notice",
+    "signature": "notice(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "info",
+    "signature": "info(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "debug",
+    "signature": "debug(string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "log",
+    "signature": "log(mixed $level, string|\\Stringable $message, array $context = []) -> void"
+  },
+  {
+    "name": "setApplication",
+    "signature": "setApplication(\\Illuminate\\Contracts\\Foundation\\Application $app) -> \\Illuminate\\Log\\LogManager"
+  },
+  {
+    "name": "write",
+    "signature": "write(string $level, \\Illuminate\\Contracts\\Support\\Arrayable|\\Illuminate\\Contracts\\Support\\Jsonable|\\Illuminate\\Support\\Stringable|array|string $message, array $context = []) -> void"
+  },
+  {
+    "name": "withContext",
+    "signature": "withContext(array $context = []) -> \\Illuminate\\Log\\Logger"
+  },
+  {
+    "name": "listen",
+    "signature": "listen(\\Closure $callback) -> void"
+  },
+  {
+    "name": "getLogger",
+    "signature": "getLogger() -> \\Psr\\Log\\LoggerInterface"
+  },
+  {
+    "name": "getEventDispatcher",
+    "signature": "getEventDispatcher() -> \\Illuminate\\Contracts\\Events\\Dispatcher|null"
+  },
+  {
+    "name": "setEventDispatcher",
+    "signature": "setEventDispatcher(\\Illuminate\\Contracts\\Events\\Dispatcher $dispatcher) -> void"
+  },
+  {
+    "name": "when",
+    "signature": "when(\\Closure|mixed|null $value = null, callable|null $callback = null, callable|null $default = null) -> \\Illuminate\\Log\\Logger|mixed"
+  },
+  {
+    "name": "unless",
+    "signature": "unless(\\Closure|mixed|null $value = null, callable|null $callback = null, callable|null $default = null) -> \\Illuminate\\Log\\Logger|mixed"
+  }
+]

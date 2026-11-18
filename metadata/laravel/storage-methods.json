@@ -1,0 +1,318 @@
+[
+  {
+    "name": "drive",
+    "signature": "drive(string|null $name = null) -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "disk",
+    "signature": "disk(\\UnitEnum|string|null $name = null) -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "cloud",
+    "signature": "cloud() -> \\Illuminate\\Contracts\\Filesystem\\Cloud"
+  },
+  {
+    "name": "build",
+    "signature": "build(string|array $config) -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "createLocalDriver",
+    "signature": "createLocalDriver(array $config, string $name = 'local') -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "createFtpDriver",
+    "signature": "createFtpDriver(array $config) -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "createSftpDriver",
+    "signature": "createSftpDriver(array $config) -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "createS3Driver",
+    "signature": "createS3Driver(array $config) -> \\Illuminate\\Contracts\\Filesystem\\Cloud"
+  },
+  {
+    "name": "createScopedDriver",
+    "signature": "createScopedDriver(array $config) -> \\Illuminate\\Contracts\\Filesystem\\Filesystem"
+  },
+  {
+    "name": "set",
+    "signature": "set(string $name, mixed $disk) -> \\Illuminate\\Filesystem\\FilesystemManager"
+  },
+  {
+    "name": "getDefaultDriver",
+    "signature": "getDefaultDriver() -> string"
+  },
+  {
+    "name": "getDefaultCloudDriver",
+    "signature": "getDefaultCloudDriver() -> string"
+  },
+  {
+    "name": "forgetDisk",
+    "signature": "forgetDisk(array|string $disk) -> \\Illuminate\\Filesystem\\FilesystemManager"
+  },
+  {
+    "name": "purge",
+    "signature": "purge(string|null $name = null) -> void"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $driver, \\Closure $callback) -> \\Illuminate\\Filesystem\\FilesystemManager"
+  },
+  {
+    "name": "setApplication",
+    "signature": "setApplication(\\Illuminate\\Contracts\\Foundation\\Application $app) -> \\Illuminate\\Filesystem\\FilesystemManager"
+  },
+  {
+    "name": "path",
+    "signature": "path(string $path) -> string"
+  },
+  {
+    "name": "exists",
+    "signature": "exists(string $path) -> bool"
+  },
+  {
+    "name": "get",
+    "signature": "get(string $path) -> string|null"
+  },
+  {
+    "name": "readStream",
+    "signature": "readStream(string $path) -> resource|null"
+  },
+  {
+    "name": "put",
+    "signature": "put(string $path, \\Psr\\Http\\Message\\StreamInterface|\\Illuminate\\Http\\File|\\Illuminate\\Http\\UploadedFile|string|resource $contents, mixed $options = []) -> bool"
+  },
+  {
+    "name": "putFile",
+    "signature": "putFile(\\Illuminate\\Http\\File|\\Illuminate\\Http\\UploadedFile|string $path, \\Illuminate\\Http\\File|\\Illuminate\\Http\\UploadedFile|string|array|null $file = null, mixed $options = []) -> string|false"
+  },
+  {
+    "name": "putFileAs",
+    "signature": "putFileAs(\\Illuminate\\Http\\File|\\Illuminate\\Http\\UploadedFile|string $path, \\Illuminate\\Http\\File|\\Illuminate\\Http\\UploadedFile|string|array|null $file, string|array|null $name = null, mixed $options = []) -> string|false"
+  },
+  {
+    "name": "writeStream",
+    "signature": "writeStream(string $path, resource $resource, array $options = []) -> bool"
+  },
+  {
+    "name": "getVisibility",
+    "signature": "getVisibility(string $path) -> string"
+  },
+  {
+    "name": "setVisibility",
+    "signature": "setVisibility(string $path, string $visibility) -> bool"
+  },
+  {
+    "name": "prepend",
+    "signature": "prepend(string $path, string $data) -> bool"
+  },
+  {
+    "name": "append",
+    "signature": "append(string $path, string $data) -> bool"
+  },
+  {
+    "name": "delete",
+    "signature": "delete(string|array $paths) -> bool"
+  },
+  {
+    "name": "copy",
+    "signature": "copy(string $from, string $to) -> bool"
+  },
+  {
+    "name": "move",
+    "signature": "move(string $from, string $to) -> bool"
+  },
+  {
+    "name": "size",
+    "signature": "size(string $path) -> int"
+  },
+  {
+    "name": "lastModified",
+    "signature": "lastModified(string $path) -> int"
+  },
+  {
+    "name": "files",
+    "signature": "files(string|null $directory = null, bool $recursive = false) -> array"
+  },
+  {
+    "name": "allFiles",
+    "signature": "allFiles(string|null $directory = null) -> array"
+  },
+  {
+    "name": "directories",
+    "signature": "directories(string|null $directory = null, bool $recursive = false) -> array"
+  },
+  {
+    "name": "allDirectories",
+    "signature": "allDirectories(string|null $directory = null) -> array"
+  },
+  {
+    "name": "makeDirectory",
+    "signature": "makeDirectory(string $path) -> bool"
+  },
+  {
+    "name": "deleteDirectory",
+    "signature": "deleteDirectory(string $directory) -> bool"
+  },
+  {
+    "name": "assertExists",
+    "signature": "assertExists(string|array $path, string|null $content = null) -> \\Illuminate\\Filesystem\\FilesystemAdapter"
+  },
+  {
+    "name": "assertCount",
+    "signature": "assertCount(string $path, int $count, bool $recursive = false) -> \\Illuminate\\Filesystem\\FilesystemAdapter"
+  },
+  {
+    "name": "assertMissing",
+    "signature": "assertMissing(string|array $path) -> \\Illuminate\\Filesystem\\FilesystemAdapter"
+  },
+  {
+    "name": "assertDirectoryEmpty",
+    "signature": "assertDirectoryEmpty(string $path) -> \\Illuminate\\Filesystem\\FilesystemAdapter"
+  },
+  {
+    "name": "missing",
+    "signature": "missing(string $path) -> bool"
+  },
+  {
+    "name": "fileExists",
+    "signature": "fileExists(string $path) -> bool"
+  },
+  {
+    "name": "fileMissing",
+    "signature": "fileMissing(string $path) -> bool"
+  },
+  {
+    "name": "directoryExists",
+    "signature": "directoryExists(string $path) -> bool"
+  },
+  {
+    "name": "directoryMissing",
+    "signature": "directoryMissing(string $path) -> bool"
+  },
+  {
+    "name": "json",
+    "signature": "json(string $path, int $flags = 0) -> array|null"
+  },
+  {
+    "name": "response",
+    "signature": "response(string $path, string|null $name = null, array $headers = [], string|null $disposition = 'inline') -> \\Symfony\\Component\\HttpFoundation\\StreamedResponse"
+  },
+  {
+    "name": "serve",
+    "signature": "serve(\\Illuminate\\Http\\Request $request, string $path, string|null $name = null, array $headers = []) -> \\Symfony\\Component\\HttpFoundation\\StreamedResponse"
+  },
+  {
+    "name": "download",
+    "signature": "download(string $path, string|null $name = null, array $headers = []) -> \\Symfony\\Component\\HttpFoundation\\StreamedResponse"
+  },
+  {
+    "name": "checksum",
+    "signature": "checksum(string $path, array $options = []) -> string|false"
+  },
+  {
+    "name": "mimeType",
+    "signature": "mimeType(string $path) -> string|false"
+  },
+  {
+    "name": "url",
+    "signature": "url(string $path) -> string"
+  },
+  {
+    "name": "providesTemporaryUrls",
+    "signature": "providesTemporaryUrls() -> bool"
+  },
+  {
+    "name": "providesTemporaryUploadUrls",
+    "signature": "providesTemporaryUploadUrls() -> bool"
+  },
+  {
+    "name": "temporaryUrl",
+    "signature": "temporaryUrl(string $path, \\DateTimeInterface $expiration, array $options = []) -> string"
+  },
+  {
+    "name": "temporaryUploadUrl",
+    "signature": "temporaryUploadUrl(string $path, \\DateTimeInterface $expiration, array $options = []) -> array"
+  },
+  {
+    "name": "getDriver",
+    "signature": "getDriver() -> \\League\\Flysystem\\FilesystemOperator"
+  },
+  {
+    "name": "getAdapter",
+    "signature": "getAdapter() -> \\League\\Flysystem\\FilesystemAdapter"
+  },
+  {
+    "name": "getConfig",
+    "signature": "getConfig() -> array"
+  },
+  {
+    "name": "serveUsing",
+    "signature": "serveUsing(\\Closure $callback) -> void"
+  },
+  {
+    "name": "buildTemporaryUrlsUsing",
+    "signature": "buildTemporaryUrlsUsing(\\Closure $callback) -> void"
+  },
+  {
+    "name": "buildTemporaryUploadUrlsUsing",
+    "signature": "buildTemporaryUploadUrlsUsing(\\Closure $callback) -> void"
+  },
+  {
+    "name": "when",
+    "signature": "when(\\Closure|mixed|null $value = null, callable|null $callback = null, callable|null $default = null) -> \\Illuminate\\Filesystem\\FilesystemAdapter|mixed"
+  },
+  {
+    "name": "unless",
+    "signature": "unless(\\Closure|mixed|null $value = null, callable|null $callback = null, callable|null $default = null) -> \\Illuminate\\Filesystem\\FilesystemAdapter|mixed"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  },
+  {
+    "name": "macroCall",
+    "signature": "macroCall(string $method, array $parameters) -> mixed"
+  },
+  {
+    "name": "has",
+    "signature": "has(string $location) -> bool"
+  },
+  {
+    "name": "read",
+    "signature": "read(string $location) -> string"
+  },
+  {
+    "name": "listContents",
+    "signature": "listContents(string $location, bool $deep = false) -> \\League\\Flysystem\\DirectoryListing"
+  },
+  {
+    "name": "fileSize",
+    "signature": "fileSize(string $path) -> int"
+  },
+  {
+    "name": "visibility",
+    "signature": "visibility(string $path) -> string"
+  },
+  {
+    "name": "write",
+    "signature": "write(string $location, string $contents, array $config = []) -> void"
+  },
+  {
+    "name": "createDirectory",
+    "signature": "createDirectory(string $location, array $config = []) -> void"
+  }
+]

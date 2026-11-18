@@ -1,0 +1,29 @@
+[
+  {
+    "facade": "Log",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Log.php",
+    "source_sha256": "0c810160cc2c1b41ceeac0721dfdff8ef85be67f8c8a49e0f260f7d66d2535fc",
+    "method_count": 31,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Schema",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Schema.php",
+    "source_sha256": "a0d2e4a3ffda64f98f11539d4ca03d881275be0f19fa67c431888228665beb8c",
+    "method_count": 50,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Storage",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Storage.php",
+    "source_sha256": "c054ba4ded37835b9fc8e2044cd8e0d0fe490e6a047216182819ac14bc8189e3",
+    "method_count": 79,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  }
+]

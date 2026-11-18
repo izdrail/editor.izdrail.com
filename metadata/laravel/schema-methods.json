@@ -1,0 +1,202 @@
+[
+  {
+    "name": "defaultStringLength",
+    "signature": "defaultStringLength(int $length) -> void"
+  },
+  {
+    "name": "defaultTimePrecision",
+    "signature": "defaultTimePrecision(int|null $precision) -> void"
+  },
+  {
+    "name": "defaultMorphKeyType",
+    "signature": "defaultMorphKeyType(string $type) -> void"
+  },
+  {
+    "name": "morphUsingUuids",
+    "signature": "morphUsingUuids() -> void"
+  },
+  {
+    "name": "morphUsingUlids",
+    "signature": "morphUsingUlids() -> void"
+  },
+  {
+    "name": "createDatabase",
+    "signature": "createDatabase(string $name) -> bool"
+  },
+  {
+    "name": "dropDatabaseIfExists",
+    "signature": "dropDatabaseIfExists(string $name) -> bool"
+  },
+  {
+    "name": "getSchemas",
+    "signature": "getSchemas() -> array"
+  },
+  {
+    "name": "hasTable",
+    "signature": "hasTable(string $table) -> bool"
+  },
+  {
+    "name": "hasView",
+    "signature": "hasView(string $view) -> bool"
+  },
+  {
+    "name": "getTables",
+    "signature": "getTables(string|string[]|null $schema = null) -> array"
+  },
+  {
+    "name": "getTableListing",
+    "signature": "getTableListing(string|string[]|null $schema = null, bool $schemaQualified = true) -> array"
+  },
+  {
+    "name": "getViews",
+    "signature": "getViews(string|string[]|null $schema = null) -> array"
+  },
+  {
+    "name": "getTypes",
+    "signature": "getTypes(string|string[]|null $schema = null) -> array"
+  },
+  {
+    "name": "hasColumn",
+    "signature": "hasColumn(string $table, string $column) -> bool"
+  },
+  {
+    "name": "hasColumns",
+    "signature": "hasColumns(string $table, array $columns) -> bool"
+  },
+  {
+    "name": "whenTableHasColumn",
+    "signature": "whenTableHasColumn(string $table, string $column, \\Closure $callback) -> void"
+  },
+  {
+    "name": "whenTableDoesntHaveColumn",
+    "signature": "whenTableDoesntHaveColumn(string $table, string $column, \\Closure $callback) -> void"
+  },
+  {
+    "name": "whenTableHasIndex",
+    "signature": "whenTableHasIndex(string $table, string|array $index, \\Closure $callback, string|null $type = null) -> void"
+  },
+  {
+    "name": "whenTableDoesntHaveIndex",
+    "signature": "whenTableDoesntHaveIndex(string $table, string|array $index, \\Closure $callback, string|null $type = null) -> void"
+  },
+  {
+    "name": "getColumnType",
+    "signature": "getColumnType(string $table, string $column, bool $fullDefinition = false) -> string"
+  },
+  {
+    "name": "getColumnListing",
+    "signature": "getColumnListing(string $table) -> array"
+  },
+  {
+    "name": "getColumns",
+    "signature": "getColumns(string $table) -> array"
+  },
+  {
+    "name": "getIndexes",
+    "signature": "getIndexes(string $table) -> array"
+  },
+  {
+    "name": "getIndexListing",
+    "signature": "getIndexListing(string $table) -> array"
+  },
+  {
+    "name": "hasIndex",
+    "signature": "hasIndex(string $table, string|array $index, string|null $type = null) -> bool"
+  },
+  {
+    "name": "getForeignKeys",
+    "signature": "getForeignKeys(string $table) -> array"
+  },
+  {
+    "name": "table",
+    "signature": "table(string $table, \\Closure $callback) -> void"
+  },
+  {
+    "name": "create",
+    "signature": "create(string $table, \\Closure $callback) -> void"
+  },
+  {
+    "name": "drop",
+    "signature": "drop(string $table) -> void"
+  },
+  {
+    "name": "dropIfExists",
+    "signature": "dropIfExists(string $table) -> void"
+  },
+  {
+    "name": "dropColumns",
+    "signature": "dropColumns(string $table, string|array $columns) -> void"
+  },
+  {
+    "name": "dropAllTables",
+    "signature": "dropAllTables() -> void"
+  },
+  {
+    "name": "dropAllViews",
+    "signature": "dropAllViews() -> void"
+  },
+  {
+    "name": "dropAllTypes",
+    "signature": "dropAllTypes() -> void"
+  },
+  {
+    "name": "rename",
+    "signature": "rename(string $from, string $to) -> void"
+  },
+  {
+    "name": "enableForeignKeyConstraints",
+    "signature": "enableForeignKeyConstraints() -> bool"
+  },
+  {
+    "name": "disableForeignKeyConstraints",
+    "signature": "disableForeignKeyConstraints() -> bool"
+  },
+  {
+    "name": "withoutForeignKeyConstraints",
+    "signature": "withoutForeignKeyConstraints(\\Closure $callback) -> mixed"
+  },
+  {
+    "name": "ensureVectorExtensionExists",
+    "signature": "ensureVectorExtensionExists(string|null $schema = null) -> void"
+  },
+  {
+    "name": "ensureExtensionExists",
+    "signature": "ensureExtensionExists(string $name, string|null $schema = null) -> void"
+  },
+  {
+    "name": "getCurrentSchemaListing",
+    "signature": "getCurrentSchemaListing() -> string[]|null"
+  },
+  {
+    "name": "getCurrentSchemaName",
+    "signature": "getCurrentSchemaName() -> string|null"
+  },
+  {
+    "name": "parseSchemaAndTable",
+    "signature": "parseSchemaAndTable(string $reference, string|bool|null $withDefaultSchema = null) -> array"
+  },
+  {
+    "name": "getConnection",
+    "signature": "getConnection() -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "blueprintResolver",
+    "signature": "blueprintResolver(\\Closure $resolver) -> void"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]

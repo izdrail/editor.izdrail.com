@@ -60,3 +60,13 @@ label-detail signatures are retained alongside the owner and detail, with
 identical fields shown only once. Tooltip content is plain text, control
 characters are replaced, and very large metadata is capped at 4,096 characters
 with an explicit ellipsis. Selecting a suggestion still inserts only its label.
+
+## Schema, Storage and Log
+
+Schema (50 methods), Storage (79) and Log (31) now have separate Laravel 12
+baseline packs with full class paths and signatures. Examples are
+Schema::create, Storage::put and Log::info. Imports, grouped imports, namespace
+aliases, shadowing guards and lexical checks are shared with the other facade
+packs. Sources, method counts and digests are in
+metadata/laravel/extra-facade-manifest.json. These are method suggestions only;
+selecting one never runs schema changes, writes files or sends a log message.
