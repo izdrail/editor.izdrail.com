@@ -31,7 +31,7 @@ Load order is common defaults, OS defaults, compact alternatives, selected prese
 
 The reference lists each layer separately, not a merged active-keymap table. A later binding can replace an earlier one. For example, do not rely on common-layer Ctrl+Minus for Back: the OS defaults also use it for Zoom Out. Use the side buttons or a personal binding instead.
 
-Modes in the [full reference](shortcut-reference.md): `i` = Insert, `n` = Normal, `v` = Visual, `t` = Terminal; combined letters mean any listed mode. `all` has no explicit mode restriction. A condition must also match: a completion popup, search input or file explorer can take precedence. A space between keys means a chord, pressed in sequence.
+Modes in the [full reference](shortcut-reference.md): `i` = Insert, `n` = Normal, `v` = Visual, `t` = Terminal; combined letters mean any listed mode. `all` has no explicit mode restriction. A condition must also match: a completion popup, search input or file explorer can take precedence. A space between keys means a chord, pressed in sequence. You may release and press modifiers again between strokes. Complete the next non-modifier stroke within one second; pressing a modifier does not extend that timeout. A modifier explicitly bound as a chord stroke still follows that binding.
 
 ## Add or replace a binding
 

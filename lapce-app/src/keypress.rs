@@ -298,6 +298,31 @@ impl KeyPressData {
             }
         };
 
+        self.keypress_down(keypress, focus)
+    }
+
+    fn keypress_down<T: KeyPressFocus + ?Sized>(
+        &self, keypress: KeyPress, focus: &T,
+    ) -> KeyPressHandle {
+        // Releasing and pressing Ctrl/Shift between chord strokes produces
+        // another modifier KeyDown. It is not a failed second stroke. Preserve
+        // explicitly bound modifier strokes, and do not extend the timeout.
+        let modifier_between_strokes = keypress.keymap_press()
+            .map(|key| key.is_modifiers()).unwrap_or(false)
+            && self.pending_keypress.with_untracked(|(pending, _)| {
+                if pending.is_empty() { return false; }
+                let mut candidate = pending.clone();
+                candidate.push(keypress.clone());
+                self.match_keymap(&candidate, focus) == KeymapMatch::None
+            });
+        if modifier_between_strokes {
+            return KeyPressHandle {
+                handled: true,
+                keymatch: KeymapMatch::Prefix,
+                keypress,
+            };
+        }
+
         if self.handle_count(focus, &keypress) {
             return KeyPressHandle {
                 handled: true,
@@ -873,5 +898,95 @@ when = "inline_completion_visible"
             KeymapMatch::Full("normal_mode".to_string()),
             "Esc with no inline completion must switch to Normal"
         );
+    }
+}
+
+#[cfg(test)]
+mod chord_modifier_tests {
+    use super::*;
+    use floem::reactive::SignalGet;
+    use std::cell::RefCell;
+    use floem::keyboard::{KeyCode, KeyLocation, NamedKey, PhysicalKey};
+    use lapce_core::mode::Mode;
+    use crate::command::{lapce_internal_commands, CommandExecuted};
+
+    #[derive(Debug)]
+    struct Focus(RefCell<Vec<String>>);
+    impl KeyPressFocus for Focus {
+        fn get_mode(&self) -> Mode { Mode::Insert }
+        fn check_condition(&self, _: Condition) -> bool { false }
+        fn run_command(&self, command: &LapceCommand, _: Option<usize>, _: Modifiers) -> CommandExecuted {
+            self.0.borrow_mut().push(command.kind.str().to_string());
+            CommandExecuted::Yes
+        }
+        fn receive_char(&self, _: &str) {}
+    }
+    fn event(logical: Key, code: KeyCode, mods: Modifiers) -> KeyPress {
+        KeyPress { key: key::KeyInput::Keyboard {
+            physical: PhysicalKey::Code(code),
+            key_without_modifiers: logical.clone(), logical,
+            location: KeyLocation::Standard, repeat: false,
+        }, mods }
+    }
+    fn keys(extra: &str) -> KeyPressData {
+        let cx = Scope::new();
+        let mut loader = loader::KeyMapLoader::new();
+        loader.load_from_str(DEFAULT_KEYMAPS_COMMON, false).unwrap();
+        loader.load_from_str(DEFAULT_KEYMAPS_NONMACOS, false).unwrap();
+        if !extra.is_empty() { loader.load_from_str(extra, false).unwrap(); }
+        let (keymaps, command_keymaps) = loader.finalize();
+        KeyPressData {
+            count: cx.create_rw_signal(None),
+            pending_keypress: cx.create_rw_signal((Vec::new(), None)),
+            commands: Rc::new(lapce_internal_commands()),
+            keymaps: Rc::new(keymaps), command_keymaps: Rc::new(command_keymaps),
+            commands_with_keymap: Rc::new(Vec::new()), commands_without_keymap: Rc::new(Vec::new()),
+        }
+    }
+    #[test]
+    fn chord_modifier_repress_keeps_default_keyboard_shortcuts_chord() {
+        let keys = keys(""); let focus = Focus(RefCell::new(Vec::new()));
+        keys.keypress_down(event(Key::Character("k".into()), KeyCode::KeyK, Modifiers::CONTROL), &focus);
+        let before = keys.pending_keypress.get_untracked();
+        assert_eq!(before.0.len(), 1);
+        let result = keys.keypress_down(event(Key::Named(NamedKey::Control), KeyCode::ControlLeft, Modifiers::CONTROL), &focus);
+        assert!(result.handled);
+        let after = keys.pending_keypress.get_untracked();
+        assert_eq!(after.0.len(), 1); assert_eq!(after.1, before.1);
+        keys.keypress_down(event(Key::Character("s".into()), KeyCode::KeyS, Modifiers::CONTROL), &focus);
+        assert_eq!(*focus.0.borrow(), vec!["open_keyboard_shortcuts"]);
+    }
+    #[test]
+    fn chord_modifier_shift_and_meta_repress_do_not_break_chords() {
+        for (modifier, named, code) in [(Modifiers::CONTROL, NamedKey::Control, KeyCode::ControlLeft), (Modifiers::SHIFT, NamedKey::Shift, KeyCode::ShiftLeft), (Modifiers::META, NamedKey::Meta, KeyCode::Meta), (Modifiers::ALT, NamedKey::Alt, KeyCode::AltLeft)] {
+            let keys = keys(""); let focus = Focus(RefCell::new(Vec::new()));
+            keys.keypress_down(event(Key::Character("k".into()), KeyCode::KeyK, Modifiers::CONTROL), &focus);
+            keys.keypress_down(event(Key::Named(named), code, modifier), &focus);
+            keys.keypress_down(event(Key::Character("s".into()), KeyCode::KeyS, Modifiers::CONTROL), &focus);
+            assert_eq!(*focus.0.borrow(), vec!["open_keyboard_shortcuts"]);
+        }
+    }
+    #[test]
+    fn chord_modifier_explicit_modifier_stroke_remains_bindable() {
+        let keys = keys("[[keymaps]]\nkey = \"ctrl+k Shift\"\ncommand = \"save\"\n");
+        let focus = Focus(RefCell::new(Vec::new()));
+        keys.keypress_down(event(Key::Character("k".into()), KeyCode::KeyK, Modifiers::CONTROL), &focus);
+        keys.keypress_down(event(Key::Named(NamedKey::Shift), KeyCode::ShiftLeft, Modifiers::empty()), &focus);
+        assert_eq!(*focus.0.borrow(), vec!["save"]);
+    }
+    #[test]
+    fn chord_modifier_does_not_extend_timeout_or_ignore_wrong_regular_key() {
+        let keys = keys(""); let focus = Focus(RefCell::new(Vec::new()));
+        keys.keypress_down(event(Key::Character("k".into()), KeyCode::KeyK, Modifiers::CONTROL), &focus);
+        keys.pending_keypress.update(|(_, last)| *last = Some(SystemTime::now() - std::time::Duration::from_secs(2)));
+        keys.keypress_down(event(Key::Named(NamedKey::Control), KeyCode::ControlLeft, Modifiers::CONTROL), &focus);
+        keys.keypress_down(event(Key::Character("s".into()), KeyCode::KeyS, Modifiers::CONTROL), &focus);
+        assert_eq!(*focus.0.borrow(), vec!["save"]);
+        focus.0.borrow_mut().clear();
+        keys.keypress_down(event(Key::Character("k".into()), KeyCode::KeyK, Modifiers::CONTROL), &focus);
+        keys.keypress_down(event(Key::Character("x".into()), KeyCode::KeyX, Modifiers::CONTROL), &focus);
+        assert!(keys.pending_keypress.get_untracked().0.is_empty());
+        keys.keypress_down(event(Key::Character("s".into()), KeyCode::KeyS, Modifiers::CONTROL), &focus);
+        assert_eq!(*focus.0.borrow(), vec!["save"]);
     }
 }
