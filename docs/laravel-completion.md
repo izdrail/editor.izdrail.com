@@ -21,8 +21,7 @@ remain higher priority.
 
 The fallback refuses non-Laravel projects, strings, comments, unknown receivers,
 shadowed Route imports/classes and unimported namespaced Route names. Imports
-inside comments or strings cannot bind a facade alias. Grouped imports are not
-yet inferred. Scanning is bounded to 512 KiB; larger documents rely on LSP.
+inside comments or strings cannot bind a facade alias. Grouped imports, multiple class imports and namespace aliases are supported. Scanning is bounded to 512 KiB; larger documents rely on LSP.
 
 This slice covers Route static methods. Eloquent model/member inference and
 other facade method packs remain separate work. Existing quoted route-name,
@@ -38,3 +37,16 @@ or installed-version check. Their source digests and counts are recorded in
 metadata/laravel/facade-manifest.json. Auth, Cache and DB have 58, 60 and 107
 methods respectively. Other facades and inferred Eloquent members are not part
 of these packs.
+
+## Import scope hardening
+
+Facade imports are resolved only in the active PHP namespace block. Aliases
+from a previous namespace block cannot leak into another one. Trait insertion
+and closure/function-local use syntax do not create namespace imports.
+Class imports stay separate from function and constant imports. Fully qualified
+facade names ignore aliases; class shadows and duplicate aliases fail closed.
+Mixed HTML text, strings and comments cannot forge PHP imports.
+
+Import semantics reference: https://www.php.net/manual/en/language.namespaces.importing.php
+This is a bounded completion resolver, not a PHP validator. It only reads code
+before the cursor, so declarations after the cursor still require an LSP.

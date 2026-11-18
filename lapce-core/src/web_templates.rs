@@ -1039,7 +1039,7 @@ pub fn php_completion_code(before: &str) -> Option<String> {
     }
     let mut code=before.as_bytes().to_vec();
     for (byte, style) in code.iter_mut().zip(snapshot.styles()) {
-        if matches!(snapshot.scope(*style), Some("string" | "comment")) && !matches!(*byte, b'\n' | b'\r') { *byte=b' '; }
+        if (matches!(snapshot.scope(*style), Some("string" | "comment")) || (!pure && !(118..=127).contains(style))) && !matches!(*byte, b'\n' | b'\r') { *byte=b' '; }
     }
     String::from_utf8(code).ok()
 }

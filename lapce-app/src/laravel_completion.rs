@@ -1,5 +1,76 @@
 //! Offline Laravel facade fallback. Never a substitute for a resolved LSP type.
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails};
+use std::collections::{HashMap, HashSet};
+
+#[derive(Default)]
+struct Imports {
+    namespaced: bool,
+    aliases: HashMap<String, Option<String>>,
+    shadows: HashSet<String>,
+}
+impl Imports {
+    fn add(&mut self, clause: &[&str], prefix: &str) {
+        if clause.first().is_some_and(|s| s.eq_ignore_ascii_case("function") || s.eq_ignore_ascii_case("const")) { return; }
+        let (path, alias) = match clause {
+            [path] => (*path, path.trim_end_matches('\\').rsplit('\\').next().unwrap_or("")),
+            [path, keyword, alias] if keyword.eq_ignore_ascii_case("as") => (*path, *alias),
+            _ => return,
+        };
+        if path.ends_with('\\') || path.is_empty() || alias.is_empty() { return; }
+        let alias = alias.to_ascii_lowercase();
+        let value = format!("{prefix}{}", path.trim_start_matches('\\'));
+        self.aliases.entry(alias).and_modify(|v| *v = None).or_insert(Some(value));
+    }
+    fn declaration(&mut self, tokens: &[&str]) {
+        if tokens.first().is_some_and(|s| s.eq_ignore_ascii_case("function") || s.eq_ignore_ascii_case("const")) { return; }
+        if let Some(open) = tokens.iter().position(|t| *t == "{") {
+            if open != 1 || tokens.last() != Some(&"}") || !tokens[0].ends_with('\\') { return; }
+            for clause in tokens[open + 1..tokens.len() - 1].split(|t| *t == ",") {
+                self.add(clause, tokens[0].trim_start_matches('\\'));
+            }
+        } else {
+            for clause in tokens.split(|t| *t == ",") { self.add(clause, ""); }
+        }
+    }
+}
+
+/// Imports live at file/namespace level, never inside traits or closures.
+/// Reset on every namespace block, even another block with the same name.
+fn scoped_imports(code: &str) -> Imports {
+    static TOKENS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let tokens: Vec<_> = TOKENS.get_or_init(|| regex::Regex::new(r"\\?[A-Za-z_][A-Za-z0-9_\\]*|[^\s]").unwrap()).find_iter(code).map(|m| m.as_str()).collect();
+    let mut state = Imports::default();
+    let (mut i, mut depth, mut base, mut block) = (0, 0usize, 0usize, false);
+    while i < tokens.len() {
+        let token = tokens[i];
+        if depth == 0 && token.eq_ignore_ascii_case("namespace") {
+            let mut end = i + 1;
+            while end < tokens.len() && !matches!(tokens[end], ";" | "{") { end += 1; }
+            if end == tokens.len() { break; }
+            state = Imports::default();
+            state.namespaced = end > i + 1;
+            block = tokens[end] == "{";
+            base = usize::from(block); depth = base; i = end + 1; continue;
+        }
+        if depth == base && token.eq_ignore_ascii_case("use") && tokens.get(i + 1) != Some(&"(") {
+            if let Some(end) = tokens[i + 1..].iter().position(|t| *t == ";") {
+                let end = i + 1 + end;
+                state.declaration(&tokens[i + 1..end]); i = end + 1; continue;
+            }
+        }
+        if depth == base && ["class", "interface", "trait", "enum"].iter().any(|k| token.eq_ignore_ascii_case(k)) {
+            if let Some(name) = tokens.get(i + 1) { state.shadows.insert(name.to_ascii_lowercase()); }
+        }
+        if token == "{" { depth += 1; }
+        if token == "}" {
+            depth = depth.saturating_sub(1);
+            if block && depth < base { state = Imports::default(); base = 0; block = false; }
+        }
+        i += 1;
+    }
+    state
+}
+
 
 pub fn facade_items(before: &str, laravel: bool) -> Option<Vec<CompletionItem>> {
     if !laravel { return None; }
@@ -10,36 +81,25 @@ pub fn facade_items(before: &str, laravel: bool) -> Option<Vec<CompletionItem>> 
     let start = receiver_end.rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '\\')).map_or(0, |i| i+1);
     let receiver = &receiver_end[start..];
     if start > 0 && receiver_end[..start].ends_with('$') { return None; }
-    static IMPORTS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let imports = IMPORTS.get_or_init(||regex::Regex::new(r"(?i)\buse\s+([^;{}]+)\s*;").unwrap());
-    let mut imported = None;
-    let mut unsupported_import = false;
-    for cap in imports.captures_iter(before) {
-        let parts: Vec<_> = cap[1].split_whitespace().collect();
-        let Some(path) = parts.first() else { continue; };
-        if cap[1].contains(',') || !(parts.len() == 1 || (parts.len() == 3 && parts[1].eq_ignore_ascii_case("as"))) { unsupported_import = true; continue; }
-        let alias = if parts.len()==3 && parts[1].eq_ignore_ascii_case("as") { parts[2] } else { path.rsplit('\\').next().unwrap_or("") };
-        if alias.eq_ignore_ascii_case(receiver) { imported=Some(path.trim_start_matches('\\').to_string()); }
-    }
+    let state = scoped_imports(before);
     let receiver_path = receiver.trim_start_matches('\\');
-    let resolved = imported.as_deref().unwrap_or(receiver_path);
+    let resolved = if receiver.starts_with('\\') {
+        receiver_path.to_string()
+    } else {
+        let (root, suffix) = receiver_path.split_once('\\').unwrap_or((receiver_path, ""));
+        if state.shadows.contains(&root.to_ascii_lowercase()) { return None; }
+        match state.aliases.get(&root.to_ascii_lowercase()) {
+            Some(Some(path)) => if suffix.is_empty() { path.clone() } else { format!("{path}\\{suffix}") },
+            Some(None) => return None,
+            None if state.namespaced => return None,
+            None => receiver_path.to_string(),
+        }
+    };
     let facade = ["Route", "Auth", "Cache", "DB"].into_iter().find(|name| {
         resolved.eq_ignore_ascii_case(name)
             || resolved.eq_ignore_ascii_case(&format!("Illuminate\\Support\\Facades\\{name}"))
     })?;
     let canonical = format!("Illuminate\\Support\\Facades\\{facade}");
-    static NAMESPACE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let namespaced = NAMESPACE.get_or_init(|| regex::Regex::new(r"(?i)\bnamespace\s").unwrap()).is_match(before);
-    // Grouped imports are deliberately not resolved. Do not assume a global alias.
-    static GROUPED: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    unsupported_import |= GROUPED.get_or_init(|| regex::Regex::new(r"(?i)\buse\s+[^;]*\{").unwrap()).is_match(before);
-    static SHADOW: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let valid = (receiver.trim_start_matches('\\').eq_ignore_ascii_case(&canonical) && (receiver.starts_with('\\') || !namespaced))
-        || imported.as_deref().is_some_and(|p|p.eq_ignore_ascii_case(&canonical))
-        || (receiver.eq_ignore_ascii_case(facade) && imported.is_none()
-            && !namespaced && !unsupported_import
-            && !SHADOW.get_or_init(|| regex::Regex::new(r"(?i)\b(?:class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap()).captures_iter(before).any(|c| c[1].eq_ignore_ascii_case(facade)));
-    if !valid { return None; }
     static DATA: std::sync::OnceLock<std::collections::HashMap<&'static str, Vec<serde_json::Value>>> = std::sync::OnceLock::new();
     let packs = DATA.get_or_init(|| [
         ("Route", include_str!("../../metadata/laravel/route-methods.json")),
@@ -105,4 +165,44 @@ mod facade_tests {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod import_scope_tests {
+ use super::*;
+ #[test] fn grouped_multiple_namespace_and_typed_imports() {
+  for code in [
+   "<?php namespace App; use Illuminate\\Support\\Facades\\{Route as Router, Cache}; Router::",
+   "<?php use App\\Thing, Illuminate\\Support\\Facades\\Route; Route::",
+   "<?php namespace App; use Illuminate\\Support\\Facades as Facades; Facades\\DB::",
+   "<?php namespace App { use Illuminate\\Support\\Facades\\{const X, function f, Auth}; Auth::",
+   "<?php use function App\\Route; Route::",
+   "<?php use const App\\Route; Route::",
+  ] { assert!(facade_items(code,true).is_some(),"{code}"); }
+ }
+ #[test] fn imports_do_not_leak_across_namespaces_or_from_nested_use() {
+  for code in [
+   "<?php namespace A; use Illuminate\\Support\\Facades\\Route; namespace B; Route::",
+   "<?php namespace A { use Illuminate\\Support\\Facades\\Route; } namespace B { Route::",
+   "<?php namespace A { use Illuminate\\Support\\Facades\\Route; } namespace A { Route::",
+   "<?php namespace A; class Thing { use Illuminate\\Support\\Facades\\Route; } Route::",
+   "<?php namespace A; function thing() { use Illuminate\\Support\\Facades\\Route; } Route::",
+   "<?php use App\\{Route, Cache}; Route::",
+   "<?php use App\\Route, Illuminate\\Support\\Facades\\Route; Route::",
+  ] { assert!(facade_items(code,true).is_none(),"{code}"); }
+ }
+ #[test] fn absolute_names_ignore_imports_and_other_namespaces_shadows() {
+  assert!(facade_items("<?php namespace A; class Route {} namespace B; use Illuminate\\Support\\Facades\\Route; Route::",true).is_some());
+  assert!(facade_items("<?php use App\\Route; \\Illuminate\\Support\\Facades\\Route::",true).is_some());
+ }
+}
+
+#[cfg(test)]
+mod mixed_markup_tests {
+ use super::*;
+ #[test] fn html_text_cannot_forge_a_php_import() {
+  assert!(facade_items("<p>use Illuminate\\Support\\Facades\\Route as Router;</p><?php Router::",true).is_none());
+  assert!(facade_items("<p>namespace App; class Route {}</p><?php Route::",true).is_some());
+  assert!(facade_items("<p>anything</p><?php use Illuminate\\Support\\Facades\\{Route as Router}; Router::",true).is_some());
+ }
 }
