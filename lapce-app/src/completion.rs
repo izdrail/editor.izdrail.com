@@ -17,7 +17,7 @@ use nucleo::Utf32Str;
 
 use crate::{
     completion_rank::{
-        Rank, compare, dedupe_across_sources, has_prefix_ignore_case,
+        Rank, compare, dedupe_across_sources, has_prefix_ignore_case, php_magic_candidate,
     },
     completion_sources::{CompletionSource, MIN_WORD_INPUT},
     config::LapceConfig,
@@ -246,6 +246,9 @@ impl CompletionData {
                     .filter_map(|i| {
                         let filter_text =
                             i.item.filter_text.as_ref().unwrap_or(&i.item.label);
+                        if !php_magic_candidate(&self.input, filter_text,
+                            crate::project_completion::php_completion_path(&self.path),
+                            i.source == CompletionSource::Lsp) { return None; }
                         let shift = i
                             .item
                             .label

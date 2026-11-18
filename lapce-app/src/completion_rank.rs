@@ -57,6 +57,12 @@ pub fn has_prefix_ignore_case(text: &str, prefix: &str) -> bool {
         .all(|p| t.next() == Some(p))
 }
 
+/// PHP reserved/magic identifiers use exact prefix matching for offline rows.
+/// Preserve server-owned candidates and ordinary fuzzy abbreviations.
+pub fn php_magic_candidate(input: &str, text: &str, php: bool, server: bool) -> bool {
+    !php || server || !input.starts_with("__") || has_prefix_ignore_case(text, input)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,6 +86,18 @@ mod tests {
         let p = Pattern::parse(input, CaseMatching::Ignore, Normalization::Smart);
         let mut buf = Vec::new();
         p.score(Utf32Str::new(text, &mut buf), &mut m)
+    }
+
+    #[test]
+    fn php_magic_offline_rows_reject_scattered_noise_but_keep_servers() {
+        assert!(php_magic_candidate("__PROP", "__PROPERTY__", true, false));
+        assert!(php_magic_candidate("__prop", "__PROPERTY__", true, false));
+        assert!(!php_magic_candidate("__PROP", "sodium_crypto_box_keypair_from_secretkey_and_publickey", true, false));
+        assert!(!php_magic_candidate("__PROP", "__OTHER_PROPERTY__", true, false));
+        assert!(php_magic_candidate("__PROP", "server_custom", true, true));
+        assert!(php_magic_candidate("rdb", "renderBlade", true, false));
+        assert!(php_magic_candidate("__PROP", "scattered", false, false));
+        assert!(php_magic_candidate("__", "__CLASS__", true, false));
     }
 
     #[test]
