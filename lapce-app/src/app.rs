@@ -117,7 +117,7 @@ mod logging;
 #[clap(version=meta::VERSION)]
 #[derive(Debug)]
 struct Cli {
-    /// Launch new window even if Lapce is already running
+    /// Launch a new window even if Gravity is already running
     #[clap(short, long, action)]
     new: bool,
     /// Don't return instantly when opened in a terminal
@@ -4717,5 +4717,23 @@ mod linux_icon_tests {
         assert!(image.pixels().any(|p| p.0[3] == 0));
         assert!(image.pixels().any(|p| p.0[3] > 200 && p.0[2] > 150));
         let _ = super::linux_application_icon();
+    }
+}
+
+#[cfg(test)]
+mod gravity_cli_tests {
+    use super::Cli;
+    use clap::CommandFactory;
+
+    #[test]
+    fn gravity_cli_help_names_the_app_and_keeps_compatibility_flags() {
+        let help = Cli::command().bin_name("gravity").render_long_help().to_string();
+        assert!(help.contains("Usage: gravity"));
+        assert!(help.contains("even if Gravity is already running"));
+        assert!(!help.contains("even if Lapce"));
+        for flag in ["--new", "--wait", "--debug", "--install-vsix", "--ext-search", "--plugin-path"] {
+            assert!(help.contains(flag), "missing {flag}");
+        }
+        assert!(help.contains("LAPCE_DEBUG=1"));
     }
 }
