@@ -1026,3 +1026,20 @@ mod twig_verbatim_open_tests {
         }
     }
 }
+
+/// Lexer-checked PHP code at an unfinished completion cursor. Strings/comments
+/// are blanked without changing byte offsets, so fake imports cannot bind names.
+pub fn php_completion_code(before: &str) -> Option<String> {
+    if before.len() > 512 * 1024 { return None; }
+    let pure = crate::lexilla::is_pure_php(before);
+    let snapshot = Snapshot::lex(if pure { "php" } else { "hypertext" }, before, &[]).ok()?;
+    if let Some(&style) = snapshot.styles().last() {
+        if matches!(snapshot.scope(style), Some("string" | "comment"))
+            || (pure && matches!(style, 20 | 21)) || (!pure && !(118..=127).contains(&style)) { return None; }
+    }
+    let mut code=before.as_bytes().to_vec();
+    for (byte, style) in code.iter_mut().zip(snapshot.styles()) {
+        if matches!(snapshot.scope(*style), Some("string" | "comment")) && !matches!(*byte, b'\n' | b'\r') { *byte=b' '; }
+    }
+    String::from_utf8(code).ok()
+}

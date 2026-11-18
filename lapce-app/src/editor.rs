@@ -3301,6 +3301,11 @@ impl EditorData {
                 let keywords = lang
                     .map(|l| profile_items(l, &project, &before_cursor))
                     .unwrap_or_default();
+                if lang == Some("php") {
+                    if let Some(items) = crate::laravel_completion::route_items(&before_cursor, project.laravel) {
+                        return (Vec::new(), Vec::new(), items, String::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+                    }
+                }
                 // theme.json / block.json schema keys and values.
                 let json_items =
                     crate::project_completion::json_schema_items(path, &before_cursor);
@@ -3429,7 +3434,12 @@ impl EditorData {
             .chain(
                 keywords
                     .into_iter()
-                    .map(|i| wrap(i, CompletionSource::Keyword)),
+                    .map(|i| {
+                        let member = i.label_details.as_ref().and_then(|d|d.description.as_ref()).is_some_and(|d|d.starts_with("Illuminate\\Support\\Facades\\Route::"));
+                        let mut w=wrap(i, if member { CompletionSource::Project } else { CompletionSource::Keyword });
+                        w.show_on_empty=member;
+                        w
+                    }),
             )
             .chain(project.into_iter().map(|i| {
                 // Project items exist only because the line is a known

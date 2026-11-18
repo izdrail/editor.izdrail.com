@@ -1,0 +1,29 @@
+# Laravel Route completion
+
+In a detected Laravel PHP project, Ctrl+Space after `Route::` lists Route facade
+methods even when no PHP language server responds. Imported aliases such as
+`use Illuminate\Support\Facades\Route as Router; Router::` and the full
+qualified facade name are supported. Type part of a method to filter, then
+Enter to insert only the method name. No arguments or imports are guessed.
+
+The popup keeps the method label on its own line and the full owner path plus
+signature below it. Kind badges and existing source-priority ranking remain.
+Local Route methods use the project tier, not generic buffer words. Metadata
+class/function qualified names and language-server descriptions also appear
+below their insertion labels. Keyboard page movement and popup placement use
+the new two-line row height.
+
+This is an explicitly labelled Laravel 12 offline baseline, generated from the
+Route facade declarations. It is not an inferred receiver type or a promise
+that every method exists in another Laravel version. Sources and digest are
+recorded in metadata/laravel/manifest.json. Installed language-server results
+remain higher priority.
+
+The fallback refuses non-Laravel projects, strings, comments, unknown receivers,
+shadowed Route imports/classes and unimported namespaced Route names. Imports
+inside comments or strings cannot bind a facade alias. Grouped imports are not
+yet inferred. Scanning is bounded to 512 KiB; larger documents rely on LSP.
+
+This slice covers Route static methods. Eloquent model/member inference and
+other facade method packs remain separate work. Existing quoted route-name,
+view, config and middleware completions are unchanged.

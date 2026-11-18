@@ -322,7 +322,7 @@ impl CompletionData {
     /// The amount of items that can be displayed in the current layout.
     fn display_count(&self) -> usize {
         let config = self.config.get_untracked();
-        ((self.layout_rect.size().height / config.editor.line_height() as f64)
+        ((self.layout_rect.size().height / (config.editor.line_height() * 2) as f64)
             .floor() as usize)
             .saturating_sub(1)
     }
@@ -860,4 +860,25 @@ mod popup_geometry_tests {
         assert_eq!(clamp(2.0, -300.0, 400.0, 400.0, 100.0, 60.0), (0.0, 0.0));
         assert_eq!(clamp(2.0, 2.0, 400.0, 400.0, 0.0, 0.0), (0.0, 0.0));
     }
+}
+
+/// Keep the insertion label separate from its owner/path and signature.
+/// Provider control characters cannot create extra popup rows.
+pub fn completion_description(item: &CompletionItem) -> String {
+    let owner = item.label_details.as_ref().and_then(|d|d.description.as_deref()).unwrap_or("");
+    let detail = item.detail.as_deref().unwrap_or("");
+    let value = match (owner.is_empty(), detail.is_empty() || owner == detail) {
+        (false, false) => format!("{owner} | {detail}"),
+        (false, true) => owner.to_string(),
+        (true, _) => detail.to_string(),
+    };
+    value.chars().map(|c|if c.is_control() {' '} else {c}).take(512).collect()
+}
+#[cfg(test)]
+mod description_tests {
+ use super::*;
+ #[test] fn owner_and_signature_stay_separate_from_label_and_single_line() {
+  let item=CompletionItem { label:"get".into(),detail:Some("get($uri)\nroute".into()),label_details:Some(lsp_types::CompletionItemLabelDetails { detail:None,description:Some("Illuminate\\Support\\Facades\\Route::get".into()) }),..Default::default() };
+  let d=completion_description(&item);assert!(d.contains("Route::get | get($uri) route"));assert!(!d.contains('\n'));assert_eq!(item.label,"get");
+ }
 }

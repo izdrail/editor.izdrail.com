@@ -1,0 +1,8 @@
+{
+  "scope": "Laravel Route facade offline baseline, not a resolved project type",
+  "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Route.php",
+  "retrieved_on": "2026-11-18",
+  "source_sha256": "5c8a67e954cba4365ae7cdb3a35892507adba000cee209f6c835db6c09e0332b",
+  "generation": "@method static declarations; name and signature only",
+  "router_reference": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Routing/Router.php"
+}

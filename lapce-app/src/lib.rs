@@ -167,3 +167,5 @@ pub mod workspace;
 extern crate windows_sys as windows;
 
 pub mod vscode_experiment;
+
+mod laravel_completion;

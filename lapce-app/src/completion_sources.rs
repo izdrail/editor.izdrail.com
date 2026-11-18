@@ -446,6 +446,7 @@ pub fn profile_items(
             } else {
                 CompletionItemKind::FUNCTION
             }),
+            label_details: symbol.qualified_name.as_ref().map(|name| lsp_types::CompletionItemLabelDetails { detail: None, description: Some(name.clone()) }),
             detail: Some(format!(
                 "{} {} baseline{}",
                 symbol.framework,

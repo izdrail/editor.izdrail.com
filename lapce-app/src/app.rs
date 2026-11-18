@@ -3247,6 +3247,7 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
             move || completion_data.with(|c| VectorItems(c.filtered_items.clone())),
             move |(i, _item)| (request_id(), *i),
             move |(i, item)| {
+                let description = crate::completion::completion_description(&item.item);
                 stack((
                     container(
                         text(
@@ -3271,20 +3272,16 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
                                 |s, c| s.color(c).background(c.multiply_alpha(0.3)),
                             )
                     }),
-                    focus_text(
-                        move || {
-                            if config.get().editor.completion_item_show_detail {
-                                item.item
-                                    .detail
-                                    .clone()
-                                    .unwrap_or(item.item.label.clone())
-                            } else {
-                                item.item.label.clone()
-                            }
-                        },
+                    stack((focus_text(
+                        move || item.item.label.clone(),
                         move || item.indices.clone(),
                         move || config.get().color(LapceColor::EDITOR_FOCUS),
                     )
+                    , text(description).style(move |s| s
+                        .font_size((config.get().editor.font_size() as f32 - 1.0).max(11.0))
+                        .width_full().min_width(0.0).text_ellipsis()
+                        .color(config.get().color(LapceColor::EDITOR_FOREGROUND).multiply_alpha(0.8)))))
+                    .style(|s|s.flex_col())
                     .on_click_stop(move |_| {
                         active.set(i);
                         if let Some(editor) = active_editor.get_untracked() {
@@ -3296,7 +3293,6 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
                         let config = config.get();
                         s.padding_horiz(5.0)
                             .min_width(0.0)
-                            .align_items(Some(AlignItems::Center))
                             .size_full()
                             .border_radius(3.0)
                             .cursor(CursorStyle::Pointer)
@@ -3316,11 +3312,11 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
                 .style(move |s| {
                     s.align_items(Some(AlignItems::Center))
                         .width_full()
-                        .height(config.get().editor.line_height() as f32)
+                        .height((config.get().editor.line_height() * 2) as f32)
                 })
             },
         )
-        .item_size_fixed(move || config.get().editor.line_height() as f64)
+        .item_size_fixed(move || (config.get().editor.line_height() * 2) as f64)
         .style(|s| {
             s.align_items(Some(AlignItems::Center))
                 .width_full()
@@ -3331,11 +3327,11 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
     .ensure_visible(move || {
         let config = config.get();
         let active = active.get();
-        Size::new(1.0, config.editor.line_height() as f64)
+        Size::new(1.0, (config.editor.line_height() * 2) as f64)
             .to_rect()
             .with_origin(Point::new(
                 0.0,
-                active as f64 * config.editor.line_height() as f64,
+                active as f64 * (config.editor.line_height() * 2) as f64,
             ))
     })
     .on_resize(move |rect| {
@@ -3351,7 +3347,7 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
         s.display(if has_items { Display::Flex } else { Display::None })
             .position(Position::Absolute)
             .width((config.editor.completion_width as f64)
-                .max(1.0).min((tab_rect.get().width() - 1.0).max(0.0)) as f32)
+                .max(720.0).min((tab_rect.get().width() - 1.0).max(0.0)) as f32)
             .max_height(window_tab_data.completion_max_height().max(1.0) as f32)
             .set(PropagatePointerWheel, false)
             .margin_left(origin.x as f32)

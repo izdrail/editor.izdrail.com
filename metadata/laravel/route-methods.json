@@ -1,0 +1,398 @@
+[
+  {
+    "name": "get",
+    "signature": "get(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "post",
+    "signature": "post(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "put",
+    "signature": "put(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "patch",
+    "signature": "patch(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "delete",
+    "signature": "delete(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "options",
+    "signature": "options(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "any",
+    "signature": "any(string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "fallback",
+    "signature": "fallback(array|string|callable|null $action) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "redirect",
+    "signature": "redirect(string $uri, string $destination, int $status = 302) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "permanentRedirect",
+    "signature": "permanentRedirect(string $uri, string $destination) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "view",
+    "signature": "view(string $uri, string $view, array $data = [], int|array $status = 200, array $headers = []) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "match",
+    "signature": "match(array|string $methods, string $uri, array|string|callable|null $action = null) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "resources",
+    "signature": "resources(array $resources, array $options = []) -> void"
+  },
+  {
+    "name": "softDeletableResources",
+    "signature": "softDeletableResources(array $resources, array $options = []) -> void"
+  },
+  {
+    "name": "resource",
+    "signature": "resource(string $name, string $controller, array $options = []) -> \\Illuminate\\Routing\\PendingResourceRegistration"
+  },
+  {
+    "name": "apiResources",
+    "signature": "apiResources(array $resources, array $options = []) -> void"
+  },
+  {
+    "name": "apiResource",
+    "signature": "apiResource(string $name, string $controller, array $options = []) -> \\Illuminate\\Routing\\PendingResourceRegistration"
+  },
+  {
+    "name": "singletons",
+    "signature": "singletons(array $singletons, array $options = []) -> void"
+  },
+  {
+    "name": "singleton",
+    "signature": "singleton(string $name, string $controller, array $options = []) -> \\Illuminate\\Routing\\PendingSingletonResourceRegistration"
+  },
+  {
+    "name": "apiSingletons",
+    "signature": "apiSingletons(array $singletons, array $options = []) -> void"
+  },
+  {
+    "name": "apiSingleton",
+    "signature": "apiSingleton(string $name, string $controller, array $options = []) -> \\Illuminate\\Routing\\PendingSingletonResourceRegistration"
+  },
+  {
+    "name": "group",
+    "signature": "group(array $attributes, \\Closure|array|string $routes) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "mergeWithLastGroup",
+    "signature": "mergeWithLastGroup(array $new, bool $prependExistingPrefix = true) -> array"
+  },
+  {
+    "name": "getLastGroupPrefix",
+    "signature": "getLastGroupPrefix() -> string"
+  },
+  {
+    "name": "addRoute",
+    "signature": "addRoute(array|string $methods, string $uri, array|string|callable|null $action) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "newRoute",
+    "signature": "newRoute(array|string $methods, string $uri, mixed $action) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "respondWithRoute",
+    "signature": "respondWithRoute(string $name) -> \\Symfony\\Component\\HttpFoundation\\Response"
+  },
+  {
+    "name": "dispatch",
+    "signature": "dispatch(\\Illuminate\\Http\\Request $request) -> \\Symfony\\Component\\HttpFoundation\\Response"
+  },
+  {
+    "name": "dispatchToRoute",
+    "signature": "dispatchToRoute(\\Illuminate\\Http\\Request $request) -> \\Symfony\\Component\\HttpFoundation\\Response"
+  },
+  {
+    "name": "gatherRouteMiddleware",
+    "signature": "gatherRouteMiddleware(\\Illuminate\\Routing\\Route $route) -> array"
+  },
+  {
+    "name": "resolveMiddleware",
+    "signature": "resolveMiddleware(array $middleware, array $excluded = []) -> array"
+  },
+  {
+    "name": "prepareResponse",
+    "signature": "prepareResponse(\\Symfony\\Component\\HttpFoundation\\Request $request, mixed $response) -> \\Symfony\\Component\\HttpFoundation\\Response"
+  },
+  {
+    "name": "toResponse",
+    "signature": "toResponse(\\Symfony\\Component\\HttpFoundation\\Request $request, mixed $response) -> \\Symfony\\Component\\HttpFoundation\\Response"
+  },
+  {
+    "name": "substituteBindings",
+    "signature": "substituteBindings(\\Illuminate\\Routing\\Route $route) -> \\Illuminate\\Routing\\Route"
+  },
+  {
+    "name": "substituteImplicitBindings",
+    "signature": "substituteImplicitBindings(\\Illuminate\\Routing\\Route $route) -> void"
+  },
+  {
+    "name": "substituteImplicitBindingsUsing",
+    "signature": "substituteImplicitBindingsUsing(callable $callback) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "matched",
+    "signature": "matched(string|callable $callback) -> void"
+  },
+  {
+    "name": "getMiddleware",
+    "signature": "getMiddleware() -> array"
+  },
+  {
+    "name": "aliasMiddleware",
+    "signature": "aliasMiddleware(string $name, string $class) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "hasMiddlewareGroup",
+    "signature": "hasMiddlewareGroup(string $name) -> bool"
+  },
+  {
+    "name": "getMiddlewareGroups",
+    "signature": "getMiddlewareGroups() -> array"
+  },
+  {
+    "name": "middlewareGroup",
+    "signature": "middlewareGroup(string $name, array $middleware) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "prependMiddlewareToGroup",
+    "signature": "prependMiddlewareToGroup(string $group, string $middleware) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "pushMiddlewareToGroup",
+    "signature": "pushMiddlewareToGroup(string $group, string $middleware) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "removeMiddlewareFromGroup",
+    "signature": "removeMiddlewareFromGroup(string $group, string $middleware) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "flushMiddlewareGroups",
+    "signature": "flushMiddlewareGroups() -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "bind",
+    "signature": "bind(string $key, string|callable $binder) -> void"
+  },
+  {
+    "name": "model",
+    "signature": "model(string $key, string $class, \\Closure|null $callback = null) -> void"
+  },
+  {
+    "name": "getBindingCallback",
+    "signature": "getBindingCallback(string $key) -> \\Closure|null"
+  },
+  {
+    "name": "getPatterns",
+    "signature": "getPatterns() -> array"
+  },
+  {
+    "name": "pattern",
+    "signature": "pattern(string $key, string $pattern) -> void"
+  },
+  {
+    "name": "patterns",
+    "signature": "patterns(array $patterns) -> void"
+  },
+  {
+    "name": "hasGroupStack",
+    "signature": "hasGroupStack() -> bool"
+  },
+  {
+    "name": "getGroupStack",
+    "signature": "getGroupStack() -> array"
+  },
+  {
+    "name": "input",
+    "signature": "input(string $key, string|null $default = null) -> mixed"
+  },
+  {
+    "name": "getCurrentRequest",
+    "signature": "getCurrentRequest() -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "getCurrentRoute",
+    "signature": "getCurrentRoute() -> \\Illuminate\\Routing\\Route|null"
+  },
+  {
+    "name": "current",
+    "signature": "current() -> \\Illuminate\\Routing\\Route|null"
+  },
+  {
+    "name": "has",
+    "signature": "has(string|array $name) -> bool"
+  },
+  {
+    "name": "currentRouteName",
+    "signature": "currentRouteName() -> string|null"
+  },
+  {
+    "name": "is",
+    "signature": "is(mixed ...$patterns) -> bool"
+  },
+  {
+    "name": "currentRouteNamed",
+    "signature": "currentRouteNamed(mixed ...$patterns) -> bool"
+  },
+  {
+    "name": "currentRouteAction",
+    "signature": "currentRouteAction() -> string|null"
+  },
+  {
+    "name": "uses",
+    "signature": "uses(array|string ...$patterns) -> bool"
+  },
+  {
+    "name": "currentRouteUses",
+    "signature": "currentRouteUses(string $action) -> bool"
+  },
+  {
+    "name": "singularResourceParameters",
+    "signature": "singularResourceParameters(bool $singular = true) -> void"
+  },
+  {
+    "name": "resourceParameters",
+    "signature": "resourceParameters(array $parameters = []) -> void"
+  },
+  {
+    "name": "resourceVerbs",
+    "signature": "resourceVerbs(array $verbs = []) -> array|null"
+  },
+  {
+    "name": "getRoutes",
+    "signature": "getRoutes() -> \\Illuminate\\Routing\\RouteCollectionInterface"
+  },
+  {
+    "name": "setRoutes",
+    "signature": "setRoutes(\\Illuminate\\Routing\\RouteCollection $routes) -> void"
+  },
+  {
+    "name": "setCompiledRoutes",
+    "signature": "setCompiledRoutes(array $routes) -> void"
+  },
+  {
+    "name": "uniqueMiddleware",
+    "signature": "uniqueMiddleware(array $middleware) -> array"
+  },
+  {
+    "name": "setContainer",
+    "signature": "setContainer(\\Illuminate\\Container\\Container $container) -> \\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  },
+  {
+    "name": "macroCall",
+    "signature": "macroCall(string $method, array $parameters) -> mixed"
+  },
+  {
+    "name": "tap",
+    "signature": "tap(callable|null $callback = null) -> \\Illuminate\\Support\\HigherOrderTapProxy|\\Illuminate\\Routing\\Router"
+  },
+  {
+    "name": "attribute",
+    "signature": "attribute(string $key, mixed $value) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "whereAlpha",
+    "signature": "whereAlpha(array|string $parameters) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "whereAlphaNumeric",
+    "signature": "whereAlphaNumeric(array|string $parameters) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "whereNumber",
+    "signature": "whereNumber(array|string $parameters) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "whereUlid",
+    "signature": "whereUlid(array|string $parameters) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "whereUuid",
+    "signature": "whereUuid(array|string $parameters) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "whereIn",
+    "signature": "whereIn(array|string $parameters, array $values) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "as",
+    "signature": "as(string $value) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "can",
+    "signature": "can(\\UnitEnum|string $ability, array|string $models = []) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "controller",
+    "signature": "controller(string $controller) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "domain",
+    "signature": "domain(\\BackedEnum|string $value) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "middleware",
+    "signature": "middleware(array|string|null $middleware) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "missing",
+    "signature": "missing(\\Closure $missing) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "name",
+    "signature": "name(\\BackedEnum|string $value) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "namespace",
+    "signature": "namespace(string|null $value) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "prefix",
+    "signature": "prefix(string $prefix) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "scopeBindings",
+    "signature": "scopeBindings() -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "where",
+    "signature": "where(array $where) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "withoutMiddleware",
+    "signature": "withoutMiddleware(array|string $middleware) -> \\Illuminate\\Routing\\RouteRegistrar"
+  },
+  {
+    "name": "withoutScopedBindings",
+    "signature": "withoutScopedBindings() -> \\Illuminate\\Routing\\RouteRegistrar"
+  }
+]

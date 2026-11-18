@@ -2957,7 +2957,7 @@ impl WindowTabData {
         // capped measurement makes any placement self-justifying.
         let wanted = crate::completion::desired_popup_height(
             completion.filtered_items.len(),
-            line_height,
+            line_height * 2.0,
             max_height,
         );
         crate::completion::popup_vertical_placement(
