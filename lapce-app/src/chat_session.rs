@@ -130,53 +130,111 @@ pub fn save(directory: &Path, session: &Session) -> Result<(), String> {
     }
     result
 }
-pub fn latest(directory: &Path) -> Result<Option<Session>, String> {
-    if !directory.exists() {
-        return Ok(None);
+/// Read-only native history browser. Never resumes a run or writes storage.
+/// Enumerates at most 10,000 entries, examines the newest 100 JSON paths,
+/// and returns at most 20 validated sessions without changing their ids/state.
+pub fn recent(directory: &Path, limit: usize) -> Result<Vec<Session>, String> {
+    let limit = limit.min(20);
+    if limit == 0 || !directory.exists() { return Ok(Vec::new()); }
+    let metadata = fs::symlink_metadata(directory).map_err(|e| e.to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("Chat storage must be a real directory".into());
     }
-    private_directory(directory)?;
     let mut paths = Vec::new();
-    for entry in fs::read_dir(directory)
-        .map_err(|e| e.to_string())?
-        .take(10_000)
-    {
+    for entry in fs::read_dir(directory).map_err(|e| e.to_string())?.take(10_000) {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if path.extension().and_then(|x| x.to_str()) == Some("json")
-            && entry.file_type().map_err(|e| e.to_string())?.is_file()
-        {
+            && entry.file_type().map_err(|e| e.to_string())?.is_file() {
             paths.push(path);
         }
     }
-    if paths.is_empty() {
-        return Ok(None);
-    }
+    if paths.is_empty() { return Ok(Vec::new()); }
     paths.sort();
+    let mut sessions = Vec::new();
     for path in paths.into_iter().rev().take(100) {
-        let metadata = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
-        if metadata.len() > MAX_BYTES as u64 || metadata.file_type().is_symlink() {
-            continue;
+        // O_NOFOLLOW closes the metadata/open symlink swap on Unix.
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)] {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
         }
+        let Ok(file) = options.open(&path) else { continue; };
+        let Ok(metadata) = file.metadata() else { continue; };
+        if !metadata.is_file() || metadata.len() > MAX_BYTES as u64 { continue; }
         let mut bytes = Vec::new();
-        fs::File::open(&path)
-            .map_err(|e| e.to_string())?
-            .take(MAX_BYTES as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
-        if bytes.len() > MAX_BYTES {
-            continue;
-        }
+        if file.take(MAX_BYTES as u64 + 1).read_to_end(&mut bytes).is_err()
+            || bytes.len() > MAX_BYTES { continue; }
         if let Ok(session) = serde_json::from_slice::<Session>(&bytes) {
-            if session.validate().is_ok() {
-                return Ok(Some(session.recover()));
+            if session.validate().is_ok()
+                && path.file_stem().and_then(|x| x.to_str()) == Some(session.id.as_str()) {
+                sessions.push(session);
+                if sessions.len() == limit { break; }
             }
         }
     }
-    Err("No readable chat session. Existing files were preserved.".into())
+    if sessions.is_empty() {
+        Err("No readable chat session. Existing files were preserved.".into())
+    } else { Ok(sessions) }
+}
+pub fn latest(directory: &Path) -> Result<Option<Session>, String> {
+    if directory.exists() { private_directory(directory)?; }
+    Ok(recent(directory, 1)?.into_iter().next().map(Session::recover))
+}
+/// Bounded plain text, not Markdown or an instruction to restore tool state.
+pub fn preview(session: &Session) -> String {
+    let mut lines = vec![format!("{:?} | {} saved turns. Preview only, not resumed.", session.state, session.turns.len())];
+    if session.turns.len() > 6 { lines.push("Earlier turns omitted from preview.".into()); }
+    for turn in session.turns.iter().skip(session.turns.len().saturating_sub(6)) {
+        let mut text: String = turn.text.chars().take(400).collect();
+        if turn.text.chars().count() > 400 { text.push_str("..."); }
+        lines.push(format!("{}: {}", if turn.role == "user" { "You" } else { "Assistant" }, text));
+    }
+    lines.join("\n\n")
+}
+pub fn title(session: &Session) -> String {
+    session.turns.iter().find(|t| t.role == "user")
+        .map(|t| t.text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect())
+        .filter(|s: &String| !s.is_empty()).unwrap_or_else(|| "Empty chat".into())
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_history_is_bounded_and_does_not_recover_or_write() {
+        let d = tempfile::tempdir().unwrap();
+        for i in 0..25 {
+            let mut s = Session::new(); s.state = RunState::Running;
+            s.turns.push(SavedTurn { role: "user".into(), text: format!("Question {i}"), context: String::new() });
+            save(d.path(), &s).unwrap();
+        }
+        let before = fs::read_dir(d.path()).unwrap().count();
+        let found = recent(d.path(), 1000).unwrap();
+        assert_eq!(found.len(), 20); assert_eq!(found[0].state, RunState::Running);
+        assert_eq!(found[0].id, recent(d.path(), 1).unwrap()[0].id);
+        assert_eq!(fs::read_dir(d.path()).unwrap().count(), before);
+        assert!(recent(d.path(), 0).unwrap().is_empty());
+    }
+    #[test]
+    fn native_preview_is_plain_bounded_unicode_and_inert() {
+        let mut s = Session::new();
+        for _ in 0..10 { s.turns.push(SavedTurn { role: "user".into(), text: "界".repeat(900), context: "not displayed".into() }); }
+        let text = preview(&s);
+        assert!(text.contains("Preview only, not resumed"));
+        assert!(text.contains("Earlier turns omitted"));
+        assert_eq!(text.matches("You:").count(), 6);
+        assert!(text.chars().count() < 2600); assert!(!text.contains("not displayed"));
+        assert_eq!(title(&s).chars().count(), 80);
+    }
+    #[test]
+    fn native_history_skips_mismatched_ids_and_keeps_valid_older_rows() {
+        let d = tempfile::tempdir().unwrap(); let s = Session::new(); save(d.path(), &s).unwrap();
+        let mut other = s.clone(); other.id = "ffff".into();
+        fs::write(d.path().join("ffffffff.json"), serde_json::to_vec(&other).unwrap()).unwrap();
+        fs::write(d.path().join("fffffff.json"), "broken").unwrap();
+        let found = recent(d.path(), 20).unwrap(); assert_eq!(found.len(), 1); assert_eq!(found[0].id, s.id);
+    }
     #[test]
     fn private_round_trip_and_recovery() {
         let dir = tempfile::tempdir().unwrap();

@@ -2509,6 +2509,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let agents_window_command = tab.common.window_common.window_command;
     start_prompt_scheduler(tab.clone());
     let show_sessions = floem::reactive::create_rw_signal(false);
+    let show_native = floem::reactive::create_rw_signal(false);
+    let native_sessions = floem::reactive::create_rw_signal(Vec::<Session>::new());
+    let native_preview = floem::reactive::create_rw_signal(String::new());
+    let native_notice = floem::reactive::create_rw_signal(String::new());
+    let native_data = data.clone();
     // Plans section (item 196): newest plan artifacts for the current
     // workspace; re-read when a plan-mode artifact is written
     // (plans_version) and on panel build. Rows carry their own root so
@@ -3401,6 +3406,46 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             .cursor(CursorStyle::Pointer)
             .hover(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))),
+        label(move || if show_native.get() { "Saved chats - hide".to_string() } else { "Saved chats - browse this workspace".to_string() })
+            .keyboard_navigable()
+            .on_click_stop(move |_| {
+                let show = !show_native.get_untracked();
+                if show {
+                    native_preview.set(String::new());
+                    let result = native_data.storage.as_ref()
+                        .map(|dir| chat_session::recent(dir, 20)).unwrap_or_else(|| Ok(Vec::new()));
+                    match result {
+                        Ok(rows) => {
+                            native_notice.set(if rows.is_empty() { "No saved chats in this workspace." } else { "Newest 20 at most. Preview only: no request, restore or tool approval. Current chat and draft stay unchanged." }.into());
+                            native_sessions.set(rows);
+                        }
+                        Err(e) => { native_sessions.set(Vec::new()); native_notice.set(e); }
+                    }
+                }
+                show_native.set(show);
+            })
+            .style(move |s| s.width_full().min_width(0.0).padding(6.0).font_size(11.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)
+                .cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::EDITOR_LINK))),
+        v_stack((
+            label(move || native_notice.get()).style(move |s| s.width_full().min_width(0.0)
+                .font_size(11.0).text_overflow(floem::style::TextOverflow::Wrap)
+                .color(config.get().color(LapceColor::EDITOR_DIM))),
+            scroll(dyn_stack(move || native_sessions.get(), |session| session.id.clone(), move |session| {
+                let title = chat_session::title(&session);
+                label(move || title.clone()).keyboard_navigable()
+                    .on_click_stop(move |_| { native_preview.set(chat_session::preview(&session)); })
+                    .style(move |s| s.width_full().min_width(0.0).padding(6.0).font_size(11.0)
+                        .text_ellipsis().cursor(CursorStyle::Pointer)
+                        .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))))
+            }).style(|s| s.width_full().min_width(0.0).flex_col()))
+                .style(|s| s.width_full().max_height(140.0)),
+            scroll(label(move || native_preview.get()).style(|s| s.width_full().min_width(0.0)
+                .font_size(11.0).text_overflow(floem::style::TextOverflow::Wrap)))
+                .style(move |s| s.width_full().max_height(200.0).apply_if(native_preview.get().is_empty(), |s| s.hide())),
+        )).style(move |s| s.width_full().min_width(0.0).gap(4.0).padding(6.0)
+            .border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .apply_if(!show_native.get(), |s| s.hide())),
         // Quiet section header with a collapse chevron (Antigravity
         // panel chrome) - replaces the Agents text button.
         h_stack((
