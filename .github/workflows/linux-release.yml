@@ -16,13 +16,31 @@ env:
 jobs:
   release:
     name: Build and attach Linux x86_64 binary
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Ubuntu build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential python3 git curl ca-certificates xz-utils clang pkg-config libxkbcommon-x11-dev libvulkan-dev libwayland-dev xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev cmake
+
+      - name: Install fixed Rust toolchain
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --no-self-update
+          rustup default 1.98.0
+
+      - name: Cache Rust build dependencies
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          key: hosted-ubuntu-22.04-rust-1.98.0
+
+      - name: Packaging regression tests
+        run: python3 scripts/test-linux-build.py
+
       - name: Build and verify Ubuntu 22.04 binaries
-        run: bash scripts/build-linux-portable.sh
+        run: bash scripts/build-linux-hosted.sh
 
       - name: Package
         run: |
@@ -53,9 +71,3 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" "$ARTIFACT" "$ARTIFACT.sha256" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
           fi
-
-      - name: Remove this build's copied binaries
-        if: always()
-        run: |
-          docker rm -f "editor-abi-${GITHUB_RUN_ID}" 2>/dev/null || true
-          rm -rf -- target/ubuntu-22.04
