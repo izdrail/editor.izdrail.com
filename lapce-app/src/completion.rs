@@ -865,14 +865,20 @@ mod popup_geometry_tests {
 /// Keep the insertion label separate from its owner/path and signature.
 /// Provider control characters cannot create extra popup rows.
 pub fn completion_description(item: &CompletionItem) -> String {
-    let owner = item.label_details.as_ref().and_then(|d|d.description.as_deref()).unwrap_or("");
-    let detail = item.detail.as_deref().unwrap_or("");
-    let value = match (owner.is_empty(), detail.is_empty() || owner == detail) {
-        (false, false) => format!("{owner} | {detail}"),
-        (false, true) => owner.to_string(),
-        (true, _) => detail.to_string(),
-    };
-    value.chars().map(|c|if c.is_control() {' '} else {c}).take(512).collect()
+    let labels = item.label_details.as_ref();
+    let mut parts: Vec<&str> = Vec::new();
+    for value in [
+        labels.and_then(|d| d.description.as_deref()),
+        labels.and_then(|d| d.detail.as_deref()),
+        item.detail.as_deref(),
+    ].into_iter().flatten() {
+        let value = value.trim();
+        if !value.is_empty() && !parts.contains(&value) { parts.push(value); }
+    }
+    let mut chars = parts.join(" | ").chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<Vec<_>>();
+    if chars.len() > 4096 { chars.truncate(4095); chars.push('…'); }
+    chars.into_iter().collect()
+
 }
 #[cfg(test)]
 mod description_tests {
@@ -880,5 +886,19 @@ mod description_tests {
  #[test] fn owner_and_signature_stay_separate_from_label_and_single_line() {
   let item=CompletionItem { label:"get".into(),detail:Some("get($uri)\nroute".into()),label_details:Some(lsp_types::CompletionItemLabelDetails { detail:None,description:Some("Illuminate\\Support\\Facades\\Route::get".into()) }),..Default::default() };
   let d=completion_description(&item);assert!(d.contains("Route::get | get($uri) route"));assert!(!d.contains('\n'));assert_eq!(item.label,"get");
+ }
+}
+
+#[cfg(test)]
+mod metadata_tests {
+ use super::*;
+ #[test] fn lsp_label_signature_is_kept_and_duplicates_are_removed() {
+  let mut item = CompletionItem { label:"method".into(), label_details:Some(lsp_types::CompletionItemLabelDetails { detail:Some("(string $arg)".into()), description:Some("App\\Service::method".into()) }), detail:Some("(string $arg)".into()), ..Default::default() };
+  assert_eq!(completion_description(&item), "App\\Service::method | (string $arg)");
+  item.detail = Some("x".repeat(6000));
+  let text = completion_description(&item);
+  assert_eq!(text.chars().count(),4096); assert!(text.ends_with('…'));
+  item.label_details = None; item.detail = Some("你好\n世界".into());
+  assert_eq!(completion_description(&item),"你好 世界");
  }
 }

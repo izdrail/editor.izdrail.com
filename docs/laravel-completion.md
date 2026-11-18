@@ -50,3 +50,13 @@ Mixed HTML text, strings and comments cannot forge PHP imports.
 Import semantics reference: https://www.php.net/manual/en/language.namespaces.importing.php
 This is a bounded completion resolver, not a PHP validator. It only reads code
 before the cursor, so declarations after the cursor still require an LSP.
+
+## Full signature hover
+
+Hover over a suggestion's metadata line to read the full owner path and method
+signature in a wrapped tooltip. The compact list still uses two rows and an
+ellipsis for long metadata, so scrolling stays predictable. LSP-provided
+label-detail signatures are retained alongside the owner and detail, with
+identical fields shown only once. Tooltip content is plain text, control
+characters are replaced, and very large metadata is capped at 4,096 characters
+with an explicit ellipsis. Selecting a suggestion still inserts only its label.

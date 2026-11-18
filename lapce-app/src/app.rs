@@ -3277,10 +3277,15 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
                         move || item.indices.clone(),
                         move || config.get().color(LapceColor::EDITOR_FOCUS),
                     )
-                    , text(description).style(move |s| s
-                        .font_size((config.get().editor.font_size() as f32 - 1.0).max(11.0))
-                        .width_full().min_width(0.0).text_ellipsis()
-                        .color(config.get().color(LapceColor::EDITOR_FOREGROUND).multiply_alpha(0.8)))))
+                    , tooltip(
+                        text(description.clone()).style(move |s| s
+                            .font_size((config.get().editor.font_size() as f32 - 1.0).max(11.0))
+                            .width_full().min_width(0.0).text_ellipsis()
+                            .color(config.get().color(LapceColor::EDITOR_FOREGROUND).multiply_alpha(0.8))),
+                        move || tooltip_tip(config, text(description.clone()).style(|s| s
+                            .max_width(600.0).min_width(0.0)
+                            .text_overflow(floem::style::TextOverflow::Wrap)))
+                    )))
                     .style(|s|s.flex_col())
                     .on_click_stop(move |_| {
                         active.set(i);
