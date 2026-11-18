@@ -53,3 +53,6 @@ Moving to a different editor or panel does not reopen the input or steal focus.
 
 Replacement code retains the first code line's indentation, including tabs.
 Blank wrapper lines and markdown fences are removed without outdenting code.
+
+For a consistently CRLF selection, every replacement line uses CRLF even when
+the model replies with LF. Mixed-EOL selections do not force a guessed style.

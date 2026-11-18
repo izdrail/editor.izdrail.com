@@ -526,6 +526,12 @@ mod inline_source_context_tests {
 fn inline_edit_replacement(code: &str, reply: &str) -> String {
     let mut text = strip_code_fence(reply);
     if text.is_empty() { return text; }
+    // A CRLF target must not become mixed-EOL when the model emits LF.
+    // Mixed-EOL targets are intentionally left alone: no consistent style
+    // can be inferred from that selection.
+    if code.contains("\r\n") && !code.replace("\r\n", "").contains('\n') {
+        text = text.replace("\r\n", "\n").replace('\n', "\r\n");
+    }
     if code.ends_with("\r\n") { text.push_str("\r\n"); }
     else if code.ends_with('\n') { text.push('\n'); }
     text
@@ -598,5 +604,20 @@ mod inline_indentation_tests {
         assert_eq!(strip_code_fence("```python\n    if λ:\n        run()\n```"), "    if λ:\n        run()");
         assert_eq!(strip_code_fence(" \n\t\r\n"), "");
         assert_eq!(inline_edit_replacement("old\r\n", "    λ();\r\n"), "    λ();\r\n");
+    }
+}
+
+#[cfg(test)]
+mod inline_line_ending_tests {
+    use super::*;
+    #[test] fn crlf_target_normalizes_all_model_lines_without_doubling_cr() {
+        for reply in ["one\ntwo\n", "one\r\ntwo\r\n", "```php\none\ntwo\n```", "one\r\ntwo\n"] {
+            assert_eq!(inline_edit_replacement("old\r\nlines\r\n", reply), "one\r\ntwo\r\n");
+        }
+        assert_eq!(inline_edit_replacement("old\r\npartial", "one\ntwo"), "one\r\ntwo");
+    }
+    #[test] fn lf_or_mixed_target_does_not_force_crlf() {
+        assert_eq!(inline_edit_replacement("old\nlines\n", "one\ntwo"), "one\ntwo\n");
+        assert_eq!(inline_edit_replacement("old\r\nmixed\n", "one\ntwo"), "one\ntwo\n");
     }
 }
