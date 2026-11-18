@@ -26,3 +26,20 @@ mod tests {
         assert!(act.contains("require review") && act.contains("approval per call"));
     }
 }
+
+/// Draft-only suggestions. Picking one never changes mode or sends a request.
+pub const STARTERS: &[(&str, &str)] = &[
+    ("Explain this file", "Explain the current file and its main responsibilities."),
+    ("Review for bugs", "Review the current file for bugs and edge cases. Explain findings before proposing changes."),
+    ("Suggest tests", "Suggest focused tests for the current file, including failure cases."),
+];
+#[cfg(test)]
+mod starter_tests {
+    #[test]
+    fn agent_starters_are_plain_drafts_not_slash_commands() {
+        for (label, prompt) in super::STARTERS {
+            assert!(!label.is_empty()); assert!(prompt.len() < 160);
+            assert!(!prompt.starts_with('/')); assert!(prompt.contains("current file"));
+        }
+    }
+}

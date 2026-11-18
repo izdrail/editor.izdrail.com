@@ -2495,6 +2495,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let schedules_data = data.clone();
     let empty_tab = tab.clone();
     let empty_turns = data.clone();
+    let starter_data = data.clone();
     let agents_data = data.clone();
     // Cross-workspace Agents list (item 167): the current workspace
     // first, then recent local workspaces from the app database.
@@ -3846,6 +3847,28 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config.get().color(LapceColor::EDITOR_FOREGROUND),
                             )
                         }),
+                        label(|| "Start a draft. Nothing is sent until you press Send.".to_string())
+                            .style(move |s| s.font_size(11.0).max_width_full().min_width(0.0)
+                                .text_overflow(floem::style::TextOverflow::Wrap)
+                                .color(config.get().color(LapceColor::EDITOR_DIM))),
+                        dyn_stack(
+                            || crate::agent_scope_ui::STARTERS.iter().copied().collect::<Vec<_>>(),
+                            |(label, _)| *label,
+                            move |(title, prompt)| {
+                                let starter = starter_data.clone();
+                                label(move || title.to_string()).keyboard_navigable()
+                                    .on_click_stop(move |_| {
+                                        if !starter.busy.get_untracked() {
+                                            starter.pending_selection.set(Some(prompt.to_string()));
+                                        }
+                                    })
+                                    .style(move |s| s.width_full().min_width(0.0).padding(8.0)
+                                        .font_size(12.0).border(1.0).border_radius(6.0)
+                                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                                        .cursor(CursorStyle::Pointer)
+                                        .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))))
+                            },
+                        ).style(|s| s.flex_col().width_full().min_width(0.0).gap(6.0).margin_top(10.0)),
                     ))
                     .style(move |s| {
                         let s = s
