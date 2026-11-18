@@ -2487,6 +2487,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let walkthrough_tab = tab.clone();
     let walkthrough = data.clone();
     let schedules_tab = tab.clone();
+    let settings_tab = tab.clone();
+    let summary_tab = tab.clone();
     let hide_tab = tab.clone();
     let hide_title_tab = tab.clone();
     let schedules_data = data.clone();
@@ -3346,6 +3348,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     config,
                 ),
                 clickable_icon(
+                    || LapceIcons::SETTINGS,
+                    move || {
+                        settings_tab.common.settings_section.set(Some("AI".into()));
+                        settings_tab.main_split.open_settings();
+                    },
+                    || false,
+                    || false,
+                    || "Open AI settings",
+                    config,
+                ),
+                clickable_icon(
                     || LapceIcons::SIDEBAR_RIGHT_OFF,
                     move || {
                         hide_tab.toggle_panel_visual(PanelKind::Chat);
@@ -3364,6 +3377,30 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .justify_between()
                 .padding_vert(2.0)
         }),
+        v_stack((
+            label(move || {
+                let c = config.get();
+                crate::agent_connection_ui::connection_summary(
+                    c.ai_chat.enabled, data.acp.get(), &c.ai_chat.backend,
+                    &c.ai_chat.model, &c.ai_chat.local_model,
+                )
+            }).style(|s| s.min_width(0.0).max_width_full()
+                .text_overflow(floem::style::TextOverflow::Wrap)),
+            label(|| "Connection, models and permissions in AI settings".to_string())
+                .style(move |s| s.font_size(11.0).min_width(0.0).max_width_full()
+                    .text_overflow(floem::style::TextOverflow::Wrap)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))),
+        ))
+        .keyboard_navigable()
+        .on_click_stop(move |_| {
+            summary_tab.common.settings_section.set(Some("AI".into()));
+            summary_tab.main_split.open_settings();
+        })
+        .style(move |s| s.width_full().min_width(0.0).padding(8.0).gap(4.0)
+            .margin_bottom(6.0).border(1.0).border_radius(6.0)
+            .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .cursor(CursorStyle::Pointer)
+            .hover(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))),
         // Quiet section header with a collapse chevron (Antigravity
         // panel chrome) - replaces the Agents text button.
         h_stack((

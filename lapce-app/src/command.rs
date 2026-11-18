@@ -269,6 +269,10 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Open Settings")]
     OpenSettings,
 
+    #[strum(serialize = "open_ai_settings")]
+    #[strum(message = "Agent: Open AI Settings")]
+    OpenAiSettings,
+
     #[strum(serialize = "open_settings_file")]
     #[strum(message = "Open Settings File")]
     OpenSettingsFile,

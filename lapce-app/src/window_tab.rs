@@ -912,6 +912,10 @@ impl WindowTabData {
             OpenSettings => {
                 self.main_split.open_settings();
             }
+            OpenAiSettings => {
+                self.common.settings_section.set(Some("AI".to_string()));
+                self.main_split.open_settings();
+            }
             OpenSettingsFile => {
                 if let Some(path) = LapceConfig::settings_file() {
                     self.main_split.jump_to_location(

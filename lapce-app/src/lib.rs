@@ -171,3 +171,5 @@ pub mod vscode_experiment;
 mod laravel_completion;
 
 mod mouse_navigation;
+
+mod agent_connection_ui;
