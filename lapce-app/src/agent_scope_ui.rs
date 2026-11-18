@@ -43,3 +43,41 @@ mod starter_tests {
         }
     }
 }
+
+/// Display only: keep source paths and context payloads unchanged.
+/// Outside-workspace paths stay absolute so a different file is not disguised.
+pub fn context_label(context: &crate::chat::Context, root: Option<&std::path::Path>) -> String {
+    let path = std::path::Path::new(&context.name);
+    let display = root.and_then(|root| path.strip_prefix(root).ok())
+        .filter(|relative| !relative.as_os_str().is_empty())
+        .unwrap_or(path);
+    format!("{}: {} | {} bytes{}",
+        if context.selection { "Selection" } else { "File" },
+        display.display(), context.text.len(),
+        if context.truncated { " (truncated)" } else { "" })
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn agent_context_label_is_relative_without_changing_payload() {
+        let context = crate::chat::Context::new("/project/src/User.php".into(), "abc", false);
+        assert_eq!(context_label(&context, Some(Path::new("/project"))), "File: src/User.php | 3 bytes");
+        assert_eq!(context.name, "/project/src/User.php");
+        assert!(context.indicator().contains("/project/src/User.php"));
+        assert_eq!(context_label(&context, None), context.indicator());
+    }
+
+    #[test]
+    fn agent_context_label_keeps_external_paths_and_selection_limits() {
+        let context = crate::chat::Context::new("/project-other/café.php".into(), &"é".repeat(7000), true);
+        assert_eq!(context_label(&context, Some(Path::new("/project"))), context.indicator());
+        assert!(context_label(&context, Some(Path::new("/project-other"))).starts_with("Selection: café.php"));
+        assert!(context_label(&context, None).ends_with("12000 bytes (truncated)"));
+        let scratch = crate::chat::Context::new("Untitled-1".into(), "", false);
+        assert_eq!(context_label(&scratch, Some(Path::new("/project"))), "File: Untitled-1 | 0 bytes");
+    }
+}

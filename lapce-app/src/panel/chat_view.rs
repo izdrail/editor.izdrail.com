@@ -4261,8 +4261,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 config.get().ai_chat.enabled, scope_data.acp.get(), scope_data.mode.get()
             ).to_string()).style(|s| s.width_full().min_width(0.0).font_size(11.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
-            label(move || context(&context_chip_tab).map(|c| format!("Attached on Send: {}", c.indicator()))
-                .unwrap_or_else(|| "Attached on Send: no editor context".into()))
+            label(move || {
+                context(&context_chip_tab)
+                    .map(|c| format!("Attached on Send: {}",
+                        crate::agent_scope_ui::context_label(
+                            &c, context_chip_tab.workspace.path.as_deref())))
+                    .unwrap_or_else(|| "Attached on Send: no editor context".into())
+            })
                 .style(move |s| s.width_full().min_width(0.0).font_size(11.0)
                     .text_overflow(floem::style::TextOverflow::Wrap)
                     .color(config.get().color(LapceColor::EDITOR_DIM))),
