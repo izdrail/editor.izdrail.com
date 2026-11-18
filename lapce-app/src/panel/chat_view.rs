@@ -2470,7 +2470,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let config = tab.common.config;
 
     let click_tab = tab.clone();
-    let indicator_tab = tab.clone();
+    let context_chip_tab = tab.clone();
+    let scope_data = data.clone();
     let clear = data.clone();
     let clear_busy = clear.busy;
     let stop = data.clone();
@@ -3462,7 +3463,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 s.size(size, size)
                     .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
             }),
-            label(move || format!("Agents ({})", session_list.get().len()))
+            label(move || format!("External agents ({})", session_list.get().len()))
                 .style(move |s| {
                     s.font_size(11.0)
                         .selectable(false)
@@ -4222,7 +4223,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     "Waiting for the endpoint... Use Stop to cancel.".to_string()
                 }
             } else {
-                send_hint_text(context(&indicator_tab).map(|c| c.indicator()))
+                "Enter to send, Shift+Enter for newline".to_string()
             }
         })
         .style(move |s| {
@@ -4232,6 +4233,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .text_overflow(floem::style::TextOverflow::Wrap)
                 .color(config.get().color(LapceColor::EDITOR_DIM))
         }),
+        v_stack((
+            label(move || crate::agent_scope_ui::scope_hint(
+                config.get().ai_chat.enabled, scope_data.acp.get(), scope_data.mode.get()
+            ).to_string()).style(|s| s.width_full().min_width(0.0).font_size(11.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)),
+            label(move || context(&context_chip_tab).map(|c| format!("Attached on Send: {}", c.indicator()))
+                .unwrap_or_else(|| "Attached on Send: no editor context".into()))
+                .style(move |s| s.width_full().min_width(0.0).font_size(11.0)
+                    .text_overflow(floem::style::TextOverflow::Wrap)
+                    .color(config.get().color(LapceColor::EDITOR_DIM))),
+        )).style(move |s| s.width_full().min_width(0.0).padding(8.0).gap(5.0)
+            .border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))),
         // Antigravity-style composer card: mode chips and the input live
         // inside one bordered card; send is a circular accent button.
         container(
