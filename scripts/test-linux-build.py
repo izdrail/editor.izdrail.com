@@ -11,10 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class LinuxBuildTests(unittest.TestCase):
     def test_gravity_is_default_and_only_main_linux_bundle_binary(self):
-        import tomllib
-        manifest = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(manifest['package']['default-run'], 'gravity')
-        self.assertIn('gravity', [item['name'] for item in manifest['bin']])
+        import re
+        manifest = (ROOT / 'Cargo.toml').read_text()
+        self.assertRegex(manifest, r'default-run\s*=\s*"gravity"')
+        self.assertRegex(manifest, r'\[\[bin\]\]\s*name\s*=\s*"gravity"')
         for name in ['linux-build.yml', 'linux-release.yml']:
             workflow = (ROOT / '.github/workflows' / name).read_text()
             self.assertIn('release/gravity ', workflow)
