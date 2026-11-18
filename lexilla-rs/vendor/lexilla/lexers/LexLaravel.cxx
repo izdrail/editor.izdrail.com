@@ -328,7 +328,7 @@ using StringScanner = PHPStringScanner<SCE_LARAVEL_STRING, SCE_LARAVEL_STRING_DQ
 static const char *MagicConstantName(const char *lower) {
 	static const char *names[] = {
 		"__CLASS__", "__DIR__", "__FILE__", "__FUNCTION__", "__LINE__",
-		"__METHOD__", "__NAMESPACE__", "__TRAIT__"
+		"__METHOD__", "__NAMESPACE__", "__TRAIT__", "__PROPERTY__"
 	};
 	for (const char *name : names) {
 		const char *p = name;

@@ -83,7 +83,7 @@ pub const PHP_WORD_LISTS: &[&str] = &[
     "__halt_compiler abstract and array as break callable case catch class clone const continue declare default die do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum eval exit extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield",
     "array_key_exists array_keys array_map array_merge array_filter array_pop array_push array_reduce array_shift array_slice array_unique array_values count explode implode in_array is_array is_callable is_int is_null is_numeric is_object is_string json_decode json_encode preg_match preg_match_all preg_replace preg_split sprintf str_contains str_replace str_starts_with strlen strpos strtolower strtoupper substr trim ucfirst var_dump printf file_get_contents file_put_contents sort usort ksort intval floatval strval date time microtime sleep define defined",
     "bool boolean int integer float double string array object callable iterable mixed void null never self parent static true false resource",
-    "__CLASS__ __DIR__ __FILE__ __FUNCTION__ __LINE__ __METHOD__ __NAMESPACE__ __TRAIT__ PHP_EOL PHP_INT_MAX PHP_VERSION E_ALL",
+    "__CLASS__ __DIR__ __FILE__ __FUNCTION__ __LINE__ __METHOD__ __NAMESPACE__ __TRAIT__ __PROPERTY__ PHP_EOL PHP_INT_MAX PHP_VERSION E_ALL",
 ];
 
 /// Shared by plain TypeScript and the TSX host-code pass.
@@ -865,6 +865,24 @@ mod tests {
                 }
             }
             assert_eq!(Snapshot::lex(lexer, text, lists).unwrap().styles().len(), text.len());
+        }
+    }
+
+    #[test]
+    fn php_property_hook_magic_constant_has_exact_case_insensitive_spans() {
+        let text = "<?php class Demo { public string $name { get => __PROPERTY__; } } __property__; __PrOpErTy__; __PROPERTY_EXTRA__; $x = '__PROPERTY__'; // __PROPERTY__\n";
+        for lexer in ["php", "laravel"] {
+            let lists = if lexer == "php" { PHP_WORD_LISTS } else { LARAVEL_WORD_LISTS };
+            let snap = Snapshot::lex(lexer, text, lists).unwrap();
+            for name in ["__PROPERTY__", "__property__", "__PrOpErTy__"] {
+                let start = text.find(name).unwrap();
+                assert!(snap.styles()[start..start + name.len()].iter().all(|style| *style == 16), "{lexer}: {name}");
+            }
+            assert_eq!(snap.styles()[text.find("__PROPERTY_EXTRA__").unwrap()], 17);
+            assert_eq!(php_scope_at(&snap, text, "__PROPERTY__'", 0), Some("string"));
+            assert_eq!(php_scope_at(&snap, text, "__PROPERTY__\n", 0), Some("comment"));
+            let mut custom = lists.to_vec(); custom[3] = "CustomConstant";
+            assert_eq!(Snapshot::lex(lexer, "<?php __property__;", &custom).unwrap().styles()[6], 17);
         }
     }
 

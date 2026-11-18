@@ -545,3 +545,23 @@ mod rejected_php_context_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod property_magic_completion_tests {
+    use super::*;
+    #[test]
+    fn property_magic_constant_is_complete_and_context_gated() {
+        for laravel in [false, true] {
+            let rows = language_items("php", laravel);
+            let found: Vec<_> = rows.iter().filter(|r| r.label == "__PROPERTY__").collect();
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].kind, Some(CompletionItemKind::CONSTANT));
+            assert_eq!(found[0].insert_text.as_deref(), Some("__PROPERTY__"));
+        }
+        let profile = lapce_core::project_profile::ProjectProfile::default();
+        assert!(profile_items("php", &profile, "<?php __PROP").iter().any(|i| i.label == "__PROPERTY__"));
+        for before in ["<?php '__PROP", "<?php // __PROP", "<?php $x->__PROP"] {
+            assert!(profile_items("php", &profile, before).is_empty());
+        }
+    }
+}
