@@ -75,11 +75,11 @@ docker exec "$container" bash -euo pipefail -c '
   python3 scripts/restore-source-mtimes.py
   cargo build --release --locked
   ldd --version | sed -n "1p"
-  target/release/lapce --version
+  target/release/gravity --version
   target/release/lapce-proxy --version
 '
 mkdir -p target/ubuntu-22.04/release
-for bin in lapce lapce-proxy; do
+for bin in gravity lapce-proxy; do
   docker cp "$container:/src/target/release/$bin" "target/ubuntu-22.04/release/$bin"
 done
 printf 'Timing: builder setup=%ss; compile/verify/copy=%ss; total=%ss\n' "$((setup_end-start))" "$((SECONDS-setup_end))" "$((SECONDS-start))"

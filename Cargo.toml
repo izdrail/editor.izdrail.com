@@ -5,13 +5,18 @@ authors      = { workspace = true }
 edition      = { workspace = true }
 license      = { workspace = true }
 rust-version = { workspace = true }
-default-run  = "lapce"
+default-run  = "gravity"
 
 [dependencies]
 lapce-app   = { path = "./lapce-app" }
 lapce-proxy = { path = "./lapce-proxy" }
 lapce-ai = { path = "./lapce-ai" }
 
+[[bin]]
+name = "gravity"
+path = "lapce-app/src/bin/lapce.rs"
+
+# Compatibility target for existing platform installers; Linux bundles ship gravity.
 [[bin]]
 name = "lapce"
 path = "lapce-app/src/bin/lapce.rs"

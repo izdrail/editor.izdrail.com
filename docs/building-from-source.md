@@ -35,7 +35,7 @@ cargo install --path . --bin lapce --profile release-lto --locked
 
 > If you use a different distribution, and are having trouble finding appropriate dependencies, let us know in an issue!
 
-Once Gravity is compiled, the executable will be available in `$HOME/.cargo/bin/lapce` and should be available in `PATH` automatically.
+Once Gravity is compiled, the executable will be available in `$HOME/.cargo/bin/gravity` and should be available in `PATH` automatically.
 
 ## Building using Docker or Podman
 
@@ -48,3 +48,9 @@ This does not require QEMU installed as it's done via true cross-compilation mea
 > ![WARNING]
 > Do not run plain targets like `ubuntu` or `fedora` if you don't have very powerful machine, as it will spawn many concurrent jobs
 > which will take a long time to build.
+
+## Linux executable naming
+
+The default Cargo run target and shipped Linux executable are `gravity`. Release bundles contain `gravity` beside `lapce-proxy`; run `./gravity`, or register the bundle with `./install-desktop.sh`. The Linux archive and workflow artifact names start with `gravity-`.
+
+The `lapce` Cargo target is retained as a compatibility alias for existing macOS/Windows packaging and integrations. Linux bundles do not ship that alias. Internal crate names, `lapce-proxy`, configuration directories, desktop/icon identifiers and WM_CLASS stay unchanged to avoid losing settings or desktop integration. The visible app name remains Gravity Editor.

@@ -10,6 +10,24 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class LinuxBuildTests(unittest.TestCase):
+    def test_gravity_is_default_and_only_main_linux_bundle_binary(self):
+        import tomllib
+        manifest = tomllib.loads((ROOT / 'Cargo.toml').read_text())
+        self.assertEqual(manifest['package']['default-run'], 'gravity')
+        self.assertIn('gravity', [item['name'] for item in manifest['bin']])
+        for name in ['linux-build.yml', 'linux-release.yml']:
+            workflow = (ROOT / '.github/workflows' / name).read_text()
+            self.assertIn('release/gravity ', workflow)
+            self.assertIn('Run ./gravity.', workflow)
+            self.assertNotIn('release/lapce ', workflow)
+            self.assertNotIn('Run ./lapce.', workflow)
+        for name in ['build-linux-hosted.sh', 'build-linux-portable.sh']:
+            script = (ROOT / 'scripts' / name).read_text()
+            self.assertIn('for bin in gravity lapce-proxy', script)
+        desktop = (ROOT / 'extra/linux/dev.lapce.lapce.desktop').read_text()
+        self.assertIn('Exec=gravity %F', desktop)
+        self.assertNotIn('Exec=lapce ', desktop)
+
     def test_source_mtimes_preserve_only_identical_bytes(self):
         script = (ROOT / 'scripts/restore-source-mtimes.py').read_text()
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,7 +75,7 @@ esac
             for hit in ['0', '1']:
                 env['CACHE_HIT'] = hit
                 subprocess.run(['bash', str(script)], cwd=root, env=env, check=True)
-                self.assertEqual((root / 'target/ubuntu-22.04/release/lapce').read_text(), 'binary')
+                self.assertEqual((root / 'target/ubuntu-22.04/release/gravity').read_text(), 'binary')
             calls = (root / 'calls').read_text()
             self.assertEqual(calls.count('build --tag'), 1)
             self.assertIn('gravity-editor-target-1980', calls)
@@ -76,15 +94,15 @@ esac
             bundle = root / 'bundle with spaces'
             bundle.mkdir()
             prefix = root / 'install'
-            (bundle / 'lapce').write_text('#!/bin/sh\n')
-            (bundle / 'lapce').chmod(0o755)
+            (bundle / 'gravity').write_text('#!/bin/sh\n')
+            (bundle / 'gravity').chmod(0o755)
             for name in ['logo.svg', 'window-icon.png']:
                 (bundle / name).write_bytes(b'test')
             script = bundle / 'install-desktop.sh'
             script.write_bytes((ROOT / 'extra/linux/install-desktop.sh').read_bytes())
             subprocess.run(['sh', str(script), str(prefix)], check=True)
             desktop = (prefix / 'share/applications/dev.lapce.lapce.desktop').read_text()
-            self.assertIn(f'Exec="{bundle}/lapce" %F', desktop)
+            self.assertIn(f'Exec="{bundle}/gravity" %F', desktop)
             self.assertIn('Icon=dev.lapce.lapce', desktop)
             self.assertEqual((prefix / 'share/icons/hicolor/128x128/apps/dev.lapce.lapce.png').read_bytes(), b'test')
             self.assertNotEqual(subprocess.run(['sh', str(script), 'relative-prefix']).returncode, 0)

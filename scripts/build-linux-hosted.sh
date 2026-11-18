@@ -25,7 +25,7 @@ check_disk
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0
 cargo build --release --locked
 ldd --version | sed -n '1p'
-for bin in lapce lapce-proxy; do
+for bin in gravity lapce-proxy; do
   "target/release/$bin" --version
   mkdir -p target/ubuntu-22.04/release
   cp "target/release/$bin" "target/ubuntu-22.04/release/$bin"

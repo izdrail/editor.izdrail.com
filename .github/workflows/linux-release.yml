@@ -45,15 +45,15 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
-          dir="lapce-${GITHUB_REF_NAME}-linux-x86_64"
+          dir="gravity-${GITHUB_REF_NAME}-linux-x86_64"
           mkdir "$dir"
-          cp target/ubuntu-22.04/release/lapce target/ubuntu-22.04/release/lapce-proxy "$dir/"
-          strip "$dir"/lapce "$dir"/lapce-proxy
+          cp target/ubuntu-22.04/release/gravity target/ubuntu-22.04/release/lapce-proxy "$dir/"
+          strip "$dir"/gravity "$dir"/lapce-proxy
           cp extra/linux/install-desktop.sh extra/images/window-icon.png "$dir/"
           cp extra/images/logo_color.svg "$dir/logo.svg"
           cat > "$dir/README.txt" <<EOT
           Lapce ${GITHUB_REF_NAME} (${GITHUB_REPOSITORY}), Linux x86_64 release build.
-          Run ./lapce. Run ./install-desktop.sh once for the Linux app menu/dock icon.
+          Run ./gravity. Run ./install-desktop.sh once for the Linux app menu/dock icon.
           lapce-proxy must sit next to it for remote use.
           Runtime libs (Debian/Ubuntu): sudo apt install libxkbcommon-x11-0 libvulkan1 libwayland-client0 libxcb-shape0 libxcb-xfixes0
           EOT
