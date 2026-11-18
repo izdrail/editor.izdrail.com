@@ -1881,6 +1881,52 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
         })
             .style(|s| s.max_width_pct(100.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)),
+        label(|| "Quick setup (changes stay pending until Apply)".to_string())
+            .style(|s| s.font_bold().max_width_pct(100.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)),
+        stack((
+            label(|| crate::provider_setup_ui::Setup::LocalCpu.label().to_string())
+                .keyboard_navigable().on_click_stop(move |_| {
+                    if busy.get_untracked() { return; }
+                    let (choice, target, hint) = crate::provider_setup_ui::Setup::LocalCpu.pending();
+                    backend.set(choice.into());
+                    if let Some(target) = target {
+                        endpoint.set(target.into());
+                        model.set(String::new());
+                        key.set(String::new());
+                    }
+                    probe.set(None);
+                    state.set(hint.into());
+                }).style(move |s| ai_button_style(s, config)),
+            label(|| crate::provider_setup_ui::Setup::Ollama.label().to_string())
+                .keyboard_navigable().on_click_stop(move |_| {
+                    if busy.get_untracked() { return; }
+                    let (choice, target, hint) = crate::provider_setup_ui::Setup::Ollama.pending();
+                    backend.set(choice.into());
+                    if let Some(target) = target {
+                        endpoint.set(target.into());
+                        model.set(String::new());
+                        key.set(String::new());
+                    }
+                    probe.set(None);
+                    state.set(hint.into());
+                }).style(move |s| ai_button_style(s, config)),
+            label(|| crate::provider_setup_ui::Setup::LmStudio.label().to_string())
+                .keyboard_navigable().on_click_stop(move |_| {
+                    if busy.get_untracked() { return; }
+                    let (choice, target, hint) = crate::provider_setup_ui::Setup::LmStudio.pending();
+                    backend.set(choice.into());
+                    if let Some(target) = target {
+                        endpoint.set(target.into());
+                        model.set(String::new());
+                        key.set(String::new());
+                    }
+                    probe.set(None);
+                    state.set(hint.into());
+                }).style(move |s| ai_button_style(s, config)),
+        )).style(|s| s.flex_col().width_pct(100.0).gap(AI_FIELD_GAP)),
+        label(|| "This computer means where Gravity is running, not an SSH workspace. Setup never installs or starts a model server. A custom endpoint remains editable below. Changing endpoint clears only an unsaved key entry; saved endpoint keys stay separate.".to_string())
+            .style(|s| s.max_width_pct(100.0).text_overflow(floem::style::TextOverflow::Wrap)),
         label(move || if backend.get() == "local" {
             "Local (on-device). Click to choose remote.".to_string()
         } else {

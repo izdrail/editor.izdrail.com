@@ -7,6 +7,7 @@ Start here for everyday use. This guide describes the shipped editor, not every 
 - [Full shortcut reference](usage/shortcut-reference.md): shipped keys, commands, modes and conditions for every preset.
 - [Completion and keywords](usage/completion.md): Ctrl+Space, Laravel facades, snippets and AI suggestions.
 - [Snippet prefix reference](usage/snippet-reference.md): all bundled expansion keywords by language/framework.
+- [Local model setup](usage/local-model-setup.md): pending-only Ollama, LM Studio and on-device choices.
 - [Mouse and location history](usage/mouse-navigation.md): Back/Forward side buttons, file and cursor history.
 
 ## More features

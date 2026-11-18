@@ -173,3 +173,5 @@ mod laravel_completion;
 mod mouse_navigation;
 
 mod agent_connection_ui;
+
+mod provider_setup_ui;
