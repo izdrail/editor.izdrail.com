@@ -89,3 +89,12 @@ facade names in global code, imported aliases, grouped imports and absolute
 facade paths. An App\Config or other non-facade import is not bound to these
 packs. Full signatures remain available from metadata hover. Sources and
 digests are in metadata/laravel/app-facade-manifest.json.
+
+## Session and URL navigation facades
+
+Session (70 methods), Redirect (19) and URL (46) have separate Laravel 12
+baseline method packs. Session::get, Redirect::route and URL::route expose
+full facade paths and signatures. Alias, namespace, class-shadow and lexical
+guards apply unchanged. Method insertion does not read sessions or perform a
+redirect. Sources and digests are in
+metadata/laravel/navigation-facade-manifest.json.

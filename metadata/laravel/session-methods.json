@@ -1,0 +1,282 @@
+[
+  {
+    "name": "shouldBlock",
+    "signature": "shouldBlock() -> bool"
+  },
+  {
+    "name": "blockDriver",
+    "signature": "blockDriver() -> string|null"
+  },
+  {
+    "name": "defaultRouteBlockLockSeconds",
+    "signature": "defaultRouteBlockLockSeconds() -> int"
+  },
+  {
+    "name": "defaultRouteBlockWaitSeconds",
+    "signature": "defaultRouteBlockWaitSeconds() -> int"
+  },
+  {
+    "name": "getSessionConfig",
+    "signature": "getSessionConfig() -> array"
+  },
+  {
+    "name": "getDefaultDriver",
+    "signature": "getDefaultDriver() -> string|null"
+  },
+  {
+    "name": "setDefaultDriver",
+    "signature": "setDefaultDriver(string $name) -> void"
+  },
+  {
+    "name": "driver",
+    "signature": "driver(string|null $driver = null) -> mixed"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $driver, \\Closure $callback) -> \\Illuminate\\Session\\SessionManager"
+  },
+  {
+    "name": "getDrivers",
+    "signature": "getDrivers() -> array"
+  },
+  {
+    "name": "getContainer",
+    "signature": "getContainer() -> \\Illuminate\\Contracts\\Container\\Container"
+  },
+  {
+    "name": "setContainer",
+    "signature": "setContainer(\\Illuminate\\Contracts\\Container\\Container $container) -> \\Illuminate\\Session\\SessionManager"
+  },
+  {
+    "name": "forgetDrivers",
+    "signature": "forgetDrivers() -> \\Illuminate\\Session\\SessionManager"
+  },
+  {
+    "name": "start",
+    "signature": "start() -> bool"
+  },
+  {
+    "name": "save",
+    "signature": "save() -> void"
+  },
+  {
+    "name": "ageFlashData",
+    "signature": "ageFlashData() -> void"
+  },
+  {
+    "name": "all",
+    "signature": "all() -> array"
+  },
+  {
+    "name": "only",
+    "signature": "only(array $keys) -> array"
+  },
+  {
+    "name": "except",
+    "signature": "except(array $keys) -> array"
+  },
+  {
+    "name": "exists",
+    "signature": "exists(\\UnitEnum|string|array $key) -> bool"
+  },
+  {
+    "name": "missing",
+    "signature": "missing(\\UnitEnum|string|array $key) -> bool"
+  },
+  {
+    "name": "has",
+    "signature": "has(\\UnitEnum|string|array $key) -> bool"
+  },
+  {
+    "name": "hasAny",
+    "signature": "hasAny(\\UnitEnum|string|array $key) -> bool"
+  },
+  {
+    "name": "get",
+    "signature": "get(\\UnitEnum|string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "pull",
+    "signature": "pull(\\UnitEnum|string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "hasOldInput",
+    "signature": "hasOldInput(string|null $key = null) -> bool"
+  },
+  {
+    "name": "getOldInput",
+    "signature": "getOldInput(string|null $key = null, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "replace",
+    "signature": "replace(array $attributes) -> void"
+  },
+  {
+    "name": "put",
+    "signature": "put(\\UnitEnum|string|array $key, mixed $value = null) -> void"
+  },
+  {
+    "name": "remember",
+    "signature": "remember(\\UnitEnum|string $key, \\Closure $callback) -> mixed"
+  },
+  {
+    "name": "push",
+    "signature": "push(\\UnitEnum|string $key, mixed $value) -> void"
+  },
+  {
+    "name": "increment",
+    "signature": "increment(\\UnitEnum|string $key, int $amount = 1) -> mixed"
+  },
+  {
+    "name": "decrement",
+    "signature": "decrement(\\UnitEnum|string $key, int $amount = 1) -> int"
+  },
+  {
+    "name": "flash",
+    "signature": "flash(\\UnitEnum|string $key, mixed $value = true) -> void"
+  },
+  {
+    "name": "now",
+    "signature": "now(\\UnitEnum|string $key, mixed $value) -> void"
+  },
+  {
+    "name": "reflash",
+    "signature": "reflash() -> void"
+  },
+  {
+    "name": "keep",
+    "signature": "keep(mixed $keys = null) -> void"
+  },
+  {
+    "name": "flashInput",
+    "signature": "flashInput(array $value) -> void"
+  },
+  {
+    "name": "cache",
+    "signature": "cache() -> \\Illuminate\\Contracts\\Cache\\Repository"
+  },
+  {
+    "name": "remove",
+    "signature": "remove(\\UnitEnum|string $key) -> mixed"
+  },
+  {
+    "name": "forget",
+    "signature": "forget(\\UnitEnum|string|array $keys) -> void"
+  },
+  {
+    "name": "flush",
+    "signature": "flush() -> void"
+  },
+  {
+    "name": "invalidate",
+    "signature": "invalidate() -> bool"
+  },
+  {
+    "name": "regenerate",
+    "signature": "regenerate(bool $destroy = false) -> bool"
+  },
+  {
+    "name": "migrate",
+    "signature": "migrate(bool $destroy = false) -> bool"
+  },
+  {
+    "name": "isStarted",
+    "signature": "isStarted() -> bool"
+  },
+  {
+    "name": "getName",
+    "signature": "getName() -> string"
+  },
+  {
+    "name": "setName",
+    "signature": "setName(string $name) -> void"
+  },
+  {
+    "name": "id",
+    "signature": "id() -> string"
+  },
+  {
+    "name": "getId",
+    "signature": "getId() -> string"
+  },
+  {
+    "name": "setId",
+    "signature": "setId(string|null $id) -> void"
+  },
+  {
+    "name": "isValidId",
+    "signature": "isValidId(string|null $id) -> bool"
+  },
+  {
+    "name": "setExists",
+    "signature": "setExists(bool $value) -> void"
+  },
+  {
+    "name": "token",
+    "signature": "token() -> string"
+  },
+  {
+    "name": "regenerateToken",
+    "signature": "regenerateToken() -> void"
+  },
+  {
+    "name": "hasPreviousUri",
+    "signature": "hasPreviousUri() -> bool"
+  },
+  {
+    "name": "previousUri",
+    "signature": "previousUri() -> \\Illuminate\\Support\\Uri"
+  },
+  {
+    "name": "previousUrl",
+    "signature": "previousUrl() -> string|null"
+  },
+  {
+    "name": "setPreviousUrl",
+    "signature": "setPreviousUrl(string $url) -> void"
+  },
+  {
+    "name": "previousRoute",
+    "signature": "previousRoute() -> string|null"
+  },
+  {
+    "name": "setPreviousRoute",
+    "signature": "setPreviousRoute(string|null $route) -> void"
+  },
+  {
+    "name": "passwordConfirmed",
+    "signature": "passwordConfirmed() -> void"
+  },
+  {
+    "name": "getHandler",
+    "signature": "getHandler() -> \\SessionHandlerInterface"
+  },
+  {
+    "name": "setHandler",
+    "signature": "setHandler(\\SessionHandlerInterface $handler) -> \\SessionHandlerInterface"
+  },
+  {
+    "name": "handlerNeedsRequest",
+    "signature": "handlerNeedsRequest() -> bool"
+  },
+  {
+    "name": "setRequestOnHandler",
+    "signature": "setRequestOnHandler(\\Illuminate\\Http\\Request $request) -> void"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]

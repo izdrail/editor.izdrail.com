@@ -1,0 +1,29 @@
+[
+  {
+    "facade": "Redirect",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Redirect.php",
+    "source_sha256": "7e6509d47183ab1aa1cd7a6cec533083a8687042a64d00dacd78f749424a1c81",
+    "method_count": 19,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Session",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Session.php",
+    "source_sha256": "3f7eed91aa7acf031eea59b8bbd4bf37a1b4294652e5155f1a011331266a4b68",
+    "method_count": 70,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "URL",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/URL.php",
+    "source_sha256": "4eac57f8bb29f8b572d667d3ffa072dae191a7a897ea31f076c06e50849efcd9",
+    "method_count": 46,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  }
+]

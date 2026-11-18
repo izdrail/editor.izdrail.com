@@ -1,0 +1,78 @@
+[
+  {
+    "name": "back",
+    "signature": "back(int $status = 302, array $headers = [], mixed $fallback = false) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "refresh",
+    "signature": "refresh(int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "guest",
+    "signature": "guest(string $path, int $status = 302, array $headers = [], bool|null $secure = null) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "intended",
+    "signature": "intended(mixed $default = '/', int $status = 302, array $headers = [], bool|null $secure = null) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "to",
+    "signature": "to(string $path, int $status = 302, array $headers = [], bool|null $secure = null) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "away",
+    "signature": "away(string $path, int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "secure",
+    "signature": "secure(string $path, int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "route",
+    "signature": "route(\\BackedEnum|string $route, mixed $parameters = [], int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "signedRoute",
+    "signature": "signedRoute(\\BackedEnum|string $route, mixed $parameters = [], \\DateTimeInterface|\\DateInterval|int|null $expiration = null, int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "temporarySignedRoute",
+    "signature": "temporarySignedRoute(\\BackedEnum|string $route, \\DateTimeInterface|\\DateInterval|int|null $expiration, mixed $parameters = [], int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "action",
+    "signature": "action(string|array $action, mixed $parameters = [], int $status = 302, array $headers = []) -> \\Illuminate\\Http\\RedirectResponse"
+  },
+  {
+    "name": "getUrlGenerator",
+    "signature": "getUrlGenerator() -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "setSession",
+    "signature": "setSession(\\Illuminate\\Session\\Store $session) -> void"
+  },
+  {
+    "name": "getIntendedUrl",
+    "signature": "getIntendedUrl() -> string|null"
+  },
+  {
+    "name": "setIntendedUrl",
+    "signature": "setIntendedUrl(string $url) -> \\Illuminate\\Routing\\Redirector"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]

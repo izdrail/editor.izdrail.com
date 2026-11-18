@@ -1,0 +1,186 @@
+[
+  {
+    "name": "full",
+    "signature": "full() -> string"
+  },
+  {
+    "name": "current",
+    "signature": "current() -> string"
+  },
+  {
+    "name": "previous",
+    "signature": "previous(mixed $fallback = false) -> string"
+  },
+  {
+    "name": "previousPath",
+    "signature": "previousPath(mixed $fallback = false) -> string"
+  },
+  {
+    "name": "to",
+    "signature": "to(string $path, mixed $extra = [], bool|null $secure = null) -> string"
+  },
+  {
+    "name": "query",
+    "signature": "query(string $path, array $query = [], mixed $extra = [], bool|null $secure = null) -> string"
+  },
+  {
+    "name": "secure",
+    "signature": "secure(string $path, array $parameters = []) -> string"
+  },
+  {
+    "name": "asset",
+    "signature": "asset(string $path, bool|null $secure = null) -> string"
+  },
+  {
+    "name": "secureAsset",
+    "signature": "secureAsset(string $path) -> string"
+  },
+  {
+    "name": "assetFrom",
+    "signature": "assetFrom(string $root, string $path, bool|null $secure = null) -> string"
+  },
+  {
+    "name": "formatScheme",
+    "signature": "formatScheme(bool|null $secure = null) -> string"
+  },
+  {
+    "name": "signedRoute",
+    "signature": "signedRoute(\\BackedEnum|string $name, mixed $parameters = [], \\DateTimeInterface|\\DateInterval|int|null $expiration = null, bool $absolute = true) -> string"
+  },
+  {
+    "name": "temporarySignedRoute",
+    "signature": "temporarySignedRoute(\\BackedEnum|string $name, \\DateTimeInterface|\\DateInterval|int $expiration, array $parameters = [], bool $absolute = true) -> string"
+  },
+  {
+    "name": "hasValidSignature",
+    "signature": "hasValidSignature(\\Illuminate\\Http\\Request $request, bool $absolute = true, \\Closure|array $ignoreQuery = []) -> bool"
+  },
+  {
+    "name": "hasValidRelativeSignature",
+    "signature": "hasValidRelativeSignature(\\Illuminate\\Http\\Request $request, \\Closure|array $ignoreQuery = []) -> bool"
+  },
+  {
+    "name": "hasCorrectSignature",
+    "signature": "hasCorrectSignature(\\Illuminate\\Http\\Request $request, bool $absolute = true, \\Closure|array $ignoreQuery = []) -> bool"
+  },
+  {
+    "name": "signatureHasNotExpired",
+    "signature": "signatureHasNotExpired(\\Illuminate\\Http\\Request $request) -> bool"
+  },
+  {
+    "name": "route",
+    "signature": "route(\\BackedEnum|string $name, mixed $parameters = [], bool $absolute = true) -> string"
+  },
+  {
+    "name": "toRoute",
+    "signature": "toRoute(\\Illuminate\\Routing\\Route $route, mixed $parameters, bool $absolute) -> string"
+  },
+  {
+    "name": "action",
+    "signature": "action(string|array $action, mixed $parameters = [], bool $absolute = true) -> string"
+  },
+  {
+    "name": "formatParameters",
+    "signature": "formatParameters(mixed $parameters) -> array"
+  },
+  {
+    "name": "formatRoot",
+    "signature": "formatRoot(string $scheme, string|null $root = null) -> string"
+  },
+  {
+    "name": "format",
+    "signature": "format(string $root, string $path, \\Illuminate\\Routing\\Route|null $route = null) -> string"
+  },
+  {
+    "name": "isValidUrl",
+    "signature": "isValidUrl(string $path) -> bool"
+  },
+  {
+    "name": "defaults",
+    "signature": "defaults(array $defaults) -> void"
+  },
+  {
+    "name": "getDefaultParameters",
+    "signature": "getDefaultParameters() -> array"
+  },
+  {
+    "name": "forceScheme",
+    "signature": "forceScheme(string|null $scheme) -> void"
+  },
+  {
+    "name": "forceHttps",
+    "signature": "forceHttps(bool $force = true) -> void"
+  },
+  {
+    "name": "useOrigin",
+    "signature": "useOrigin(string|null $root) -> void"
+  },
+  {
+    "name": "useAssetOrigin",
+    "signature": "useAssetOrigin(string|null $root) -> void"
+  },
+  {
+    "name": "formatHostUsing",
+    "signature": "formatHostUsing(\\Closure $callback) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "formatPathUsing",
+    "signature": "formatPathUsing(\\Closure $callback) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "pathFormatter",
+    "signature": "pathFormatter() -> \\Closure"
+  },
+  {
+    "name": "getRequest",
+    "signature": "getRequest() -> \\Illuminate\\Http\\Request"
+  },
+  {
+    "name": "setRequest",
+    "signature": "setRequest(\\Illuminate\\Http\\Request $request) -> void"
+  },
+  {
+    "name": "setRoutes",
+    "signature": "setRoutes(\\Illuminate\\Routing\\RouteCollectionInterface $routes) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "setSessionResolver",
+    "signature": "setSessionResolver(callable $sessionResolver) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "setKeyResolver",
+    "signature": "setKeyResolver(callable $keyResolver) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "withKeyResolver",
+    "signature": "withKeyResolver(callable $keyResolver) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "resolveMissingNamedRoutesUsing",
+    "signature": "resolveMissingNamedRoutesUsing(callable $missingNamedRouteResolver) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "getRootControllerNamespace",
+    "signature": "getRootControllerNamespace() -> string"
+  },
+  {
+    "name": "setRootControllerNamespace",
+    "signature": "setRootControllerNamespace(string $rootNamespace) -> \\Illuminate\\Routing\\UrlGenerator"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]
