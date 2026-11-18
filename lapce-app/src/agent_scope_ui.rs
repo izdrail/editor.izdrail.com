@@ -81,3 +81,29 @@ mod context_tests {
         assert_eq!(context_label(&scratch, Some(Path::new("/project"))), "File: Untitled-1 | 0 bytes");
     }
 }
+
+/// Composer-only, explicit draft shortcuts. No send or mode change.
+pub fn starter_shortcut(key: &floem::keyboard::Key, modifiers: floem::keyboard::Modifiers) -> Option<&'static str> {
+    use floem::keyboard::{Key, Modifiers};
+    if modifiers != Modifiers::ALT { return None; }
+    let Key::Character(key) = key else { return None; };
+    let index = match key.as_str() { "1" => 0, "2" => 1, "3" => 2, _ => return None };
+    Some(STARTERS[index].1)
+}
+#[cfg(test)]
+mod shortcut_tests {
+    use super::*;
+    use floem::keyboard::{Key, NamedKey, Modifiers};
+    #[test]
+    fn agent_starter_shortcuts_are_alt_digits_only() {
+        for (index, digit) in ["1", "2", "3"].into_iter().enumerate() {
+            let key = Key::Character(digit.into());
+            assert_eq!(starter_shortcut(&key, Modifiers::ALT), Some(STARTERS[index].1));
+            for mods in [Modifiers::empty(), Modifiers::CONTROL, Modifiers::ALT | Modifiers::SHIFT] {
+                assert_eq!(starter_shortcut(&key, mods), None);
+            }
+        }
+        assert_eq!(starter_shortcut(&Key::Named(NamedKey::Enter), Modifiers::ALT), None);
+        assert_eq!(starter_shortcut(&Key::Character("4".into()), Modifiers::ALT), None);
+    }
+}

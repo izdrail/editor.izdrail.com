@@ -3133,6 +3133,16 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let composer = text_editor_keys(
         data.input.get_untracked(),
         move |editor_sig, keypress, mods| {
+            if let KeyInput::Keyboard(key, _) = &keypress.key {
+                if let Some(prompt) = crate::agent_scope_ui::starter_shortcut(key, mods) {
+                    if keyboard_send_tab.chat.turns.get_untracked().is_empty() {
+                        if !keyboard_send_tab.chat.busy.get_untracked() {
+                            keyboard_send_tab.chat.pending_selection.set(Some(prompt.to_string()));
+                        }
+                        return CommandExecuted::Yes;
+                    }
+                }
+            }
             if let Some((start, selected, items)) =
                 mention_popup.get_untracked()
             {
@@ -3847,7 +3857,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config.get().color(LapceColor::EDITOR_FOREGROUND),
                             )
                         }),
-                        label(|| "Start a draft. Nothing is sent until you press Send.".to_string())
+                        label(|| "Start a draft. Nothing is sent until you press Send. In the composer: Alt+1 explain, Alt+2 review, Alt+3 tests.".to_string())
                             .style(move |s| s.font_size(11.0).max_width_full().min_width(0.0)
                                 .text_overflow(floem::style::TextOverflow::Wrap)
                                 .color(config.get().color(LapceColor::EDITOR_DIM))),
