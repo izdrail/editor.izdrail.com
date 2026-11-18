@@ -56,3 +56,6 @@ Blank wrapper lines and markdown fences are removed without outdenting code.
 
 For a consistently CRLF selection, every replacement line uses CRLF even when
 the model replies with LF. Mixed-EOL selections do not force a guessed style.
+
+The same rule applies to a consistently LF selection: CRLF model lines become
+LF. A single-line selection supplies no internal line-ending style to guess.

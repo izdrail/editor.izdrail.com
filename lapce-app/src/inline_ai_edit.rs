@@ -531,6 +531,10 @@ fn inline_edit_replacement(code: &str, reply: &str) -> String {
     // can be inferred from that selection.
     if code.contains("\r\n") && !code.replace("\r\n", "").contains('\n') {
         text = text.replace("\r\n", "\n").replace('\n', "\r\n");
+    } else if code.contains('\n') && !code.contains('\r') {
+        // Likewise, Windows-style model output must not introduce CRLF
+        // inside an otherwise LF selection.
+        text = text.replace("\r\n", "\n");
     }
     if code.ends_with("\r\n") { text.push_str("\r\n"); }
     else if code.ends_with('\n') { text.push('\n'); }
@@ -619,5 +623,20 @@ mod inline_line_ending_tests {
     #[test] fn lf_or_mixed_target_does_not_force_crlf() {
         assert_eq!(inline_edit_replacement("old\nlines\n", "one\ntwo"), "one\ntwo\n");
         assert_eq!(inline_edit_replacement("old\r\nmixed\n", "one\ntwo"), "one\ntwo\n");
+    }
+}
+
+#[cfg(test)]
+mod inline_lf_tests {
+    use super::*;
+    #[test] fn lf_target_normalizes_crlf_plain_fenced_and_mixed_replies() {
+        for reply in ["one\r\ntwo\r\n", "```php\r\none\r\ntwo\r\n```", "one\ntwo\r\n"] {
+            assert_eq!(inline_edit_replacement("old\nlines\n", reply), "one\ntwo\n");
+        }
+        assert_eq!(inline_edit_replacement("old\npartial", "one\r\ntwo"), "one\ntwo");
+    }
+    #[test] fn mixed_or_single_line_target_does_not_guess_lf() {
+        assert_eq!(inline_edit_replacement("old\r\nmixed\n", "one\r\ntwo"), "one\r\ntwo\n");
+        assert_eq!(inline_edit_replacement("old", "one\r\ntwo"), "one\r\ntwo");
     }
 }
