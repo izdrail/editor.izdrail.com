@@ -1,0 +1,29 @@
+[
+  {
+    "facade": "App",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/App.php",
+    "source_sha256": "ba2f8665a16f232efc8876f5c27a97ad16b93db04d1ce5c39e38b654f821633c",
+    "method_count": 142,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Config",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Config.php",
+    "source_sha256": "ee6c8a3be111411e1093218d38ae78bad34e99c7022e43d14ca3ea5359085a97",
+    "method_count": 17,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "View",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/View.php",
+    "source_sha256": "7107a92ae9ba0b09e29cbb225e8458f8e176f72d37fa44b49c93a9555395baa7",
+    "method_count": 79,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  }
+]

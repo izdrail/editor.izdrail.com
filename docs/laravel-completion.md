@@ -80,3 +80,12 @@ or an absolute facade name, so an Illuminate HTTP Request parameter class is
 not confused with the static Request facade. The standard import/scope guards
 also apply to these packs. Sources and digests are recorded in
 metadata/laravel/http-facade-manifest.json.
+
+## Application, config and view facades
+
+App (142 methods), Config (17) and View (79) have independent Laravel 12
+baseline method packs. App::make, Config::get and View::make work with bare
+facade names in global code, imported aliases, grouped imports and absolute
+facade paths. An App\Config or other non-facade import is not bound to these
+packs. Full signatures remain available from metadata hover. Sources and
+digests are in metadata/laravel/app-facade-manifest.json.

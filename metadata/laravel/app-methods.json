@@ -1,0 +1,570 @@
+[
+  {
+    "name": "configure",
+    "signature": "configure(string|null $basePath = null) -> \\Illuminate\\Foundation\\Configuration\\ApplicationBuilder"
+  },
+  {
+    "name": "inferBasePath",
+    "signature": "inferBasePath() -> string"
+  },
+  {
+    "name": "version",
+    "signature": "version() -> string"
+  },
+  {
+    "name": "bootstrapWith",
+    "signature": "bootstrapWith(string[] $bootstrappers) -> void"
+  },
+  {
+    "name": "afterLoadingEnvironment",
+    "signature": "afterLoadingEnvironment(\\Closure $callback) -> void"
+  },
+  {
+    "name": "beforeBootstrapping",
+    "signature": "beforeBootstrapping(string $bootstrapper, \\Closure $callback) -> void"
+  },
+  {
+    "name": "afterBootstrapping",
+    "signature": "afterBootstrapping(string $bootstrapper, \\Closure $callback) -> void"
+  },
+  {
+    "name": "hasBeenBootstrapped",
+    "signature": "hasBeenBootstrapped() -> bool"
+  },
+  {
+    "name": "setBasePath",
+    "signature": "setBasePath(string $basePath) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "path",
+    "signature": "path(string $path = '') -> string"
+  },
+  {
+    "name": "useAppPath",
+    "signature": "useAppPath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "basePath",
+    "signature": "basePath(string $path = '') -> string"
+  },
+  {
+    "name": "bootstrapPath",
+    "signature": "bootstrapPath(string $path = '') -> string"
+  },
+  {
+    "name": "getBootstrapProvidersPath",
+    "signature": "getBootstrapProvidersPath() -> string"
+  },
+  {
+    "name": "useBootstrapPath",
+    "signature": "useBootstrapPath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "configPath",
+    "signature": "configPath(string $path = '') -> string"
+  },
+  {
+    "name": "useConfigPath",
+    "signature": "useConfigPath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "databasePath",
+    "signature": "databasePath(string $path = '') -> string"
+  },
+  {
+    "name": "useDatabasePath",
+    "signature": "useDatabasePath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "langPath",
+    "signature": "langPath(string $path = '') -> string"
+  },
+  {
+    "name": "useLangPath",
+    "signature": "useLangPath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "publicPath",
+    "signature": "publicPath(string $path = '') -> string"
+  },
+  {
+    "name": "usePublicPath",
+    "signature": "usePublicPath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "storagePath",
+    "signature": "storagePath(string $path = '') -> string"
+  },
+  {
+    "name": "useStoragePath",
+    "signature": "useStoragePath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "resourcePath",
+    "signature": "resourcePath(string $path = '') -> string"
+  },
+  {
+    "name": "viewPath",
+    "signature": "viewPath(string $path = '') -> string"
+  },
+  {
+    "name": "joinPaths",
+    "signature": "joinPaths(string $basePath, string $path = '') -> string"
+  },
+  {
+    "name": "environmentPath",
+    "signature": "environmentPath() -> string"
+  },
+  {
+    "name": "useEnvironmentPath",
+    "signature": "useEnvironmentPath(string $path) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "loadEnvironmentFrom",
+    "signature": "loadEnvironmentFrom(string $file) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "environmentFile",
+    "signature": "environmentFile() -> string"
+  },
+  {
+    "name": "environmentFilePath",
+    "signature": "environmentFilePath() -> string"
+  },
+  {
+    "name": "environment",
+    "signature": "environment(string|array ...$environments) -> string|bool"
+  },
+  {
+    "name": "isLocal",
+    "signature": "isLocal() -> bool"
+  },
+  {
+    "name": "isProduction",
+    "signature": "isProduction() -> bool"
+  },
+  {
+    "name": "detectEnvironment",
+    "signature": "detectEnvironment(\\Closure $callback) -> string"
+  },
+  {
+    "name": "runningInConsole",
+    "signature": "runningInConsole() -> bool"
+  },
+  {
+    "name": "runningConsoleCommand",
+    "signature": "runningConsoleCommand(string|array ...$commands) -> bool"
+  },
+  {
+    "name": "runningUnitTests",
+    "signature": "runningUnitTests() -> bool"
+  },
+  {
+    "name": "hasDebugModeEnabled",
+    "signature": "hasDebugModeEnabled() -> bool"
+  },
+  {
+    "name": "registered",
+    "signature": "registered(callable $callback) -> void"
+  },
+  {
+    "name": "registerConfiguredProviders",
+    "signature": "registerConfiguredProviders() -> void"
+  },
+  {
+    "name": "register",
+    "signature": "register(\\Illuminate\\Support\\ServiceProvider|string $provider, bool $force = false) -> \\Illuminate\\Support\\ServiceProvider"
+  },
+  {
+    "name": "getProvider",
+    "signature": "getProvider(\\Illuminate\\Support\\ServiceProvider|string $provider) -> \\Illuminate\\Support\\ServiceProvider|null"
+  },
+  {
+    "name": "getProviders",
+    "signature": "getProviders(\\Illuminate\\Support\\ServiceProvider|string $provider) -> array"
+  },
+  {
+    "name": "resolveProvider",
+    "signature": "resolveProvider(string $provider) -> \\Illuminate\\Support\\ServiceProvider"
+  },
+  {
+    "name": "loadDeferredProviders",
+    "signature": "loadDeferredProviders() -> void"
+  },
+  {
+    "name": "loadDeferredProvider",
+    "signature": "loadDeferredProvider(string $service) -> void"
+  },
+  {
+    "name": "registerDeferredProvider",
+    "signature": "registerDeferredProvider(string $provider, string|null $service = null) -> void"
+  },
+  {
+    "name": "make",
+    "signature": "make(string $abstract, array $parameters = []) -> object|mixed"
+  },
+  {
+    "name": "bound",
+    "signature": "bound(string $abstract) -> bool"
+  },
+  {
+    "name": "isBooted",
+    "signature": "isBooted() -> bool"
+  },
+  {
+    "name": "boot",
+    "signature": "boot() -> void"
+  },
+  {
+    "name": "booting",
+    "signature": "booting(callable $callback) -> void"
+  },
+  {
+    "name": "booted",
+    "signature": "booted(callable $callback) -> void"
+  },
+  {
+    "name": "handle",
+    "signature": "handle(\\Symfony\\Component\\HttpFoundation\\Request $request, int $type = 1, bool $catch = true) -> \\Symfony\\Component\\HttpFoundation\\Response"
+  },
+  {
+    "name": "handleRequest",
+    "signature": "handleRequest(\\Illuminate\\Http\\Request $request) -> void"
+  },
+  {
+    "name": "handleCommand",
+    "signature": "handleCommand(\\Symfony\\Component\\Console\\Input\\InputInterface $input) -> int"
+  },
+  {
+    "name": "shouldMergeFrameworkConfiguration",
+    "signature": "shouldMergeFrameworkConfiguration() -> bool"
+  },
+  {
+    "name": "dontMergeFrameworkConfiguration",
+    "signature": "dontMergeFrameworkConfiguration() -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "shouldSkipMiddleware",
+    "signature": "shouldSkipMiddleware() -> bool"
+  },
+  {
+    "name": "getCachedServicesPath",
+    "signature": "getCachedServicesPath() -> string"
+  },
+  {
+    "name": "getCachedPackagesPath",
+    "signature": "getCachedPackagesPath() -> string"
+  },
+  {
+    "name": "configurationIsCached",
+    "signature": "configurationIsCached() -> bool"
+  },
+  {
+    "name": "getCachedConfigPath",
+    "signature": "getCachedConfigPath() -> string"
+  },
+  {
+    "name": "routesAreCached",
+    "signature": "routesAreCached() -> bool"
+  },
+  {
+    "name": "getCachedRoutesPath",
+    "signature": "getCachedRoutesPath() -> string"
+  },
+  {
+    "name": "eventsAreCached",
+    "signature": "eventsAreCached() -> bool"
+  },
+  {
+    "name": "getCachedEventsPath",
+    "signature": "getCachedEventsPath() -> string"
+  },
+  {
+    "name": "addAbsoluteCachePathPrefix",
+    "signature": "addAbsoluteCachePathPrefix(string $prefix) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "maintenanceMode",
+    "signature": "maintenanceMode() -> \\Illuminate\\Contracts\\Foundation\\MaintenanceMode"
+  },
+  {
+    "name": "isDownForMaintenance",
+    "signature": "isDownForMaintenance() -> bool"
+  },
+  {
+    "name": "abort",
+    "signature": "abort(int $code, string $message = '', array $headers = []) -> never"
+  },
+  {
+    "name": "terminating",
+    "signature": "terminating(callable|string $callback) -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "terminate",
+    "signature": "terminate() -> void"
+  },
+  {
+    "name": "getLoadedProviders",
+    "signature": "getLoadedProviders() -> array"
+  },
+  {
+    "name": "providerIsLoaded",
+    "signature": "providerIsLoaded(string $provider) -> bool"
+  },
+  {
+    "name": "getDeferredServices",
+    "signature": "getDeferredServices() -> array"
+  },
+  {
+    "name": "setDeferredServices",
+    "signature": "setDeferredServices(array $services) -> void"
+  },
+  {
+    "name": "isDeferredService",
+    "signature": "isDeferredService(string $service) -> bool"
+  },
+  {
+    "name": "addDeferredServices",
+    "signature": "addDeferredServices(array $services) -> void"
+  },
+  {
+    "name": "removeDeferredServices",
+    "signature": "removeDeferredServices(array $services) -> void"
+  },
+  {
+    "name": "provideFacades",
+    "signature": "provideFacades(string $namespace) -> void"
+  },
+  {
+    "name": "getLocale",
+    "signature": "getLocale() -> string"
+  },
+  {
+    "name": "currentLocale",
+    "signature": "currentLocale() -> string"
+  },
+  {
+    "name": "getFallbackLocale",
+    "signature": "getFallbackLocale() -> string"
+  },
+  {
+    "name": "setLocale",
+    "signature": "setLocale(string $locale) -> void"
+  },
+  {
+    "name": "setFallbackLocale",
+    "signature": "setFallbackLocale(string $fallbackLocale) -> void"
+  },
+  {
+    "name": "isLocale",
+    "signature": "isLocale(string $locale) -> bool"
+  },
+  {
+    "name": "registerCoreContainerAliases",
+    "signature": "registerCoreContainerAliases() -> void"
+  },
+  {
+    "name": "flush",
+    "signature": "flush() -> void"
+  },
+  {
+    "name": "getNamespace",
+    "signature": "getNamespace() -> string"
+  },
+  {
+    "name": "when",
+    "signature": "when(array|string $concrete) -> \\Illuminate\\Contracts\\Container\\ContextualBindingBuilder"
+  },
+  {
+    "name": "whenHasAttribute",
+    "signature": "whenHasAttribute(string $attribute, \\Closure $handler) -> void"
+  },
+  {
+    "name": "has",
+    "signature": "has(string $id) -> bool"
+  },
+  {
+    "name": "isShared",
+    "signature": "isShared(string $abstract) -> bool"
+  },
+  {
+    "name": "isAlias",
+    "signature": "isAlias(string $name) -> bool"
+  },
+  {
+    "name": "bind",
+    "signature": "bind(\\Closure|string $abstract, \\Closure|string|null $concrete = null, bool $shared = false) -> void"
+  },
+  {
+    "name": "hasMethodBinding",
+    "signature": "hasMethodBinding(string $method) -> bool"
+  },
+  {
+    "name": "bindMethod",
+    "signature": "bindMethod(array|string $method, \\Closure $callback) -> void"
+  },
+  {
+    "name": "callMethodBinding",
+    "signature": "callMethodBinding(string $method, mixed $instance) -> mixed"
+  },
+  {
+    "name": "addContextualBinding",
+    "signature": "addContextualBinding(string $concrete, \\Closure|string $abstract, \\Closure|string $implementation) -> void"
+  },
+  {
+    "name": "bindIf",
+    "signature": "bindIf(\\Closure|string $abstract, \\Closure|string|null $concrete = null, bool $shared = false) -> void"
+  },
+  {
+    "name": "singleton",
+    "signature": "singleton(\\Closure|string $abstract, \\Closure|string|null $concrete = null) -> void"
+  },
+  {
+    "name": "singletonIf",
+    "signature": "singletonIf(\\Closure|string $abstract, \\Closure|string|null $concrete = null) -> void"
+  },
+  {
+    "name": "scoped",
+    "signature": "scoped(\\Closure|string $abstract, \\Closure|string|null $concrete = null) -> void"
+  },
+  {
+    "name": "scopedIf",
+    "signature": "scopedIf(\\Closure|string $abstract, \\Closure|string|null $concrete = null) -> void"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $abstract, \\Closure $closure) -> void"
+  },
+  {
+    "name": "instance",
+    "signature": "instance(string $abstract, mixed $instance) -> mixed"
+  },
+  {
+    "name": "tag",
+    "signature": "tag(array|string $abstracts, mixed $tags) -> void"
+  },
+  {
+    "name": "tagged",
+    "signature": "tagged(string $tag) -> iterable"
+  },
+  {
+    "name": "alias",
+    "signature": "alias(string $abstract, string $alias) -> void"
+  },
+  {
+    "name": "rebinding",
+    "signature": "rebinding(string $abstract, \\Closure $callback) -> mixed"
+  },
+  {
+    "name": "refresh",
+    "signature": "refresh(string $abstract, mixed $target, string $method) -> mixed"
+  },
+  {
+    "name": "wrap",
+    "signature": "wrap(\\Closure $callback, array $parameters = []) -> \\Closure"
+  },
+  {
+    "name": "call",
+    "signature": "call(callable|string $callback, array $parameters = [], string|null $defaultMethod = null) -> mixed"
+  },
+  {
+    "name": "factory",
+    "signature": "factory(string $abstract) -> \\Closure|\\Closure"
+  },
+  {
+    "name": "makeWith",
+    "signature": "makeWith(string|callable $abstract, array $parameters = []) -> object|mixed"
+  },
+  {
+    "name": "get",
+    "signature": "get(string $id) -> object|mixed"
+  },
+  {
+    "name": "build",
+    "signature": "build(\\Closure|string $concrete) -> object"
+  },
+  {
+    "name": "resolveFromAttribute",
+    "signature": "resolveFromAttribute(\\ReflectionAttribute $attribute) -> mixed"
+  },
+  {
+    "name": "beforeResolving",
+    "signature": "beforeResolving(\\Closure|string $abstract, \\Closure|null $callback = null) -> void"
+  },
+  {
+    "name": "resolving",
+    "signature": "resolving(\\Closure|string $abstract, \\Closure|null $callback = null) -> void"
+  },
+  {
+    "name": "afterResolving",
+    "signature": "afterResolving(\\Closure|string $abstract, \\Closure|null $callback = null) -> void"
+  },
+  {
+    "name": "afterResolvingAttribute",
+    "signature": "afterResolvingAttribute(string $attribute, \\Closure $callback) -> void"
+  },
+  {
+    "name": "fireAfterResolvingAttributeCallbacks",
+    "signature": "fireAfterResolvingAttributeCallbacks(\\ReflectionAttribute[] $attributes, mixed $object) -> void"
+  },
+  {
+    "name": "currentlyResolving",
+    "signature": "currentlyResolving() -> string|null"
+  },
+  {
+    "name": "getBindings",
+    "signature": "getBindings() -> array"
+  },
+  {
+    "name": "getAlias",
+    "signature": "getAlias(string $abstract) -> string"
+  },
+  {
+    "name": "forgetExtenders",
+    "signature": "forgetExtenders(string $abstract) -> void"
+  },
+  {
+    "name": "forgetInstance",
+    "signature": "forgetInstance(string $abstract) -> void"
+  },
+  {
+    "name": "forgetInstances",
+    "signature": "forgetInstances() -> void"
+  },
+  {
+    "name": "forgetScopedInstances",
+    "signature": "forgetScopedInstances() -> void"
+  },
+  {
+    "name": "resolveEnvironmentUsing",
+    "signature": "resolveEnvironmentUsing(callable|string|null $callback) -> void"
+  },
+  {
+    "name": "currentEnvironmentIs",
+    "signature": "currentEnvironmentIs(array|string $environments) -> bool"
+  },
+  {
+    "name": "getInstance",
+    "signature": "getInstance() -> \\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "setInstance",
+    "signature": "setInstance(\\Illuminate\\Contracts\\Container\\Container|null $container = null) -> \\Illuminate\\Contracts\\Container\\Container|\\Illuminate\\Foundation\\Application"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]

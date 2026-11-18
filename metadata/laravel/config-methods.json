@@ -1,0 +1,70 @@
+[
+  {
+    "name": "has",
+    "signature": "has(string $key) -> bool"
+  },
+  {
+    "name": "get",
+    "signature": "get(array|string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "getMany",
+    "signature": "getMany(array $keys) -> array"
+  },
+  {
+    "name": "string",
+    "signature": "string(string $key, \\Closure|string|null $default = null) -> string"
+  },
+  {
+    "name": "integer",
+    "signature": "integer(string $key, \\Closure|int|null $default = null) -> int"
+  },
+  {
+    "name": "float",
+    "signature": "float(string $key, \\Closure|float|null $default = null) -> float"
+  },
+  {
+    "name": "boolean",
+    "signature": "boolean(string $key, \\Closure|bool|null $default = null) -> bool"
+  },
+  {
+    "name": "array",
+    "signature": "array(string $key, \\Closure|array|null $default = null) -> array"
+  },
+  {
+    "name": "collection",
+    "signature": "collection(string $key, \\Closure|array|null $default = null) -> \\Illuminate\\Support\\Collection"
+  },
+  {
+    "name": "set",
+    "signature": "set(array|string $key, mixed $value = null) -> void"
+  },
+  {
+    "name": "prepend",
+    "signature": "prepend(string $key, mixed $value) -> void"
+  },
+  {
+    "name": "push",
+    "signature": "push(string $key, mixed $value) -> void"
+  },
+  {
+    "name": "all",
+    "signature": "all() -> array"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]

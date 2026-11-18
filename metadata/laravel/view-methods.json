@@ -1,0 +1,318 @@
+[
+  {
+    "name": "file",
+    "signature": "file(string $path, \\Illuminate\\Contracts\\Support\\Arrayable|array $data = [], array $mergeData = []) -> \\Illuminate\\Contracts\\View\\View"
+  },
+  {
+    "name": "make",
+    "signature": "make(string $view, \\Illuminate\\Contracts\\Support\\Arrayable|array $data = [], array $mergeData = []) -> \\Illuminate\\Contracts\\View\\View"
+  },
+  {
+    "name": "first",
+    "signature": "first(array $views, \\Illuminate\\Contracts\\Support\\Arrayable|array $data = [], array $mergeData = []) -> \\Illuminate\\Contracts\\View\\View"
+  },
+  {
+    "name": "renderWhen",
+    "signature": "renderWhen(bool $condition, string $view, \\Illuminate\\Contracts\\Support\\Arrayable|array $data = [], array $mergeData = []) -> string"
+  },
+  {
+    "name": "renderUnless",
+    "signature": "renderUnless(bool $condition, string $view, \\Illuminate\\Contracts\\Support\\Arrayable|array $data = [], array $mergeData = []) -> string"
+  },
+  {
+    "name": "renderEach",
+    "signature": "renderEach(string $view, array $data, string $iterator, string $empty = 'raw|') -> string"
+  },
+  {
+    "name": "exists",
+    "signature": "exists(string $view) -> bool"
+  },
+  {
+    "name": "getEngineFromPath",
+    "signature": "getEngineFromPath(string $path) -> \\Illuminate\\Contracts\\View\\Engine"
+  },
+  {
+    "name": "share",
+    "signature": "share(array|string $key, mixed $value = null) -> mixed"
+  },
+  {
+    "name": "incrementRender",
+    "signature": "incrementRender() -> void"
+  },
+  {
+    "name": "decrementRender",
+    "signature": "decrementRender() -> void"
+  },
+  {
+    "name": "doneRendering",
+    "signature": "doneRendering() -> bool"
+  },
+  {
+    "name": "hasRenderedOnce",
+    "signature": "hasRenderedOnce(string $id) -> bool"
+  },
+  {
+    "name": "markAsRenderedOnce",
+    "signature": "markAsRenderedOnce(string $id) -> void"
+  },
+  {
+    "name": "addLocation",
+    "signature": "addLocation(string $location) -> void"
+  },
+  {
+    "name": "prependLocation",
+    "signature": "prependLocation(string $location) -> void"
+  },
+  {
+    "name": "addNamespace",
+    "signature": "addNamespace(string $namespace, string|array $hints) -> \\Illuminate\\View\\Factory"
+  },
+  {
+    "name": "prependNamespace",
+    "signature": "prependNamespace(string $namespace, string|array $hints) -> \\Illuminate\\View\\Factory"
+  },
+  {
+    "name": "replaceNamespace",
+    "signature": "replaceNamespace(string $namespace, string|array $hints) -> \\Illuminate\\View\\Factory"
+  },
+  {
+    "name": "addExtension",
+    "signature": "addExtension(string $extension, string $engine, \\Closure|null $resolver = null) -> void"
+  },
+  {
+    "name": "flushState",
+    "signature": "flushState() -> void"
+  },
+  {
+    "name": "flushStateIfDoneRendering",
+    "signature": "flushStateIfDoneRendering() -> void"
+  },
+  {
+    "name": "getExtensions",
+    "signature": "getExtensions() -> array"
+  },
+  {
+    "name": "getEngineResolver",
+    "signature": "getEngineResolver() -> \\Illuminate\\View\\Engines\\EngineResolver"
+  },
+  {
+    "name": "getFinder",
+    "signature": "getFinder() -> \\Illuminate\\View\\ViewFinderInterface"
+  },
+  {
+    "name": "setFinder",
+    "signature": "setFinder(\\Illuminate\\View\\ViewFinderInterface $finder) -> void"
+  },
+  {
+    "name": "flushFinderCache",
+    "signature": "flushFinderCache() -> void"
+  },
+  {
+    "name": "getDispatcher",
+    "signature": "getDispatcher() -> \\Illuminate\\Contracts\\Events\\Dispatcher"
+  },
+  {
+    "name": "setDispatcher",
+    "signature": "setDispatcher(\\Illuminate\\Contracts\\Events\\Dispatcher $events) -> void"
+  },
+  {
+    "name": "getContainer",
+    "signature": "getContainer() -> \\Illuminate\\Contracts\\Container\\Container"
+  },
+  {
+    "name": "setContainer",
+    "signature": "setContainer(\\Illuminate\\Contracts\\Container\\Container $container) -> void"
+  },
+  {
+    "name": "shared",
+    "signature": "shared(string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "getShared",
+    "signature": "getShared() -> array"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  },
+  {
+    "name": "startComponent",
+    "signature": "startComponent(\\Illuminate\\Contracts\\View\\View|\\Illuminate\\Contracts\\Support\\Htmlable|\\Closure|string $view, array $data = []) -> void"
+  },
+  {
+    "name": "startComponentFirst",
+    "signature": "startComponentFirst(array $names, array $data = []) -> void"
+  },
+  {
+    "name": "renderComponent",
+    "signature": "renderComponent() -> string"
+  },
+  {
+    "name": "getConsumableComponentData",
+    "signature": "getConsumableComponentData(string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "slot",
+    "signature": "slot(string $name, string|null $content = null, array $attributes = []) -> void"
+  },
+  {
+    "name": "endSlot",
+    "signature": "endSlot() -> void"
+  },
+  {
+    "name": "creator",
+    "signature": "creator(array|string $views, \\Closure|string $callback) -> array"
+  },
+  {
+    "name": "composers",
+    "signature": "composers(array $composers) -> array"
+  },
+  {
+    "name": "composer",
+    "signature": "composer(array|string $views, \\Closure|string $callback) -> array"
+  },
+  {
+    "name": "callComposer",
+    "signature": "callComposer(\\Illuminate\\Contracts\\View\\View $view) -> void"
+  },
+  {
+    "name": "callCreator",
+    "signature": "callCreator(\\Illuminate\\Contracts\\View\\View $view) -> void"
+  },
+  {
+    "name": "startFragment",
+    "signature": "startFragment(string $fragment) -> void"
+  },
+  {
+    "name": "stopFragment",
+    "signature": "stopFragment() -> string"
+  },
+  {
+    "name": "getFragment",
+    "signature": "getFragment(string $name, string|null $default = null) -> mixed"
+  },
+  {
+    "name": "getFragments",
+    "signature": "getFragments() -> array"
+  },
+  {
+    "name": "flushFragments",
+    "signature": "flushFragments() -> void"
+  },
+  {
+    "name": "startSection",
+    "signature": "startSection(string $section, string|null $content = null) -> void"
+  },
+  {
+    "name": "inject",
+    "signature": "inject(string $section, string $content) -> void"
+  },
+  {
+    "name": "yieldSection",
+    "signature": "yieldSection() -> string"
+  },
+  {
+    "name": "stopSection",
+    "signature": "stopSection(bool $overwrite = false) -> string"
+  },
+  {
+    "name": "appendSection",
+    "signature": "appendSection() -> string"
+  },
+  {
+    "name": "yieldContent",
+    "signature": "yieldContent(string $section, string $default = '') -> string"
+  },
+  {
+    "name": "parentPlaceholder",
+    "signature": "parentPlaceholder(string $section = '') -> string"
+  },
+  {
+    "name": "hasSection",
+    "signature": "hasSection(string $name) -> bool"
+  },
+  {
+    "name": "sectionMissing",
+    "signature": "sectionMissing(string $name) -> bool"
+  },
+  {
+    "name": "getSection",
+    "signature": "getSection(string $name, string|null $default = null) -> mixed"
+  },
+  {
+    "name": "getSections",
+    "signature": "getSections() -> array"
+  },
+  {
+    "name": "flushSections",
+    "signature": "flushSections() -> void"
+  },
+  {
+    "name": "addLoop",
+    "signature": "addLoop(\\Countable|array $data) -> void"
+  },
+  {
+    "name": "incrementLoopIndices",
+    "signature": "incrementLoopIndices() -> void"
+  },
+  {
+    "name": "popLoop",
+    "signature": "popLoop() -> void"
+  },
+  {
+    "name": "getLastLoop",
+    "signature": "getLastLoop() -> \\stdClass|null"
+  },
+  {
+    "name": "getLoopStack",
+    "signature": "getLoopStack() -> array"
+  },
+  {
+    "name": "startPush",
+    "signature": "startPush(string $section, string $content = '') -> void"
+  },
+  {
+    "name": "stopPush",
+    "signature": "stopPush() -> string"
+  },
+  {
+    "name": "startPrepend",
+    "signature": "startPrepend(string $section, string $content = '') -> void"
+  },
+  {
+    "name": "stopPrepend",
+    "signature": "stopPrepend() -> string"
+  },
+  {
+    "name": "yieldPushContent",
+    "signature": "yieldPushContent(string $section, string $default = '') -> string"
+  },
+  {
+    "name": "isStackEmpty",
+    "signature": "isStackEmpty(string $section) -> bool"
+  },
+  {
+    "name": "flushStacks",
+    "signature": "flushStacks() -> void"
+  },
+  {
+    "name": "startTranslation",
+    "signature": "startTranslation(array $replacements = []) -> void"
+  },
+  {
+    "name": "renderTranslation",
+    "signature": "renderTranslation() -> string"
+  }
+]
