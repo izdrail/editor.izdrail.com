@@ -3214,7 +3214,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         });
     let composer_doc = composer.doc();
     let selection_doc = composer.doc();
-    let selection_view = composer.id();
+    let selection_editor = composer.editor().clone();
     let pending_selection = data.pending_selection;
     create_effect(move |_| {
         if let Some(text) = pending_selection.get() {
@@ -3224,7 +3224,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             let prefix = if len == 0 { "" } else { "\n\n" };
             selection_doc.edit_single(Selection::caret(len), &format!("{prefix}{text}"), EditType::Other);
             input_signal.set(selection_doc.text().to_string());
-            selection_view.request_focus();
+            // Focus the inner editor, not its non-editable container. Move
+            // the caret so appended text is visible and ready to edit.
+            let end = selection_doc.text().len();
+            selection_editor.cursor.update(|cursor| cursor.set_offset(end, false, false));
+            if let Some(view) = selection_editor.editor_view_id.get_untracked() {
+                view.request_focus();
+            }
         }
     });
     create_effect(move |_| {

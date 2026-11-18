@@ -6,6 +6,8 @@ Open the Agent panel. To configure its connection, click the gear or connection 
 
 An empty conversation offers **Explain this file**, **Review for bugs** and **Suggest tests**. Clicking a starter appends a plain prompt to the composer, keeping any text already there. It does not send anything or change your mode. Edit the draft before sending.
 
+With the composer focused in an empty conversation, **Alt+1** appends Explain, **Alt+2** appends Review and **Alt+3** appends Tests. These are composer-local shortcuts, not global keymap bindings. A desktop shortcut or keyboard layout may intercept them; the buttons remain available.
+
 The card above the composer shows the selected mode's scope and **Attached on Send** context. Check the file or selection shown there before sending. It follows the active editor context; choosing a starter does not pin a particular file.
 
 Press **Enter** or click **Send** when ready. **Shift+Enter** inserts a newline. While a response is running, **Stop** cancels it. Cancellation does not undo changes you already accepted.
