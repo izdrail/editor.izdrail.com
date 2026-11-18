@@ -1,0 +1,242 @@
+[
+  {
+    "name": "store",
+    "signature": "store(string|null $name = null) -> \\Illuminate\\Contracts\\Cache\\Repository"
+  },
+  {
+    "name": "driver",
+    "signature": "driver(string|null $driver = null) -> \\Illuminate\\Contracts\\Cache\\Repository"
+  },
+  {
+    "name": "memo",
+    "signature": "memo(string|null $driver = null) -> \\Illuminate\\Contracts\\Cache\\Repository"
+  },
+  {
+    "name": "resolve",
+    "signature": "resolve(string $name) -> \\Illuminate\\Contracts\\Cache\\Repository"
+  },
+  {
+    "name": "build",
+    "signature": "build(array $config) -> \\Illuminate\\Cache\\Repository"
+  },
+  {
+    "name": "repository",
+    "signature": "repository(\\Illuminate\\Contracts\\Cache\\Store $store, array $config = []) -> \\Illuminate\\Cache\\Repository"
+  },
+  {
+    "name": "refreshEventDispatcher",
+    "signature": "refreshEventDispatcher() -> void"
+  },
+  {
+    "name": "getDefaultDriver",
+    "signature": "getDefaultDriver() -> string"
+  },
+  {
+    "name": "setDefaultDriver",
+    "signature": "setDefaultDriver(string $name) -> void"
+  },
+  {
+    "name": "forgetDriver",
+    "signature": "forgetDriver(array|string|null $name = null) -> \\Illuminate\\Cache\\CacheManager"
+  },
+  {
+    "name": "purge",
+    "signature": "purge(string|null $name = null) -> void"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $driver, \\Closure $callback) -> \\Illuminate\\Cache\\CacheManager"
+  },
+  {
+    "name": "setApplication",
+    "signature": "setApplication(\\Illuminate\\Contracts\\Foundation\\Application $app) -> \\Illuminate\\Cache\\CacheManager"
+  },
+  {
+    "name": "has",
+    "signature": "has(\\UnitEnum|array|string $key) -> bool"
+  },
+  {
+    "name": "missing",
+    "signature": "missing(\\UnitEnum|string $key) -> bool"
+  },
+  {
+    "name": "get",
+    "signature": "get(\\UnitEnum|array|string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "many",
+    "signature": "many(array $keys) -> array"
+  },
+  {
+    "name": "getMultiple",
+    "signature": "getMultiple(iterable $keys, mixed $default = null) -> iterable"
+  },
+  {
+    "name": "pull",
+    "signature": "pull(\\UnitEnum|array|string $key, mixed $default = null) -> mixed"
+  },
+  {
+    "name": "string",
+    "signature": "string(\\UnitEnum|string $key, \\Closure|string|null $default = null) -> string"
+  },
+  {
+    "name": "integer",
+    "signature": "integer(\\UnitEnum|string $key, \\Closure|int|null $default = null) -> int"
+  },
+  {
+    "name": "float",
+    "signature": "float(\\UnitEnum|string $key, \\Closure|float|null $default = null) -> float"
+  },
+  {
+    "name": "boolean",
+    "signature": "boolean(\\UnitEnum|string $key, \\Closure|bool|null $default = null) -> bool"
+  },
+  {
+    "name": "array",
+    "signature": "array(\\UnitEnum|string $key, \\Closure|array|null $default = null) -> array"
+  },
+  {
+    "name": "put",
+    "signature": "put(\\UnitEnum|array|string $key, mixed $value, \\DateTimeInterface|\\DateInterval|int|null $ttl = null) -> bool"
+  },
+  {
+    "name": "set",
+    "signature": "set(\\UnitEnum|array|string $key, mixed $value, \\DateTimeInterface|\\DateInterval|int|null $ttl = null) -> bool"
+  },
+  {
+    "name": "putMany",
+    "signature": "putMany(array $values, \\DateTimeInterface|\\DateInterval|int|null $ttl = null) -> bool"
+  },
+  {
+    "name": "setMultiple",
+    "signature": "setMultiple(iterable $values, null|int|\\DateInterval $ttl = null) -> bool"
+  },
+  {
+    "name": "add",
+    "signature": "add(\\UnitEnum|array|string $key, mixed $value, \\DateTimeInterface|\\DateInterval|int|null $ttl = null) -> bool"
+  },
+  {
+    "name": "increment",
+    "signature": "increment(\\UnitEnum|string $key, mixed $value = 1) -> int|bool"
+  },
+  {
+    "name": "decrement",
+    "signature": "decrement(\\UnitEnum|string $key, mixed $value = 1) -> int|bool"
+  },
+  {
+    "name": "forever",
+    "signature": "forever(\\UnitEnum|string $key, mixed $value) -> bool"
+  },
+  {
+    "name": "remember",
+    "signature": "remember(\\UnitEnum|string $key, \\Closure|\\DateTimeInterface|\\DateInterval|int|null $ttl, \\Closure $callback) -> mixed"
+  },
+  {
+    "name": "sear",
+    "signature": "sear(\\UnitEnum|string $key, \\Closure $callback) -> mixed"
+  },
+  {
+    "name": "rememberForever",
+    "signature": "rememberForever(\\UnitEnum|string $key, \\Closure $callback) -> mixed"
+  },
+  {
+    "name": "flexible",
+    "signature": "flexible(\\UnitEnum|string $key, array $ttl, callable $callback, array|null $lock = null, bool $alwaysDefer = false) -> mixed"
+  },
+  {
+    "name": "withoutOverlapping",
+    "signature": "withoutOverlapping(\\UnitEnum|string $key, callable $callback, int $lockFor = 0, int $waitFor = 10, string|null $owner = null) -> mixed"
+  },
+  {
+    "name": "funnel",
+    "signature": "funnel(\\UnitEnum|string $name) -> \\Illuminate\\Cache\\Limiters\\ConcurrencyLimiterBuilder"
+  },
+  {
+    "name": "forget",
+    "signature": "forget(\\UnitEnum|array|string $key) -> bool"
+  },
+  {
+    "name": "delete",
+    "signature": "delete(\\UnitEnum|array|string $key) -> bool"
+  },
+  {
+    "name": "deleteMultiple",
+    "signature": "deleteMultiple(iterable $keys) -> bool"
+  },
+  {
+    "name": "clear",
+    "signature": "clear() -> bool"
+  },
+  {
+    "name": "tags",
+    "signature": "tags(mixed $names) -> \\Illuminate\\Cache\\TaggedCache"
+  },
+  {
+    "name": "getName",
+    "signature": "getName() -> string|null"
+  },
+  {
+    "name": "supportsTags",
+    "signature": "supportsTags() -> bool"
+  },
+  {
+    "name": "getDefaultCacheTime",
+    "signature": "getDefaultCacheTime() -> int|null"
+  },
+  {
+    "name": "setDefaultCacheTime",
+    "signature": "setDefaultCacheTime(int|null $seconds) -> \\Illuminate\\Cache\\Repository"
+  },
+  {
+    "name": "getStore",
+    "signature": "getStore() -> \\Illuminate\\Contracts\\Cache\\Store"
+  },
+  {
+    "name": "setStore",
+    "signature": "setStore(\\Illuminate\\Contracts\\Cache\\Store $store) -> \\Illuminate\\Cache\\Repository"
+  },
+  {
+    "name": "getEventDispatcher",
+    "signature": "getEventDispatcher() -> \\Illuminate\\Contracts\\Events\\Dispatcher|null"
+  },
+  {
+    "name": "setEventDispatcher",
+    "signature": "setEventDispatcher(\\Illuminate\\Contracts\\Events\\Dispatcher $events) -> void"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  },
+  {
+    "name": "macroCall",
+    "signature": "macroCall(string $method, array $parameters) -> mixed"
+  },
+  {
+    "name": "flush",
+    "signature": "flush() -> bool"
+  },
+  {
+    "name": "getPrefix",
+    "signature": "getPrefix() -> string"
+  },
+  {
+    "name": "lock",
+    "signature": "lock(string $name, int $seconds = 0, string|null $owner = null) -> \\Illuminate\\Contracts\\Cache\\Lock"
+  },
+  {
+    "name": "restoreLock",
+    "signature": "restoreLock(string $name, string $owner) -> \\Illuminate\\Contracts\\Cache\\Lock"
+  }
+]

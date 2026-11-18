@@ -1,0 +1,430 @@
+[
+  {
+    "name": "connection",
+    "signature": "connection(\\UnitEnum|string|null $name = null) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "build",
+    "signature": "build(array $config) -> \\Illuminate\\Database\\ConnectionInterface"
+  },
+  {
+    "name": "calculateDynamicConnectionName",
+    "signature": "calculateDynamicConnectionName(array $config) -> string"
+  },
+  {
+    "name": "connectUsing",
+    "signature": "connectUsing(\\UnitEnum|string $name, array $config, bool $force = false) -> \\Illuminate\\Database\\ConnectionInterface"
+  },
+  {
+    "name": "purge",
+    "signature": "purge(\\UnitEnum|string|null $name = null) -> void"
+  },
+  {
+    "name": "disconnect",
+    "signature": "disconnect(\\UnitEnum|string|null $name = null) -> void"
+  },
+  {
+    "name": "reconnect",
+    "signature": "reconnect(\\UnitEnum|string|null $name = null) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "usingConnection",
+    "signature": "usingConnection(\\UnitEnum|string $name, callable $callback) -> mixed"
+  },
+  {
+    "name": "getDefaultConnection",
+    "signature": "getDefaultConnection() -> string"
+  },
+  {
+    "name": "setDefaultConnection",
+    "signature": "setDefaultConnection(string $name) -> void"
+  },
+  {
+    "name": "supportedDrivers",
+    "signature": "supportedDrivers() -> string[]"
+  },
+  {
+    "name": "availableDrivers",
+    "signature": "availableDrivers() -> string[]"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $name, callable $resolver) -> void"
+  },
+  {
+    "name": "forgetExtension",
+    "signature": "forgetExtension(string $name) -> void"
+  },
+  {
+    "name": "getConnections",
+    "signature": "getConnections() -> array"
+  },
+  {
+    "name": "setReconnector",
+    "signature": "setReconnector(callable $reconnector) -> void"
+  },
+  {
+    "name": "setApplication",
+    "signature": "setApplication(\\Illuminate\\Contracts\\Foundation\\Application $app) -> \\Illuminate\\Database\\DatabaseManager"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  },
+  {
+    "name": "macroCall",
+    "signature": "macroCall(string $method, array $parameters) -> mixed"
+  },
+  {
+    "name": "useDefaultQueryGrammar",
+    "signature": "useDefaultQueryGrammar() -> void"
+  },
+  {
+    "name": "useDefaultSchemaGrammar",
+    "signature": "useDefaultSchemaGrammar() -> void"
+  },
+  {
+    "name": "useDefaultPostProcessor",
+    "signature": "useDefaultPostProcessor() -> void"
+  },
+  {
+    "name": "getSchemaBuilder",
+    "signature": "getSchemaBuilder() -> \\Illuminate\\Database\\Schema\\Builder"
+  },
+  {
+    "name": "table",
+    "signature": "table(\\Closure|\\Illuminate\\Database\\Query\\Builder|\\Illuminate\\Contracts\\Database\\Query\\Expression|\\UnitEnum|string $table, string|null $as = null) -> \\Illuminate\\Database\\Query\\Builder"
+  },
+  {
+    "name": "query",
+    "signature": "query() -> \\Illuminate\\Database\\Query\\Builder"
+  },
+  {
+    "name": "selectOne",
+    "signature": "selectOne(string $query, array $bindings = [], bool $useReadPdo = true) -> mixed"
+  },
+  {
+    "name": "scalar",
+    "signature": "scalar(string $query, array $bindings = [], bool $useReadPdo = true) -> mixed"
+  },
+  {
+    "name": "selectFromWriteConnection",
+    "signature": "selectFromWriteConnection(string $query, array $bindings = []) -> array"
+  },
+  {
+    "name": "select",
+    "signature": "select(string $query, array $bindings = [], bool $useReadPdo = true) -> array"
+  },
+  {
+    "name": "selectResultSets",
+    "signature": "selectResultSets(string $query, array $bindings = [], bool $useReadPdo = true) -> array"
+  },
+  {
+    "name": "cursor",
+    "signature": "cursor(string $query, array $bindings = [], bool $useReadPdo = true) -> \\Generator"
+  },
+  {
+    "name": "insert",
+    "signature": "insert(string $query, array $bindings = []) -> bool"
+  },
+  {
+    "name": "update",
+    "signature": "update(string $query, array $bindings = []) -> int"
+  },
+  {
+    "name": "delete",
+    "signature": "delete(string $query, array $bindings = []) -> int"
+  },
+  {
+    "name": "statement",
+    "signature": "statement(string $query, array $bindings = []) -> bool"
+  },
+  {
+    "name": "affectingStatement",
+    "signature": "affectingStatement(string $query, array $bindings = []) -> int"
+  },
+  {
+    "name": "unprepared",
+    "signature": "unprepared(string $query) -> bool"
+  },
+  {
+    "name": "threadCount",
+    "signature": "threadCount() -> int|null"
+  },
+  {
+    "name": "pretend",
+    "signature": "pretend(\\Closure $callback) -> array[]"
+  },
+  {
+    "name": "withoutPretending",
+    "signature": "withoutPretending(\\Closure $callback) -> mixed"
+  },
+  {
+    "name": "bindValues",
+    "signature": "bindValues(\\PDOStatement $statement, array $bindings) -> void"
+  },
+  {
+    "name": "prepareBindings",
+    "signature": "prepareBindings(array $bindings) -> array"
+  },
+  {
+    "name": "logQuery",
+    "signature": "logQuery(string $query, array $bindings, float|null $time = null) -> void"
+  },
+  {
+    "name": "whenQueryingForLongerThan",
+    "signature": "whenQueryingForLongerThan(\\DateTimeInterface|\\Carbon\\CarbonInterval|float|int $threshold, callable $handler) -> void"
+  },
+  {
+    "name": "allowQueryDurationHandlersToRunAgain",
+    "signature": "allowQueryDurationHandlersToRunAgain() -> void"
+  },
+  {
+    "name": "totalQueryDuration",
+    "signature": "totalQueryDuration() -> float"
+  },
+  {
+    "name": "resetTotalQueryDuration",
+    "signature": "resetTotalQueryDuration() -> void"
+  },
+  {
+    "name": "reconnectIfMissingConnection",
+    "signature": "reconnectIfMissingConnection() -> void"
+  },
+  {
+    "name": "beforeStartingTransaction",
+    "signature": "beforeStartingTransaction(\\Closure $callback) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "beforeExecuting",
+    "signature": "beforeExecuting(\\Closure $callback) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "listen",
+    "signature": "listen(\\Closure $callback) -> void"
+  },
+  {
+    "name": "raw",
+    "signature": "raw(mixed $value) -> \\Illuminate\\Contracts\\Database\\Query\\Expression"
+  },
+  {
+    "name": "escape",
+    "signature": "escape(string|float|int|bool|null $value, bool $binary = false) -> string"
+  },
+  {
+    "name": "hasModifiedRecords",
+    "signature": "hasModifiedRecords() -> bool"
+  },
+  {
+    "name": "recordsHaveBeenModified",
+    "signature": "recordsHaveBeenModified(bool $value = true) -> void"
+  },
+  {
+    "name": "setRecordModificationState",
+    "signature": "setRecordModificationState(bool $value) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "forgetRecordModificationState",
+    "signature": "forgetRecordModificationState() -> void"
+  },
+  {
+    "name": "useWriteConnectionWhenReading",
+    "signature": "useWriteConnectionWhenReading(bool $value = true) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "getPdo",
+    "signature": "getPdo() -> \\PDO"
+  },
+  {
+    "name": "getRawPdo",
+    "signature": "getRawPdo() -> \\PDO|\\Closure|null"
+  },
+  {
+    "name": "getReadPdo",
+    "signature": "getReadPdo() -> \\PDO"
+  },
+  {
+    "name": "getRawReadPdo",
+    "signature": "getRawReadPdo() -> \\PDO|\\Closure|null"
+  },
+  {
+    "name": "setPdo",
+    "signature": "setPdo(\\PDO|\\Closure|null $pdo) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "setReadPdo",
+    "signature": "setReadPdo(\\PDO|\\Closure|null $pdo) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "setReadPdoConfig",
+    "signature": "setReadPdoConfig(array $config) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "getName",
+    "signature": "getName() -> string|null"
+  },
+  {
+    "name": "getNameWithReadWriteType",
+    "signature": "getNameWithReadWriteType() -> string|null"
+  },
+  {
+    "name": "getConfig",
+    "signature": "getConfig(string|null $option = null) -> mixed"
+  },
+  {
+    "name": "getDriverName",
+    "signature": "getDriverName() -> string"
+  },
+  {
+    "name": "getDriverTitle",
+    "signature": "getDriverTitle() -> string"
+  },
+  {
+    "name": "getQueryGrammar",
+    "signature": "getQueryGrammar() -> \\Illuminate\\Database\\Query\\Grammars\\Grammar"
+  },
+  {
+    "name": "setQueryGrammar",
+    "signature": "setQueryGrammar(\\Illuminate\\Database\\Query\\Grammars\\Grammar $grammar) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "getSchemaGrammar",
+    "signature": "getSchemaGrammar() -> \\Illuminate\\Database\\Schema\\Grammars\\Grammar"
+  },
+  {
+    "name": "setSchemaGrammar",
+    "signature": "setSchemaGrammar(\\Illuminate\\Database\\Schema\\Grammars\\Grammar $grammar) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "getPostProcessor",
+    "signature": "getPostProcessor() -> \\Illuminate\\Database\\Query\\Processors\\Processor"
+  },
+  {
+    "name": "setPostProcessor",
+    "signature": "setPostProcessor(\\Illuminate\\Database\\Query\\Processors\\Processor $processor) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "getEventDispatcher",
+    "signature": "getEventDispatcher() -> \\Illuminate\\Contracts\\Events\\Dispatcher|null"
+  },
+  {
+    "name": "setEventDispatcher",
+    "signature": "setEventDispatcher(\\Illuminate\\Contracts\\Events\\Dispatcher $events) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "unsetEventDispatcher",
+    "signature": "unsetEventDispatcher() -> void"
+  },
+  {
+    "name": "setTransactionManager",
+    "signature": "setTransactionManager(\\Illuminate\\Database\\DatabaseTransactionsManager $manager) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "unsetTransactionManager",
+    "signature": "unsetTransactionManager() -> void"
+  },
+  {
+    "name": "pretending",
+    "signature": "pretending() -> bool"
+  },
+  {
+    "name": "getQueryLog",
+    "signature": "getQueryLog() -> array[]"
+  },
+  {
+    "name": "getRawQueryLog",
+    "signature": "getRawQueryLog() -> array"
+  },
+  {
+    "name": "flushQueryLog",
+    "signature": "flushQueryLog() -> void"
+  },
+  {
+    "name": "enableQueryLog",
+    "signature": "enableQueryLog() -> void"
+  },
+  {
+    "name": "disableQueryLog",
+    "signature": "disableQueryLog() -> void"
+  },
+  {
+    "name": "logging",
+    "signature": "logging() -> bool"
+  },
+  {
+    "name": "getDatabaseName",
+    "signature": "getDatabaseName() -> string"
+  },
+  {
+    "name": "setDatabaseName",
+    "signature": "setDatabaseName(string $database) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "setReadWriteType",
+    "signature": "setReadWriteType(string|null $readWriteType) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "getTablePrefix",
+    "signature": "getTablePrefix() -> string"
+  },
+  {
+    "name": "setTablePrefix",
+    "signature": "setTablePrefix(string $prefix) -> \\Illuminate\\Database\\Connection"
+  },
+  {
+    "name": "withoutTablePrefix",
+    "signature": "withoutTablePrefix(\\Closure $callback) -> mixed"
+  },
+  {
+    "name": "getServerVersion",
+    "signature": "getServerVersion() -> string"
+  },
+  {
+    "name": "resolverFor",
+    "signature": "resolverFor(string $driver, \\Closure $callback) -> void"
+  },
+  {
+    "name": "getResolver",
+    "signature": "getResolver(string $driver) -> \\Closure|null"
+  },
+  {
+    "name": "transaction",
+    "signature": "transaction(\\Closure $callback, int $attempts = 1) -> mixed"
+  },
+  {
+    "name": "beginTransaction",
+    "signature": "beginTransaction() -> void"
+  },
+  {
+    "name": "commit",
+    "signature": "commit() -> void"
+  },
+  {
+    "name": "rollBack",
+    "signature": "rollBack(int|null $toLevel = null) -> void"
+  },
+  {
+    "name": "transactionLevel",
+    "signature": "transactionLevel() -> int"
+  },
+  {
+    "name": "afterCommit",
+    "signature": "afterCommit(callable $callback) -> void"
+  },
+  {
+    "name": "afterRollBack",
+    "signature": "afterRollBack(callable $callback) -> void"
+  }
+]

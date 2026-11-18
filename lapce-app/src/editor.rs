@@ -3302,7 +3302,7 @@ impl EditorData {
                     .map(|l| profile_items(l, &project, &before_cursor))
                     .unwrap_or_default();
                 if lang == Some("php") {
-                    if let Some(items) = crate::laravel_completion::route_items(&before_cursor, project.laravel) {
+                    if let Some(items) = crate::laravel_completion::facade_items(&before_cursor, project.laravel) {
                         return (Vec::new(), Vec::new(), items, String::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
                     }
                 }
@@ -3435,7 +3435,7 @@ impl EditorData {
                 keywords
                     .into_iter()
                     .map(|i| {
-                        let member = i.label_details.as_ref().and_then(|d|d.description.as_ref()).is_some_and(|d|d.starts_with("Illuminate\\Support\\Facades\\Route::"));
+                        let member = i.label_details.as_ref().and_then(|d|d.description.as_ref()).is_some_and(|d|d.starts_with("Illuminate\\Support\\Facades\\"));
                         let mut w=wrap(i, if member { CompletionSource::Project } else { CompletionSource::Keyword });
                         w.show_on_empty=member;
                         w

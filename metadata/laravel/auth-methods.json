@@ -1,0 +1,234 @@
+[
+  {
+    "name": "guard",
+    "signature": "guard(string|null $name = null) -> \\Illuminate\\Contracts\\Auth\\Guard|\\Illuminate\\Contracts\\Auth\\StatefulGuard"
+  },
+  {
+    "name": "createSessionDriver",
+    "signature": "createSessionDriver(string $name, array $config) -> \\Illuminate\\Auth\\SessionGuard"
+  },
+  {
+    "name": "createTokenDriver",
+    "signature": "createTokenDriver(string $name, array $config) -> \\Illuminate\\Auth\\TokenGuard"
+  },
+  {
+    "name": "getDefaultDriver",
+    "signature": "getDefaultDriver() -> string"
+  },
+  {
+    "name": "shouldUse",
+    "signature": "shouldUse(string $name) -> void"
+  },
+  {
+    "name": "setDefaultDriver",
+    "signature": "setDefaultDriver(string $name) -> void"
+  },
+  {
+    "name": "viaRequest",
+    "signature": "viaRequest(string $driver, callable $callback) -> \\Illuminate\\Auth\\AuthManager"
+  },
+  {
+    "name": "userResolver",
+    "signature": "userResolver() -> \\Closure"
+  },
+  {
+    "name": "resolveUsersUsing",
+    "signature": "resolveUsersUsing(\\Closure $userResolver) -> \\Illuminate\\Auth\\AuthManager"
+  },
+  {
+    "name": "extend",
+    "signature": "extend(string $driver, \\Closure $callback) -> \\Illuminate\\Auth\\AuthManager"
+  },
+  {
+    "name": "provider",
+    "signature": "provider(string $name, \\Closure $callback) -> \\Illuminate\\Auth\\AuthManager"
+  },
+  {
+    "name": "hasResolvedGuards",
+    "signature": "hasResolvedGuards() -> bool"
+  },
+  {
+    "name": "forgetGuards",
+    "signature": "forgetGuards() -> \\Illuminate\\Auth\\AuthManager"
+  },
+  {
+    "name": "setApplication",
+    "signature": "setApplication(\\Illuminate\\Contracts\\Foundation\\Application $app) -> \\Illuminate\\Auth\\AuthManager"
+  },
+  {
+    "name": "createUserProvider",
+    "signature": "createUserProvider(string|null $provider = null) -> \\Illuminate\\Contracts\\Auth\\UserProvider|null"
+  },
+  {
+    "name": "getDefaultUserProvider",
+    "signature": "getDefaultUserProvider() -> string"
+  },
+  {
+    "name": "check",
+    "signature": "check() -> bool"
+  },
+  {
+    "name": "guest",
+    "signature": "guest() -> bool"
+  },
+  {
+    "name": "user",
+    "signature": "user() -> \\Illuminate\\Contracts\\Auth\\Authenticatable|null"
+  },
+  {
+    "name": "id",
+    "signature": "id() -> int|string|null"
+  },
+  {
+    "name": "validate",
+    "signature": "validate(array $credentials = []) -> bool"
+  },
+  {
+    "name": "hasUser",
+    "signature": "hasUser() -> bool"
+  },
+  {
+    "name": "setUser",
+    "signature": "setUser(\\Illuminate\\Contracts\\Auth\\Authenticatable $user) -> \\Illuminate\\Contracts\\Auth\\Guard"
+  },
+  {
+    "name": "attempt",
+    "signature": "attempt(array $credentials = [], bool $remember = false) -> bool"
+  },
+  {
+    "name": "once",
+    "signature": "once(array $credentials = []) -> bool"
+  },
+  {
+    "name": "login",
+    "signature": "login(\\Illuminate\\Contracts\\Auth\\Authenticatable $user, bool $remember = false) -> void"
+  },
+  {
+    "name": "loginUsingId",
+    "signature": "loginUsingId(mixed $id, bool $remember = false) -> \\Illuminate\\Contracts\\Auth\\Authenticatable|false"
+  },
+  {
+    "name": "onceUsingId",
+    "signature": "onceUsingId(mixed $id) -> \\Illuminate\\Contracts\\Auth\\Authenticatable|false"
+  },
+  {
+    "name": "viaRemember",
+    "signature": "viaRemember() -> bool"
+  },
+  {
+    "name": "logout",
+    "signature": "logout() -> void"
+  },
+  {
+    "name": "basic",
+    "signature": "basic(string $field = 'email', array $extraConditions = []) -> \\Symfony\\Component\\HttpFoundation\\Response|null"
+  },
+  {
+    "name": "onceBasic",
+    "signature": "onceBasic(string $field = 'email', array $extraConditions = []) -> \\Symfony\\Component\\HttpFoundation\\Response|null"
+  },
+  {
+    "name": "attemptWhen",
+    "signature": "attemptWhen(array $credentials = [], array|callable|null $callbacks = null, bool $remember = false) -> bool"
+  },
+  {
+    "name": "hashPasswordForCookie",
+    "signature": "hashPasswordForCookie(string $passwordHash) -> string"
+  },
+  {
+    "name": "logoutCurrentDevice",
+    "signature": "logoutCurrentDevice() -> void"
+  },
+  {
+    "name": "logoutOtherDevices",
+    "signature": "logoutOtherDevices(string $password) -> \\Illuminate\\Contracts\\Auth\\Authenticatable|null"
+  },
+  {
+    "name": "attempting",
+    "signature": "attempting(mixed $callback) -> void"
+  },
+  {
+    "name": "getLastAttempted",
+    "signature": "getLastAttempted() -> \\Illuminate\\Contracts\\Auth\\Authenticatable"
+  },
+  {
+    "name": "getName",
+    "signature": "getName() -> string"
+  },
+  {
+    "name": "getRecallerName",
+    "signature": "getRecallerName() -> string"
+  },
+  {
+    "name": "setRememberDuration",
+    "signature": "setRememberDuration(int $minutes) -> \\Illuminate\\Auth\\SessionGuard"
+  },
+  {
+    "name": "getCookieJar",
+    "signature": "getCookieJar() -> \\Illuminate\\Contracts\\Cookie\\QueueingFactory"
+  },
+  {
+    "name": "setCookieJar",
+    "signature": "setCookieJar(\\Illuminate\\Contracts\\Cookie\\QueueingFactory $cookie) -> void"
+  },
+  {
+    "name": "getDispatcher",
+    "signature": "getDispatcher() -> \\Illuminate\\Contracts\\Events\\Dispatcher"
+  },
+  {
+    "name": "setDispatcher",
+    "signature": "setDispatcher(\\Illuminate\\Contracts\\Events\\Dispatcher $events) -> void"
+  },
+  {
+    "name": "getSession",
+    "signature": "getSession() -> \\Illuminate\\Contracts\\Session\\Session"
+  },
+  {
+    "name": "getUser",
+    "signature": "getUser() -> \\Illuminate\\Contracts\\Auth\\Authenticatable|null"
+  },
+  {
+    "name": "getRequest",
+    "signature": "getRequest() -> \\Symfony\\Component\\HttpFoundation\\Request"
+  },
+  {
+    "name": "setRequest",
+    "signature": "setRequest(\\Symfony\\Component\\HttpFoundation\\Request $request) -> \\Illuminate\\Auth\\SessionGuard"
+  },
+  {
+    "name": "getTimebox",
+    "signature": "getTimebox() -> \\Illuminate\\Support\\Timebox"
+  },
+  {
+    "name": "authenticate",
+    "signature": "authenticate() -> \\Illuminate\\Contracts\\Auth\\Authenticatable"
+  },
+  {
+    "name": "forgetUser",
+    "signature": "forgetUser() -> \\Illuminate\\Auth\\SessionGuard"
+  },
+  {
+    "name": "getProvider",
+    "signature": "getProvider() -> \\Illuminate\\Contracts\\Auth\\UserProvider"
+  },
+  {
+    "name": "setProvider",
+    "signature": "setProvider(\\Illuminate\\Contracts\\Auth\\UserProvider $provider) -> void"
+  },
+  {
+    "name": "macro",
+    "signature": "macro(string $name, object|callable $macro) -> void"
+  },
+  {
+    "name": "mixin",
+    "signature": "mixin(object $mixin, bool $replace = true) -> void"
+  },
+  {
+    "name": "hasMacro",
+    "signature": "hasMacro(string $name) -> bool"
+  },
+  {
+    "name": "flushMacros",
+    "signature": "flushMacros() -> void"
+  }
+]

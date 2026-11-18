@@ -27,3 +27,14 @@ yet inferred. Scanning is bounded to 512 KiB; larger documents rely on LSP.
 This slice covers Route static methods. Eloquent model/member inference and
 other facade method packs remain separate work. Existing quoted route-name,
 view, config and middleware completions are unchanged.
+
+## Additional facade packs
+
+Auth, Cache and DB now use the same guarded static-member fallback as Route.
+Each pack contains only that facade's declared methods. Full facade names and
+imported aliases work; unrelated imports and user-defined shadow classes do
+not bind to a bundled facade. These are also Laravel 12 baselines, not a runtime
+or installed-version check. Their source digests and counts are recorded in
+metadata/laravel/facade-manifest.json. Auth, Cache and DB have 58, 60 and 107
+methods respectively. Other facades and inferred Eloquent members are not part
+of these packs.

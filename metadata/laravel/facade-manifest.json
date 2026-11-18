@@ -1,0 +1,29 @@
+[
+  {
+    "facade": "Auth",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Auth.php",
+    "source_sha256": "29d8b7cc5fd4d37bd472abefdc8de2785c75f4bbe7a911def9b84fa3aca6a8ed",
+    "method_count": 58,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "Cache",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/Cache.php",
+    "source_sha256": "9844289c0538aa8dfdab910d67da20c105c678d65643b9cd9abb796d26c5ebb1",
+    "method_count": 60,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  },
+  {
+    "facade": "DB",
+    "version": "Laravel 12 baseline",
+    "source_url": "https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Support/Facades/DB.php",
+    "source_sha256": "4f224c2c6a9cc4f589a0782d9185aa72e3410837c97dbf6df8134361eed73805",
+    "method_count": 107,
+    "retrieved_on": "2026-11-18",
+    "generation": "@method static declarations; no project type or runtime resolution"
+  }
+]
