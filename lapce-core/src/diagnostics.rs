@@ -287,6 +287,32 @@ pub fn diagnostics_report(
     s
 }
 
+/// Shareable About summary. Do not pass through endpoint URLs, model names,
+/// private filesystem paths or crash-log contents into the UI or clipboard.
+pub fn support_summary(version: &str, autocomplete: &str, chat: &str) -> String {
+    let version: String = version.chars().filter(|c| c.is_ascii_alphanumeric() || ".+-_".contains(*c)).take(80).collect();
+    let backend = |value: &str| match value {
+        "local" => "On-device CPU",
+        "ollama" => "Configured model endpoint",
+        _ => "Other configured backend",
+    };
+    format!("Gravity Editor diagnostics\n\nBuild: {version}\nPlatform: {} {}\nDebug logging: {}\n\nInline suggestions: {}\nAgent chat: {}\nConnection health: not tested\n\nPrivacy: endpoints, model IDs, account details, private paths and crash-log contents are omitted.\nLocal configuration keeps its existing storage location for compatibility.",
+        std::env::consts::OS, std::env::consts::ARCH,
+        if is_debug() { "on" } else { "off" }, backend(autocomplete), backend(chat))
+}
+#[cfg(test)]
+mod support_summary_tests {
+    #[test]
+    fn summary_never_copies_untrusted_config_or_private_details() {
+        let report = super::support_summary("v1\nsecret:token", "https://user:secret@private.test/path?key=token", "ollama");
+        assert!(report.starts_with("Gravity Editor diagnostics"));
+        assert!(report.contains("Connection health: not tested"));
+        for hidden in ["secret:token", "https://", "user:", "private.test", "key=token", "proxy: connected"] { assert!(!report.contains(hidden)); }
+        assert!(report.contains("Configured model endpoint"));
+        assert!(report.len() < 900);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

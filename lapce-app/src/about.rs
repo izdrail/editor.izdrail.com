@@ -100,7 +100,7 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
     let about_data = window_tab_data.about_data.clone();
     let config = window_tab_data.common.config;
     let internal_command = window_tab_data.common.internal_command;
-    let logo_size = 100.0;
+    let logo_size = 64.0;
 
     exclusive_popup(window_tab_data, about_data.visible, move || {
         stack((
@@ -120,29 +120,14 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
             {
                 let report = {
                     let c = config.get_untracked();
-                    let ai = &c.ai_autocomplete;
-                    let chat = &c.ai_chat;
-                    let chat_model = if chat.backend == "local" {
-                        chat.local_model.clone()
-                    } else {
-                        chat.model.clone()
-                    };
-                    let ai_model = if ai.backend == "local" {
-                        ai.local_model.clone()
-                    } else {
-                        ai.remote_model.clone()
-                    };
-                    lapce_core::diagnostics::diagnostics_report(
-                        VERSION,
-                        (&ai.backend, &ai.endpoint, &ai_model),
-                        (&chat.backend, &chat.endpoint, &chat_model),
-                        lapce_core::diagnostics::crash_log_tail(20),
+                    lapce_core::diagnostics::support_summary(
+                        VERSION, &c.ai_autocomplete.backend, &c.ai_chat.backend,
                     )
                 };
                 let copied = create_rw_signal(false);
                 let report_view = report.clone();
                 stack((
-                    label(|| "Diagnostics".to_string()).style(move |s| {
+                    label(|| "Support summary".to_string()).style(move |s| {
                         s.font_bold()
                             .margin_top(20.0)
                             .color(config.get().color(LapceColor::EDITOR_DIM))
@@ -150,7 +135,9 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                     container(
                         scroll(label(move || report_view.clone()).style(
                             move |s| {
-                                s.font_size(11.0)
+                                s.font_size(12.0)
+                                    .width_full().min_width(0.0)
+                                    .text_overflow(floem::style::TextOverflow::Wrap)
                                     .max_width_full()
                                     .color(
                                         config
@@ -163,8 +150,8 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                         .style(|s| s.width_full().height_full()),
                     )
                     .style(move |s| {
-                        s.width(420.0)
-                            .max_height(220.0)
+                        s.width(440.0)
+                            .height(236.0)
                             .margin_top(6.0)
                             .padding(8.0)
                             .border(1.0)
@@ -177,7 +164,7 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                         if copied.get() {
                             "Copied to clipboard".to_string()
                         } else {
-                            "Copy diagnostics".to_string()
+                            "Copy privacy-safe summary".to_string()
                         }
                     })
                     .on_click_stop(move |_| {
@@ -223,7 +210,7 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
             label(|| "Attributions".to_string()).style(move |s| {
                 s.font_bold()
                     .color(config.get().color(LapceColor::EDITOR_DIM))
-                    .margin_top(40.0)
+                    .margin_top(20.0)
             }),
             web_link(
                 || "Codicons (CC-BY-4.0)".to_string(),
@@ -258,7 +245,7 @@ fn exclusive_popup<V: View + 'static>(
                 .style(move |s| {
                     let config = config.get();
                     s.padding_vert(25.0)
-                        .padding_horiz(100.0)
+                        .padding_horiz(32.0)
                         .border(1.0)
                         .border_radius(6.0)
                         .border_color(config.color(LapceColor::LAPCE_BORDER))
