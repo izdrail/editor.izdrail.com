@@ -3407,6 +3407,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             }
         }
     });
+    let clear_composer_editor = composer.editor().clone();
     create_effect(move |_| {
         let input = input_signal.get();
         if input.is_empty() && !composer_doc.text().is_empty() {
@@ -3418,6 +3419,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 "",
                 EditType::Other,
             );
+            // Programmatic document edits do not move the editor cursor.
+            // Leaving it past the empty buffer makes the next insertion
+            // produce an invalid rope delta, including after Undo + New.
+            clear_composer_editor.cursor.update(|cursor| {
+                cursor.set_offset(0, false, false);
+            });
         }
     });
     // Row-click accept goes through the same shared helper; keyboard
@@ -3428,6 +3435,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             accept_mention_at(&doc, mention_popup, index)
         })
     };
+    let new_conversation_editor = composer.editor().clone();
     v_stack((
         // Conversation title with the existing pane actions. The title
         // yields width to the actions; model controls live in the composer.
@@ -3456,6 +3464,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     move || {
                         if !clear_busy.get_untracked() {
                             show_tools.set(false);
+                            mode_expanded.set(false);
+                            model_expanded.set(false);
+                            mention_popup.set(None);
                             clear.turns.set(Vec::new());
                             clear.history.set(Vec::new());
                             clear.input.set(String::new());
@@ -3468,6 +3479,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             clear.persist(
                                 config.get_untracked().ai_chat.save_history,
                             );
+                            // New is a writing action: the next keystroke belongs
+                            // in the empty composer, never the source editor.
+                            if let Some(view) = new_conversation_editor.editor_view_id.get_untracked() {
+                                view.request_focus();
+                            }
                         }
                     },
                     || false,

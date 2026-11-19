@@ -50,3 +50,7 @@ The read-only main-editor proposal diff now has **Accept file**, **Reject file**
 New conversations keep the project title, a short prompt and the bottom composer. The header's Conversation tools and settings button opens connection/key controls, saved chats, external agents, plans, manual review and context details. Prior checkpoints do not open themselves into a new chat. Pending proposals, errors and running work remain visible. Ask/Plan still show the complete project-read approval before use; hiding routine Chat chrome never grants permission.
 
 The conversation header stays above the scrolling body, so New conversation, tools and Stop remain reachable during long reviews and conversations. The composer stays pinned below it.
+
+New conversation also closes mode/model/mention popups and focuses the empty composer, so you can start typing without an extra click. It does not apply or discard pending edits.
+
+Clearing the composer resets its caret to the start of the empty draft, including after undo, so the next keystroke stays inside the document.
