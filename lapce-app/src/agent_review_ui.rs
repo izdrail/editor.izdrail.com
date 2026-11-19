@@ -29,6 +29,7 @@ use std::{
 #[derive(Clone)]
 pub struct ReviewData {
     pub proposal: RwSignal<Option<Proposal>>,
+    pub selections: RwSignal<BTreeMap<String, RwSignal<Vec<bool>>>>,
     pub checkpoint: RwSignal<Option<Checkpoint>>,
     pub recovered: RwSignal<bool>,
     pub error: RwSignal<String>,
@@ -76,6 +77,7 @@ impl ReviewData {
         let recovered = checkpoint.is_some();
         Self {
             proposal: cx.create_rw_signal(None),
+            selections: cx.create_rw_signal(BTreeMap::new()),
             checkpoint: cx.create_rw_signal(checkpoint),
             recovered: cx.create_rw_signal(recovered),
             error: cx.create_rw_signal(error),
@@ -249,6 +251,10 @@ impl ReviewData {
                 .map(|(p, d)| (p.clone(), d.buffer_id.0))
                 .collect(),
         );
+        self.selections.set(proposal.changes.iter().map(|change| {
+            let count = crate::agent_changes::hunks(&change.base.text, &change.proposed).len();
+            (change.path.clone(), create_rw_signal(vec![true; count]))
+        }).collect());
         self.proposal.set(Some(proposal));
         self.run_label.set(String::new());
         self.error.set(String::new());
@@ -542,6 +548,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     let notice = data.notice;
     let cp_data = data.clone();
     let cp_tab = tab.clone();
+    let selection_data = data.selections;
     // Collapsible: a one-line header by default, opening automatically
     // when a proposal or checkpoint arrives. Prepare stays on the header.
     let open = create_rw_signal(false);
@@ -608,10 +615,10 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
             let digest = short_digest(&proposal.digest().unwrap_or_default());
-            let items: Vec<(Change, RwSignal<Vec<bool>>)> = proposal.changes.iter().map(|c| {
-                let count = crate::agent_changes::hunks(&c.base.text, &c.proposed).len();
-                (c.clone(), create_rw_signal(vec![true; count]))
-            }).collect();
+            let selection = selection_data.get_untracked();
+            let items: Vec<(Change, RwSignal<Vec<bool>>)> = proposal.changes.iter()
+                .filter_map(|c| selection.get(&c.path).map(|mask| (c.clone(), *mask)))
+                .collect();
             let items_apply = items.clone();
             let tab_for_preview = tab.clone();
             let accept_all = data.clone(); let accept_tab = tab.clone();
@@ -765,6 +772,56 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     ))
     .style(|s| s.width_full().min_width(0.0).max_width_full())
 }
+/// Review controls in the main editor share the Agent panel's exact hunk mask.
+/// Only an exact pair of still-pending snapshots may expose active actions.
+pub fn editor_review_toolbar(
+    tab: Rc<WindowTabData>, left: Rc<Doc>, right: Rc<Doc>,
+) -> impl View {
+    let review = tab.chat.review.clone();
+    let pending = review.proposal;
+    let config = tab.common.config;
+    let visible = left.content.with_untracked(|c| c.is_agent_proposal_preview())
+        && right.content.with_untracked(|c| c.is_agent_proposal_preview());
+    floem::views::dyn_container(move || pending.get(), move |proposal| {
+        let path = right.content.with_untracked(|content| match content {
+            crate::doc::DocContent::Scratch { name, read_only: true, .. } =>
+                name.strip_prefix("Agent proposal proposed (read-only): ").map(str::to_string),
+            _ => None,
+        });
+        let before = left.buffer.with_untracked(|b| b.to_string());
+        let after = right.buffer.with_untracked(|b| b.to_string());
+        let matched = proposal.as_ref().and_then(|p| preview_change_match(p, path.as_deref(), &before, &after));
+        let mask = matched.and_then(|change| review.selections.with_untracked(|m| m.get(&change.path).copied()));
+        let body: AnyView = if let (Some(change), Some(mask), Some(proposal)) = (matched, mask, proposal.as_ref()) {
+            let counts: Vec<_> = crate::agent_changes::hunks(&change.base.text, &change.proposed).iter().map(|h| (h.added.len(), h.removed.len())).collect();
+            let displayed = proposal.clone();
+            let apply = review.clone(); let apply_tab = tab.clone();
+            h_stack((
+                label(|| "Before | Proposed (read-only)".to_string()).style(|s| s.font_size(11.0)),
+                label(move || file_selection_summary(&counts, Some(&mask.get()))).style(|s| s.font_size(10.0)),
+                label(|| "Accept file".to_string()).on_click_stop(move |_| mask.update(|m| m.fill(true)))
+                    .style(move |s| s.font_size(11.0).padding(4.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_ADDED))),
+                label(|| "Reject file".to_string()).on_click_stop(move |_| mask.update(|m| m.fill(false)))
+                    .style(move |s| s.font_size(11.0).padding(4.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_REMOVED))),
+                label(|| "Apply selected".to_string()).on_click_stop(move |_| {
+                    let selections = apply.selections.get_untracked();
+                    let masks = displayed.changes.iter().map(|c| selections.get(&c.path).map(|m| m.get_untracked()).unwrap_or_default()).collect();
+                    if let Err(error) = apply.apply_with(&apply_tab, &displayed, Some(masks)) { apply.error.set(error); }
+                }).style(|s| s.font_size(11.0).padding(4.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer)),
+            )).style(|s| s.width_full().min_width(0.0).gap(8.0).flex_wrap(floem::style::FlexWrap::Wrap)).into_any()
+        } else {
+            label(|| "Read-only proposal snapshot. No matching pending review; actions are unavailable.".to_string())
+                .style(|s| s.font_size(11.0).width_full().min_width(0.0).text_overflow(floem::style::TextOverflow::Wrap)).into_any()
+        };
+        body
+    }).style(move |s| s.width_full().min_width(0.0).padding(6.0).border_bottom(1.0)
+        .border_color(config.get().color(LapceColor::LAPCE_BORDER)).apply_if(!visible, |s| s.hide()))
+}
+
+fn preview_change_match<'a>(proposal: &'a Proposal, path: Option<&str>, before: &str, after: &str) -> Option<&'a Change> {
+    proposal.changes.iter().find(|change| Some(change.path.as_str()) == path && change.base.text == before && change.proposed == after)
+}
+
 /// After a reviewed proposal is applied, record what landed as a
 /// `.lapce/plans/walkthrough-<epoch>.md` artifact (Antigravity parity:
 /// the walkthrough summarizing a completed change). Returns the new
@@ -1380,5 +1437,20 @@ mod checkpoint_selection_tests {
         let checkpoint = Checkpoint { version: 1, proposal_digest: "a".repeat(64),
             snapshot: crate::agent_changes::Snapshot { before, applied }, state: State::Applied };
         checkpoint.validate().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod editor_review_binding_tests {
+    use super::*;
+    #[test]
+    fn snapshot_controls_require_exact_path_and_both_contents() {
+        let proposal = Proposal { run_id: "fixture".into(), changes: vec![Change {
+            path: "a.php".into(), base: BufferState { revision: 1, text: "before".into() }, proposed: "after".into(),
+        }] };
+        assert!(preview_change_match(&proposal, Some("a.php"), "before", "after").is_some());
+        for (path, before, after) in [(Some("b.php"), "before", "after"), (None, "before", "after"), (Some("a.php"), "stale", "after"), (Some("a.php"), "before", "stale")] {
+            assert!(preview_change_match(&proposal, path, before, after).is_none());
+        }
     }
 }

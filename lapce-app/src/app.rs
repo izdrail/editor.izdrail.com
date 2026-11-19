@@ -46,7 +46,7 @@ use floem::{
         editor::{core::register::Clipboard, text::SystemClipboard},
         empty, label,
         scroll::{PropagatePointerWheel, VerticalScrollAsHorizontal, scroll},
-        stack, svg, tab, text, tooltip, virtual_stack,
+        stack, svg, tab, text, tooltip, virtual_stack, v_stack,
     },
     window::{ResizeDirection, WindowConfig, WindowId},
 };
@@ -1410,7 +1410,11 @@ fn editor_tab_content(
                         create_rw_signal(diff_editor_data.left.clone());
                     let right_editor =
                         create_rw_signal(diff_editor_data.right.clone());
-                    stack((
+                    v_stack((
+                        crate::agent_review_ui::editor_review_toolbar(
+                            window_tab_data.clone(), diff_editor_data.left.doc(), diff_editor_data.right.doc(),
+                        ),
+                        stack((
                         container(
                             editor_container_view(
                                 window_tab_data.clone(),
@@ -1466,7 +1470,8 @@ fn editor_tab_content(
                             &diff_editor_data.right,
                         ),
                     ))
-                    .style(|s: Style| s.size_full())
+                        .style(|s: Style| s.width_full().min_height(0.0).flex_grow(1.0).flex_basis(0.0)),
+                    )).style(|s| s.size_full().min_height(0.0))
                     .on_cleanup(move || {
                         diff_editor_scope.dispose();
                     })
