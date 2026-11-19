@@ -80,3 +80,5 @@ The composer mode and model chips can receive keyboard focus. From the draft, Ta
 File suggestions accept only plain Enter or Tab. Shift+Tab closes suggestions and moves to the model chip without completing the mention. Shift+Enter keeps its newline behavior while suggestions are open. Other modified Enter/Tab shortcuts do not accept a suggestion.
 
 Conversation text wraps to the agent panel width, including formatted assistant answers and your message bubbles. Narrowing the panel keeps the full text readable instead of clipping long lines.
+
+While file suggestions are visible, plain Up/Down changes the suggestion and plain Escape dismisses it. Modified Up/Down stays with the editor, so Shift+Up/Down can select draft text instead of changing a suggestion.

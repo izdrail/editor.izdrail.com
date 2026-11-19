@@ -2237,6 +2237,11 @@ fn dropdown_row_style(
         })
 }
 
+fn composer_mention_navigation(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    modifiers.is_empty()
+        && matches!(key, Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp | NamedKey::Escape))
+}
+
 fn composer_mention_accepts(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     modifiers.is_empty()
         && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Tab))
@@ -3392,7 +3397,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 mention_popup.get_untracked()
             {
                 let consumed = match &keypress.key {
-                    KeyInput::Keyboard(Key::Named(NamedKey::ArrowDown), _) => {
+                    KeyInput::Keyboard(key @ Key::Named(NamedKey::ArrowDown), _) if composer_mention_navigation(key, mods) => {
                         let last = items.len().saturating_sub(1);
                         mention_popup.set(Some((
                             start,
@@ -3401,7 +3406,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         )));
                         true
                     }
-                    KeyInput::Keyboard(Key::Named(NamedKey::ArrowUp), _) => {
+                    KeyInput::Keyboard(key @ Key::Named(NamedKey::ArrowUp), _) if composer_mention_navigation(key, mods) => {
                         mention_popup.set(Some((
                             start,
                             selected.saturating_sub(1),
@@ -3414,7 +3419,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         accept_mention_at(&doc, mention_popup, selected);
                         true
                     }
-                    KeyInput::Keyboard(Key::Named(NamedKey::Escape), _) => {
+                    KeyInput::Keyboard(key @ Key::Named(NamedKey::Escape), _) if composer_mention_navigation(key, mods) => {
                         mention_popup.set(None);
                         true
                     }
@@ -5492,6 +5497,24 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_navigation_leaves_modified_selection_and_movement_to_the_editor() {
+        use super::composer_mention_navigation as navigates;
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        for key in [NamedKey::ArrowDown, NamedKey::ArrowUp, NamedKey::Escape] {
+            assert!(navigates(&Key::Named(key), Modifiers::empty()));
+            for bits in 1..16 {
+                let mut modifiers = Modifiers::empty();
+                for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] {
+                    if bits & bit != 0 { modifiers |= modifier; }
+                }
+                assert!(!navigates(&Key::Named(key), modifiers));
+            }
+        }
+        for key in [NamedKey::Enter, NamedKey::Tab, NamedKey::ArrowLeft, NamedKey::ArrowRight] {
+            assert!(!navigates(&Key::Named(key), Modifiers::empty()));
+        }
+    }
     #[test]
     fn mention_acceptance_requires_plain_enter_or_tab() {
         use super::composer_mention_accepts as accepts;
