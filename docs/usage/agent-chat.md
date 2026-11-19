@@ -62,3 +62,5 @@ Escape closes the composer mode or model menu and returns keyboard focus to the 
 Choosing a mode, external-agent preset or model also returns focus to the existing draft. Picking a menu item does not send the draft or grant project access.
 
 Main-editor proposal diffs reserve a separate rail for visible hunk decisions, so long proposed lines do not run behind Accept/Reject. Proposal snapshots scroll horizontally rather than soft wrap. The rail is released when no pending proposal matches those snapshots.
+
+The review section shows preparation instructions only when no proposal or checkpoint is present. Active reviews keep their hunk controls and buffer-only warning, without repeating setup instructions above them.

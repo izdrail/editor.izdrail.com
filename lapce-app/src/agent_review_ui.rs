@@ -536,6 +536,11 @@ fn proposal_summary(changes: &[Change]) -> String {
     format!("{} {noun} proposed +{added} -{removed}", changes.len())
 }
 
+/// Preparation instructions are useful only before there is work to review.
+fn show_review_preparation_help(has_proposal: bool, has_checkpoint: bool) -> bool {
+    !has_proposal && !has_checkpoint
+}
+
 pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     let config = tab.common.config;
     let data = tab.chat.review.clone();
@@ -611,7 +616,8 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
         .on_click_stop(move |_| open.update(|o| *o = !*o)),
         container(
         scroll(v_stack((
-        label(|| "Paste changes JSON in the composer, then Prepare review. Existing files or new paths, all under owner review. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
+        label(|| "Paste changes JSON in the composer, then Prepare review. Existing files or new paths, all under owner review. Checkpoints store private code locally. Act remains disabled.".to_string()).style(move |s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)
+            .apply_if(!show_review_preparation_help(proposals.get().is_some(), checkpoints.get().is_some()), |s| s.hide())),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
             let digest = short_digest(&proposal.digest().unwrap_or_default());
@@ -1194,6 +1200,14 @@ mod creation_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preparation_help_does_not_displace_active_review_or_checkpoint() {
+        assert!(super::show_review_preparation_help(false, false));
+        assert!(!super::show_review_preparation_help(true, false));
+        assert!(!super::show_review_preparation_help(false, true));
+        assert!(!super::show_review_preparation_help(true, true));
+    }
 
     #[test]
     fn proposal_summary_counts_only_real_staged_diff_lines() {
