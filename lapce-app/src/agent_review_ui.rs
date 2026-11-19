@@ -328,6 +328,7 @@ impl ReviewData {
                 };
                 (c.path.clone(), accepted)
             })
+            .filter(|(_, accepted)| *accepted > 0)
             .collect();
         let mut snapshot = match &masks {
             Some(masks) => current.stage_with_selection(&reviewed, &states, masks)?,
@@ -371,7 +372,9 @@ impl ReviewData {
         self.checkpoint_owners.set(self.owners.get_untracked());
         // One UI callback owns all loaded documents. No await, save or file create occurs.
         commit_buffers(&docs, staged);
-        checkpoint.snapshot.applied = Self::states(&docs);
+        checkpoint.snapshot.applied = checkpoint_owned_states(
+            &checkpoint.snapshot.before, Self::states(&docs),
+        );
         checkpoint.state = State::Applied;
         self.checkpoint.set(Some(checkpoint.clone()));
         self.recovered.set(false);
@@ -484,6 +487,15 @@ impl ReviewData {
         Ok(())
     }
 }
+/// A rejected file remains open but must not re-enter the selected checkpoint.
+fn checkpoint_owned_states(
+    before: &BTreeMap<String, BufferState>,
+    mut current: BTreeMap<String, BufferState>,
+) -> BTreeMap<String, BufferState> {
+    current.retain(|path, _| before.contains_key(path));
+    current
+}
+
 type StagedBuffers = crate::buffer_transaction::StagedBuffers<String>;
 fn staged_buffers(
     docs: &BTreeMap<String, Rc<Doc>>,
@@ -807,6 +819,10 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSi
     let after = change.proposed;
     let path = change.path;
     let hunks = crate::agent_changes::hunks(&before, &after);
+    let file_counts: Vec<(usize, usize)> = hunks.iter().map(|h| (h.added.len(), h.removed.len())).collect();
+    let file_status_counts = file_counts.clone();
+    let file_mask = mask;
+
     let diff = change_diff(&before, &after);
     let hunk_rows: Vec<_> = hunks.iter().enumerate().map(|(i, h)| {
         let title = format!("Hunk {} @ line {} (-{}/+{})", i + 1, h.base_start + 1, h.removed.len(), h.added.len());
@@ -847,7 +863,19 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSi
             .into_any(),
     };
     v_stack((
-        label(move || path.clone()).style(|s| s.max_width_full()),
+        label(move || review_path_label(&path)).style(|s| s.width_full().min_width(0.0).font_size(11.0).text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || {
+            let selected = file_mask.map(|mask| mask.get());
+            file_selection_summary(&file_status_counts, selected.as_deref())
+        }).style(|s| s.width_full().min_width(0.0).font_size(10.0).text_overflow(floem::style::TextOverflow::Wrap)),
+        h_stack((
+            label(|| "Accept file".to_string()).on_click_stop(move |_| {
+                if let Some(mask) = file_mask { mask.update(|values| values.fill(true)); }
+            }).style(move |s| s.font_size(10.0).padding_horiz(5.0).padding_vert(2.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_ADDED))),
+            label(|| "Reject file".to_string()).on_click_stop(move |_| {
+                if let Some(mask) = file_mask { mask.update(|values| values.fill(false)); }
+            }).style(move |s| s.font_size(10.0).padding_horiz(5.0).padding_vert(2.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_REMOVED))),
+        )).style(move |s| s.width_full().min_width(0.0).gap(6.0).apply_if(file_mask.is_none(), |s| s.hide())),
         label(|| "Open read-only editor diff".to_string())
             .on_click_stop(move |_| {
                 if let Some(tab) = &preview_tab {
@@ -858,6 +886,29 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSi
 
     ))
     .style(|s| s.width_full().min_width(0.0).max_width_full())
+}
+
+/// Give long path components real break points. Label wrapping alone does not
+/// constrain intrinsic unbroken text width in nested diff scroll views.
+fn review_path_label(path: &str) -> String {
+    let mut out = String::new();
+    for component in path.split_inclusive('/') {
+        if !out.is_empty() { out.push('\n'); }
+        for (i, ch) in component.chars().enumerate() {
+            if i > 0 && i % 28 == 0 { out.push('\n'); }
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Per-file totals stay proposed; selected totals follow the actual hunk mask.
+fn file_selection_summary(counts: &[(usize, usize)], selected: Option<&[bool]>) -> String {
+    let total = counts.iter().fold((0, 0), |(a, r), (add, remove)| (a + add, r + remove));
+    let Some(selected) = selected else { return format!("Diff +{} -{}", total.0, total.1); };
+    let accepted = counts.iter().enumerate().filter(|(i, _)| selected.get(*i).copied().unwrap_or(false))
+        .fold((0, 0, 0), |(n, a, r), (_, (add, remove))| (n + 1, a + add, r + remove));
+    format!("Proposed +{} -{} | Selected {}/{} hunks +{} -{}", total.0, total.1, accepted.0, counts.len(), accepted.1, accepted.2)
 }
 
 fn change_diff(before: &str, after: &str) -> String {
@@ -1282,5 +1333,52 @@ mod manual_review_tests {
             assert!(parse_draft(text).is_err());
         }
         assert!(manual_review_candidate(r#"{"changes":[{"path":"a.php","replacement":"x"}]}"#));
+    }
+}
+
+#[cfg(test)]
+mod file_selection_summary_tests {
+    use super::file_selection_summary;
+    #[test]
+    fn file_totals_and_selected_lines_are_separate_and_exact() {
+        let counts = [(2, 1), (0, 3)];
+        assert_eq!(file_selection_summary(&counts, Some(&[true, false])), "Proposed +2 -4 | Selected 1/2 hunks +2 -1");
+        assert_eq!(file_selection_summary(&counts, Some(&[false, false])), "Proposed +2 -4 | Selected 0/2 hunks +0 -0");
+        assert_eq!(file_selection_summary(&counts, Some(&[true, true])), "Proposed +2 -4 | Selected 2/2 hunks +2 -4");
+        assert_eq!(file_selection_summary(&counts, None), "Diff +2 -4");
+        assert_eq!(file_selection_summary(&[], Some(&[])), "Proposed +0 -0 | Selected 0/0 hunks +0 -0");
+        assert_eq!(file_selection_summary(&counts, Some(&[])), "Proposed +2 -4 | Selected 0/2 hunks +0 -0");
+    }
+}
+
+#[cfg(test)]
+mod review_path_label_tests {
+    #[test]
+    fn long_paths_have_bounded_unicode_safe_display_lines() {
+        let path = format!("src/Services/{}/Example.php", "界".repeat(65));
+        let label = super::review_path_label(&path);
+        assert!(label.lines().all(|line| line.chars().count() <= 28));
+        assert_eq!(label.replace('\n', ""), path);
+        assert_eq!(super::review_path_label("example.php"), "example.php");
+    }
+}
+
+#[cfg(test)]
+mod checkpoint_selection_tests {
+    use super::*;
+    #[test]
+    fn rejected_file_does_not_reenter_applied_journal() {
+        let state = |text: &str| BufferState { revision: 1, text: text.into() };
+        let before = BTreeMap::from([("accepted.php".into(), state("before"))]);
+        let current = BTreeMap::from([
+            ("accepted.php".into(), state("after")),
+            ("rejected.php".into(), state("untouched")),
+        ]);
+        let applied = checkpoint_owned_states(&before, current);
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied["accepted.php"].text, "after");
+        let checkpoint = Checkpoint { version: 1, proposal_digest: "a".repeat(64),
+            snapshot: crate::agent_changes::Snapshot { before, applied }, state: State::Applied };
+        checkpoint.validate().unwrap();
     }
 }
