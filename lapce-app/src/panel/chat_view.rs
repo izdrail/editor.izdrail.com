@@ -808,6 +808,7 @@ fn acp_agent_row(
     set_config: WriteSignal<Arc<LapceConfig>>,
     config: ReadSignal<Arc<LapceConfig>>,
     mode_expanded: RwSignal<bool>,
+    restore_composer_focus: RwSignal<bool>,
     name: &'static str,
     command: &'static str,
 ) -> impl View {
@@ -831,6 +832,7 @@ fn acp_agent_row(
                 click.resume_id.set(None);
             }
             mode_expanded.set(false);
+            restore_composer_focus.set(true);
         })
         .style(move |s| {
             dropdown_row_style(
@@ -2894,6 +2896,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     chat_mode.resume_id.set(None);
                                 }
                                 mode_expanded.set(false);
+                                restore_composer_focus.set(true);
                             })
                             .style(move |s| {
                                 dropdown_row_style(
@@ -2915,6 +2918,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     ask_mode.resume_id.set(None);
                                 }
                                 mode_expanded.set(false);
+                                restore_composer_focus.set(true);
                             })
                             .style(move |s| {
                                 dropdown_row_style(
@@ -2935,6 +2939,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     plan_mode.resume_id.set(None);
                                 }
                                 mode_expanded.set(false);
+                                restore_composer_focus.set(true);
                             })
                             .style(move |s| {
                                 dropdown_row_style(
@@ -2955,6 +2960,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     act_mode.resume_id.set(None);
                                 }
                                 mode_expanded.set(false);
+                                restore_composer_focus.set(true);
                             })
                             .style(move |s| {
                                 dropdown_row_style(
@@ -2973,6 +2979,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     acp_mode.resume_id.set(None);
                                 }
                                 mode_expanded.set(false);
+                                restore_composer_focus.set(true);
                             })
                             .style(move |s| {
                                 dropdown_row_style(
@@ -2990,6 +2997,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     acp_resume.resume_id.set(None);
                                 }
                                 mode_expanded.set(false);
+                                restore_composer_focus.set(true);
                             })
                             .style(move |s| {
                                 dropdown_row_style(
@@ -3004,6 +3012,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 picker_set_config,
                                 config,
                                 mode_expanded,
+                                restore_composer_focus,
                                 crate::chat::ACP_AGENTS[0].0,
                                 crate::chat::ACP_AGENTS[0].1,
                             ),
@@ -3012,6 +3021,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 picker_set_config,
                                 config,
                                 mode_expanded,
+                                restore_composer_focus,
                                 crate::chat::ACP_AGENTS[1].0,
                                 crate::chat::ACP_AGENTS[1].1,
                             ),
@@ -3020,6 +3030,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 picker_set_config,
                                 config,
                                 mode_expanded,
+                                restore_composer_focus,
                                 crate::chat::ACP_AGENTS[2].0,
                                 crate::chat::ACP_AGENTS[2].1,
                             ),
@@ -3028,6 +3039,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 picker_set_config,
                                 config,
                                 mode_expanded,
+                                restore_composer_focus,
                                 crate::chat::ACP_AGENTS[3].0,
                                 crate::chat::ACP_AGENTS[3].1,
                             ),
@@ -3166,6 +3178,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         ),
                                     );
                                     model_expanded.set(false);
+                                    restore_composer_focus.set(true);
                                 })
                                 .style(move |s| {
                                     let c = config.get();
