@@ -90,3 +90,5 @@ Your message bubbles show the exact prompt as plain text, including Markdown mar
 With the mode menu open, plain Up/Down highlights Chat, Ask, Plan, Act, ACP or Resume. Home/End jumps to the first/last mode. Enter picks the highlighted mode and returns to the draft. Navigation alone does not change the mode or start a request; Escape or Tab closes without picking. Agent-specific rows remain available by mouse.
 
 The model menu also supports plain Up/Down and Home/End, skipping unavailable or informational rows. Enter selects only an explicitly highlighted, available model and returns to the draft. Escape/Tab cancels; browsing models does not send the draft.
+
+Space, like Enter, picks an explicitly highlighted mode or model. With no keyboard highlight it does nothing, so the same key that opens the chip does not silently accept a choice. Modified Space never selects a menu row.

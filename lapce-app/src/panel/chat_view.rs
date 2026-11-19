@@ -2282,7 +2282,7 @@ fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sele
         Key::Named(NamedKey::ArrowUp) => Some(Highlight(selected.map_or(5, |i| i.saturating_sub(1)))),
         Key::Named(NamedKey::Home) => Some(Highlight(0)),
         Key::Named(NamedKey::End) => Some(Highlight(5)),
-        Key::Named(NamedKey::Enter) => selected.map(Pick),
+        Key::Named(NamedKey::Enter | NamedKey::Space) => selected.map(Pick),
         _ => None,
     }
 }
@@ -2296,7 +2296,7 @@ fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sel
         Key::Named(NamedKey::ArrowUp) => enabled().rev().find(|i| selected.is_none_or(|current| *i < current)).or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight),
         Key::Named(NamedKey::Home) => enabled().next().map(Highlight),
         Key::Named(NamedKey::End) => enabled().next_back().map(Highlight),
-        Key::Named(NamedKey::Enter) => selected.filter(|i| pickable.get(*i) == Some(&true)).map(Pick),
+        Key::Named(NamedKey::Enter | NamedKey::Space) => selected.filter(|i| pickable.get(*i) == Some(&true)).map(Pick),
         _ => None,
     }
 }
@@ -2982,7 +2982,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 mode_expanded.set(false);
                                 restore_composer_focus.set(true);
                             }
-                            None => return false,
+                            None => return matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space)),
                         }
                         true
                     });
@@ -3210,7 +3210,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 model_expanded.set(false);
                                 restore_composer_focus.set(true);
                             }
-                            None => return false,
+                            None => return matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space)),
                         }
                         true
                     });
@@ -5630,6 +5630,7 @@ mod quiet_conversation_tests {
         let enabled = [false, true, false, true, false];
         let run = |named, selected| key(&Key::Named(named), Modifiers::empty(), selected, &enabled);
         assert_eq!(run(Enter, None), None);
+        assert_eq!(run(Space, None), None);
         assert_eq!(run(ArrowDown, None), Some(Highlight(1)));
         assert_eq!(run(ArrowDown, Some(1)), Some(Highlight(3)));
         assert_eq!(run(ArrowDown, Some(3)), Some(Highlight(3)));
@@ -5639,9 +5640,11 @@ mod quiet_conversation_tests {
         assert_eq!(run(Home, Some(3)), Some(Highlight(1)));
         assert_eq!(run(End, Some(1)), Some(Highlight(3)));
         assert_eq!(run(Enter, Some(1)), Some(Pick(1)));
+        assert_eq!(run(Space, Some(1)), Some(Pick(1)));
+        assert_eq!(run(Space, Some(2)), None);
         assert_eq!(run(Enter, Some(2)), None);
         assert_eq!(run(Enter, Some(90)), None);
-        for named in [ArrowDown, ArrowUp, Home, End, Enter] {
+        for named in [ArrowDown, ArrowUp, Home, End, Enter, Space] {
             assert_eq!(key(&Key::Named(named.clone()), Modifiers::empty(), None, &[]), None);
             assert_eq!(key(&Key::Named(named.clone()), Modifiers::empty(), Some(0), &[false]), None);
             for bits in 1..16 {
@@ -5656,6 +5659,7 @@ mod quiet_conversation_tests {
         use super::{composer_mode_menu_key as key, ComposerModeMenuKey::*};
         use floem::keyboard::{Key, NamedKey::*, Modifiers};
         assert_eq!(key(&Key::Named(Enter), Modifiers::empty(), None), None);
+        assert_eq!(key(&Key::Named(Space), Modifiers::empty(), None), None);
         assert_eq!(key(&Key::Named(ArrowDown), Modifiers::empty(), None), Some(Highlight(0)));
         assert_eq!(key(&Key::Named(ArrowUp), Modifiers::empty(), None), Some(Highlight(5)));
         assert_eq!(key(&Key::Named(ArrowDown), Modifiers::empty(), Some(5)), Some(Highlight(5)));
@@ -5663,10 +5667,11 @@ mod quiet_conversation_tests {
         assert_eq!(key(&Key::Named(Home), Modifiers::empty(), Some(3)), Some(Highlight(0)));
         assert_eq!(key(&Key::Named(End), Modifiers::empty(), Some(2)), Some(Highlight(5)));
         assert_eq!(key(&Key::Named(Enter), Modifiers::empty(), Some(2)), Some(Pick(2)));
+        assert_eq!(key(&Key::Named(Space), Modifiers::empty(), Some(2)), Some(Pick(2)));
         for bits in 1..16 {
             let mut mods = Modifiers::empty();
             for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] { if bits & bit != 0 { mods |= modifier; } }
-            for named in [ArrowDown, ArrowUp, Home, End, Enter] { assert_eq!(key(&Key::Named(named), mods, Some(2)), None); }
+            for named in [ArrowDown, ArrowUp, Home, End, Enter, Space] { assert_eq!(key(&Key::Named(named), mods, Some(2)), None); }
         }
     }
     #[test]
