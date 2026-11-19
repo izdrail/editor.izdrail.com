@@ -2483,6 +2483,14 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
 
 // Only endpoint-backed modes need the remote project-read disclosure.
 // Keep unknown backends conservative rather than hiding the permission gate.
+fn conversation_review_visible(tools_open: bool, pending: bool, error: bool) -> bool {
+    tools_open || pending || error
+}
+
+fn project_approval_visible(backend: &str, acp: bool, mode: Option<crate::agent_loop::Mode>, tools_open: bool) -> bool {
+    show_project_read_approval(backend) && (tools_open || (!acp && mode.is_some()))
+}
+
 fn show_project_read_approval(backend: &str) -> bool {
     backend != "local"
 }
@@ -2624,6 +2632,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // editor's floem focus events below.
     let composer_focused = floem::reactive::create_rw_signal(false);
     let config = tab.common.config;
+    let show_tools = floem::reactive::create_rw_signal(false);
+    let tools_review = data.review.proposal;
+    let tools_error = data.review.error;
+    let tools_mode = data.mode;
+    let tools_acp = data.acp;
+    let tools_busy = data.busy;
 
     let click_tab = tab.clone();
     let context_chip_tab = tab.clone();
@@ -2646,7 +2660,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let walkthrough_tab = tab.clone();
     let walkthrough = data.clone();
     let schedules_tab = tab.clone();
-    let settings_tab = tab.clone();
     let summary_tab = tab.clone();
     let hide_tab = tab.clone();
     let hide_title_tab = tab.clone();
@@ -3443,6 +3456,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     || LapceIcons::ADD,
                     move || {
                         if !clear_busy.get_untracked() {
+                            show_tools.set(false);
                             clear.turns.set(Vec::new());
                             clear.history.set(Vec::new());
                             clear.input.set(String::new());
@@ -3476,7 +3490,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     move || !stop_busy.get(),
                     || "Stop",
                     config,
-                ),
+                ).style(move |s| s.apply_if(!stop_busy.get(), |s| s.hide())),
                 clickable_icon(
                     || LapceIcons::BOOK,
                     move || {
@@ -3505,7 +3519,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     || false,
                     || "Export walkthrough",
                     config,
-                ),
+                ).style(move |s| s.apply_if(!show_tools.get(), |s| s.hide())),
                 clickable_icon(
                     || LapceIcons::HISTORY,
                     move || {
@@ -3534,16 +3548,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     || false,
                     || "Scheduled prompts",
                     config,
-                ),
+                ).style(move |s| s.apply_if(!show_tools.get(), |s| s.hide())),
                 clickable_icon(
                     || LapceIcons::SETTINGS,
                     move || {
-                        settings_tab.common.settings_section.set(Some("AI".into()));
-                        settings_tab.main_split.open_settings();
+                        show_tools.update(|open| *open = !*open);
                     },
                     || false,
                     || false,
-                    || "Open AI settings",
+                    || "Conversation tools and settings",
                     config,
                 ),
                 clickable_icon(
@@ -3565,6 +3578,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .justify_between()
                 .padding_vert(2.0)
         }),
+        v_stack((
         v_stack((
             label(move || {
                 let c = config.get();
@@ -3926,6 +3940,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .width_full()
                 .gap(2.0)
         }),
+        )).style(move |s| s.width_full().min_width(0.0).gap(8.0)
+            .apply_if(!show_tools.get(), |s| s.hide())),
         // Live runs (item 205): every agent run in this window, newest
         // first, each Stop wired to the run's own cancellation flag -
         // the same flag the panel's Stop button sets. Hidden when
@@ -4021,7 +4037,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             )
                         }),
                         label(|| {
-                            "Ask the agent to work on this project."
+                            "How can I help?"
                                 .to_string()
                         })
                         .style(move |s| {
@@ -4030,7 +4046,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config.get().color(LapceColor::EDITOR_FOREGROUND),
                             )
                         }),
-                        label(|| "Start a draft. Nothing is sent until you press Send. In the composer: Alt+1 explain, Alt+2 review, Alt+3 tests.".to_string())
+                        label(|| "Start a draft. Nothing is sent until you press Send.".to_string())
                             .style(move |s| s.font_size(11.0).max_width_full().min_width(0.0)
                                 .text_overflow(floem::style::TextOverflow::Wrap)
                                 .color(config.get().color(LapceColor::EDITOR_DIM))),
@@ -4051,7 +4067,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         .cursor(CursorStyle::Pointer)
                                         .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))))
                             },
-                        ).style(|s| s.flex_col().width_full().min_width(0.0).gap(6.0).margin_top(10.0)),
+                        ).style(|s| s.hide()),
                     ))
                     .style(move |s| {
                         let s = s
@@ -4340,7 +4356,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .flex_shrink(0.0)
         }),
         pending_command_card(tab.clone()),
-        crate::agent_review_ui::panel(tab.clone()),
+        container(crate::agent_review_ui::panel(tab.clone()))
+            .style(move |s| s.width_full().min_width(0.0)
+                .apply_if(!conversation_review_visible(show_tools.get(), tools_review.get().is_some(), !tools_error.get().is_empty()), |s| s.hide())),
         chat_error_card(tab.clone()),
     )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
         .min_height_pct(100.0).padding_horiz(8.0).padding_top(8.0).gap(8.0)))
@@ -4403,7 +4421,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         ))
         .style(move |s| {
             let s = s.width_full().min_width(0.0).flex_shrink(0.0).gap(6.0);
-            if show_project_read_approval(&config.get().ai_chat.backend) {
+            if project_approval_visible(&config.get().ai_chat.backend, tools_acp.get(), tools_mode.get(), show_tools.get()) {
                 s
             } else {
                 s.display(Display::None)
@@ -4430,6 +4448,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .max_width_full().min_width(0.0).flex_shrink(0.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)
                 .color(config.get().color(LapceColor::EDITOR_DIM))
+                .apply_if(!tools_busy.get(), |s| s.hide())
         }),
         v_stack((
             label(move || crate::agent_scope_ui::scope_hint(
@@ -4447,7 +4466,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .text_overflow(floem::style::TextOverflow::Wrap)
                     .color(config.get().color(LapceColor::EDITOR_DIM))),
         )).style(move |s| s.width_full().min_width(0.0).padding(8.0).gap(5.0)
-            .border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))),
+            .border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .apply_if(!show_tools.get(), |s| s.hide())),
         // Antigravity-style composer card: mode chips and the input live
         // inside one bordered card; send is a circular accent button.
         container(
@@ -5284,5 +5304,27 @@ mod completed_duration_tests {
         assert_eq!(completion_duration_label(&RunState::Done, None), "");
         assert_eq!(completion_duration_label(&RunState::Running, Some(8)), "");
         assert_eq!(completion_duration_label(&RunState::Idle, Some(8)), "");
+    }
+}
+
+#[cfg(test)]
+mod quiet_conversation_tests {
+    use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn pending_review_and_errors_never_hide_with_tools() {
+        assert!(!conversation_review_visible(false, false, false));
+        assert!(conversation_review_visible(true, false, false));
+        assert!(conversation_review_visible(false, true, false));
+        assert!(conversation_review_visible(false, false, true));
+    }
+    use crate::agent_loop::Mode;
+    #[test]
+    fn chat_stays_quiet_but_project_modes_keep_approval_visible() {
+        assert!(!project_approval_visible("ollama", false, None, false));
+        assert!(project_approval_visible("ollama", false, Some(Mode::Ask), false));
+        assert!(project_approval_visible("ollama", false, Some(Mode::Plan), false));
+        assert!(project_approval_visible("ollama", false, None, true));
+        assert!(!project_approval_visible("local", false, Some(Mode::Ask), true));
+        assert!(!project_approval_visible("ollama", true, Some(Mode::Ask), false));
     }
 }
