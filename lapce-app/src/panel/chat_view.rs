@@ -743,30 +743,38 @@ fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> 
     scored.into_iter().take(cap).map(|(_, f)| f.clone()).collect()
 }
 
-/// Insert the selected mention over the tracked tail token (the
-/// token's end is the document end) via the editor doc, which re-syncs
-/// the input signal through the composer's .update() hook. Shared by
-/// the composer's key handler (Enter/Tab) and row clicks.
+/// Validate the currently displayed tail before replacing it. A stale row
+/// must not remove text after the user has already edited the draft.
+fn mention_completion(text: &str, start: usize, path: &str) -> Option<(String, usize)> {
+    let (query, current_start) = trailing_mention(text)?;
+    if start != current_start || mention_score(&query, path).is_none() {
+        return None;
+    }
+    let replacement = format!("@{path} ");
+    let end = start.checked_add(replacement.len())?;
+    Some((replacement, end))
+}
+
+/// Insert over the tracked tail and return the new caret offset. Document
+/// edits alone do not move the editor cursor, including mouse acceptance.
 fn accept_mention_at(
     doc: &Rc<dyn floem::views::editor::text::Document>,
     mention_popup: RwSignal<Option<(usize, usize, Vec<String>)>>,
     index: usize,
-) {
-    if let Some((start, _selected, items)) = mention_popup.get_untracked()
-    {
-        if let Some(path) = items.get(index) {
-            use floem::views::editor::core::{
-                editor::EditType, selection::Selection,
-            };
-            let replacement = format!("@{path} ");
-            doc.edit_single(
-                Selection::region(start, doc.text().len()),
-                replacement.as_str(),
-                EditType::Other,
-            );
-        }
-    }
+) -> Option<usize> {
+    let completion = mention_popup.get_untracked().and_then(|(start, _, items)| {
+        let path = items.get(index)?;
+        mention_completion(&doc.text().to_string(), start, path)
+            .map(|(replacement, end)| (start, replacement, end))
+    });
     mention_popup.set(None);
+    if let Some((start, replacement, end)) = completion {
+        use floem::views::editor::core::{editor::EditType, selection::Selection};
+        doc.edit_single(Selection::region(start, doc.text().len()), &replacement, EditType::Other);
+        Some(end)
+    } else {
+        None
+    }
 }
 
 fn resolve_mentions(
@@ -3555,7 +3563,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     }
                     KeyInput::Keyboard(key, _) if composer_mention_accepts(key, mods) => {
                         let doc = editor_sig.get_untracked().doc();
-                        accept_mention_at(&doc, mention_popup, selected);
+                        if let Some(end) = accept_mention_at(&doc, mention_popup, selected) {
+                            editor_sig.get_untracked().cursor.update(|cursor| cursor.set_offset(end, false, false));
+                        }
                         true
                     }
                     KeyInput::Keyboard(key @ Key::Named(NamedKey::Escape), _) if composer_mention_navigation(key, mods) => {
@@ -3686,8 +3696,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // accept lives in the composer's text_editor_keys handler above.
     let accept_mention = {
         let doc = composer.doc();
+        let editor = composer.editor().clone();
         Rc::new(move |index: usize| {
-            accept_mention_at(&doc, mention_popup, index)
+            if let Some(end) = accept_mention_at(&doc, mention_popup, index) {
+                editor.cursor.update(|cursor| cursor.set_offset(end, false, false));
+                if let Some(view) = editor.editor_view_id.get_untracked() {
+                    view.request_focus();
+                }
+            }
         })
     };
     let new_conversation_editor = composer.editor().clone();
@@ -5687,6 +5703,18 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_completion_tracks_utf8_caret_and_rejects_stale_tail() {
+        use super::mention_completion as complete;
+        assert_eq!(complete("check @ex", 6, "example.php"), Some(("@example.php ".into(), 19)));
+        assert_eq!(complete("é @ca", 3, "café.php"), Some(("@café.php ".into(), 14)));
+        assert_eq!(complete("@", 0, "example.php"), Some(("@example.php ".into(), 13)));
+        assert_eq!(complete("check @ex ", 6, "example.php"), None);
+        assert_eq!(complete("check changed", 6, "example.php"), None);
+        assert_eq!(complete("longer @ex", 6, "example.php"), None);
+        assert_eq!(complete("check @zzz", 6, "example.php"), None);
+        assert_eq!(complete("check @ex", usize::MAX, "example.php"), None);
+    }
     #[test]
     fn visual_draft_height_grows_shrinks_and_bounds_iteration() {
         use super::composer_draft_height as height;

@@ -100,3 +100,5 @@ With a mode or model menu open, type one unmodified letter or digit to highlight
 The composer grows for multiline drafts, then scrolls at a fixed height cap so the conversation stays visible. Removing lines shrinks it back. Shift+Enter still adds a line; plain Enter still sends.
 
 The composer grows for soft-wrapped lines too, using the editor's actual text layout and line height. Narrowing the panel grows the draft until its height cap; widening it or removing text shrinks it again.
+
+Accepting a file mention with Enter, Tab or a click moves the caret after the completed path and its trailing space. Clicking a suggestion returns focus to the draft so typing can continue. A stale suggestion does not replace a tail token that has already changed.
