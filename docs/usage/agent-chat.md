@@ -112,3 +112,5 @@ Suggestion highlighting and automatic scrolling follow the current selected file
 File suggestions only offer paths that the current @path syntax can attach unchanged on Send. Paths containing spaces, non-ASCII characters, a stripped punctuation suffix or more than 255 bytes, and root-level extensionless names are omitted rather than inserting a token that would silently target another path or attach nothing. Extensionless files inside a directory remain supported.
 
 Keyboard focus cycles from draft to mode, model, Send/Stop and back to draft, with Shift+Tab reversing the order. The action button has a visible focus ring; plain Enter or Space uses the same action as clicking it, while Escape returns to the draft. An empty idle draft remains inactive.
+
+When the Send/Stop button has keyboard focus, the existing footer explains its current action and the Escape route. It tells you to write a message for an empty idle draft, shows Send for a populated draft, and Stop during a run. Leaving the action restores the review-changes reminder without adding another row of controls.

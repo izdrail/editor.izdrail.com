@@ -2494,6 +2494,13 @@ fn composer_chip_key_target(
     })
 }
 
+fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
+    if !action_focused { "AI can make mistakes - review changes." }
+    else if busy { "Enter or Space to stop. Escape to draft." }
+    else if input.trim().is_empty() { "Write a message to send. Escape to draft." }
+    else { "Enter or Space to send. Escape to draft." }
+}
+
 fn composer_action_key(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     modifiers.is_empty() && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
 }
@@ -2816,6 +2823,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // Drives the composer card's focus ring; fed by the composer
     // editor's floem focus events below.
     let composer_focused = floem::reactive::create_rw_signal(false);
+    let action_focused = floem::reactive::create_rw_signal(false);
     let config = tab.common.config;
     let show_tools = floem::reactive::create_rw_signal(false);
     let tools_review = data.review.proposal;
@@ -5171,6 +5179,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             }),
                     )
                     .keyboard_navigable()
+                    .on_event_cont(EventListener::FocusGained, move |_| action_focused.set(true))
+                    .on_event_cont(EventListener::FocusLost, move |_| action_focused.set(false))
                     .on_click_stop(move |_| click_activate())
                     .on_event(EventListener::KeyDown, move |event| {
                         if let Event::KeyDown(key) = event {
@@ -5241,12 +5251,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .background(config.color(LapceColor::EDITOR_BACKGROUND))
         }),
         // Antigravity-style disclaimer under the composer.
-        label(|| {
-            "AI can make mistakes - review changes.".to_string()
+        label(move || {
+            composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
             s.font_size(11.0)
-                .max_width_full()
+                .max_width_full().min_width(0.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)
                 .align_self(Some(floem::style::AlignItems::Center))
                 .selectable(false)
                 .color(config.get().color(LapceColor::EDITOR_DIM))
@@ -5789,6 +5800,16 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn action_footer_explains_the_current_keyboard_action_without_extra_chrome() {
+        use super::composer_footer as footer;
+        assert_eq!(footer(false, false, ""), "AI can make mistakes - review changes.");
+        assert_eq!(footer(false, true, "draft"), footer(false, false, ""));
+        assert_eq!(footer(true, false, " \n"), "Write a message to send. Escape to draft.");
+        assert_eq!(footer(true, false, "draft"), "Enter or Space to send. Escape to draft.");
+        assert_eq!(footer(true, true, ""), "Enter or Space to stop. Escape to draft.");
+        assert_eq!(footer(true, true, "draft"), footer(true, true, ""));
+    }
     #[test]
     fn composer_action_only_activates_with_plain_enter_or_space() {
         use floem::keyboard::{Key, NamedKey, Modifiers};
