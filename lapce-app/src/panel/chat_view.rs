@@ -2243,6 +2243,7 @@ fn dropdown_row_style(
 fn composer_dropdown_overlay<V: View + 'static>(
     rows: V,
     expanded: RwSignal<bool>,
+    restore_composer_focus: RwSignal<bool>,
     origin: RwSignal<Point>,
     trigger_size: RwSignal<Size>,
     list_size: RwSignal<Size>,
@@ -2273,6 +2274,7 @@ fn composer_dropdown_overlay<V: View + 'static>(
                 Key::Named(NamedKey::Escape)
             ) {
                 expanded.set(false);
+                restore_composer_focus.set(true);
                 return EventPropagation::Stop;
             }
         }
@@ -2839,6 +2841,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // composer dropdown adds a window-level overlay positioned at its
     // trigger; closing removes it. The overlay takes keyboard focus, so
     // a click anywhere outside it (FocusLost) or Escape dismisses it.
+    let restore_composer_focus = floem::reactive::create_rw_signal(false);
     let mode_overlay = floem::reactive::create_rw_signal(None);
     let model_overlay = floem::reactive::create_rw_signal(None);
     let mode_origin = floem::reactive::create_rw_signal(Point::ZERO);
@@ -3034,6 +3037,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     composer_dropdown_overlay(
                         rows,
                         mode_expanded,
+                        restore_composer_focus,
                         mode_origin,
                         mode_trigger_size,
                         mode_list_size,
@@ -3187,6 +3191,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     composer_dropdown_overlay(
                         rows,
                         model_expanded,
+                        restore_composer_focus,
                         model_origin,
                         model_trigger_size,
                         model_list_size,
@@ -3390,6 +3395,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         .on_event_cont(EventListener::FocusLost, move |_| {
             composer_focused.set(false);
         });
+    let dropdown_return_editor = composer.editor().clone();
+    create_effect(move |_| {
+        if restore_composer_focus.get() {
+            restore_composer_focus.set(false);
+            if let Some(view) = dropdown_return_editor.editor_view_id.get_untracked() {
+                view.request_focus();
+            }
+        }
+    });
     let composer_doc = composer.doc();
     let selection_doc = composer.doc();
     let selection_editor = composer.editor().clone();

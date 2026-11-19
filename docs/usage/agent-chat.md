@@ -56,3 +56,5 @@ New conversation also closes mode/model/mention popups and focuses the empty com
 Clearing the composer resets its caret to the start of the empty draft, including after undo, so the next keystroke stays inside the document.
 
 An empty or whitespace-only draft keeps Send inactive. Clicking Send or pressing Enter on it does nothing and does not add an error notice. Stop remains available while work is running. Shift+Enter still inserts a newline.
+
+Escape closes the composer mode or model menu and returns keyboard focus to the draft. Clicking outside still leaves focus on the place you clicked.
