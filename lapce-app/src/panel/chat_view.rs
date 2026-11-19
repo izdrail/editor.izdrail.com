@@ -2287,6 +2287,20 @@ fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sele
     }
 }
 
+fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>, pickable: &[bool]) -> Option<ComposerModeMenuKey> {
+    if !modifiers.is_empty() { return None; }
+    use ComposerModeMenuKey::*;
+    let enabled = || pickable.iter().enumerate().filter_map(|(i, enabled)| enabled.then_some(i));
+    match key {
+        Key::Named(NamedKey::ArrowDown) => enabled().find(|i| selected.is_none_or(|current| *i > current)).or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight),
+        Key::Named(NamedKey::ArrowUp) => enabled().rev().find(|i| selected.is_none_or(|current| *i < current)).or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight),
+        Key::Named(NamedKey::Home) => enabled().next().map(Highlight),
+        Key::Named(NamedKey::End) => enabled().next_back().map(Highlight),
+        Key::Named(NamedKey::Enter) => selected.filter(|i| pickable.get(*i) == Some(&true)).map(Pick),
+        _ => None,
+    }
+}
+
 fn pick_composer_mode(data: &ChatData, index: usize) {
     if data.busy.get_untracked() || index > 5 { return; }
     data.mode.set(match index {
@@ -3183,6 +3197,23 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 let overlay_data = model_rows_data.clone();
                 let id = add_overlay(Point::ZERO, move |_| {
                     let items_data = overlay_data.clone();
+                    let model_keyboard = floem::reactive::create_rw_signal(None::<usize>);
+                    let keyboard_rows = floem::reactive::create_rw_signal(Vec::<(String, bool)>::new());
+                    let model_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
+                        let rows = keyboard_rows.get_untracked();
+                        let enabled = rows.iter().map(|(_, enabled)| *enabled).collect::<Vec<_>>();
+                        match composer_model_menu_key(key, mods, model_keyboard.get_untracked(), &enabled) {
+                            Some(ComposerModeMenuKey::Highlight(index)) => model_keyboard.set(Some(index)),
+                            Some(ComposerModeMenuKey::Pick(index)) => {
+                                let key = if config.get_untracked().ai_chat.backend == "local" { "local-model" } else { "model" };
+                                LapceConfig::update_file("ai-chat", key, toml_edit::Value::from(rows[index].0.clone()));
+                                model_expanded.set(false);
+                                restore_composer_focus.set(true);
+                            }
+                            None => return false,
+                        }
+                        true
+                    });
                     let view_data = overlay_data.clone();
                     // Rows: (label text, bare model id, pickable,
                     // capability). The label may carry a "(no
@@ -3191,6 +3222,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let rows = dyn_stack(
                         move || {
                             let c = config.get();
+                            let rows =
                             if items_data.acp.get() {
                                 vec![("ACP models are controlled by the agent, not this API endpoint.".to_string(), String::new(), false, None)]
                             } else if c.ai_chat.backend == "local" {
@@ -3250,15 +3282,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     }));
                                 rows
                             }
+                            ;
+                            keyboard_rows.set(rows.iter().map(|(_, id, enabled, _)| (id.clone(), *enabled)).collect());
+                            model_keyboard.set(None);
+                            rows.into_iter().enumerate().collect::<Vec<_>>()
                         },
-                        |(text, _, _, _): &(String, String, bool, Option<bool>)| {
+                        |(_, (text, _, _, _)): &(usize, (String, String, bool, Option<bool>))| {
                             text.clone()
                         },
-                        move |(text, id, pickable, cap)| {
+                        move |(index, (text, id, pickable, cap))| {
                             let id_pick = id.clone();
                             let id_active = id.clone();
                             let block_data = view_data.clone();
-                            label(move || text.clone())
+                            let row = label(move || text.clone())
                                 .on_click_stop(move |_| {
                                     if !pickable {
                                         // A known no-tools model in
@@ -3300,7 +3336,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     } else {
                                         c.ai_chat.model == id_active
                                     };
-                                    let s = dropdown_row_style(s, config, active);
+                                    let s = dropdown_row_style(s, config, active)
+                                        .apply_if(model_keyboard.get() == Some(index), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)));
                                     // Known no-tools rows read dim;
                                     // unknown rows are unchanged
                                     // (item 232 patch B).
@@ -3309,13 +3346,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     } else {
                                         s
                                     }
-                                })
+                                });
+                            let row_id = row.id();
+                            create_effect(move |_| {
+                                if model_keyboard.get() == Some(index) { row_id.scroll_to(None); }
+                            });
+                            row
                         },
                     )
                     .style(|s| s.flex_col().width_full().min_width(0.0));
                     composer_dropdown_overlay(
                         rows,
-                        None,
+                        Some(model_key),
                         model_expanded,
                         restore_composer_focus,
                         model_origin,
@@ -5581,6 +5623,34 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn model_menu_skips_disabled_rows_and_never_picks_without_a_highlight() {
+        use super::{composer_model_menu_key as key, ComposerModeMenuKey::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        let enabled = [false, true, false, true, false];
+        let run = |named, selected| key(&Key::Named(named), Modifiers::empty(), selected, &enabled);
+        assert_eq!(run(Enter, None), None);
+        assert_eq!(run(ArrowDown, None), Some(Highlight(1)));
+        assert_eq!(run(ArrowDown, Some(1)), Some(Highlight(3)));
+        assert_eq!(run(ArrowDown, Some(3)), Some(Highlight(3)));
+        assert_eq!(run(ArrowUp, None), Some(Highlight(3)));
+        assert_eq!(run(ArrowUp, Some(3)), Some(Highlight(1)));
+        assert_eq!(run(ArrowUp, Some(1)), Some(Highlight(1)));
+        assert_eq!(run(Home, Some(3)), Some(Highlight(1)));
+        assert_eq!(run(End, Some(1)), Some(Highlight(3)));
+        assert_eq!(run(Enter, Some(1)), Some(Pick(1)));
+        assert_eq!(run(Enter, Some(2)), None);
+        assert_eq!(run(Enter, Some(90)), None);
+        for named in [ArrowDown, ArrowUp, Home, End, Enter] {
+            assert_eq!(key(&Key::Named(named.clone()), Modifiers::empty(), None, &[]), None);
+            assert_eq!(key(&Key::Named(named.clone()), Modifiers::empty(), Some(0), &[false]), None);
+            for bits in 1..16 {
+                let mut mods = Modifiers::empty();
+                for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] { if bits & bit != 0 { mods |= modifier; } }
+                assert_eq!(key(&Key::Named(named.clone()), mods, Some(1), &enabled), None);
+            }
+        }
+    }
     #[test]
     fn mode_menu_keys_are_bounded_explicit_and_unmodified() {
         use super::{composer_mode_menu_key as key, ComposerModeMenuKey::*};

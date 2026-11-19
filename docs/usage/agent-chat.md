@@ -88,3 +88,5 @@ Use **Copy** beside an assistant answer to copy its original text, including Mar
 Your message bubbles show the exact prompt as plain text, including Markdown markers, links and code fences. Assistant answers still render Markdown. This display choice does not change what is sent or saved.
 
 With the mode menu open, plain Up/Down highlights Chat, Ask, Plan, Act, ACP or Resume. Home/End jumps to the first/last mode. Enter picks the highlighted mode and returns to the draft. Navigation alone does not change the mode or start a request; Escape or Tab closes without picking. Agent-specific rows remain available by mouse.
+
+The model menu also supports plain Up/Down and Home/End, skipping unavailable or informational rows. Enter selects only an explicitly highlighted, available model and returns to the draft. Escape/Tab cancels; browsing models does not send the draft.
