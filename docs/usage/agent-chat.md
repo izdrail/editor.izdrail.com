@@ -16,7 +16,7 @@ With the composer focused in an empty conversation, **Alt+1** appends Explain, *
 
 Open **Conversation tools and settings** to see the card above the composer with the selected mode's scope and **Attached on Send** context. Check the file or selection shown there before sending. It follows the active editor context; choosing a starter does not pin a particular file.
 
-Press **Enter** or click **Send** when ready. **Shift+Enter** inserts a newline. While a response is running, **Stop** cancels it. Cancellation does not undo changes you already accepted.
+Press **Enter** or click **Send** when ready. **Shift+Enter** inserts a newline. Ctrl, Alt or Super/Command plus Enter is not a Send shortcut. While a response is running, **Stop** cancels it. Cancellation does not undo changes you already accepted.
 
 ## Conversation and review
 

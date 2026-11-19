@@ -2237,6 +2237,10 @@ fn dropdown_row_style(
         })
 }
 
+fn composer_enter_sends(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    *key == Key::Named(NamedKey::Enter) && modifiers.is_empty()
+}
+
 fn composer_menu_returns_to_draft(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     use floem::keyboard::Modifiers;
     (*key == Key::Named(NamedKey::Escape) && modifiers.is_empty())
@@ -3425,9 +3429,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 if let Some(target) = target { target.request_focus(); }
                 return CommandExecuted::Yes;
             }
-            if matches!(&keypress.key, KeyInput::Keyboard(Key::Named(NamedKey::Enter), _))
-                && !mods.contains(floem::keyboard::Modifiers::SHIFT)
-            {
+            if matches!(&keypress.key, KeyInput::Keyboard(key, _) if composer_enter_sends(key, mods)) {
                 // Read the current composer document, not a possibly pending
                 // reactive update, before sending through the normal path.
                 let draft = editor_sig.get_untracked().doc().text().to_string();
@@ -5476,6 +5478,23 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn only_unmodified_enter_sends_the_composer() {
+        use super::composer_enter_sends as sends;
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        let enter = Key::Named(NamedKey::Enter);
+        assert!(sends(&enter, Modifiers::empty()));
+        for bits in 1..16 {
+            let mut modifiers = Modifiers::empty();
+            for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] {
+                if bits & bit != 0 { modifiers |= modifier; }
+            }
+            assert!(!sends(&enter, modifiers));
+        }
+        for key in [NamedKey::Tab, NamedKey::Space, NamedKey::Escape] {
+            assert!(!sends(&Key::Named(key), Modifiers::empty()));
+        }
+    }
     #[test]
     fn composer_menus_return_to_draft_without_capturing_modified_navigation() {
         use super::composer_menu_returns_to_draft as returns;
