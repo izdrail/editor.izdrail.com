@@ -4221,12 +4221,39 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         let has_context = !turn.context.is_empty();
                         let steps = turn.steps;
                         let render_id = std::sync::atomic::AtomicU64::new(0);
+                        let copy_status = floem::reactive::create_rw_signal("Copy");
+                        create_effect(move |_| {
+                            let _ = body.get();
+                            copy_status.set("Copy");
+                        });
                         v_stack((
-                            label(move || role.to_string()).style(move |s| {
-                                s.font_size(10.0).font_bold()
-                                    .color(config.get().color(LapceColor::EDITOR_DIM))
-                                    .apply_if(role == "You", |s| s.hide())
-                            }),
+                            h_stack((
+                                label(move || role.to_string()).style(move |s| {
+                                    s.font_size(10.0).font_bold()
+                                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                                }),
+                                label(move || copy_status.get().to_string())
+                                    .keyboard_navigable()
+                                    .on_click_stop(move |_| {
+                                        let text = body.get_untracked();
+                                        if text.is_empty() { return; }
+                                        copy_status.set(if floem::Clipboard::set_contents(text).is_ok() {
+                                            "Copied"
+                                        } else {
+                                            "Copy failed"
+                                        });
+                                    })
+                                    .style(move |s| s.font_size(10.0)
+                                        .padding_horiz(4.0).padding_vert(2.0)
+                                        .border_radius(3.0).cursor(CursorStyle::Pointer)
+                                        .selectable(false)
+                                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                                        .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
+                                        .focus(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
+                                        .apply_if(body.get().is_empty(), |s| s.hide())),
+                            )).style(move |s| s.width_full().padding_right(12.0)
+                                .items_center().justify_between()
+                                .apply_if(role == "You", |s| s.hide())),
                             label(move || turn.context.clone())
                                 .style(move |s| s.font_size(10.0).min_width(0.0).max_width_full()
                                     .text_overflow(floem::style::TextOverflow::Wrap)
