@@ -2237,6 +2237,11 @@ fn dropdown_row_style(
         })
 }
 
+fn composer_mention_accepts(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    modifiers.is_empty()
+        && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Tab))
+}
+
 fn composer_enter_sends(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     *key == Key::Named(NamedKey::Enter) && modifiers.is_empty()
 }
@@ -3404,8 +3409,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         )));
                         true
                     }
-                    KeyInput::Keyboard(Key::Named(NamedKey::Enter), _)
-                    | KeyInput::Keyboard(Key::Named(NamedKey::Tab), _) => {
+                    KeyInput::Keyboard(key, _) if composer_mention_accepts(key, mods) => {
                         let doc = editor_sig.get_untracked().doc();
                         accept_mention_at(&doc, mention_popup, selected);
                         true
@@ -3418,6 +3422,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 };
                 if consumed {
                     return CommandExecuted::Yes;
+                }
+                // Reverse traversal is not an acceptance gesture. Close the
+                // suggestions before focusing the model chip below.
+                if matches!(&keypress.key, KeyInput::Keyboard(Key::Named(NamedKey::Tab), _))
+                    && mods == floem::keyboard::Modifiers::SHIFT
+                {
+                    mention_popup.set(None);
                 }
             }
             if matches!(&keypress.key, KeyInput::Keyboard(Key::Named(NamedKey::Tab), _))
@@ -5478,6 +5489,24 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_acceptance_requires_plain_enter_or_tab() {
+        use super::composer_mention_accepts as accepts;
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        for key in [NamedKey::Enter, NamedKey::Tab] {
+            assert!(accepts(&Key::Named(key), Modifiers::empty()));
+            for bits in 1..16 {
+                let mut modifiers = Modifiers::empty();
+                for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] {
+                    if bits & bit != 0 { modifiers |= modifier; }
+                }
+                assert!(!accepts(&Key::Named(key), modifiers));
+            }
+        }
+        for key in [NamedKey::Space, NamedKey::Escape, NamedKey::ArrowDown] {
+            assert!(!accepts(&Key::Named(key), Modifiers::empty()));
+        }
+    }
     #[test]
     fn only_unmodified_enter_sends_the_composer() {
         use super::composer_enter_sends as sends;
