@@ -75,4 +75,4 @@ New conversation clears old preparation errors and notices when no proposal or c
 
 The welcome title and hints stay centered as they wrap, with separate spacing between each line of guidance. This layout does not change the draft or send it.
 
-The composer mode and model chips can receive keyboard focus. From the draft, Tab focuses the mode chip and Shift+Tab focuses the model chip. Tab moves between the chips; press Enter or Space to open its menu. A focus border identifies the current chip. Escape still closes the menu and returns to the draft without sending it.
+The composer mode and model chips can receive keyboard focus. From the draft, Tab focuses the mode chip and Shift+Tab focuses the model chip. Tab cycles through mode, model and back to the draft; Shift+Tab follows the reverse order. Press Enter or Space to open a chip menu. A focus border identifies the current chip. Escape returns to the draft from a focused chip or an open menu without sending it.

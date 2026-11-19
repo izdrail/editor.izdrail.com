@@ -2322,6 +2322,37 @@ fn composer_dropdown_overlay<V: View + 'static>(
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ComposerFocusTarget {
+    Draft,
+    Mode,
+    Model,
+}
+
+fn composer_chip_key_target(
+    model_chip: bool,
+    key: &Key,
+    modifiers: floem::keyboard::Modifiers,
+) -> Option<ComposerFocusTarget> {
+    use floem::keyboard::Modifiers;
+    if *key == Key::Named(NamedKey::Escape) && modifiers.is_empty() {
+        return Some(ComposerFocusTarget::Draft);
+    }
+    if *key != Key::Named(NamedKey::Tab)
+        || !(modifiers.is_empty() || modifiers == Modifiers::SHIFT)
+    {
+        return None;
+    }
+    let reverse = modifiers == Modifiers::SHIFT;
+    Some(if model_chip != reverse {
+        ComposerFocusTarget::Draft
+    } else if model_chip {
+        ComposerFocusTarget::Mode
+    } else {
+        ComposerFocusTarget::Model
+    })
+}
+
 /// A composer dropdown button: a small bordered chip.
 fn dropdown_button_style(
     s: floem::style::Style,
@@ -4708,10 +4739,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(move |s| dropdown_button_style(s, config));
                     let chip = chip.on_event(EventListener::KeyDown, move |event| {
                         if let Event::KeyDown(key) = event {
-                            if key.key.logical_key == Key::Named(NamedKey::Tab)
-                                && (key.modifiers.is_empty() || key.modifiers == floem::keyboard::Modifiers::SHIFT)
-                            {
-                                if let Some(target) = model_chip_id.get_untracked() { target.request_focus(); }
+                            if let Some(target) = composer_chip_key_target(
+                                false, &key.key.logical_key, key.modifiers,
+                            ) {
+                                match target {
+                                    ComposerFocusTarget::Draft => restore_composer_focus.set(true),
+                                    ComposerFocusTarget::Mode => {
+                                        if let Some(id) = mode_chip_id.get_untracked() { id.request_focus(); }
+                                    }
+                                    ComposerFocusTarget::Model => {
+                                        if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
+                                    }
+                                }
                                 return EventPropagation::Stop;
                             }
                         }
@@ -4790,10 +4829,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(move |s| dropdown_button_style(s, config));
                     let chip = chip.on_event(EventListener::KeyDown, move |event| {
                         if let Event::KeyDown(key) = event {
-                            if key.key.logical_key == Key::Named(NamedKey::Tab)
-                                && (key.modifiers.is_empty() || key.modifiers == floem::keyboard::Modifiers::SHIFT)
-                            {
-                                if let Some(target) = mode_chip_id.get_untracked() { target.request_focus(); }
+                            if let Some(target) = composer_chip_key_target(
+                                true, &key.key.logical_key, key.modifiers,
+                            ) {
+                                match target {
+                                    ComposerFocusTarget::Draft => restore_composer_focus.set(true),
+                                    ComposerFocusTarget::Mode => {
+                                        if let Some(id) = mode_chip_id.get_untracked() { id.request_focus(); }
+                                    }
+                                    ComposerFocusTarget::Model => {
+                                        if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
+                                    }
+                                }
                                 return EventPropagation::Stop;
                             }
                         }
@@ -5423,6 +5470,26 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn composer_chips_offer_a_forward_reverse_and_escape_route_to_the_draft() {
+        use super::{composer_chip_key_target as target, ComposerFocusTarget::*};
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        let tab = Key::Named(NamedKey::Tab);
+        assert_eq!(target(false, &tab, Modifiers::empty()), Some(Model));
+        assert_eq!(target(true, &tab, Modifiers::empty()), Some(Draft));
+        assert_eq!(target(true, &tab, Modifiers::SHIFT), Some(Mode));
+        assert_eq!(target(false, &tab, Modifiers::SHIFT), Some(Draft));
+        for model in [false, true] {
+            assert_eq!(target(model, &Key::Named(NamedKey::Escape), Modifiers::empty()), Some(Draft));
+            for modifiers in [Modifiers::CONTROL, Modifiers::ALT, Modifiers::META, Modifiers::CONTROL | Modifiers::SHIFT] {
+                assert_eq!(target(model, &tab, modifiers), None);
+                assert_eq!(target(model, &Key::Named(NamedKey::Escape), modifiers), None);
+            }
+            for key in [NamedKey::Enter, NamedKey::Space, NamedKey::ArrowDown] {
+                assert_eq!(target(model, &Key::Named(key), Modifiers::empty()), None);
+            }
+        }
+    }
     #[test]
     fn welcome_is_only_for_an_idle_empty_conversation() {
         assert!(super::conversation_welcome_visible(false, false, false, false));
