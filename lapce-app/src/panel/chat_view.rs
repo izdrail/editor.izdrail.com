@@ -2336,6 +2336,13 @@ fn pick_composer_mode(data: &ChatData, index: usize) {
     data.resume_id.set(None);
 }
 
+/// Grow explicit multiline drafts, but leave room for the conversation.
+/// The editor keeps its own scrolling once the height cap is reached.
+fn composer_draft_height(draft: &str, line_height: usize) -> f32 {
+    let lines = draft.bytes().filter(|byte| *byte == b'\n').take(8).count() + 1;
+    (lines.saturating_mul(line_height).saturating_add(12)).clamp(64, 160) as f32
+}
+
 fn composer_menu_width(window_width: f64) -> f64 {
     (window_width - 10.0).clamp(0.0, 240.0)
 }
@@ -4836,8 +4843,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         s.display(Display::None)
                     }
                 }),
-                composer.style(|s| {
-                    s.width_full().min_width(0.0).height(64.0)
+                composer.style(move |s| {
+                    let height = input_signal.with(|draft| composer_draft_height(draft, config.get().editor.line_height()));
+                    s.width_full().min_width(0.0).height(height)
                 }),
                 h_stack((
         {
@@ -5655,6 +5663,21 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn multiline_draft_height_grows_and_shrinks_with_a_conversation_safe_cap() {
+        use super::composer_draft_height as height;
+        assert_eq!(height("", 20), 64.0);
+        assert_eq!(height("one", 20), 64.0);
+        assert_eq!(height("one\ntwo", 20), 64.0);
+        assert_eq!(height("one\ntwo\nthree", 20), 72.0);
+        assert_eq!(height("one\ntwo\n", 20), 72.0);
+        assert_eq!(height("one\r\ntwo\r\nthree", 20), 72.0);
+        assert_eq!(height("one\ntwo\nthree", 30), 102.0);
+        assert_eq!(height(&"line\n".repeat(10000), 20), 160.0);
+        assert_eq!(height("one\ntwo", usize::MAX), 160.0);
+        assert_eq!(height("one\ntwo", 0), 64.0);
+        assert_eq!(height("one", 20), 64.0);
+    }
     #[test]
     fn menu_letters_cycle_enabled_rows_without_picking_or_capturing_shortcuts() {
         use super::composer_menu_letter_key as jump;

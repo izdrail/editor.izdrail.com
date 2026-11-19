@@ -96,3 +96,5 @@ Space, like Enter, picks an explicitly highlighted mode or model. With no keyboa
 Long model labels and menu notices wrap within the menu card instead of running off its edge. The card stays within narrow window bounds, with room for its scrollbar.
 
 With a mode or model menu open, type one unmodified letter or digit to highlight the next matching enabled row. Repeat it to cycle matches, then press Enter or Space to choose. Typing alone never changes the mode or model or sends the draft.
+
+The composer grows for multiline drafts, then scrolls at a fixed height cap so the conversation stays visible. Removing lines shrinks it back. Shift+Enter still adds a line; plain Enter still sends.
