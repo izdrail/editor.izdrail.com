@@ -818,6 +818,21 @@ pub fn editor_review_toolbar(
         .border_color(config.get().color(LapceColor::LAPCE_BORDER)).apply_if(!visible, |s| s.hide()))
 }
 
+/// Reserve review controls only while the exact snapshot still matches.
+pub fn has_editor_hunk_controls(review: &ReviewData, left: &Doc, right: &Doc) -> bool {
+    let path = right.content.with_untracked(|content| match content {
+        crate::doc::DocContent::Scratch { name, read_only: true, .. } =>
+            name.strip_prefix("Agent proposal proposed (read-only): ").map(str::to_string),
+        _ => None,
+    });
+    let before = left.buffer.with_untracked(|b| b.to_string());
+    let after = right.buffer.with_untracked(|b| b.to_string());
+    review.proposal.with(|proposal| proposal.as_ref().is_some_and(|proposal|
+        preview_change_match(proposal, path.as_deref(), &before, &after).is_some()))
+}
+
+pub const EDITOR_HUNK_RAIL_WIDTH: f32 = 190.0;
+
 /// Hunk decisions follow the proposed editor's visible line positions, including
 /// diff folding and scrolling. The overlay never edits either snapshot.
 pub fn editor_hunk_controls(

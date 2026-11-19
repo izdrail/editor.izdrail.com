@@ -1410,6 +1410,9 @@ fn editor_tab_content(
                         create_rw_signal(diff_editor_data.left.clone());
                     let right_editor =
                         create_rw_signal(diff_editor_data.right.clone());
+                    let rail_review = window_tab_data.chat.review.clone();
+                    let rail_left = diff_editor_data.left.doc();
+                    let rail_right = diff_editor_data.right.doc();
                     v_stack((
                         crate::agent_review_ui::editor_review_toolbar(
                             window_tab_data.clone(), diff_editor_data.left.doc(), diff_editor_data.right.doc(),
@@ -1444,7 +1447,10 @@ fn editor_tab_content(
                                 )
                         }),
                         container(
-                            editor_container_view(
+                            floem::views::h_stack((
+                            // The editor view is absolute. Its flow wrapper,
+                            // not the editor itself, reserves text width.
+                            container(editor_container_view(
                                 window_tab_data.clone(),
                                 workspace.clone(),
                                 move |track| {
@@ -1457,7 +1463,14 @@ fn editor_tab_content(
                                 },
                                 right_editor,
                             )
-                            .debug_name("Right Editor"),
+                            .debug_name("Right Editor"))
+                                .style(|s| s.height_full().min_width(0.0).flex_grow(1.0).flex_basis(0.0)),
+                            floem::views::empty().style(move |s| {
+                                let reserve = crate::agent_review_ui::has_editor_hunk_controls(&rail_review, &rail_left, &rail_right);
+                                s.width(if reserve { crate::agent_review_ui::EDITOR_HUNK_RAIL_WIDTH } else { 0.0 })
+                                    .height_full().flex_shrink(0.0)
+                            }),
+                            )).style(|s| s.size_full().min_width(0.0)),
                         )
                         .on_event_cont(EventListener::PointerDown, move |_| {
                             focus_right.set(true);

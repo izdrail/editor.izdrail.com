@@ -126,7 +126,11 @@ pub fn editor_style(
         config.editor.modal_mode_relative_line_numbers,
     )
     .set(SmartTab, config.editor.smart_tab)
-    .set(WrapProp, editor_wrap(&config))
+    .set(WrapProp, if doc.content.with(|content| matches!(content,
+        crate::doc::DocContent::Scratch { name, read_only: true, .. }
+            if name.starts_with("Agent proposal before (read-only): ")
+                || name.starts_with("Agent proposal proposed (read-only): ")
+    )) { WrapMethod::None } else { editor_wrap(&config) })
     .set(
         CursorSurroundingLines,
         config.editor.cursor_surrounding_lines,

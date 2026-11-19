@@ -60,3 +60,5 @@ An empty or whitespace-only draft keeps Send inactive. Clicking Send or pressing
 Escape closes the composer mode or model menu and returns keyboard focus to the draft. Clicking outside still leaves focus on the place you clicked.
 
 Choosing a mode, external-agent preset or model also returns focus to the existing draft. Picking a menu item does not send the draft or grant project access.
+
+Main-editor proposal diffs reserve a separate rail for visible hunk decisions, so long proposed lines do not run behind Accept/Reject. Proposal snapshots scroll horizontally rather than soft wrap. The rail is released when no pending proposal matches those snapshots.
