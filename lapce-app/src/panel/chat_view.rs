@@ -4087,7 +4087,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         })
                         .style(move |s| {
                             s.font_bold().font_size(16.0)
-                                .width_full().min_width(0.0).max_width_full()
+                                .min_width(0.0).max_width_full()
+                                .text_align(Some(floem::text::Align::Center))
                                 .text_overflow(floem::style::TextOverflow::Wrap)
                                 .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
                         }),
@@ -4097,12 +4098,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         })
                         .style(move |s| {
                             s.font_size(12.0).max_width_full().min_width(0.0)
+                                .text_align(Some(floem::text::Align::Center))
                                 .text_overflow(floem::style::TextOverflow::Wrap).color(
                                 config.get().color(LapceColor::EDITOR_FOREGROUND),
                             )
                         }),
                         label(|| "Start a draft. Nothing is sent until you press Send.".to_string())
                             .style(move |s| s.font_size(11.0).max_width_full().min_width(0.0)
+                                .text_align(Some(floem::text::Align::Center))
                                 .text_overflow(floem::style::TextOverflow::Wrap)
                                 .color(config.get().color(LapceColor::EDITOR_DIM))),
                         dyn_stack(
@@ -4130,7 +4133,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             .justify_center()
                             .width_full().min_width(0.0).max_width_full()
                             .padding_vert(40.0)
-                            .gap(2.0);
+                            .gap(6.0);
                         if conversation_welcome_visible(
                             !empty_turns.turns.get().is_empty(),
                             empty_turns.busy.get(),

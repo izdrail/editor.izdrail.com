@@ -72,3 +72,5 @@ Dismissing a checkpoint replaces old restore instructions with a confirmation th
 The welcome prompt appears only in an idle, empty conversation. Pending review, active work and errors hide it so it does not compete with the work that needs attention.
 
 New conversation clears old preparation errors and notices when no proposal or checkpoint remains. Pending proposals and checkpoint recovery guidance stay intact.
+
+The welcome title and hints stay centered as they wrap, with separate spacing between each line of guidance. This layout does not change the draft or send it.
