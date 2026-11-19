@@ -639,11 +639,11 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                         reject_all.error.set(String::new());
                         reject_all.notice.set("Proposal rejected. No buffers or source files changed.".into());
                     }).style(move |s| s.font_size(11.0).padding(5.0).border(1.0).border_radius(4.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_REMOVED))),
-                    label(|| "Accept all".to_string()).on_click_stop(move |_| {
+                    label(|| "Apply all hunks".to_string()).on_click_stop(move |_| {
                         if let Err(e) = accept_all.apply(&accept_tab, &all_proposal) { accept_all.error.set(e); }
                     }).style(move |s| s.font_size(11.0).padding(5.0).border(1.0).border_radius(4.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_ADDED))),
                 )).style(|s| s.width_full().min_width(0.0).gap(6.0)),
-                label(|| "Accept applies to open buffers only, not saved.".to_string()).style(|s| s.font_size(10.0).width_full().min_width(0.0).text_overflow(floem::style::TextOverflow::Wrap)),
+                label(|| "Applies to open buffers only. Source files are not saved.".to_string()).style(|s| s.font_size(10.0).width_full().min_width(0.0).text_overflow(floem::style::TextOverflow::Wrap)),
                 label(move || format!("Proposal {digest}")).style(|s| s.font_size(10.0).max_width_full()),
                 dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), move |(change, mask)| change_view(change, Some(mask), config, Some(tab_for_preview.clone())))
                     .style(|s| s.flex_col().width_full().min_width(0.0)),

@@ -66,3 +66,5 @@ Main-editor proposal diffs reserve a separate rail for visible hunk decisions, s
 The review section shows preparation instructions only when no proposal or checkpoint is present. Active reviews keep their hunk controls and buffer-only warning, without repeating setup instructions above them.
 
 Dismissing a checkpoint replaces old restore instructions with a confirmation that buffers are unchanged and one-click restore is no longer available. If journal removal fails, the checkpoint and its recovery guidance remain.
+
+"Apply all hunks" applies the whole proposal to open buffers immediately. Per-file and per-hunk Accept/Reject only change the selection; "Apply accepted hunks" applies that selection. Neither action saves source files.
