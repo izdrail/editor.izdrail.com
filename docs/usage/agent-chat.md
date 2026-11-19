@@ -10,11 +10,11 @@ An empty entry does not remove or overwrite a saved key. Closing the entry or ch
 
 ## Start with a draft
 
-An empty conversation offers **Explain this file**, **Review for bugs** and **Suggest tests**. Clicking a starter appends a plain prompt to the composer, keeping any text already there. It does not send anything or change your mode. Edit the draft before sending.
+An empty conversation shows the workspace name and a short prompt above the bottom composer. Long workspace names wrap within the panel instead of widening or clipping the welcome area.
 
-With the composer focused in an empty conversation, **Alt+1** appends Explain, **Alt+2** appends Review and **Alt+3** appends Tests. These are composer-local shortcuts, not global keymap bindings. A desktop shortcut or keyboard layout may intercept them; the buttons remain available.
+With the composer focused in an empty conversation, **Alt+1** appends Explain, **Alt+2** appends Review and **Alt+3** appends Tests. These are composer-local shortcuts, not global keymap bindings. A desktop shortcut or keyboard layout may intercept them. These shortcuts append a draft without sending it or changing the mode.
 
-The card above the composer shows the selected mode's scope and **Attached on Send** context. Check the file or selection shown there before sending. It follows the active editor context; choosing a starter does not pin a particular file.
+Open **Conversation tools and settings** to see the card above the composer with the selected mode's scope and **Attached on Send** context. Check the file or selection shown there before sending. It follows the active editor context; choosing a starter does not pin a particular file.
 
 Press **Enter** or click **Send** when ready. **Shift+Enter** inserts a newline. While a response is running, **Stop** cancels it. Cancellation does not undo changes you already accepted.
 
@@ -24,7 +24,7 @@ The heading follows the first user message. Assistant answers sit directly on th
 
 A staged edit proposal shows its real file count and added/removed line counts, with **Review** opening the existing diff review. "Proposed" does not mean applied. Checkpoints show their own state separately. An ordinary Chat answer has no staged diff and does not need edit review. **Prepare review** accepts changes JSON from the composer; plain prose produces an explanation without changing any files.
 
-Changed hunks show added lines in green and removed lines in red. Each file shows both full proposed line totals and the current selected-hunk/line totals. **Accept file** and **Reject file** select or clear that file's hunks without changing buffers; other files keep their selections. **Accept** and **Reject** set each hunk's selection; **Apply accepted hunks** commits that selection to open buffers. **Accept all** applies the whole displayed proposal through the same stale-buffer and checkpoint checks. **Reject all** drops the proposal without changing buffers. These controls never save source files. Per-hunk controls are available in the Agent panel and beside visible changed hunks in the main-editor proposal diff.
+Changed hunks show added lines in green and removed lines in red. Each file shows both full proposed line totals and the current selected-hunk/line totals. **Accept file** and **Reject file** select or clear that file's hunks without changing buffers; other files keep their selections. **Accept** and **Reject** set each hunk's selection; **Apply accepted hunks** commits that selection to open buffers. **Apply all hunks** applies the whole displayed proposal through the same stale-buffer and checkpoint checks. **Reject all** drops the proposal without changing buffers. These controls never save source files. Per-hunk controls are available in the Agent panel and beside visible changed hunks in the main-editor proposal diff.
 
 **Open read-only editor diff** opens full before/proposed snapshots in a main-editor diff tab. They are not the live source buffer and cannot be edited or saved as files. Accept/reject stays in Agent review, which still checks the current source before applying. Snapshot text is not restored after restart; a reopened preview tells you to return to a current proposal.
 

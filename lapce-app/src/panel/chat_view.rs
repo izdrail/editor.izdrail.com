@@ -4085,11 +4085,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 .unwrap_or_else(|| "Gravity Editor".to_string())
                         })
                         .style(move |s| {
-                            s.font_bold().font_size(16.0).color(
-                                config
-                                    .get()
-                                    .color(LapceColor::EDITOR_FOREGROUND),
-                            )
+                            s.font_bold().font_size(16.0)
+                                .width_full().min_width(0.0).max_width_full()
+                                .text_overflow(floem::style::TextOverflow::Wrap)
+                                .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
                         }),
                         label(|| {
                             "How can I help?"
@@ -4128,7 +4127,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         let s = s
                             .items_center()
                             .justify_center()
-                            .width_full()
+                            .width_full().min_width(0.0).max_width_full()
                             .padding_vert(40.0)
                             .gap(2.0);
                         if conversation_welcome_visible(
