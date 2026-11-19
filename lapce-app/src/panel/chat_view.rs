@@ -2219,8 +2219,9 @@ fn dropdown_row_style(
     // Unselected rows read as normal text (dim reads as disabled);
     // only the selected row carries a persistent highlight, hover the
     // transient one.
-    s.width_full()
-        .padding_horiz(8.0)
+    s.width_full().min_width(0.0).max_width_full()
+        .text_overflow(floem::style::TextOverflow::Wrap)
+        .padding_right(14.0).padding_left(8.0)
         .padding_vert(4.0)
         .cursor(CursorStyle::Pointer)
         .selectable(false)
@@ -2314,6 +2315,10 @@ fn pick_composer_mode(data: &ChatData, index: usize) {
     data.resume_id.set(None);
 }
 
+fn composer_menu_width(window_width: f64) -> f64 {
+    (window_width - 10.0).clamp(0.0, 240.0)
+}
+
 fn composer_dropdown_overlay<V: View + 'static>(
     rows: V,
     menu_key: Option<Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool>>,
@@ -2366,6 +2371,7 @@ fn composer_dropdown_overlay<V: View + 'static>(
         let trigger = trigger_size.get();
         let list = list_size.get();
         let window = window_size.get();
+        let width = composer_menu_width(window.width);
         let x = if origin.x + list.width + 5.0 > window.width {
             window.width - list.width - 5.0
         } else {
@@ -2382,7 +2388,7 @@ fn composer_dropdown_overlay<V: View + 'static>(
         // click at the very bottom must not clip the overlay.
         let x = x.clamp(5.0, (window.width - list.width - 5.0).max(5.0));
         let y = y.clamp(5.0, (window.height - list.height - 5.0).max(5.0));
-        s.width(240.0)
+        s.width(width as f32)
             .font_size(config.ui.font_size() as f32)
             .font_family(config.ui.font_family.clone())
             .color(config.color(LapceColor::EDITOR_FOREGROUND))
@@ -5623,6 +5629,14 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn composer_menu_width_leaves_window_insets_without_negative_sizes() {
+        assert_eq!(super::composer_menu_width(1000.0), 240.0);
+        assert_eq!(super::composer_menu_width(250.0), 240.0);
+        assert_eq!(super::composer_menu_width(180.0), 170.0);
+        assert_eq!(super::composer_menu_width(10.0), 0.0);
+        assert_eq!(super::composer_menu_width(2.0), 0.0);
+    }
     #[test]
     fn model_menu_skips_disabled_rows_and_never_picks_without_a_highlight() {
         use super::{composer_model_menu_key as key, ComposerModeMenuKey::*};

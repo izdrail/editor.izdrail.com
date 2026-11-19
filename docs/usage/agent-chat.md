@@ -92,3 +92,5 @@ With the mode menu open, plain Up/Down highlights Chat, Ask, Plan, Act, ACP or R
 The model menu also supports plain Up/Down and Home/End, skipping unavailable or informational rows. Enter selects only an explicitly highlighted, available model and returns to the draft. Escape/Tab cancels; browsing models does not send the draft.
 
 Space, like Enter, picks an explicitly highlighted mode or model. With no keyboard highlight it does nothing, so the same key that opens the chip does not silently accept a choice. Modified Space never selects a menu row.
+
+Long model labels and menu notices wrap within the menu card instead of running off its edge. The card stays within narrow window bounds, with room for its scrollbar.
