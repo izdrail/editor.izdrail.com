@@ -2461,6 +2461,15 @@ fn show_project_read_approval(backend: &str) -> bool {
     backend != "local"
 }
 
+/// Keep a conversation heading short without splitting Unicode characters.
+fn conversation_heading(text: &str) -> String {
+    let line = text.lines().find(|line| !line.trim().is_empty()).unwrap_or("").trim();
+    if line.is_empty() { return "New conversation".into(); }
+    let mut heading: String = line.chars().take(48).collect();
+    if line.chars().count() > 48 { heading.push('…'); }
+    heading
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let focus = tab.common.focus;
@@ -2472,10 +2481,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let click_tab = tab.clone();
     let context_chip_tab = tab.clone();
     let scope_data = data.clone();
+    let title_data = data.clone();
     let clear = data.clone();
     let clear_busy = clear.busy;
     let stop = data.clone();
     let stop_busy = stop.busy;
+    let composer_stop = data.clone();
     let chat_mode = data.clone();
     let picker_data = data.clone();
     let picker_set_config = tab.set_config;
@@ -3192,7 +3203,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             default_key_handler(editor_sig)(keypress, mods)
         },
     )
-        .placeholder("Ask about this file or selection...")
+        .placeholder("Ask anything, @ to mention files")
         .editor_style(|s| s.hide_gutter(true).scroll_beyond_last_line(false))
         .update(move |update| {
             if let Some(editor) = update.editor {
@@ -3256,11 +3267,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     };
     v_stack((
     scroll(v_stack((
-        // Antigravity-style header: pane title on the left, icon
-        // actions on the right. The model indicator stays in this row
-        // until the composer parity work moves it into the composer card.
+        // Conversation title with the existing pane actions. The title
+        // yields width to the actions; model controls live in the composer.
         h_stack((
-            label(|| "Agent".to_string())
+            label(move || title_data.turns.get().iter()
+                .find(|turn| turn.role == "You")
+                .map(|turn| conversation_heading(&turn.text.get()))
+                .unwrap_or_else(|| "New conversation".into()))
                 .on_click_stop(move |_| {
                     // Click the title to collapse the whole Agent panel. The
                     // panel icon and the status-bar toggle bring it back, and
@@ -3780,13 +3793,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         label(move || {
                             runs_tick.get();
                             format!(
-                                "{} · {} +{} - {}",
+                                "Running {} · {} · {}",
                                 entry.mode,
-                                entry.started,
-                                elapsed_label(
-                                    entry.started_at.elapsed().as_secs()
-                                ),
-                                entry.title
+                                entry.title,
+                                elapsed_label(entry.started_at.elapsed().as_secs())
                             )
                         })
                         .style(move |s| {
@@ -3821,7 +3831,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(|s| s.width_full().min_width(0.0).gap(6.0).items_center())
                 },
             )
-            .style(|s| s.flex_col().width_full().min_width(0.0).min_width(0.0).gap(2.0)),
+            .style(|s| s.flex_col().width_full().min_width(0.0).gap(2.0)),
         ))
         .style(move |s| {
             s.apply_if(runs_registry.entries().is_empty(), |s| s.hide())
@@ -3884,7 +3894,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         .cursor(CursorStyle::Pointer)
                                         .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))))
                             },
-                        ).style(|s| s.flex_col().width_full().min_width(0.0).min_width(0.0).gap(6.0).margin_top(10.0)),
+                        ).style(|s| s.flex_col().width_full().min_width(0.0).gap(6.0).margin_top(10.0)),
                     ))
                     .style(move |s| {
                         let s = s
@@ -3905,16 +3915,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     move |(_, turn)| {
                         let body = turn.text;
                         let role = turn.role;
+                        let has_context = !turn.context.is_empty();
                         let steps = turn.steps;
                         let render_id = std::sync::atomic::AtomicU64::new(0);
                         v_stack((
                             label(move || role.to_string()).style(move |s| {
-                                s.font_size(10.0).font_bold().color(
-                                    config.get().color(LapceColor::EDITOR_DIM),
-                                )
+                                s.font_size(10.0).font_bold()
+                                    .color(config.get().color(LapceColor::EDITOR_DIM))
+                                    .apply_if(role == "You", |s| s.hide())
                             }),
                             label(move || turn.context.clone())
-                                .style(|s| s.font_size(10.0).max_width_full()),
+                                .style(move |s| s.font_size(10.0).min_width(0.0).max_width_full()
+                                    .text_overflow(floem::style::TextOverflow::Wrap)
+                                    .apply_if(!has_context, |s| s.hide())),
                             {
                                 // Antigravity-style step card: the
                                 // agent run's progress rows under a
@@ -4121,33 +4134,22 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     _ => empty().into_any(),
                                 },
                             )
-                            .style(|s| s.flex_col().width_full().min_width(0.0).min_width(0.0).max_width_full()),
+                            .style(|s| s.flex_col().width_full().min_width(0.0).max_width_full()),
                         ))
-                        // Antigravity parity: full-width cards, not
-                        // chat bubbles. Your turns keep the accent
-                        // background; agent turns get a border so they
-                        // read as cards against the panel.
+                        // Assistant prose sits directly on the panel; a
+                        // right-aligned bubble distinguishes the user's words.
                         .style(move |s| {
                             let user = role == "You";
                             let config = config.get();
-                            let s = s
-                                .width_full().min_width(0.0).max_width_full()
-                                .padding(10.0)
-                                .gap(5.0)
-                                .margin_bottom(8.0)
-                                .border_radius(8.0);
+                            let s = s.min_width(0.0).max_width_full()
+                                .padding(10.0).gap(5.0).margin_bottom(14.0);
                             if user {
-                                s.background(config.color(
-                                    LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
-                                ))
+                                s.width_pct(92.0)
+                                    .align_self(Some(floem::style::AlignItems::End))
+                                    .border_radius(10.0)
+                                    .background(config.color(LapceColor::PANEL_HOVERED_BACKGROUND))
                             } else {
-                                s.border(1.0)
-                                    .border_color(config.color(
-                                        LapceColor::LAPCE_BORDER,
-                                    ))
-                                    .background(config.color(
-                                        LapceColor::EDITOR_BACKGROUND,
-                                    ))
+                                s.width_full().padding_horiz(2.0)
                             }
                         })
                     },
@@ -4293,12 +4295,83 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         // inside one bordered card; send is a circular accent button.
         container(
             v_stack((
-        // Antigravity-style composer dropdowns: one mode dropdown and
-        // one model dropdown replace the mode chips. The lists are
-        // floating window-level overlays, opened/closed by the effects
-        // above; the buttons below only toggle them. The model dropdown
-        // lists the local catalog; with the ollama backend the model
-        // comes from the endpoint, so the button is display-only.
+                // Mention autocomplete popup: the fuzzy file list sits
+                // above the input inside the composer card (Antigravity
+                // position). Rows: relative path, selected highlighted,
+                // click accepts like Enter.
+                container(
+                    dyn_stack(
+                        move || {
+                            mention_popup
+                                .get()
+                                .map(|(_, selected, items)| {
+                                    items
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(i, p)| (p, i == selected))
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default()
+                        },
+                        |(path, _)| path.clone(),
+                        move |(path, selected)| {
+                            let row_accept = accept_mention.clone();
+                            let row_path = path.clone();
+                            label(move || path.clone())
+                                .on_click_stop(move |_| {
+                                    if let Some((_, _, items)) =
+                                        mention_popup.get_untracked()
+                                    {
+                                        if let Some(index) = items
+                                            .iter()
+                                            .position(|p| p == &row_path)
+                                        {
+                                            row_accept(index);
+                                        }
+                                    }
+                                })
+                                .style(move |s| {
+                                    let s = s
+                                        .font_size(12.0)
+                                        .width_full()
+                                        .padding_horiz(8.0)
+                                        .padding_vert(3.0)
+                                        .cursor(CursorStyle::Pointer)
+                                        .selectable(false)
+                                        .color(
+                                            config.get().color(
+                                                LapceColor::EDITOR_FOREGROUND,
+                                            ),
+                                        );
+                                    if selected {
+                                        s.background(config.get().color(
+                                            LapceColor::PANEL_CURRENT_BACKGROUND,
+                                        ))
+                                    } else {
+                                        s
+                                    }
+                                })
+                        },
+                    )
+                    .style(|s| s.flex_col().width_full().min_width(0.0)),
+                )
+                .style(move |s| {
+                    let s = s
+                        .width_full()
+                        .border(1)
+                        .border_radius(6.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .background(config.get().color(LapceColor::EDITOR_BACKGROUND));
+                    if mention_popup.get().is_some() {
+                        s
+                    } else {
+                        s.display(Display::None)
+                    }
+                }),
+                composer.style(|s| {
+                    s.width_full().min_width(0.0).height(64.0)
+                }),
+                h_stack((
         {
             let resume_tab3 = resume_tab.clone();
             let resume_count2 = move || -> usize {
@@ -4450,88 +4523,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     s.flex_wrap(floem::style::FlexWrap::Wrap)
                         .gap(6.0)
                         .padding(6.0)
-                        .width_full()
+                        .min_width(0.0).flex_grow(1.0).flex_basis(0.0)
                 })
         },
-                // Mention autocomplete popup: the fuzzy file list sits
-                // above the input inside the composer card (Antigravity
-                // position). Rows: relative path, selected highlighted,
-                // click accepts like Enter.
-                container(
-                    dyn_stack(
-                        move || {
-                            mention_popup
-                                .get()
-                                .map(|(_, selected, items)| {
-                                    items
-                                        .into_iter()
-                                        .enumerate()
-                                        .map(|(i, p)| (p, i == selected))
-                                        .collect::<Vec<_>>()
-                                })
-                                .unwrap_or_default()
-                        },
-                        |(path, _)| path.clone(),
-                        move |(path, selected)| {
-                            let row_accept = accept_mention.clone();
-                            let row_path = path.clone();
-                            label(move || path.clone())
-                                .on_click_stop(move |_| {
-                                    if let Some((_, _, items)) =
-                                        mention_popup.get_untracked()
-                                    {
-                                        if let Some(index) = items
-                                            .iter()
-                                            .position(|p| p == &row_path)
-                                        {
-                                            row_accept(index);
-                                        }
-                                    }
-                                })
-                                .style(move |s| {
-                                    let s = s
-                                        .font_size(12.0)
-                                        .width_full()
-                                        .padding_horiz(8.0)
-                                        .padding_vert(3.0)
-                                        .cursor(CursorStyle::Pointer)
-                                        .selectable(false)
-                                        .color(
-                                            config.get().color(
-                                                LapceColor::EDITOR_FOREGROUND,
-                                            ),
-                                        );
-                                    if selected {
-                                        s.background(config.get().color(
-                                            LapceColor::PANEL_CURRENT_BACKGROUND,
-                                        ))
-                                    } else {
-                                        s
-                                    }
-                                })
-                        },
-                    )
-                    .style(|s| s.flex_col().width_full().min_width(0.0)),
-                )
-                .style(move |s| {
-                    let s = s
-                        .width_full()
-                        .border(1)
-                        .border_radius(6.0)
-                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                        .background(config.get().color(LapceColor::EDITOR_BACKGROUND));
-                    if mention_popup.get().is_some() {
-                        s
-                    } else {
-                        s.display(Display::None)
-                    }
-                }),
-                h_stack((
-                    composer.style(|s| {
-                        s.flex_grow(1.0).min_width(0.0).height(100.0)
-                    }),
                     container(
-                        svg(move || config.get().ui_svg(LapceIcons::SEND))
+                        svg(move || config.get().ui_svg(if stop_busy.get() {
+                            LapceIcons::DEBUG_STOP
+                        } else { LapceIcons::SEND }))
                             .style(move |s| {
                                 let config = config.get();
                                 let size = config.ui.icon_size() as f32;
@@ -4540,14 +4538,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ))
                             }),
                     )
-                    .on_click_stop(move |_| send(&click_tab))
+                    .on_click_stop(move |_| {
+                        if stop_busy.get_untracked() {
+                            composer_stop.stop();
+                            composer_stop.persist(config.get_untracked().ai_chat.save_history);
+                        } else { send(&click_tab); }
+                    })
                     .style(move |s| {
                         s.padding(8.0)
                             .margin_left(6.0)
                             .border_radius(100.0)
-                            .background(config.get().color(
-                                LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND,
-                            ))
+                            .background(config.get().color(if stop_busy.get() {
+                                LapceColor::LAPCE_ERROR
+                            } else { LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND }))
                             .cursor(CursorStyle::Pointer)
                             .selectable(false)
                             .hover(|s| {
@@ -4555,14 +4558,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     config
                                         .get()
                                         .color(
-                                            LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND,
+                                            if stop_busy.get() { LapceColor::LAPCE_ERROR }
+                                            else { LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND },
                                         )
                                         .multiply_alpha(0.85),
                                 )
                             })
                     }),
                 ))
-                .style(|s| s.width_full().items_end()),
+                .style(|s| s.width_full().min_width(0.0).items_center().justify_between()),
             ))
             .style(|s| s.width_full().gap(4.0)),
         )
@@ -4758,6 +4762,15 @@ mod tests {
         trailing_mention,
         AgentStepRow, AgentUpdate, Update,
     };
+
+    #[test]
+    fn conversation_heading_handles_empty_multiline_and_unicode() {
+        assert_eq!(super::conversation_heading("  "), "New conversation");
+        assert_eq!(super::conversation_heading("\n  Review the service  \nMore details"), "Review the service");
+        let title = super::conversation_heading(&"界".repeat(60));
+        assert_eq!(title.chars().count(), 49);
+        assert!(title.ends_with('…'));
+    }
 
     #[test]
     fn project_read_approval_hidden_only_for_local_backend() {

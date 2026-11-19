@@ -12,6 +12,12 @@ The card above the composer shows the selected mode's scope and **Attached on Se
 
 Press **Enter** or click **Send** when ready. **Shift+Enter** inserts a newline. While a response is running, **Stop** cancels it. Cancellation does not undo changes you already accepted.
 
+## Conversation and review
+
+The heading follows the first user message. Assistant answers sit directly on the panel; your messages use right-aligned bubbles. Mode and model controls sit below the input. While a request is running, the composer send button becomes a red Stop button. It cancels the current request, not an accepted edit.
+
+A staged edit proposal shows its real file count and added/removed line counts, with **Review** opening the existing diff review. "Proposed" does not mean applied. Checkpoints show their own state separately. An ordinary Chat answer has no staged diff and does not need edit review. **Prepare review** accepts changes JSON from the composer; plain prose produces an explanation without changing any files.
+
 ## Pick the right mode
 
 - **Chat** uses conversation and attached context, without the project tool loop.

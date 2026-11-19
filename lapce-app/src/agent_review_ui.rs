@@ -507,6 +507,15 @@ fn staged_buffers(
         .collect()
 }
 use crate::buffer_transaction::commit_buffers;
+/// Counts are from the staged proposal, never inferred from chat prose.
+fn proposal_summary(changes: &[Change]) -> String {
+    let (added, removed) = changes.iter()
+        .flat_map(|change| crate::agent_changes::hunks(&change.base.text, &change.proposed))
+        .fold((0, 0), |(added, removed), hunk| (added + hunk.added.len(), removed + hunk.removed.len()));
+    let noun = if changes.len() == 1 { "file" } else { "files" };
+    format!("{} {noun} proposed +{added} -{removed}", changes.len())
+}
+
 pub fn panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.review.clone();
     let prepare = data.clone();
@@ -537,9 +546,11 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             label(move || if open.get() { "\u{25be}" } else { "\u{25b8}" })
                 .style(|s| s.width(14.0).selectable(false)),
             label(move || {
-                let p = if title_proposal.get().is_some() { 1 } else { 0 };
-                let c = if title_checkpoint.get().is_some() { 1 } else { 0 };
-                format!("Reviewed edits ({p}/{c})")
+                if let Some(proposal) = title_proposal.get() {
+                    proposal_summary(&proposal.changes)
+                } else if let Some(checkpoint) = title_checkpoint.get() {
+                    format!("Checkpoint {:?}: {} files", checkpoint.state, checkpoint.snapshot.applied.len())
+                } else { "No proposed edits".to_string() }
             })
             .style(|s| {
                 s.font_size(11.0)
@@ -549,8 +560,12 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                     .text_ellipsis()
                     .selectable(false)
             }),
-            label(|| "Prepare review".to_string())
+            label(move || if proposals.get().is_some() { "Review".to_string() } else { "Prepare review".to_string() })
                 .on_click_stop(move |_| {
+                    if proposals.get_untracked().is_some() {
+                        open.set(true);
+                        return;
+                    }
                     let input = prepare_tab.chat.input.get_untracked();
                     error.set(String::new());
                     if !manual_review_candidate(&input) {
@@ -585,7 +600,8 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             let items_apply = items.clone();
             v_stack((
                 label(move || format!("Proposal {digest}")).style(|s| s.font_size(10.0).max_width_full()),
-                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), |(change, mask)| change_view(change, Some(mask))),
+                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), |(change, mask)| change_view(change, Some(mask)))
+                    .style(|s| s.flex_col().width_full().min_width(0.0)),
                 label(|| "Apply accepted hunks".to_string()).on_click_stop(move |_| {
                     let masks: Vec<Vec<bool>> = items_apply.iter().map(|(_, m)| m.get_untracked()).collect();
                     if let Err(e) = apply.apply_with(&apply_tab, &proposal, Some(masks)) { apply.error.set(e); }
@@ -827,9 +843,9 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
                     label(move || text.clone())
                         .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
                 ))
-                .style(|s| s.gap(4.0))
+                .style(|s| s.width_full().min_width(0.0).gap(4.0))
             },
-        ))
+        ).style(|s| s.flex_col().width_full().min_width(0.0)))
         .style(|s| s.max_height(140.0).width_full())
         .into_any(),
         None => scroll(
@@ -842,19 +858,7 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
     v_stack((
         label(move || path.clone()).style(|s| s.max_width_full()),
         body_view,
-        h_stack((
-            scroll(
-                label(move || format!("BEFORE\n{before}"))
-                    .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
-            )
-            .style(|s| s.width_pct(50.0).max_height(180.0)),
-            scroll(
-                label(move || format!("AFTER\n{after}"))
-                    .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
-            )
-            .style(|s| s.width_pct(50.0).max_height(180.0)),
-        ))
-        .style(|s| s.width_full().min_width(0.0).max_width_full()),
+
     ))
     .style(|s| s.width_full().min_width(0.0).max_width_full())
 }
@@ -1013,6 +1017,18 @@ mod creation_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proposal_summary_counts_only_real_staged_diff_lines() {
+        let change = Change {
+            path: "example.php".into(),
+            base: BufferState { revision: 1, text: "old\nkeep\n".into() },
+            proposed: "new\nkeep\nextra\n".into(),
+        };
+        assert_eq!(super::proposal_summary(&[change.clone()]), "1 file proposed +2 -1");
+        assert_eq!(super::proposal_summary(&[change.clone(), change]), "2 files proposed +4 -2");
+        assert_eq!(super::proposal_summary(&[]), "0 files proposed +0 -0");
+    }
 
     #[test]
     fn short_digest_clips_long_hex_for_narrow_panels() {
