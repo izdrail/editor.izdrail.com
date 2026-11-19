@@ -2,6 +2,12 @@
 
 Open the Agent panel. To configure its connection, click the gear or connection summary, or run **Agent: Open AI Settings** from the command palette. The summary shows configured routing, not a successful connection test. See [local model setup](local-model-setup.md).
 
+## Enter an endpoint key
+
+Use **API key - enter or replace** directly in the Agent panel. The field masks typed and pasted text and never shows a saved key. Backspace removes the last character; Esc clears the unsaved entry. **Save key for this endpoint** stores it locally for the displayed endpoint, without sending a request or switching your model/backend. Local mode does not use an API key.
+
+An empty entry does not remove or overwrite a saved key. Closing the entry or changing endpoint clears the unsaved text. Environment overrides still take priority; the entry shows which key source is active. Use AI settings for endpoint/model setup, connection tests or explicit key removal.
+
 ## Start with a draft
 
 An empty conversation offers **Explain this file**, **Review for bugs** and **Suggest tests**. Clicking a starter appends a plain prompt to the composer, keeping any text already there. It does not send anything or change your mode. Edit the draft before sending.

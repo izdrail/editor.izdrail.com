@@ -2470,6 +2470,127 @@ fn conversation_heading(text: &str) -> String {
     heading
 }
 
+/// Direct endpoint-bound key entry. Saved key bytes are never loaded into the UI.
+fn agent_key_entry(tab: Rc<WindowTabData>) -> impl View {
+    use floem::{Clipboard, keyboard::{PhysicalKey, KeyCode}};
+    let config = tab.common.config;
+    let expanded = floem::reactive::create_rw_signal(false);
+    let key = floem::reactive::create_rw_signal(String::new());
+    let focused = floem::reactive::create_rw_signal(false);
+    let notice = floem::reactive::create_rw_signal(String::new());
+    let version = floem::reactive::create_rw_signal(0u64);
+    let endpoint = floem::reactive::create_rw_signal(config.get_untracked().ai_chat.endpoint.clone());
+    create_effect(move |_| {
+        let current = config.get().ai_chat.endpoint.clone();
+        if current != endpoint.get_untracked() {
+            key.set(String::new());
+            endpoint.set(current);
+            notice.set("Endpoint changed. Unsaved key entry cleared.".into());
+        }
+    });
+    let common_focus = tab.common.focus;
+    let keyboard_focus = tab.common.keyboard_focus;
+    let save = label(|| "Save key for this endpoint".to_string())
+        .keyboard_navigable()
+        .on_click_stop(move |_| {
+            let value = key.get_untracked();
+            if value.trim().is_empty() {
+                notice.set("Enter a key first. The saved key was not changed.".into());
+                return;
+            }
+            match crate::chat_credentials::save(&endpoint.get_untracked(), &value) {
+                Ok(()) => {
+                    key.set(String::new());
+                    version.update(|value| *value += 1);
+                    notice.set("Key saved for this endpoint. Local mode does not use an API key. No request was sent.".into());
+                }
+                Err(error) => notice.set(error),
+            }
+        })
+        .style(move |s| s.padding(6.0).font_size(11.0).border(1.0).border_radius(4.0)
+            .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .cursor(CursorStyle::Pointer));
+    let save_id = save.id();
+    let field = label(move || if key.with(|value| value.is_empty()) {
+        if focused.get() { "Type or paste API key (masked)".to_string() }
+        else { "Click to enter API key".to_string() }
+    } else { "•••••••• (new key, not saved)".to_string() }).keyboard_navigable();
+    let field_id = field.id();
+    let field = field
+        .on_event_stop(EventListener::PointerDown, move |_| {
+            common_focus.set(Focus::Workbench);
+            keyboard_focus.set(Some(field_id));
+            focused.set(true);
+            field_id.request_focus();
+        })
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(field_id));
+            focused.set(true);
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            focused.set(false);
+            if keyboard_focus.get_untracked() == Some(field_id) { keyboard_focus.set(None); }
+        })
+        .on_event(EventListener::KeyDown, move |event| {
+            if let Event::KeyDown(event) = event {
+                if matches!(&event.key.logical_key, Key::Named(NamedKey::Tab))
+                    || matches!(event.key.physical_key, PhysicalKey::Code(KeyCode::Tab)) {
+                    field_id.clear_focus();
+                    save_id.request_focus();
+                    return EventPropagation::Stop;
+                }
+                let command = event.modifiers.intersects(floem::keyboard::Modifiers::CONTROL | floem::keyboard::Modifiers::META);
+                if command && !matches!(&event.key.logical_key, Key::Character(text) if text.eq_ignore_ascii_case("v")) {
+                    focused.set(false);
+                    keyboard_focus.set(None);
+                    return EventPropagation::Continue;
+                }
+                match &event.key.logical_key {
+                    Key::Named(NamedKey::Backspace) => key.update(|value| { value.pop(); }),
+                    Key::Named(NamedKey::Escape) => key.set(String::new()),
+                    Key::Character(text) if command && text.eq_ignore_ascii_case("v") => {
+                        if let Ok(text) = Clipboard::get_contents() {
+                            key.update(|value| crate::chat_credentials::append_key(value, text.trim()));
+                        }
+                    }
+                    Key::Character(text) if !event.modifiers.intersects(floem::keyboard::Modifiers::CONTROL | floem::keyboard::Modifiers::META | floem::keyboard::Modifiers::ALT) => {
+                        key.update(|value| crate::chat_credentials::append_key(value, text));
+                    }
+                    _ => {},
+                }
+            }
+            EventPropagation::Stop
+        })
+        .style(move |s| s.width_full().min_width(0.0).padding(8.0).font_size(11.0)
+            .text_overflow(floem::style::TextOverflow::Wrap).border(1.0).border_radius(4.0)
+            .border_color(config.get().color(if focused.get() { LapceColor::EDITOR_FOCUS } else { LapceColor::LAPCE_BORDER })));
+    v_stack((
+        label(move || if expanded.get() { "API key - hide".to_string() } else { "API key - enter or replace".to_string() })
+            .keyboard_navigable().on_click_stop(move |_| {
+                expanded.update(|value| *value = !*value);
+                if !expanded.get_untracked() { key.set(String::new()); }
+            }).style(move |s| s.font_size(11.0).cursor(CursorStyle::Pointer)
+                .color(config.get().color(LapceColor::EDITOR_LINK))),
+        v_stack((
+            label(move || format!("Key for {}", endpoint.get()))
+                .style(|s| s.width_full().min_width(0.0).font_size(11.0).text_overflow(floem::style::TextOverflow::Wrap)),
+            field,
+            label(|| "Backspace deletes a character. Esc clears the unsaved entry. Saved keys are never shown.".to_string())
+                .style(|s| s.width_full().min_width(0.0).font_size(10.0).text_overflow(floem::style::TextOverflow::Wrap)),
+            save,
+            label(move || {
+                version.get();
+                crate::chat_credentials::source_label(crate::chat::api_key().is_some(),
+                    crate::chat_credentials::saved_key_exists(&endpoint.get()),
+                    crate::chat::build_default_key_available(&endpoint.get()))
+            }).style(|s| s.width_full().min_width(0.0).font_size(10.0).text_overflow(floem::style::TextOverflow::Wrap)),
+            label(move || notice.get()).style(|s| s.width_full().min_width(0.0).font_size(11.0).text_overflow(floem::style::TextOverflow::Wrap)),
+        )).style(move |s| s.width_full().min_width(0.0).gap(6.0).padding(8.0)
+            .border(1.0).border_radius(6.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .apply_if(!expanded.get(), |s| s.hide())),
+    )).style(|s| s.width_full().min_width(0.0).gap(6.0))
+}
+
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
     let focus = tab.common.focus;
@@ -3437,6 +3558,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             .cursor(CursorStyle::Pointer)
             .hover(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))),
+        agent_key_entry(tab.clone()),
         label(move || if show_native.get() { "Saved chats - hide".to_string() } else { "Saved chats - browse this workspace".to_string() })
             .keyboard_navigable()
             .on_click_stop(move |_| {
