@@ -2334,6 +2334,7 @@ fn dropdown_button_style(
         .border(1.0)
         .border_radius(6.0)
         .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+        .focus(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
         .cursor(CursorStyle::Pointer)
         .selectable(false)
         .hover(|s| {
@@ -3325,6 +3326,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // hook is the condition point floem routes every key through:
     // while the mention popup is open, arrows/Enter/Tab/Escape are
     // consumed here and everything else falls to the default keymap.
+    let mode_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
+    let model_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
     let keyboard_send_tab = tab.clone();
     let composer = text_editor_keys(
         data.input.get_untracked(),
@@ -3375,6 +3378,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 if consumed {
                     return CommandExecuted::Yes;
                 }
+            }
+            if matches!(&keypress.key, KeyInput::Keyboard(Key::Named(NamedKey::Tab), _))
+                && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT)
+            {
+                let target = if mods.contains(floem::keyboard::Modifiers::SHIFT) {
+                    model_chip_id.get_untracked()
+                } else { mode_chip_id.get_untracked() };
+                if let Some(target) = target { target.request_focus(); }
+                return CommandExecuted::Yes;
             }
             if matches!(&keypress.key, KeyInput::Keyboard(Key::Named(NamedKey::Enter), _))
                 && !mods.contains(floem::keyboard::Modifiers::SHIFT)
@@ -4634,7 +4646,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .unwrap_or(0)
             };
             h_stack((
-                    h_stack((
+                    {
+                    let chip = h_stack((
                         label(move || {
                             if data.acp.get() && data.acp_resume.get() {
                                 format!("Resume ({})", resume_count2())
@@ -4675,6 +4688,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             )
                         }),
                     ))
+                    .keyboard_navigable()
                     .on_click_stop(move |_| {
                         let open = !mode_expanded.get_untracked();
                         mode_expanded.set(open);
@@ -4691,8 +4705,23 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .on_resize(move |rect| {
                         mode_trigger_size.set(rect.size());
                     })
-                    .style(move |s| dropdown_button_style(s, config)),
-                    h_stack((
+                    .style(move |s| dropdown_button_style(s, config));
+                    let chip = chip.on_event(EventListener::KeyDown, move |event| {
+                        if let Event::KeyDown(key) = event {
+                            if key.key.logical_key == Key::Named(NamedKey::Tab)
+                                && (key.modifiers.is_empty() || key.modifiers == floem::keyboard::Modifiers::SHIFT)
+                            {
+                                if let Some(target) = model_chip_id.get_untracked() { target.request_focus(); }
+                                return EventPropagation::Stop;
+                            }
+                        }
+                        EventPropagation::Continue
+                    });
+                    mode_chip_id.set(Some(chip.id()));
+                    chip
+                    },
+                    {
+                    let chip = h_stack((
                         label(move || {
                             let c = config.get();
                             if data.acp.get() {
@@ -4726,6 +4755,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             )
                         }),
                     ))
+                    .keyboard_navigable()
                     .on_click_stop(move |_| {
                         let settings = config.get_untracked().ai_chat.clone();
                         let open = !model_expanded.get_untracked();
@@ -4757,7 +4787,21 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .on_resize(move |rect| {
                         model_trigger_size.set(rect.size());
                     })
-                    .style(move |s| dropdown_button_style(s, config)),
+                    .style(move |s| dropdown_button_style(s, config));
+                    let chip = chip.on_event(EventListener::KeyDown, move |event| {
+                        if let Event::KeyDown(key) = event {
+                            if key.key.logical_key == Key::Named(NamedKey::Tab)
+                                && (key.modifiers.is_empty() || key.modifiers == floem::keyboard::Modifiers::SHIFT)
+                            {
+                                if let Some(target) = mode_chip_id.get_untracked() { target.request_focus(); }
+                                return EventPropagation::Stop;
+                            }
+                        }
+                        EventPropagation::Continue
+                    });
+                    model_chip_id.set(Some(chip.id()));
+                    chip
+                    },
                 ))
                 .style(|s| {
                     s.flex_wrap(floem::style::FlexWrap::Wrap)
