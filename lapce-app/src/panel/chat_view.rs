@@ -16,7 +16,7 @@ use floem::{
     keyboard::{Key, NamedKey},
     peniko::kurbo::{Point, Size},
     reactive::{
-        ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, WriteSignal,
+        ReadSignal, RwSignal, Scope, SignalGet, SignalTrack, SignalUpdate, SignalWith, WriteSignal,
         create_effect, use_context,
     },
     style::{CursorStyle, Display},
@@ -2336,11 +2336,12 @@ fn pick_composer_mode(data: &ChatData, index: usize) {
     data.resume_id.set(None);
 }
 
-/// Grow explicit multiline drafts, but leave room for the conversation.
-/// The editor keeps its own scrolling once the height cap is reached.
-fn composer_draft_height(draft: &str, line_height: usize) -> f32 {
-    let lines = draft.bytes().filter(|byte| *byte == b'\n').take(8).count() + 1;
-    (lines.saturating_mul(line_height).saturating_add(12)).clamp(64, 160) as f32
+/// Grow with the rendered lines, including soft wraps. Only inspect enough
+/// lines to reach the cap so a large paste does not scan the whole draft.
+fn composer_draft_height(lines: impl Iterator, line_height: f32) -> f32 {
+    let count = lines.take(8).count().max(1);
+    let line_height = if line_height.is_finite() { line_height.max(0.0) } else { 0.0 };
+    (count as f32 * line_height + 12.0).clamp(64.0, 160.0)
 }
 
 fn composer_menu_width(window_width: f64) -> f64 {
@@ -3647,6 +3648,20 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             }
         }
     });
+    // A wider scroll parent can leave the inner editor on its old width
+    // until the next edit. Re-layout after the parent width settles so
+    // soft wrapping and composer height update on resize alone.
+    let composer_resize_editor = composer.editor().clone();
+    create_effect(move |previous_width: Option<f64>| {
+        let width = composer_resize_editor.parent_size.get().width();
+        if previous_width != Some(width) {
+            if let Some(view) = composer_resize_editor.editor_view_id.get_untracked() {
+                view.request_layout();
+            }
+        }
+        width
+    });
+    let composer_size_editor = composer.editor().clone();
     let clear_composer_editor = composer.editor().clone();
     create_effect(move |_| {
         let input = input_signal.get();
@@ -4844,7 +4859,16 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     }
                 }),
                 composer.style(move |s| {
-                    let height = input_signal.with(|draft| composer_draft_height(draft, config.get().editor.line_height()));
+                    // Re-evaluate after edits and after layout resolves wrapping
+                    // at the current panel width. The actual editor supplies both
+                    // the visual lines and its configured line height.
+                    input_signal.track();
+                    composer_size_editor.screen_lines.track();
+                    composer_size_editor.viewport.track();
+                    let height = composer_draft_height(
+                        composer_size_editor.iter_vlines(false, floem::views::editor::visual_line::VLine(0)),
+                        composer_size_editor.line_height(0),
+                    );
                     s.width_full().min_width(0.0).height(height)
                 }),
                 h_stack((
@@ -5664,19 +5688,20 @@ mod completed_duration_tests {
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
     #[test]
-    fn multiline_draft_height_grows_and_shrinks_with_a_conversation_safe_cap() {
+    fn visual_draft_height_grows_shrinks_and_bounds_iteration() {
         use super::composer_draft_height as height;
-        assert_eq!(height("", 20), 64.0);
-        assert_eq!(height("one", 20), 64.0);
-        assert_eq!(height("one\ntwo", 20), 64.0);
-        assert_eq!(height("one\ntwo\nthree", 20), 72.0);
-        assert_eq!(height("one\ntwo\n", 20), 72.0);
-        assert_eq!(height("one\r\ntwo\r\nthree", 20), 72.0);
-        assert_eq!(height("one\ntwo\nthree", 30), 102.0);
-        assert_eq!(height(&"line\n".repeat(10000), 20), 160.0);
-        assert_eq!(height("one\ntwo", usize::MAX), 160.0);
-        assert_eq!(height("one\ntwo", 0), 64.0);
-        assert_eq!(height("one", 20), 64.0);
+        assert_eq!(height(0..0, 20.0), 64.0);
+        assert_eq!(height(0..1, 20.0), 64.0);
+        assert_eq!(height(0..2, 20.0), 64.0);
+        assert_eq!(height(0..3, 20.0), 72.0);
+        assert_eq!(height(0..3, 30.0), 102.0);
+        assert_eq!(height(0..10000, 20.0), 160.0);
+        assert_eq!(height(0.., 20.0), 160.0);
+        assert_eq!(height(0..2, f32::MAX), 160.0);
+        assert_eq!(height(0..2, 0.0), 64.0);
+        assert_eq!(height(0..2, f32::NAN), 64.0);
+        assert_eq!(height(0..2, -1.0), 64.0);
+        assert_eq!(height(0..1, 20.0), 64.0);
     }
     #[test]
     fn menu_letters_cycle_enabled_rows_without_picking_or_capturing_shortcuts() {

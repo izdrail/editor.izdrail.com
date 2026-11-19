@@ -98,3 +98,5 @@ Long model labels and menu notices wrap within the menu card instead of running 
 With a mode or model menu open, type one unmodified letter or digit to highlight the next matching enabled row. Repeat it to cycle matches, then press Enter or Space to choose. Typing alone never changes the mode or model or sends the draft.
 
 The composer grows for multiline drafts, then scrolls at a fixed height cap so the conversation stays visible. Removing lines shrinks it back. Shift+Enter still adds a line; plain Enter still sends.
+
+The composer grows for soft-wrapped lines too, using the editor's actual text layout and line height. Narrowing the panel grows the draft until its height cap; widening it or removing text shrinks it again.
