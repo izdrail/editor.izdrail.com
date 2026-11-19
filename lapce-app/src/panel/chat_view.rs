@@ -1592,7 +1592,7 @@ fn pending_command_card(tab: Rc<WindowTabData>) -> impl View {
             })
         },
     )
-    .style(|s| s.flex_col().width_full())
+    .style(|s| s.flex_col().width_full().min_width(0.0))
 }
 
 /// The dropdown label and pickability for one endpoint model row
@@ -2224,7 +2224,7 @@ fn composer_dropdown_overlay<V: View + 'static>(
     config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View + use<V> {
     scroll(
-        rows.style(|s| s.flex_col().width_full().cursor(CursorStyle::Pointer)),
+        rows.style(|s| s.flex_col().width_full().min_width(0.0).cursor(CursorStyle::Pointer)),
     )
     .style(|s| {
         s.width_pct(100.0)
@@ -2856,7 +2856,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             ),
                         )),
                     ))
-                    .style(|s| s.flex_col().width_full());
+                    .style(|s| s.flex_col().width_full().min_width(0.0));
                     composer_dropdown_overlay(
                         rows,
                         mode_expanded,
@@ -3009,7 +3009,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 })
                         },
                     )
-                    .style(|s| s.flex_col().width_full());
+                    .style(|s| s.flex_col().width_full().min_width(0.0));
                     composer_dropdown_overlay(
                         rows,
                         model_expanded,
@@ -3268,7 +3268,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     hide_title_tab.toggle_panel_visual(PanelKind::Chat);
                 })
                 .style(move |s| {
-                    s.font_bold()
+                    s.font_bold().min_width(0.0).flex_grow(1.0).flex_basis(0.0).text_ellipsis()
                         .font_size(13.0)
                         .selectable(false)
                         .cursor(CursorStyle::Pointer)
@@ -3392,10 +3392,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     config,
                 ),
             ))
-            .style(|s| s.items_center().gap(2.0)),
+            .style(|s| s.items_center().flex_shrink(0.0).gap(2.0)),
         ))
         .style(|s| {
-            s.width_full()
+            s.width_full().min_width(0.0).max_width_full()
                 .items_center()
                 .justify_between()
                 .padding_vert(2.0)
@@ -3753,7 +3753,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         })
                 },
             )
-            .style(|s| s.flex_col().width_full().gap(2.0)),
+            .style(|s| s.flex_col().width_full().min_width(0.0).gap(2.0)),
         ))
         .style(move |s| {
             s.apply_if(plans_list.get().is_empty(), |s| s.hide())
@@ -3821,7 +3821,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(|s| s.width_full().min_width(0.0).gap(6.0).items_center())
                 },
             )
-            .style(|s| s.flex_col().width_full().min_width(0.0).gap(2.0)),
+            .style(|s| s.flex_col().width_full().min_width(0.0).min_width(0.0).gap(2.0)),
         ))
         .style(move |s| {
             s.apply_if(runs_registry.entries().is_empty(), |s| s.hide())
@@ -3884,7 +3884,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         .cursor(CursorStyle::Pointer)
                                         .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))))
                             },
-                        ).style(|s| s.flex_col().width_full().min_width(0.0).gap(6.0).margin_top(10.0)),
+                        ).style(|s| s.flex_col().width_full().min_width(0.0).min_width(0.0).gap(6.0).margin_top(10.0)),
                     ))
                     .style(move |s| {
                         let s = s
@@ -4079,7 +4079,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                             }
                                         }),
                                     ))
-                                    .style(|s| s.flex_col().width_full()),
+                                    .style(|s| s.flex_col().width_full().min_width(0.0)),
                                 )
                                 .style(move |s| {
                                     let s = s
@@ -4115,13 +4115,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 move |(_, content)| match content {
                                     MarkdownContent::Text { layout, links } => {
                                         crate::markdown::linked_text(layout, links)
-                                            .style(|s| s.max_width_full())
+                                            .style(|s| s.width_full().min_width(0.0).max_width_full())
                                             .into_any()
                                     }
                                     _ => empty().into_any(),
                                 },
                             )
-                            .style(|s| s.flex_col().max_width_full()),
+                            .style(|s| s.flex_col().width_full().min_width(0.0).min_width(0.0).max_width_full()),
                         ))
                         // Antigravity parity: full-width cards, not
                         // chat bubbles. Your turns keep the accent
@@ -4131,7 +4131,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             let user = role == "You";
                             let config = config.get();
                             let s = s
-                                .width_full()
+                                .width_full().min_width(0.0).max_width_full()
                                 .padding(10.0)
                                 .gap(5.0)
                                 .margin_bottom(8.0)
@@ -4152,9 +4152,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         })
                     },
                 )
-                .style(|s| s.flex_col().width_full()),
+                .style(|s| s.flex_col().width_full().min_width(0.0)),
                 ))
-                .style(|s| s.flex_col().width_full()),
+                .style(|s| s.flex_col().width_full().min_width(0.0)),
             )
             .scroll_to_percent(move || {
                 let turns = data.turns.get();
@@ -4511,7 +4511,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 })
                         },
                     )
-                    .style(|s| s.flex_col().width_full()),
+                    .style(|s| s.flex_col().width_full().min_width(0.0)),
                 )
                 .style(move |s| {
                     let s = s
@@ -4608,6 +4608,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         s.absolute()
             .flex_col()
             .size_pct(100.0, 100.0)
+            .min_width(0.0).max_width_full()
             .set(PropagatePointerWheel, false)
             .border(1.0)
             .border_color(ring)

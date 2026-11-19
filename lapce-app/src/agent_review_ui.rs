@@ -544,13 +544,22 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
             .style(|s| {
                 s.font_size(11.0)
                     .flex_grow(1.0)
+                    .flex_basis(0.0)
                     .min_width(0.0)
                     .text_ellipsis()
                     .selectable(false)
             }),
             label(|| "Prepare review".to_string())
                 .on_click_stop(move |_| {
-                    if let Err(e) = prepare.prepare(&prepare_tab, &prepare_tab.chat.input.get_untracked()) { error.set(e); }
+                    let input = prepare_tab.chat.input.get_untracked();
+                    error.set(String::new());
+                    if !manual_review_candidate(&input) {
+                        notice.set("No edit proposal in the composer. A normal Chat answer does not need review. Paste changes JSON here to prepare edits; nothing has changed.".into());
+                        open.set(true);
+                        return;
+                    }
+                    notice.set(String::new());
+                    if let Err(e) = prepare.prepare(&prepare_tab, &input) { error.set(e); open.set(true); }
                 })
                 .style(|s| {
                     s.font_size(11.0)
@@ -561,11 +570,11 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                         .cursor(CursorStyle::Pointer)
                 }),
         ))
-        .style(move |s| s.gap(6.0).padding_vert(2.0).cursor(CursorStyle::Pointer))
+        .style(move |s| s.width_full().min_width(0.0).gap(6.0).padding_vert(2.0).cursor(CursorStyle::Pointer))
         .on_click_stop(move |_| open.update(|o| *o = !*o)),
         container(
         scroll(v_stack((
-        label(|| "Paste changes JSON in the composer, then Prepare review. Existing files or new paths, all under owner review. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+        label(|| "Paste changes JSON in the composer, then Prepare review. Existing files or new paths, all under owner review. Checkpoints store private code locally. Act remains disabled.".to_string()).style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
         scroll(dyn_stack(move || proposals.get().into_iter(), |p: &Proposal| p.digest().unwrap_or_default(), move |proposal: Proposal| {
             let apply = data.clone(); let discard = data.clone(); let apply_tab = tab.clone();
             let digest = short_digest(&proposal.digest().unwrap_or_default());
@@ -596,7 +605,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                         .cursor(CursorStyle::Pointer)
                         .selectable(false)
                 }),
-            )).style(|s| s.width_full().gap(6.0))
+            )).style(|s| s.width_full().min_width(0.0).max_width_full().gap(6.0))
         })).style(|s| s.max_height(260.0).width_full()),
         scroll(dyn_stack(move || checkpoints.get().into_iter(), |c: &Checkpoint| format!("{}:{:?}", c.proposal_digest, c.state), move |checkpoint: Checkpoint| {
             let restore = cp_data.clone(); let restore_tab = cp_tab.clone(); let summary = checkpoint.clone(); let dismiss = cp_data.clone();
@@ -624,10 +633,10 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                     }
                 })
                 .on_click_stop(move |_| details.update(|v| *v = !*v))
-                .style(|s| s.font_size(11.0).max_width_full().cursor(CursorStyle::Pointer).selectable(false)),
+                .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap).cursor(CursorStyle::Pointer).selectable(false)),
                 container(v_stack((
-                    label(|| "Restart is review-only.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
-                    label(|| "Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).max_width_full()),
+                    label(|| "Restart is review-only.".to_string()).style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
+                    label(|| "Restore fails on later changes.".to_string()).style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
                     // Diffs start collapsed: an old checkpoint's full
                     // before/after used to shove the whole review section
                     // down the panel (host QA on 253cd71).
@@ -683,7 +692,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                     // the bar painted over the Dismiss hit area).
                     .style(|s| s.gap(4.0).padding_bottom(14.0)),
                 ))).style(move |s| if details.get() { s } else { s.hide() }),
-            )).style(|s| s.width_full().gap(6.0))
+            )).style(|s| s.width_full().min_width(0.0).max_width_full().gap(6.0))
         })).style(|s| s.max_height(200.0).width_full()),
         label(move || {
             let paths = stale.get();
@@ -701,14 +710,14 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 .max_width_full()
                 .apply_if(stale.get().is_empty(), |s| s.hide())
         }),
-        label(move || notice.get()).style(|s| s.font_size(11.0).max_width_full()),
-        label(move || error.get()).style(|s| s.font_size(11.0).max_width_full()),
-    )).style(|s| s.width_full().gap(6.0)))
-        .style(|s|s.width_full().max_height(300.0)),
+        label(move || notice.get()).style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
+        label(move || error.get()).style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
+    )).style(|s| s.width_full().min_width(0.0).max_width_full().gap(6.0)))
+        .style(|s|s.width_full().min_width(0.0).max_width_full().max_height(300.0)),
         )
-        .style(move |s| s.width_full().apply_if(!open.get(), |s| s.hide())),
+        .style(move |s| s.width_full().min_width(0.0).max_width_full().apply_if(!open.get(), |s| s.hide())),
     ))
-    .style(|s| s.width_full())
+    .style(|s| s.width_full().min_width(0.0).max_width_full())
 }
 /// After a reviewed proposal is applied, record what landed as a
 /// `.lapce/plans/walkthrough-<epoch>.md` artifact (Antigravity parity:
@@ -816,7 +825,7 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
                         })
                     }),
                     label(move || text.clone())
-                        .style(|s| s.font_size(11.0).max_width_full()),
+                        .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
                 ))
                 .style(|s| s.gap(4.0))
             },
@@ -825,7 +834,7 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
         .into_any(),
         None => scroll(
             label(move || diff.clone())
-                .style(|s| s.font_size(11.0).max_width_full()),
+                .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
         )
             .style(|s| s.max_height(140.0).width_full())
             .into_any(),
@@ -836,18 +845,18 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
         h_stack((
             scroll(
                 label(move || format!("BEFORE\n{before}"))
-                    .style(|s| s.font_size(11.0).max_width_full()),
+                    .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
             )
             .style(|s| s.width_pct(50.0).max_height(180.0)),
             scroll(
                 label(move || format!("AFTER\n{after}"))
-                    .style(|s| s.font_size(11.0).max_width_full()),
+                    .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
             )
             .style(|s| s.width_pct(50.0).max_height(180.0)),
         ))
-        .style(|s| s.width_full()),
+        .style(|s| s.width_full().min_width(0.0).max_width_full()),
     ))
-    .style(|s| s.width_full())
+    .style(|s| s.width_full().min_width(0.0).max_width_full())
 }
 
 fn change_diff(before: &str, after: &str) -> String {
@@ -1239,4 +1248,26 @@ pub fn agent_touched_files(workspace: &Path) -> BTreeSet<String> {
         }
     }
     touched
+}
+
+/// Manual review is optional for ordinary chat text. JSON-looking input
+/// still goes through the strict parser, including malformed proposals.
+fn manual_review_candidate(input: &str) -> bool {
+    let text = input.trim();
+    text.starts_with('{') || text.starts_with('[') || text.contains("\"changes\"") || text.contains("```json")
+}
+#[cfg(test)]
+mod manual_review_tests {
+    use super::*;
+    #[test]
+    fn manual_review_plain_chat_is_not_a_parse_failure() {
+        for text in ["", "Explain the current file", "The code looks correct. No changes are needed."] {
+            assert!(!manual_review_candidate(text));
+        }
+        for text in ["{broken", "[]", "```json\n{}\n```", "Proposal: {\"changes\":[]}"] {
+            assert!(manual_review_candidate(text));
+            assert!(parse_draft(text).is_err());
+        }
+        assert!(manual_review_candidate(r#"{"changes":[{"path":"a.php","replacement":"x"}]}"#));
+    }
 }
