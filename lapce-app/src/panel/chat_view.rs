@@ -2487,6 +2487,10 @@ fn chat_error_card(tab: Rc<WindowTabData>) -> impl View {
 
 // Only endpoint-backed modes need the remote project-read disclosure.
 // Keep unknown backends conservative rather than hiding the permission gate.
+fn conversation_welcome_visible(has_turns: bool, busy: bool, pending_review: bool, error: bool) -> bool {
+    !has_turns && !busy && !pending_review && !error
+}
+
 fn conversation_review_visible(tools_open: bool, pending: bool, error: bool) -> bool {
     tools_open || pending || error
 }
@@ -4127,7 +4131,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             .width_full()
                             .padding_vert(40.0)
                             .gap(2.0);
-                        if empty_turns.turns.get().is_empty() {
+                        if conversation_welcome_visible(
+                            !empty_turns.turns.get().is_empty(),
+                            empty_turns.busy.get(),
+                            empty_turns.review.proposal.get().is_some(),
+                            !empty_turns.error.get().is_empty() || !empty_turns.review.error.get().is_empty(),
+                        ) {
                             s
                         } else {
                             s.display(Display::None)
@@ -5367,6 +5376,15 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn welcome_is_only_for_an_idle_empty_conversation() {
+        assert!(super::conversation_welcome_visible(false, false, false, false));
+        for mask in 1..16 {
+            assert!(!super::conversation_welcome_visible(
+                mask & 1 != 0, mask & 2 != 0, mask & 4 != 0, mask & 8 != 0,
+            ));
+        }
+    }
     #[test]
     fn pending_review_and_errors_never_hide_with_tools() {
         assert!(!conversation_review_visible(false, false, false));
