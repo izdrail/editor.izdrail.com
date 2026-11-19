@@ -2271,8 +2271,38 @@ fn composer_menu_returns_to_draft(key: &Key, modifiers: floem::keyboard::Modifie
 /// at the trigger button, dismissed by focus loss (a click anywhere
 /// outside it) or Escape. Mirrors the settings dropdown (settings.rs
 /// dropdown / dropdown_scroll).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ComposerModeMenuKey { Highlight(usize), Pick(usize) }
+
+fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>) -> Option<ComposerModeMenuKey> {
+    if !modifiers.is_empty() { return None; }
+    use ComposerModeMenuKey::*;
+    match key {
+        Key::Named(NamedKey::ArrowDown) => Some(Highlight(selected.map_or(0, |i| (i + 1).min(5)))),
+        Key::Named(NamedKey::ArrowUp) => Some(Highlight(selected.map_or(5, |i| i.saturating_sub(1)))),
+        Key::Named(NamedKey::Home) => Some(Highlight(0)),
+        Key::Named(NamedKey::End) => Some(Highlight(5)),
+        Key::Named(NamedKey::Enter) => selected.map(Pick),
+        _ => None,
+    }
+}
+
+fn pick_composer_mode(data: &ChatData, index: usize) {
+    if data.busy.get_untracked() || index > 5 { return; }
+    data.mode.set(match index {
+        1 => Some(crate::agent_loop::Mode::Ask),
+        2 => Some(crate::agent_loop::Mode::Plan),
+        3 => Some(crate::agent_loop::Mode::Act),
+        _ => None,
+    });
+    data.acp.set(index >= 4);
+    data.acp_resume.set(index == 5);
+    data.resume_id.set(None);
+}
+
 fn composer_dropdown_overlay<V: View + 'static>(
     rows: V,
+    menu_key: Option<Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool>>,
     expanded: RwSignal<bool>,
     restore_composer_focus: RwSignal<bool>,
     origin: RwSignal<Point>,
@@ -2300,6 +2330,9 @@ fn composer_dropdown_overlay<V: View + 'static>(
     .on_event_stop(EventListener::PointerDown, |_| {})
     .on_event(EventListener::KeyDown, move |event| {
         if let Event::KeyDown(key_event) = event {
+            if menu_key.as_ref().is_some_and(|handler| handler(&key_event.key.logical_key, key_event.modifiers)) {
+                return EventPropagation::Stop;
+            }
             if composer_menu_returns_to_draft(
                 &key_event.key.logical_key, key_event.modifiers,
             ) {
@@ -2925,6 +2958,20 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 let picker_data = picker_data.clone();
                 let id = add_overlay(Point::ZERO, move |_| {
                     let resume_tab = run_tab.clone();
+                    let mode_keyboard = floem::reactive::create_rw_signal(None::<usize>);
+                    let keyboard_data = picker_data.clone();
+                    let mode_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
+                        match composer_mode_menu_key(key, mods, mode_keyboard.get_untracked()) {
+                            Some(ComposerModeMenuKey::Highlight(index)) => mode_keyboard.set(Some(index)),
+                            Some(ComposerModeMenuKey::Pick(index)) => {
+                                pick_composer_mode(&keyboard_data, index);
+                                mode_expanded.set(false);
+                                restore_composer_focus.set(true);
+                            }
+                            None => return false,
+                        }
+                        true
+                    });
                     let picker_data = picker_data.clone();
                     let resume_count = move || -> usize {
                         let settings =
@@ -2969,7 +3016,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     data.mode.get().is_none()
                                         && !data.acp.get()
                                         && !data.acp_resume.get(),
-                                )
+                                ).apply_if(mode_keyboard.get() == Some(0), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "Ask".to_string())
                             .on_click_stop(move |_| {
@@ -2990,7 +3037,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     config,
                                     data.mode.get()
                                         == Some(crate::agent_loop::Mode::Ask),
-                                )
+                                ).apply_if(mode_keyboard.get() == Some(1), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "Plan".to_string())
                             .on_click_stop(move |_| {
@@ -3011,7 +3058,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     config,
                                     data.mode.get()
                                         == Some(crate::agent_loop::Mode::Plan),
-                                )
+                                ).apply_if(mode_keyboard.get() == Some(2), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "Act".to_string())
                             .on_click_stop(move |_| {
@@ -3032,7 +3079,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     config,
                                     data.mode.get()
                                         == Some(crate::agent_loop::Mode::Act),
-                                )
+                                ).apply_if(mode_keyboard.get() == Some(3), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "ACP".to_string())
                             .on_click_stop(move |_| {
@@ -3050,7 +3097,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     s,
                                     config,
                                     data.acp.get() && !data.acp_resume.get(),
-                                )
+                                ).apply_if(mode_keyboard.get() == Some(4), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(move || format!("Resume ({})", resume_count()))
                             .on_click_stop(move |_| {
@@ -3068,7 +3115,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     s,
                                     config,
                                     data.acp.get() && data.acp_resume.get(),
-                                )
+                                ).apply_if(mode_keyboard.get() == Some(5), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         v_stack((
                             acp_agent_row(
@@ -3112,6 +3159,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(|s| s.flex_col().width_full().min_width(0.0));
                     composer_dropdown_overlay(
                         rows,
+                        Some(mode_key),
                         mode_expanded,
                         restore_composer_focus,
                         mode_origin,
@@ -3267,6 +3315,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(|s| s.flex_col().width_full().min_width(0.0));
                     composer_dropdown_overlay(
                         rows,
+                        None,
                         model_expanded,
                         restore_composer_focus,
                         model_origin,
@@ -5532,6 +5581,24 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mode_menu_keys_are_bounded_explicit_and_unmodified() {
+        use super::{composer_mode_menu_key as key, ComposerModeMenuKey::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        assert_eq!(key(&Key::Named(Enter), Modifiers::empty(), None), None);
+        assert_eq!(key(&Key::Named(ArrowDown), Modifiers::empty(), None), Some(Highlight(0)));
+        assert_eq!(key(&Key::Named(ArrowUp), Modifiers::empty(), None), Some(Highlight(5)));
+        assert_eq!(key(&Key::Named(ArrowDown), Modifiers::empty(), Some(5)), Some(Highlight(5)));
+        assert_eq!(key(&Key::Named(ArrowUp), Modifiers::empty(), Some(0)), Some(Highlight(0)));
+        assert_eq!(key(&Key::Named(Home), Modifiers::empty(), Some(3)), Some(Highlight(0)));
+        assert_eq!(key(&Key::Named(End), Modifiers::empty(), Some(2)), Some(Highlight(5)));
+        assert_eq!(key(&Key::Named(Enter), Modifiers::empty(), Some(2)), Some(Pick(2)));
+        for bits in 1..16 {
+            let mut mods = Modifiers::empty();
+            for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] { if bits & bit != 0 { mods |= modifier; } }
+            for named in [ArrowDown, ArrowUp, Home, End, Enter] { assert_eq!(key(&Key::Named(named), mods, Some(2)), None); }
+        }
+    }
     #[test]
     fn user_prompts_keep_literal_markdown_and_assistant_answers_keep_formatting() {
         let config = crate::config::LapceConfig::default();

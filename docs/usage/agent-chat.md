@@ -86,3 +86,5 @@ While file suggestions are visible, plain Up/Down changes the suggestion and pla
 Use **Copy** beside an assistant answer to copy its original text, including Markdown and code fences, to the clipboard. **Copied** confirms success; **Copy failed** means the clipboard was unavailable. Copy does not send anything, change the draft, or apply edits. The empty conversation has no copy controls.
 
 Your message bubbles show the exact prompt as plain text, including Markdown markers, links and code fences. Assistant answers still render Markdown. This display choice does not change what is sent or saved.
+
+With the mode menu open, plain Up/Down highlights Chat, Ask, Plan, Act, ACP or Resume. Home/End jumps to the first/last mode. Enter picks the highlighted mode and returns to the draft. Navigation alone does not change the mode or start a request; Escape or Tab closes without picking. Agent-specific rows remain available by mouse.
