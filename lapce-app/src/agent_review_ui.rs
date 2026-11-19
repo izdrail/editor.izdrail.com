@@ -601,6 +601,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 (c.clone(), create_rw_signal(vec![true; count]))
             }).collect();
             let items_apply = items.clone();
+            let tab_for_preview = tab.clone();
             let accept_all = data.clone(); let accept_tab = tab.clone();
             let all_proposal = proposal.clone();
             let reject_all = data.clone();
@@ -617,7 +618,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 )).style(|s| s.width_full().min_width(0.0).gap(6.0)),
                 label(|| "Accept applies to open buffers only, not saved.".to_string()).style(|s| s.font_size(10.0).width_full().min_width(0.0).text_overflow(floem::style::TextOverflow::Wrap)),
                 label(move || format!("Proposal {digest}")).style(|s| s.font_size(10.0).max_width_full()),
-                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), move |(change, mask)| change_view(change, Some(mask), config))
+                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), move |(change, mask)| change_view(change, Some(mask), config, Some(tab_for_preview.clone())))
                     .style(|s| s.flex_col().width_full().min_width(0.0)),
                 label(|| "Apply accepted hunks".to_string()).on_click_stop(move |_| {
                     let masks: Vec<Vec<bool>> = items_apply.iter().map(|(_, m)| m.get_untracked()).collect();
@@ -697,7 +698,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                             }
                         },
                         |c: &Change| c.path.clone(),
-                        move |change| change_view(change, None, config),
+                        move |change| change_view(change, None, config, None),
                     ),
                     v_stack((
                         label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
@@ -799,7 +800,9 @@ pub fn short_digest(digest: &str) -> String {
     short
 }
 
-fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSignal<Arc<LapceConfig>>) -> impl View {
+fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSignal<Arc<LapceConfig>>, preview_tab: Option<Rc<WindowTabData>>) -> impl View {
+    let preview_change = change.clone();
+    let can_preview = preview_tab.is_some();
     let before = change.base.text;
     let after = change.proposed;
     let path = change.path;
@@ -845,6 +848,12 @@ fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSi
     };
     v_stack((
         label(move || path.clone()).style(|s| s.max_width_full()),
+        label(|| "Open read-only editor diff".to_string())
+            .on_click_stop(move |_| {
+                if let Some(tab) = &preview_tab {
+                    tab.main_split.open_agent_proposal_diff(&preview_change.path, &preview_change.base.text, &preview_change.proposed);
+                }
+            }).style(move |s| s.font_size(11.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::EDITOR_LINK)).apply_if(!can_preview, |s| s.hide())),
         body_view,
 
     ))

@@ -91,11 +91,11 @@ impl DiffEditorInfo {
 
                     doc
                 }
-                DocContent::Scratch { name, .. } => {
+                DocContent::Scratch { name, read_only, .. } => {
                     let doc_content = DocContent::Scratch {
                         id: BufferId::next(),
                         name: name.to_string(),
-                        read_only: false,
+                        read_only: *read_only,
                     };
                     let doc = Doc::new_content(
                         cx,
@@ -104,6 +104,9 @@ impl DiffEditorInfo {
                         common.clone(),
                     );
                     let doc = Rc::new(doc);
+                    if *read_only && name.starts_with("Agent proposal ") {
+                        doc.init_content(Rope::from("This proposal preview was not restored. Reopen a current proposal from Agent review. No source file was changed."));
+                    }
                     data.scratch_docs.update(|scratch_docs| {
                         scratch_docs.insert(name.to_string(), doc.clone());
                     });

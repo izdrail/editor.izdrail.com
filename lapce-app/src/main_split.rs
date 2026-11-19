@@ -761,6 +761,23 @@ impl MainSplitData {
         );
     }
 
+    /// Read-only proposal snapshots, never registered as workspace source docs.
+    /// Opening this preview cannot load, mutate or save the actual file.
+    pub fn open_agent_proposal_diff(&self, path: &str, before: &str, proposed: &str) {
+        let snapshots = [("before", before), ("proposed", proposed)].map(|(side, text)| {
+            let content = DocContent::Scratch {
+                id: BufferId::next(),
+                name: format!("Agent proposal {side} (read-only): {path}"),
+                read_only: true,
+            };
+            let doc = Rc::new(Doc::new_content(self.scope, content, self.editors, self.common.clone()));
+            doc.init_content(Rope::from(text));
+            doc
+        });
+        let [left, right] = snapshots;
+        self.get_editor_tab_child(EditorTabChildSource::DiffEditor { left, right }, true, false);
+    }
+
     pub fn open_diff_files(&self, left_path: PathBuf, right_path: PathBuf) {
         let [left, right] =
             [left_path, right_path].map(|path| self.get_doc(path, None).0);
@@ -2548,6 +2565,7 @@ impl MainSplitData {
     }
 
     pub fn save_as(&self, doc: Rc<Doc>, path: PathBuf, action: impl Fn() + 'static) {
+        if doc.content.with_untracked(DocContent::is_agent_proposal_preview) { return; }
         if let Some(binding)=doc.projection.get_untracked() {binding.notice.set("Use Save to save source buffers; the diagnostics projection is not a source file".into());return;}
         let (buffer_id, doc_content, rev, content) = (
             doc.buffer_id,
@@ -2604,6 +2622,7 @@ impl MainSplitData {
         path: PathBuf,
         action: impl Fn() + 'static,
     ) {
+        if doc.content.with_untracked(DocContent::is_agent_proposal_preview) { return; }
         if let Some(binding)=doc.projection.get_untracked() {binding.notice.set("Use Save to save source buffers; the diagnostics projection is not a source file".into());return;}
         let (buffer_id, doc_content, rev, content) = (
             doc.buffer_id,
@@ -2701,6 +2720,7 @@ impl MainSplitData {
     }
 
     pub fn save_scratch_doc(&self, doc: Rc<Doc>) {
+        if doc.content.with_untracked(DocContent::is_agent_proposal_preview) { return; }
         if doc.projection.get_untracked().is_some() {doc.save_projection(||{});return;}
         let main_split = self.clone();
         save_as(
@@ -2723,6 +2743,7 @@ impl MainSplitData {
     }
 
     pub fn save_scratch_doc2(&self, doc: Rc<Doc>) {
+        if doc.content.with_untracked(DocContent::is_agent_proposal_preview) { return; }
         if doc.projection.get_untracked().is_some() {doc.save_projection(||{});return;}
         let main_split = self.clone();
         save_as(

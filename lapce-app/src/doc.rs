@@ -130,6 +130,10 @@ pub enum DocContent {
 }
 
 impl DocContent {
+    /// Agent proposal previews are display-only snapshots, not saveable files.
+    pub fn is_agent_proposal_preview(&self) -> bool {
+        matches!(self, Self::Scratch { name, read_only: true, .. } if name.starts_with("Agent proposal "))
+    }
     pub fn is_local(&self) -> bool {
         matches!(self, DocContent::Local)
     }
@@ -3556,5 +3560,22 @@ mod projection_diagnostic_style_tests {
         let start = text.find("BROKEN").unwrap();
         assert_eq!(clip_diagnostic_line(100..100+text.len(), 100+start..100+text.len()), Some(start..text.len()));
         assert!(text.is_char_boundary(start));
+    }
+}
+
+#[cfg(test)]
+mod agent_proposal_preview_tests {
+    use super::DocContent;
+    use lapce_rpc::buffer::BufferId;
+    #[test]
+    fn preview_save_guard_only_matches_read_only_agent_snapshots() {
+        let scratch = |name: &str, read_only| DocContent::Scratch {
+            id: BufferId::next(), name: name.into(), read_only,
+        };
+        assert!(scratch("Agent proposal before (read-only): a.php", true).is_agent_proposal_preview());
+        assert!(scratch("Agent proposal proposed (read-only): a.php", true).is_agent_proposal_preview());
+        assert!(!scratch("Agent proposal before (read-only): a.php", false).is_agent_proposal_preview());
+        assert!(!scratch("ordinary scratch", true).is_agent_proposal_preview());
+        assert!(!DocContent::Local.is_agent_proposal_preview());
     }
 }

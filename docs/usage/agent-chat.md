@@ -26,6 +26,8 @@ A staged edit proposal shows its real file count and added/removed line counts, 
 
 Changed hunks show added lines in green and removed lines in red. **Accept** and **Reject** set each hunk's selection; **Apply accepted hunks** commits that selection to open buffers. **Accept all** applies the whole displayed proposal through the same stale-buffer and checkpoint checks. **Reject all** drops the proposal without changing buffers. These controls never save source files. This review remains in the Agent panel, not inline in the main editor.
 
+**Open read-only editor diff** opens full before/proposed snapshots in a main-editor diff tab. They are not the live source buffer and cannot be edited or saved as files. Accept/reject stays in Agent review, which still checks the current source before applying. Snapshot text is not restored after restart; a reopened preview tells you to return to a current proposal.
+
 ## Pick the right mode
 
 - **Chat** uses conversation and attached context, without the project tool loop.
