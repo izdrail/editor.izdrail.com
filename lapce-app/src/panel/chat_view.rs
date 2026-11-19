@@ -701,6 +701,21 @@ fn trailing_mention(text: &str) -> Option<(String, usize)> {
     Some((body.to_string(), start))
 }
 
+/// Tail completion is only active at one collapsed caret at the draft end.
+/// Editing earlier text or selecting a range must not target a later token.
+fn mention_at_caret(text: &str, caret: Option<usize>) -> Option<(String, usize)> {
+    if caret != Some(text.len()) { return None; }
+    trailing_mention(text)
+}
+
+fn mention_caret(editor: &floem::views::editor::Editor) -> Option<usize> {
+    use floem::views::editor::core::cursor::CursorMode;
+    match &editor.cursor.get().mode {
+        CursorMode::Insert(selection) => selection.current_caret(),
+        _ => None,
+    }
+}
+
 /// Case-insensitive match of a mention query against a relative path:
 /// 0 = basename starts with the query, 1 = the path contains it,
 /// 2 = subsequence; None when it does not match. Lower ranks first,
@@ -3443,6 +3458,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         floem::reactive::create_rw_signal(None::<Vec<String>>);
     let mention_popup =
         floem::reactive::create_rw_signal(None::<(usize, usize, Vec<String>)>);
+    let mention_cursor = floem::reactive::create_rw_signal(Some(data.input.get_untracked().len()));
     let mention_requested = Rc::new(std::cell::Cell::new(false));
     let (mention_tx, mention_rx) = std::sync::mpsc::channel::<Vec<String>>();
     let mention_tx = Rc::new(mention_tx);
@@ -3462,7 +3478,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         let mention_tx = mention_tx.clone();
         create_effect(move |_| {
             let input = mention_data.input.get();
-            let next = match trailing_mention(&input) {
+            let next = match mention_at_caret(&input, mention_cursor.get()) {
                 Some((query, start)) if mention_tab.workspace.kind.is_local() => {
                     match mention_files.get() {
                         Some(files) => {
@@ -3541,7 +3557,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 }
             }
             if let Some((start, selected, items)) =
-                mention_popup.get_untracked()
+                mention_popup.get_untracked().filter(|_| {
+                    let editor = editor_sig.get_untracked();
+                    mention_at_caret(&editor.doc().text().to_string(), mention_caret(&editor)).is_some()
+                })
             {
                 let consumed = match &keypress.key {
                     KeyInput::Keyboard(key @ Key::Named(NamedKey::ArrowDown), _) if composer_mention_navigation(key, mods) => {
@@ -3628,6 +3647,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         .on_event_cont(EventListener::FocusLost, move |_| {
             composer_focused.set(false);
         });
+    let mention_cursor_editor = composer.editor().clone();
+    create_effect(move |_| {
+        let caret = mention_caret(&mention_cursor_editor);
+        if mention_cursor.get_untracked() != caret { mention_cursor.set(caret); }
+    });
     let dropdown_return_editor = composer.editor().clone();
     create_effect(move |_| {
         if restore_composer_focus.get() {
@@ -3698,6 +3722,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         let doc = composer.doc();
         let editor = composer.editor().clone();
         Rc::new(move |index: usize| {
+            if mention_at_caret(&doc.text().to_string(), mention_caret(&editor)).is_none() {
+                mention_popup.set(None);
+                return;
+            }
             if let Some(end) = accept_mention_at(&doc, mention_popup, index) {
                 editor.cursor.update(|cursor| cursor.set_offset(end, false, false));
                 if let Some(view) = editor.editor_view_id.get_untracked() {
@@ -5703,6 +5731,18 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_popup_requires_one_tail_caret_not_earlier_edits_or_selection() {
+        use super::mention_at_caret as active;
+        assert_eq!(active("check @ex", Some(9)), Some(("ex".into(), 6)));
+        assert_eq!(active("check @ex", Some(0)), None);
+        assert_eq!(active("check @ex", Some(8)), None);
+        assert_eq!(active("check @ex", Some(100)), None);
+        assert_eq!(active("check @ex", None), None);
+        assert_eq!(active("é @ex", Some(6)), Some(("ex".into(), 3)));
+        assert_eq!(active("é @ex", Some(1)), None);
+        assert_eq!(active("@ex ", Some(4)), None);
+    }
     #[test]
     fn mention_completion_tracks_utf8_caret_and_rejects_stale_tail() {
         use super::mention_completion as complete;
