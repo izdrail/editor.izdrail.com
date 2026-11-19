@@ -84,3 +84,5 @@ Conversation text wraps to the agent panel width, including formatted assistant 
 While file suggestions are visible, plain Up/Down changes the suggestion and plain Escape dismisses it. Modified Up/Down stays with the editor, so Shift+Up/Down can select draft text instead of changing a suggestion.
 
 Use **Copy** beside an assistant answer to copy its original text, including Markdown and code fences, to the clipboard. **Copied** confirms success; **Copy failed** means the clipboard was unavailable. Copy does not send anything, change the draft, or apply edits. The empty conversation has no copy controls.
+
+Your message bubbles show the exact prompt as plain text, including Markdown markers, links and code fences. Assistant answers still render Markdown. This display choice does not change what is sent or saved.

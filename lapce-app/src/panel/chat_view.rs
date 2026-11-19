@@ -2237,6 +2237,14 @@ fn dropdown_row_style(
         })
 }
 
+fn conversation_body(text: &str, user: bool, config: &LapceConfig) -> Vec<MarkdownContent> {
+    if user {
+        crate::markdown::from_plaintext(text, 1.5, config)
+    } else {
+        parse_markdown(text, 1.5, config)
+    }
+}
+
 fn composer_mention_navigation(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     modifiers.is_empty()
         && matches!(key, Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp | NamedKey::Escape))
@@ -4445,7 +4453,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             },
                             dyn_stack(
                                 move || {
-                                    parse_markdown(&body.get(), 1.5, &config.get())
+                                    conversation_body(&body.get(), role == "You", &config.get())
                                         .into_iter()
                                         .enumerate()
                                 },
@@ -5524,6 +5532,19 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn user_prompts_keep_literal_markdown_and_assistant_answers_keep_formatting() {
+        let config = crate::config::LapceConfig::default();
+        let prompt = "# Exact heading\n**literal** [label](https://example.com)\n```rust\nlet a = 1;\n```";
+        let contents = super::conversation_body(prompt, true, &config);
+        let [crate::markdown::MarkdownContent::Text { layout, links }] = &contents[..] else { panic!("one literal text block"); };
+        assert!(links.is_empty());
+        let text = layout.lines().iter().map(|line| line.text()).collect::<Vec<_>>().join("\n");
+        assert_eq!(text, prompt);
+        let contents = super::conversation_body("**bold** [label](https://example.com)", false, &config);
+        let [crate::markdown::MarkdownContent::Text { links, .. }] = &contents[..] else { panic!("one formatted block"); };
+        assert_eq!(links.len(), 1);
+    }
     #[test]
     fn mention_navigation_leaves_modified_selection_and_movement_to_the_editor() {
         use super::composer_mention_navigation as navigates;

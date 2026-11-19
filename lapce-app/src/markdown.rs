@@ -361,6 +361,7 @@ pub fn from_plaintext(
         text,
         AttrsList::new(
             Attrs::new()
+                .color(config.color(LapceColor::EDITOR_FOREGROUND))
                 .font_size(config.ui.font_size() as f32)
                 .line_height(LineHeightValue::Normal(line_height as f32)),
         ),
