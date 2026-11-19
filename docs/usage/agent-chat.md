@@ -94,3 +94,5 @@ The model menu also supports plain Up/Down and Home/End, skipping unavailable or
 Space, like Enter, picks an explicitly highlighted mode or model. With no keyboard highlight it does nothing, so the same key that opens the chip does not silently accept a choice. Modified Space never selects a menu row.
 
 Long model labels and menu notices wrap within the menu card instead of running off its edge. The card stays within narrow window bounds, with room for its scrollbar.
+
+With a mode or model menu open, type one unmodified letter or digit to highlight the next matching enabled row. Repeat it to cycle matches, then press Enter or Space to choose. Typing alone never changes the mode or model or sends the draft.

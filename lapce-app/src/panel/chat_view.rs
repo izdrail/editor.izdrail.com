@@ -2275,6 +2275,27 @@ fn composer_menu_returns_to_draft(key: &Key, modifiers: floem::keyboard::Modifie
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ComposerModeMenuKey { Highlight(usize), Pick(usize) }
 
+fn composer_menu_is_letter(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    if !modifiers.is_empty() { return false; }
+    let Key::Character(text) = key else { return false; };
+    let mut chars = text.chars();
+    chars.next().is_some_and(char::is_alphanumeric) && chars.next().is_none()
+}
+
+/// A single letter or digit jumps to the next matching, enabled row.
+/// Repeating it cycles, without changing the selected mode or model.
+fn composer_menu_letter_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>, labels: &[(&str, bool)]) -> Option<usize> {
+    if !modifiers.is_empty() { return None; }
+    let Key::Character(text) = key else { return None; };
+    let mut chars = text.chars();
+    let first = chars.next()?;
+    if chars.next().is_some() || !first.is_alphanumeric() { return None; }
+    let prefix = first.to_lowercase().collect::<String>();
+    let matches = |i: &usize| labels[*i].1 && labels[*i].0.to_lowercase().starts_with(&prefix);
+    let start = selected.filter(|i| *i < labels.len()).map_or(0, |i| i + 1);
+    (start..labels.len()).chain(0..start).find(matches)
+}
+
 fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>) -> Option<ComposerModeMenuKey> {
     if !modifiers.is_empty() { return None; }
     use ComposerModeMenuKey::*;
@@ -2284,7 +2305,7 @@ fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sele
         Key::Named(NamedKey::Home) => Some(Highlight(0)),
         Key::Named(NamedKey::End) => Some(Highlight(5)),
         Key::Named(NamedKey::Enter | NamedKey::Space) => selected.map(Pick),
-        _ => None,
+        _ => composer_menu_letter_key(key, modifiers, selected, &[("Chat", true), ("Ask", true), ("Plan", true), ("Act", true), ("ACP", true), ("Resume", true)]).map(Highlight),
     }
 }
 
@@ -2988,7 +3009,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 mode_expanded.set(false);
                                 restore_composer_focus.set(true);
                             }
-                            None => return matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space)),
+                            None => return matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space)) || composer_menu_is_letter(key, mods),
                         }
                         true
                     });
@@ -3208,7 +3229,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let model_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
                         let rows = keyboard_rows.get_untracked();
                         let enabled = rows.iter().map(|(_, enabled)| *enabled).collect::<Vec<_>>();
-                        match composer_model_menu_key(key, mods, model_keyboard.get_untracked(), &enabled) {
+                        let selected = model_keyboard.get_untracked();
+                        let action = composer_model_menu_key(key, mods, selected, &enabled).or_else(|| {
+                            let labels = rows.iter().map(|(label, enabled)| (label.as_str(), *enabled)).collect::<Vec<_>>();
+                            composer_menu_letter_key(key, mods, selected, &labels).map(ComposerModeMenuKey::Highlight)
+                        });
+                        match action {
                             Some(ComposerModeMenuKey::Highlight(index)) => model_keyboard.set(Some(index)),
                             Some(ComposerModeMenuKey::Pick(index)) => {
                                 let key = if config.get_untracked().ai_chat.backend == "local" { "local-model" } else { "model" };
@@ -3216,7 +3242,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 model_expanded.set(false);
                                 restore_composer_focus.set(true);
                             }
-                            None => return matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space)),
+                            None => return matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space)) || composer_menu_is_letter(key, mods),
                         }
                         true
                     });
@@ -5629,6 +5655,36 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn menu_letters_cycle_enabled_rows_without_picking_or_capturing_shortcuts() {
+        use super::composer_menu_letter_key as jump;
+        use floem::keyboard::{Key, Modifiers};
+        let rows = [("alpha", true), ("another", false), ("Beta", true), ("Atlas", true), ("9-model", true), ("Élan", true)];
+        let letter = |text: &str| Key::Character(text.into());
+        assert_eq!(jump(&letter("a"), Modifiers::empty(), None, &rows), Some(0));
+        assert_eq!(jump(&letter("A"), Modifiers::empty(), Some(0), &rows), Some(3));
+        assert_eq!(jump(&letter("a"), Modifiers::empty(), Some(3), &rows), Some(0));
+        assert_eq!(jump(&letter("b"), Modifiers::empty(), Some(2), &rows), Some(2));
+        assert_eq!(jump(&letter("a"), Modifiers::empty(), Some(90), &rows), Some(0));
+        assert_eq!(jump(&letter("9"), Modifiers::empty(), None, &rows), Some(4));
+        assert_eq!(jump(&letter("é"), Modifiers::empty(), None, &rows), Some(5));
+        for text in ["", "ab", " ", "/", "z"] { assert_eq!(jump(&letter(text), Modifiers::empty(), None, &rows), None); }
+        assert!(super::composer_menu_is_letter(&letter("z"), Modifiers::empty()));
+        assert!(!super::composer_menu_is_letter(&letter("z"), Modifiers::CONTROL));
+        for text in ["", "ab", " ", "/"] { assert!(!super::composer_menu_is_letter(&letter(text), Modifiers::empty())); }
+        assert_eq!(jump(&letter("a"), Modifiers::empty(), None, &[]), None);
+        assert_eq!(jump(&letter("a"), Modifiers::empty(), None, &[("alpha", false)]), None);
+        for bits in 1..16 {
+            let mut mods = Modifiers::empty();
+            for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] { if bits & bit != 0 { mods |= modifier; } }
+            assert_eq!(jump(&letter("a"), mods, None, &rows), None);
+        }
+        use super::{composer_mode_menu_key as mode, ComposerModeMenuKey::*};
+        assert_eq!(mode(&letter("a"), Modifiers::empty(), None), Some(Highlight(1)));
+        assert_eq!(mode(&letter("a"), Modifiers::empty(), Some(1)), Some(Highlight(3)));
+        assert_eq!(mode(&letter("a"), Modifiers::empty(), Some(3)), Some(Highlight(4)));
+        assert_eq!(mode(&letter("p"), Modifiers::empty(), Some(4)), Some(Highlight(2)));
+    }
     #[test]
     fn composer_menu_width_leaves_window_insets_without_negative_sizes() {
         assert_eq!(super::composer_menu_width(1000.0), 240.0);
