@@ -758,6 +758,12 @@ fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> 
     scored.into_iter().take(cap).map(|(_, f)| f.clone()).collect()
 }
 
+/// Keyed suggestion rows can survive a filtered/re-ranked result set.
+/// Resolve their highlight by the current selected path, never a captured index.
+fn mention_row_selected(path: &str, selected: usize, items: &[String]) -> bool {
+    items.get(selected).is_some_and(|current| current == path)
+}
+
 /// Validate the currently displayed tail before replacing it. A stale row
 /// must not remove text after the user has already edited the draft.
 fn mention_completion(text: &str, start: usize, path: &str) -> Option<(String, usize)> {
@@ -4848,9 +4854,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 .unwrap_or_default()
                         },
                         |(path, _)| path.clone(),
-                        move |(path, index)| {
+                        move |(path, _)| {
                             let row_accept = accept_mention.clone();
                             let row_path = path.clone();
+                            let style_path = path.clone();
+                            let scroll_path = path.clone();
                             let row = label(move || path.clone())
                                 .on_click_stop(move |_| {
                                     if let Some((_, _, items)) =
@@ -4878,7 +4886,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                 LapceColor::EDITOR_FOREGROUND,
                                             ),
                                         );
-                                    if mention_popup.get().is_some_and(|(_, selected, _)| selected == index) {
+                                    if mention_popup.get().is_some_and(|(_, selected, items)| mention_row_selected(&style_path, selected, &items)) {
                                         s.background(config.get().color(
                                             LapceColor::PANEL_CURRENT_BACKGROUND,
                                         ))
@@ -4888,7 +4896,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 });
                             let row_id = row.id();
                             create_effect(move |_| {
-                                if mention_popup.get().is_some_and(|(_, selected, _)| selected == index) {
+                                if mention_popup.get().is_some_and(|(_, selected, items)| mention_row_selected(&scroll_path, selected, &items)) {
                                     row_id.scroll_to(None);
                                 }
                             });
@@ -5740,6 +5748,21 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_highlight_follows_live_path_after_filtering_and_reranking() {
+        use super::{mention_candidates, mention_row_selected as selected};
+        let files = vec!["example.php".into(), "src/example_service_00.php".into(), "src/example_service_01.php".into()];
+        let broad = mention_candidates("example", &files, 8);
+        assert!(selected("src/example_service_01.php", 2, &broad));
+        let filtered = mention_candidates("example_service_01", &files, 8);
+        assert!(selected("src/example_service_01.php", 0, &filtered));
+        assert!(!selected("example.php", 0, &filtered));
+        assert!(!selected("src/example_service_00.php", 0, &filtered));
+        assert!(!selected("src/example_service_01.php", 2, &filtered));
+        assert!(!selected("src/example_service_01.php", 0, &[]));
+        assert!(!selected("src/example_service_01.php", usize::MAX, &broad));
+        assert!(selected("example.php", 0, &broad));
+    }
     #[test]
     fn mention_popup_requires_one_tail_caret_not_earlier_edits_or_selection() {
         use super::mention_at_caret as active;
