@@ -1469,6 +1469,9 @@ fn editor_tab_content(
                             &diff_editor_data.left,
                             &diff_editor_data.right,
                         ),
+                        crate::agent_review_ui::editor_hunk_controls(
+                            window_tab_data.clone(), diff_editor_data.left.clone(), diff_editor_data.right.clone(),
+                        ),
                     ))
                         .style(|s: Style| s.width_full().min_height(0.0).flex_grow(1.0).flex_basis(0.0)),
                     )).style(|s| s.size_full().min_height(0.0))

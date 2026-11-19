@@ -818,6 +818,63 @@ pub fn editor_review_toolbar(
         .border_color(config.get().color(LapceColor::LAPCE_BORDER)).apply_if(!visible, |s| s.hide()))
 }
 
+/// Hunk decisions follow the proposed editor's visible line positions, including
+/// diff folding and scrolling. The overlay never edits either snapshot.
+pub fn editor_hunk_controls(
+    tab: Rc<WindowTabData>, left_editor: crate::editor::EditorData, right_editor: crate::editor::EditorData,
+) -> impl View {
+    let review = tab.chat.review.clone();
+    let pending = review.proposal;
+    let config = tab.common.config;
+    let lines = right_editor.screen_lines();
+    let viewport = right_editor.viewport();
+    let left = left_editor.doc(); let right = right_editor.doc();
+    floem::views::dyn_container(move || pending.get(), move |proposal| {
+        let path = right.content.with_untracked(|content| match content {
+            crate::doc::DocContent::Scratch { name, read_only: true, .. } =>
+                name.strip_prefix("Agent proposal proposed (read-only): ").map(str::to_string),
+            _ => None,
+        });
+        let before = left.buffer.with_untracked(|b| b.to_string());
+        let after = right.buffer.with_untracked(|b| b.to_string());
+        let matched = proposal.as_ref().and_then(|p| preview_change_match(p, path.as_deref(), &before, &after));
+        let mask = matched.and_then(|change| review.selections.with_untracked(|m| m.get(&change.path).copied()));
+        let rows = matched.zip(mask).map(|(change, mask)| {
+            let hunks = crate::agent_changes::hunks(&change.base.text, &change.proposed);
+            proposed_hunk_lines(&hunks).into_iter().enumerate().map(|(index, line)| (index, line, mask)).collect::<Vec<_>>()
+        }).unwrap_or_default();
+        let last = right.buffer.with_untracked(|b| b.last_line());
+        dyn_stack(move || rows.clone(), |(index, _, _)| *index, move |(index, line, mask)| {
+            h_stack((
+                label(move || format!("Hunk {} {}", index + 1, if mask.with(|m| m.get(index).copied().unwrap_or(false)) { "accepted" } else { "rejected" }))
+                    .style(|s| s.font_size(10.0)),
+                label(|| "Accept".to_string()).on_click_stop(move |_| mask.update(|m| { if let Some(value) = m.get_mut(index) { *value = true; } }))
+                    .style(move |s| s.font_size(10.0).padding_horiz(4.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_ADDED))),
+                label(|| "Reject".to_string()).on_click_stop(move |_| mask.update(|m| { if let Some(value) = m.get_mut(index) { *value = false; } }))
+                    .style(move |s| s.font_size(10.0).padding_horiz(4.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_REMOVED))),
+            )).on_event_stop(floem::event::EventListener::PointerDown, |_| {})
+                .style(move |s| {
+                    let screen = lines.get();
+                    let Some(info) = screen.info_for_line(line.min(last)) else { return s.hide(); };
+                    let y = info.y - viewport.get().y0 + 1.0;
+                    let height = config.get().editor.line_height() as f64;
+                    if y < 0.0 || y + height > viewport.get().height() { return s.hide(); }
+                    s.absolute().inset_right(12.0).margin_top(y).gap(4.0).items_center().padding_horiz(3.0)
+                        .height(height as f32).background(config.get().color(LapceColor::EDITOR_BACKGROUND)).pointer_events_auto()
+                })
+        }).style(|s| s.size_full().pointer_events_none())
+    }).style(|s| s.absolute().size_full().pointer_events_none())
+}
+
+fn proposed_hunk_lines(hunks: &[crate::agent_changes::Hunk]) -> Vec<usize> {
+    let mut delta: isize = 0;
+    hunks.iter().map(|hunk| {
+        let line = hunk.base_start.saturating_add_signed(delta);
+        delta += hunk.added.len() as isize - hunk.removed.len() as isize;
+        line
+    }).collect()
+}
+
 fn preview_change_match<'a>(proposal: &'a Proposal, path: Option<&str>, before: &str, after: &str) -> Option<&'a Change> {
     proposal.changes.iter().find(|change| Some(change.path.as_str()) == path && change.base.text == before && change.proposed == after)
 }
@@ -1452,5 +1509,18 @@ mod editor_review_binding_tests {
         for (path, before, after) in [(Some("b.php"), "before", "after"), (None, "before", "after"), (Some("a.php"), "stale", "after"), (Some("a.php"), "before", "stale")] {
             assert!(preview_change_match(&proposal, path, before, after).is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod inline_hunk_anchor_tests {
+    use super::*;
+    #[test]
+    fn anchors_account_for_prior_insertions_and_deletions() {
+        let h = |base_start, removed, added| crate::agent_changes::Hunk {
+            base_start, removed: vec!["old\n".into(); removed], added: vec!["new\n".into(); added],
+        };
+        assert_eq!(proposed_hunk_lines(&[h(0, 0, 3), h(4, 2, 0), h(8, 1, 1)]), vec![0, 7, 9]);
+        assert_eq!(proposed_hunk_lines(&[]), Vec::<usize>::new());
     }
 }
