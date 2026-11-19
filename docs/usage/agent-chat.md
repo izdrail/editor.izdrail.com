@@ -110,3 +110,5 @@ The file-suggestion list wraps long paths within the composer and scrolls at a f
 Suggestion highlighting and automatic scrolling follow the current selected file when typing filters or reorders the results, including when a row was already visible under a broader query.
 
 File suggestions only offer paths that the current @path syntax can attach unchanged on Send. Paths containing spaces, non-ASCII characters, a stripped punctuation suffix or more than 255 bytes, and root-level extensionless names are omitted rather than inserting a token that would silently target another path or attach nothing. Extensionless files inside a directory remain supported.
+
+Keyboard focus cycles from draft to mode, model, Send/Stop and back to draft, with Shift+Tab reversing the order. The action button has a visible focus ring; plain Enter or Space uses the same action as clicking it, while Escape returns to the draft. An empty idle draft remains inactive.

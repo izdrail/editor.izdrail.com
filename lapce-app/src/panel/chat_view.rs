@@ -2468,6 +2468,7 @@ enum ComposerFocusTarget {
     Draft,
     Mode,
     Model,
+    Send,
 }
 
 fn composer_chip_key_target(
@@ -2485,13 +2486,16 @@ fn composer_chip_key_target(
         return None;
     }
     let reverse = modifiers == Modifiers::SHIFT;
-    Some(if model_chip != reverse {
-        ComposerFocusTarget::Draft
-    } else if model_chip {
-        ComposerFocusTarget::Mode
-    } else {
-        ComposerFocusTarget::Model
+    Some(match (model_chip, reverse) {
+        (false, false) => ComposerFocusTarget::Model,
+        (false, true) => ComposerFocusTarget::Draft,
+        (true, false) => ComposerFocusTarget::Send,
+        (true, true) => ComposerFocusTarget::Mode,
     })
+}
+
+fn composer_action_key(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    modifiers.is_empty() && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
 }
 
 /// A composer dropdown button: a small bordered chip.
@@ -3550,6 +3554,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // consumed here and everything else falls to the default keymap.
     let mode_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
     let model_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
+    let send_button_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
     let keyboard_send_tab = tab.clone();
     let composer = text_editor_keys(
         data.input.get_untracked(),
@@ -3616,7 +3621,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT)
             {
                 let target = if mods.contains(floem::keyboard::Modifiers::SHIFT) {
-                    model_chip_id.get_untracked()
+                    send_button_id.get_untracked()
                 } else { mode_chip_id.get_untracked() };
                 if let Some(target) = target { target.request_focus(); }
                 return CommandExecuted::Yes;
@@ -5030,6 +5035,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     ComposerFocusTarget::Model => {
                                         if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
                                     }
+                                    ComposerFocusTarget::Send => {
+                                        if let Some(id) = send_button_id.get_untracked() { id.request_focus(); }
+                                    }
                                 }
                                 return EventPropagation::Stop;
                             }
@@ -5120,6 +5128,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     ComposerFocusTarget::Model => {
                                         if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
                                     }
+                                    ComposerFocusTarget::Send => {
+                                        if let Some(id) = send_button_id.get_untracked() { id.request_focus(); }
+                                    }
                                 }
                                 return EventPropagation::Stop;
                             }
@@ -5137,7 +5148,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         .min_width(0.0).flex_grow(1.0).flex_basis(0.0)
                 })
         },
-                    container(
+                    {
+                    let activate = Rc::new(move || {
+                        if stop_busy.get_untracked() {
+                            composer_stop.stop();
+                            composer_stop.persist(config.get_untracked().ai_chat.save_history);
+                        } else if crate::agent_scope_ui::composer_action_enabled(false, &input_signal.get_untracked()) {
+                            send(&click_tab);
+                        }
+                    });
+                    let click_activate = activate.clone();
+                    let button = container(
                         svg(move || config.get().ui_svg(if stop_busy.get() {
                             LapceIcons::DEBUG_STOP
                         } else { LapceIcons::SEND }))
@@ -5149,18 +5170,33 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ))
                             }),
                     )
-                    .on_click_stop(move |_| {
-                        if stop_busy.get_untracked() {
-                            composer_stop.stop();
-                            composer_stop.persist(config.get_untracked().ai_chat.save_history);
-                        } else if crate::agent_scope_ui::composer_action_enabled(false, &input_signal.get_untracked()) {
-                            send(&click_tab);
+                    .keyboard_navigable()
+                    .on_click_stop(move |_| click_activate())
+                    .on_event(EventListener::KeyDown, move |event| {
+                        if let Event::KeyDown(key) = event {
+                            if composer_action_key(&key.key.logical_key, key.modifiers) {
+                                activate();
+                                return EventPropagation::Stop;
+                            }
+                            if key.modifiers.is_empty() && key.key.logical_key == Key::Named(NamedKey::Escape) {
+                                restore_composer_focus.set(true);
+                                return EventPropagation::Stop;
+                            }
+                            if key.key.logical_key == Key::Named(NamedKey::Tab)
+                                && (key.modifiers.is_empty() || key.modifiers == floem::keyboard::Modifiers::SHIFT) {
+                                if key.modifiers.is_empty() { restore_composer_focus.set(true); }
+                                else if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
+                                return EventPropagation::Stop;
+                            }
                         }
+                        EventPropagation::Continue
                     })
                     .style(move |s| {
                         let active = crate::agent_scope_ui::composer_action_enabled(
                             stop_busy.get(), &input_signal.get());
                         s.padding(8.0)
+                            .border(1.0).border_color(floem::peniko::Color::TRANSPARENT)
+                            .focus(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
                             .margin_left(6.0)
                             .border_radius(100.0)
                             .background(config.get().color(if stop_busy.get() {
@@ -5181,7 +5217,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         .multiply_alpha(0.85),
                                 )
                             })
-                    }),
+                    });
+                    send_button_id.set(Some(button.id()));
+                    button
+                    },
                 ))
                 .style(|s| s.width_full().min_width(0.0).items_center().justify_between()),
             ))
@@ -5751,6 +5790,24 @@ mod completed_duration_tests {
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
     #[test]
+    fn composer_action_only_activates_with_plain_enter_or_space() {
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        use super::{composer_action_key as activates, composer_chip_key_target as target, ComposerFocusTarget::*};
+        assert_eq!(target(true, &Key::Named(NamedKey::Tab), Modifiers::empty()), Some(Send));
+        for named in [NamedKey::Enter, NamedKey::Space] {
+            assert!(activates(&Key::Named(named), Modifiers::empty()));
+            for mods in [Modifiers::SHIFT, Modifiers::CONTROL, Modifiers::ALT, Modifiers::META] {
+                assert!(!activates(&Key::Named(named), mods));
+            }
+        }
+        for named in [NamedKey::Escape, NamedKey::Tab, NamedKey::ArrowDown] {
+            assert!(!activates(&Key::Named(named), Modifiers::empty()));
+        }
+        assert!(!activates(&Key::Character("s".into()), Modifiers::empty()));
+        assert!(!crate::agent_scope_ui::composer_action_enabled(false, "   "));
+        assert!(crate::agent_scope_ui::composer_action_enabled(true, ""));
+    }
+    #[test]
     fn suggested_paths_round_trip_through_the_send_parser_before_capping() {
         use super::{mention_candidates, mention_completion};
         let mut files = vec!["README".into(), "file with spaces.rs".into(), "café.rs".into(),
@@ -6001,7 +6058,7 @@ mod quiet_conversation_tests {
         use floem::keyboard::{Key, NamedKey, Modifiers};
         let tab = Key::Named(NamedKey::Tab);
         assert_eq!(target(false, &tab, Modifiers::empty()), Some(Model));
-        assert_eq!(target(true, &tab, Modifiers::empty()), Some(Draft));
+        assert_eq!(target(true, &tab, Modifiers::empty()), Some(Send));
         assert_eq!(target(true, &tab, Modifiers::SHIFT), Some(Mode));
         assert_eq!(target(false, &tab, Modifiers::SHIFT), Some(Draft));
         for model in [false, true] {
