@@ -4426,7 +4426,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 move |(_, content)| match content {
                                     MarkdownContent::Text { layout, links } => {
                                         crate::markdown::linked_text(layout, links)
-                                            .style(|s| s.width_full().min_width(0.0).max_width_full())
+                                            .style(|s| s.width_full().min_width(0.0).max_width_full()
+                                                // Leave space for the transcript's vertical scrollbar.
+                                                .padding_right(12.0)
+                                                .text_overflow(floem::style::TextOverflow::Wrap))
                                             .into_any()
                                     }
                                     _ => empty().into_any(),
