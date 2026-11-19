@@ -54,3 +54,5 @@ The conversation header stays above the scrolling body, so New conversation, too
 New conversation also closes mode/model/mention popups and focuses the empty composer, so you can start typing without an extra click. It does not apply or discard pending edits.
 
 Clearing the composer resets its caret to the start of the empty draft, including after undo, so the next keystroke stays inside the document.
+
+An empty or whitespace-only draft keeps Send inactive. Clicking Send or pressing Enter on it does nothing and does not add an error notice. Stop remains available while work is running. Shift+Enter still inserts a newline.

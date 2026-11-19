@@ -3359,8 +3359,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             {
                 // Read the current composer document, not a possibly pending
                 // reactive update, before sending through the normal path.
-                input_signal.set(editor_sig.get_untracked().doc().text().to_string());
-                send(&keyboard_send_tab);
+                let draft = editor_sig.get_untracked().doc().text().to_string();
+                let has_text = !draft.trim().is_empty();
+                input_signal.set(draft);
+                if has_text {
+                    send(&keyboard_send_tab);
+                }
                 return CommandExecuted::Yes;
             }
             default_key_handler(editor_sig)(keypress, mods)
@@ -4739,16 +4743,21 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         if stop_busy.get_untracked() {
                             composer_stop.stop();
                             composer_stop.persist(config.get_untracked().ai_chat.save_history);
-                        } else { send(&click_tab); }
+                        } else if crate::agent_scope_ui::composer_action_enabled(false, &input_signal.get_untracked()) {
+                            send(&click_tab);
+                        }
                     })
                     .style(move |s| {
+                        let active = crate::agent_scope_ui::composer_action_enabled(
+                            stop_busy.get(), &input_signal.get());
                         s.padding(8.0)
                             .margin_left(6.0)
                             .border_radius(100.0)
                             .background(config.get().color(if stop_busy.get() {
                                 LapceColor::LAPCE_ERROR
-                            } else { LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND }))
-                            .cursor(CursorStyle::Pointer)
+                            } else if active { LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND }
+                            else { LapceColor::LAPCE_BORDER }))
+                            .cursor(if active { CursorStyle::Pointer } else { CursorStyle::Default })
                             .selectable(false)
                             .hover(|s| {
                                 s.background(
@@ -4756,7 +4765,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         .get()
                                         .color(
                                             if stop_busy.get() { LapceColor::LAPCE_ERROR }
-                                            else { LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND },
+                                            else if active { LapceColor::LAPCE_BUTTON_PRIMARY_BACKGROUND }
+                                            else { LapceColor::LAPCE_BORDER },
                                         )
                                         .multiply_alpha(0.85),
                                 )

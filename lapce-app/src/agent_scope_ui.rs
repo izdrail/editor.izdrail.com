@@ -107,3 +107,24 @@ mod shortcut_tests {
         assert_eq!(starter_shortcut(&Key::Character("4".into()), Modifiers::ALT), None);
     }
 }
+
+
+/// Blank drafts are inert; stopping running work never needs draft text.
+pub fn composer_action_enabled(busy: bool, input: &str) -> bool {
+    busy || !input.trim().is_empty()
+}
+
+#[cfg(test)]
+mod composer_action_tests {
+    #[test]
+    fn agent_composer_blank_draft_is_inert_but_stop_is_always_available() {
+        for draft in ["", " ", "\n\t", "\u{2003}"] {
+            assert!(!super::composer_action_enabled(false, draft));
+            assert!(super::composer_action_enabled(true, draft));
+        }
+        for draft in ["Hello", " /ask explain this ", "é"] {
+            assert!(super::composer_action_enabled(false, draft));
+            assert!(super::composer_action_enabled(true, draft));
+        }
+    }
+}
