@@ -20,7 +20,7 @@ Press **Enter** or click **Send** when ready. **Shift+Enter** inserts a newline.
 
 ## Conversation and review
 
-The heading follows the first user message. Assistant answers sit directly on the panel; your messages use right-aligned bubbles. Mode and model controls sit below the input. While a request is running, the composer send button becomes a red Stop button. It cancels the current request, not an accepted edit.
+The heading follows the first user message. Assistant answers sit directly on the panel; your messages use right-aligned bubbles. Mode and model controls sit below the input. While a request is running, the composer send button becomes a red Stop button. It cancels the current request, not an accepted edit. When a live request ends, its measured duration appears as **Worked for**, **Stopped after** or **Failed after**. This is request time, not a claim that edits were applied. A new request/chat clears the old duration; saved-history previews do not invent a duration.
 
 A staged edit proposal shows its real file count and added/removed line counts, with **Review** opening the existing diff review. "Proposed" does not mean applied. Checkpoints show their own state separately. An ordinary Chat answer has no staged diff and does not need edit review. **Prepare review** accepts changes JSON from the composer; plain prose produces an explanation without changing any files.
 

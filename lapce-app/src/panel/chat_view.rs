@@ -65,6 +65,8 @@ pub struct ChatData {
     pub input: RwSignal<String>,
     pub pending_selection: RwSignal<Option<String>>,
     pub busy: RwSignal<bool>,
+    run_started: RwSignal<Option<std::time::Instant>>,
+    completed_seconds: RwSignal<Option<u64>>,
     pub error: RwSignal<String>,
     pub history: RwSignal<Vec<Message>>,
     pub session: RwSignal<Session>,
@@ -178,6 +180,8 @@ impl ChatData {
             input: cx.create_rw_signal(String::new()),
             pending_selection: cx.create_rw_signal(None),
             busy: cx.create_rw_signal(false),
+            run_started: cx.create_rw_signal(None),
+            completed_seconds: cx.create_rw_signal(None),
             error: cx.create_rw_signal(error),
             history: cx.create_rw_signal({
                 // Restarted runs cannot promote partial assistant output into history.
@@ -259,6 +263,10 @@ impl ChatData {
     /// busy together. Every termination path routes through here so
     /// the window's Runs section never lists a finished run.
     fn end_active_run(&self) {
+        if let Some(started) = self.run_started.get_untracked() {
+            self.completed_seconds.set(Some(started.elapsed().as_secs()));
+            self.run_started.set(None);
+        }
         if let Some(id) = self.active_run.get_untracked() {
             self.agent_runs.finish(id);
             self.active_run.set(None);
@@ -499,6 +507,8 @@ fn send(tab: &WindowTabData) {
         });
     });
     data.input.set(String::new());
+    data.run_started.set(Some(std::time::Instant::now()));
+    data.completed_seconds.set(None);
     data.busy.set(true);
     let run_id = tab.common.window_common.agent_runs.start(
         &run_title,
@@ -924,6 +934,8 @@ fn send_agent(tab: &WindowTabData, mode: crate::agent_loop::Mode, prompt: &str) 
     data.cancellation.set(cancelled.clone());
     *data.worker.network.borrow_mut() = cancelled.clone();
     data.state.set(RunState::Running);
+    data.run_started.set(Some(std::time::Instant::now()));
+    data.completed_seconds.set(None);
     data.busy.set(true);
     let mode_label = match mode {
         crate::agent_loop::Mode::Ask => "Ask",
@@ -1656,6 +1668,18 @@ pub fn elapsed_label(secs: u64) -> String {
     }
 }
 
+/// Only live measured runs have a duration. History previews do not invent one.
+fn completion_duration_label(state: &RunState, seconds: Option<u64>) -> String {
+    let Some(seconds) = seconds else { return String::new(); };
+    let elapsed = elapsed_label(seconds);
+    match state {
+        RunState::Done => format!("Worked for {elapsed}"),
+        RunState::Cancelled => format!("Stopped after {elapsed}"),
+        RunState::Error => format!("Failed after {elapsed}"),
+        _ => String::new(),
+    }
+}
+
 /// Re-arm every second; bump the tick only while runs are live so
 /// the Running rows' elapsed labels advance without idle repaints.
 fn start_runs_tick(
@@ -1882,6 +1906,8 @@ fn send_acp(tab: &WindowTabData, prompt: &str) {
     data.cancellation.set(cancelled.clone());
     *data.worker.network.borrow_mut() = cancelled.clone();
     data.state.set(RunState::Running);
+    data.run_started.set(Some(std::time::Instant::now()));
+    data.completed_seconds.set(None);
     data.busy.set(true);
     let run_id = tab.common.window_common.agent_runs.start(
         &crate::agent_runs::run_title(prompt),
@@ -2655,6 +2681,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let plans_list = floem::reactive::create_rw_signal(
         Vec::<(std::path::PathBuf, u64, String, String)>::new(),
     );
+    let completed_run = data.clone();
+    let duration_busy = data.busy;
+    let duration_seconds = data.completed_seconds;
     let runs_registry = tab.common.window_common.agent_runs.clone();
     let runs_list = runs_registry.clone();
     // One-second tick advancing the Running rows' elapsed labels
@@ -3420,6 +3449,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             clear.error.set(String::new());
                             clear.session.set(Session::new());
                             clear.state.set(RunState::Idle);
+                            clear.run_started.set(None);
+                            clear.completed_seconds.set(None);
                             clear.resume_id.set(None);
                             clear.persist(
                                 config.get_untracked().ai_chat.save_history,
@@ -3960,6 +3991,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .width_full()
                 .gap(2.0)
         }),
+        label(move || completion_duration_label(&completed_run.state.get(), completed_run.completed_seconds.get()))
+            .style(move |s| s.width_full().min_width(0.0).font_size(11.0)
+                .color(config.get().color(LapceColor::EDITOR_DIM))
+                .apply_if(duration_busy.get() || duration_seconds.get().is_none(), |s| s.hide())),
         container(
             scroll(
                 v_stack((
@@ -5235,5 +5270,19 @@ mod fallback_notice_tests {
         assert_eq!(chat_error_title(text), "AI fallback active");
         assert!(!is_connection_error(text));
         assert!(is_connection_error("https://ai.izdrail.com failed (HTTP502); fallback https://llm.izdrail.com returned HTTP502"));
+    }
+}
+
+#[cfg(test)]
+mod completed_duration_tests {
+    use super::{completion_duration_label, RunState};
+    #[test]
+    fn measured_completion_labels_do_not_claim_success_for_stop_error_or_history() {
+        assert_eq!(completion_duration_label(&RunState::Done, Some(125)), "Worked for 2m 05s");
+        assert_eq!(completion_duration_label(&RunState::Cancelled, Some(8)), "Stopped after 8s");
+        assert_eq!(completion_duration_label(&RunState::Error, Some(0)), "Failed after 0s");
+        assert_eq!(completion_duration_label(&RunState::Done, None), "");
+        assert_eq!(completion_duration_label(&RunState::Running, Some(8)), "");
+        assert_eq!(completion_duration_label(&RunState::Idle, Some(8)), "");
     }
 }
