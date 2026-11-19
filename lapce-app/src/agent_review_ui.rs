@@ -90,6 +90,14 @@ impl ReviewData {
             checkpoint_owners: cx.create_rw_signal(BTreeMap::new()),
         }
     }
+    /// New chat may clear abandoned preparation feedback, but never hide
+    /// an active proposal or a checkpoint's recovery/error guidance.
+    pub fn clear_empty_conversation_feedback(&self) {
+        if self.proposal.get_untracked().is_none() && self.checkpoint.get_untracked().is_none() {
+            self.error.set(String::new());
+            self.notice.set(String::new());
+        }
+    }
     fn root(tab: &WindowTabData) -> Result<PathBuf, String> {
         if !tab.workspace.kind.is_local() {
             return Err("Reviewed edits require a local project".into());
@@ -1211,6 +1219,26 @@ mod tests {
                 before: BTreeMap::new(), applied: BTreeMap::new(),
             },
             state: State::Applied,
+        }
+    }
+
+    #[test]
+    fn new_conversation_clears_only_feedback_without_pending_or_recoverable_work() {
+        for mask in 0..4 {
+            let cx = Scope::new();
+            let data = ReviewData::new(cx, None);
+            data.error.set("Old preparation error".into());
+            data.notice.set("Old review guidance".into());
+            if mask & 1 != 0 {
+                data.proposal.set(Some(Proposal { run_id: "fixture".into(), changes: Vec::new() }));
+            }
+            if mask & 2 != 0 { data.checkpoint.set(Some(dismissal_checkpoint())); }
+            data.clear_empty_conversation_feedback();
+            assert_eq!(data.error.get_untracked().is_empty(), mask == 0);
+            assert_eq!(data.notice.get_untracked().is_empty(), mask == 0);
+            assert_eq!(data.proposal.get_untracked().is_some(), mask & 1 != 0);
+            assert_eq!(data.checkpoint.get_untracked().is_some(), mask & 2 != 0);
+            cx.dispose();
         }
     }
 

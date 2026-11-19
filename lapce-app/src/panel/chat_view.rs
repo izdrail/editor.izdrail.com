@@ -3506,6 +3506,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             clear.history.set(Vec::new());
                             clear.input.set(String::new());
                             clear.error.set(String::new());
+                            clear.review.clear_empty_conversation_feedback();
                             clear.session.set(Session::new());
                             clear.state.set(RunState::Idle);
                             clear.run_started.set(None);
