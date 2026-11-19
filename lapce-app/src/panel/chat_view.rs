@@ -2237,6 +2237,13 @@ fn dropdown_row_style(
         })
 }
 
+fn composer_menu_returns_to_draft(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    use floem::keyboard::Modifiers;
+    (*key == Key::Named(NamedKey::Escape) && modifiers.is_empty())
+        || (*key == Key::Named(NamedKey::Tab)
+            && (modifiers.is_empty() || modifiers == Modifiers::SHIFT))
+}
+
 /// The expanded dropdown list container: bordered card above the buttons.
 /// A floating composer dropdown list: a window-level overlay positioned
 /// at the trigger button, dismissed by focus loss (a click anywhere
@@ -2271,9 +2278,8 @@ fn composer_dropdown_overlay<V: View + 'static>(
     .on_event_stop(EventListener::PointerDown, |_| {})
     .on_event(EventListener::KeyDown, move |event| {
         if let Event::KeyDown(key_event) = event {
-            if matches!(
-                &key_event.key.logical_key,
-                Key::Named(NamedKey::Escape)
+            if composer_menu_returns_to_draft(
+                &key_event.key.logical_key, key_event.modifiers,
             ) {
                 expanded.set(false);
                 restore_composer_focus.set(true);
@@ -5470,6 +5476,23 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn composer_menus_return_to_draft_without_capturing_modified_navigation() {
+        use super::composer_menu_returns_to_draft as returns;
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        assert!(returns(&Key::Named(NamedKey::Escape), Modifiers::empty()));
+        for modifiers in [Modifiers::empty(), Modifiers::SHIFT] {
+            assert!(returns(&Key::Named(NamedKey::Tab), modifiers));
+        }
+        for modifiers in [Modifiers::CONTROL, Modifiers::ALT, Modifiers::META, Modifiers::CONTROL | Modifiers::SHIFT] {
+            assert!(!returns(&Key::Named(NamedKey::Tab), modifiers));
+            assert!(!returns(&Key::Named(NamedKey::Escape), modifiers));
+        }
+        for key in [NamedKey::Enter, NamedKey::Space, NamedKey::ArrowDown, NamedKey::ArrowUp] {
+            assert!(!returns(&Key::Named(key), Modifiers::empty()));
+        }
+        assert!(!returns(&Key::Named(NamedKey::Escape), Modifiers::SHIFT));
+    }
     #[test]
     fn composer_chips_offer_a_forward_reverse_and_escape_route_to_the_draft() {
         use super::{composer_chip_key_target as target, ComposerFocusTarget::*};

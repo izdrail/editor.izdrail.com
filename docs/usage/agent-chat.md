@@ -57,7 +57,7 @@ Clearing the composer resets its caret to the start of the empty draft, includin
 
 An empty or whitespace-only draft keeps Send inactive. Clicking Send or pressing Enter on it does nothing and does not add an error notice. Stop remains available while work is running. Shift+Enter still inserts a newline.
 
-Escape closes the composer mode or model menu and returns keyboard focus to the draft. Clicking outside still leaves focus on the place you clicked.
+Escape, Tab or Shift+Tab closes the composer mode or model menu and returns keyboard focus to the draft. Clicking outside still leaves focus on the place you clicked.
 
 Choosing a mode, external-agent preset or model also returns focus to the existing draft. Picking a menu item does not send the draft or grant project access.
 
