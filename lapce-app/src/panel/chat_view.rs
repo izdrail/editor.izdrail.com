@@ -4833,25 +4833,25 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 // above the input inside the composer card (Antigravity
                 // position). Rows: relative path, selected highlighted,
                 // click accepts like Enter.
-                container(
+                scroll(
                     dyn_stack(
                         move || {
                             mention_popup
                                 .get()
-                                .map(|(_, selected, items)| {
+                                .map(|(_, _, items)| {
                                     items
                                         .into_iter()
                                         .enumerate()
-                                        .map(|(i, p)| (p, i == selected))
+                                        .map(|(i, p)| (p, i))
                                         .collect::<Vec<_>>()
                                 })
                                 .unwrap_or_default()
                         },
                         |(path, _)| path.clone(),
-                        move |(path, selected)| {
+                        move |(path, index)| {
                             let row_accept = accept_mention.clone();
                             let row_path = path.clone();
-                            label(move || path.clone())
+                            let row = label(move || path.clone())
                                 .on_click_stop(move |_| {
                                     if let Some((_, _, items)) =
                                         mention_popup.get_untracked()
@@ -4867,8 +4867,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 .style(move |s| {
                                     let s = s
                                         .font_size(12.0)
-                                        .width_full()
-                                        .padding_horiz(8.0)
+                                        .width_full().min_width(0.0).max_width_full()
+                                        .text_overflow(floem::style::TextOverflow::Wrap)
+                                        .padding_left(8.0).padding_right(14.0)
                                         .padding_vert(3.0)
                                         .cursor(CursorStyle::Pointer)
                                         .selectable(false)
@@ -4877,21 +4878,29 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                 LapceColor::EDITOR_FOREGROUND,
                                             ),
                                         );
-                                    if selected {
+                                    if mention_popup.get().is_some_and(|(_, selected, _)| selected == index) {
                                         s.background(config.get().color(
                                             LapceColor::PANEL_CURRENT_BACKGROUND,
                                         ))
                                     } else {
                                         s
                                     }
-                                })
+                                });
+                            let row_id = row.id();
+                            create_effect(move |_| {
+                                if mention_popup.get().is_some_and(|(_, selected, _)| selected == index) {
+                                    row_id.scroll_to(None);
+                                }
+                            });
+                            row
                         },
                     )
                     .style(|s| s.flex_col().width_full().min_width(0.0)),
                 )
                 .style(move |s| {
                     let s = s
-                        .width_full()
+                        .width_full().min_width(0.0).max_height(180.0)
+                        .set(PropagatePointerWheel, false)
                         .border(1)
                         .border_radius(6.0)
                         .border_color(config.get().color(LapceColor::LAPCE_BORDER))

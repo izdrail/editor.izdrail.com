@@ -104,3 +104,5 @@ The composer grows for soft-wrapped lines too, using the editor's actual text la
 Accepting a file mention with Enter, Tab or a click moves the caret after the completed path and its trailing space. Clicking a suggestion returns focus to the draft so typing can continue. A stale suggestion does not replace a tail token that has already changed.
 
 File-mention suggestions are active only with one caret at the end of the draft. Moving into earlier text or selecting a range dismisses them, so editing existing text cannot accept a later tail token. Return to the end to continue completing that token.
+
+The file-suggestion list wraps long paths within the composer and scrolls at a fixed height cap. Up/Down updates the highlighted row and scrolls it into view, keeping the selected suggestion visible in a narrow panel.
