@@ -4,11 +4,12 @@ use crate::{
     agent_checkpoint::{self, Checkpoint, State},
     doc::Doc,
     window_tab::WindowTabData,
+    config::{LapceConfig, color::LapceColor},
 };
 use floem::{
     AnyView, IntoView, View,
     reactive::{
-        RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
+        ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith, create_effect,
         create_rw_signal,
     },
     style::CursorStyle,
@@ -23,6 +24,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 #[derive(Clone)]
 pub struct ReviewData {
@@ -251,11 +253,11 @@ impl ReviewData {
         self.run_label.set(String::new());
         self.error.set(String::new());
         self.notice.set(if stale_count == 0 {
-            "Review every before/after file below. Nothing changed yet."
+            "Review every changed hunk below. Nothing changed yet."
                 .to_string()
         } else {
             format!(
-                "Review every before/after file below. Nothing changed yet. {stale_count} file(s) changed since the agent read them - the proposal may clobber those edits."
+                "Review every changed hunk below. Nothing changed yet. {stale_count} file(s) changed since the agent read them - the proposal may clobber those edits."
             )
         });
         Ok(())
@@ -517,6 +519,7 @@ fn proposal_summary(changes: &[Change]) -> String {
 }
 
 pub fn panel(tab: Rc<WindowTabData>) -> impl View {
+    let config = tab.common.config;
     let data = tab.chat.review.clone();
     let prepare = data.clone();
     let prepare_tab = tab.clone();
@@ -598,9 +601,23 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                 (c.clone(), create_rw_signal(vec![true; count]))
             }).collect();
             let items_apply = items.clone();
+            let accept_all = data.clone(); let accept_tab = tab.clone();
+            let all_proposal = proposal.clone();
+            let reject_all = data.clone();
             v_stack((
+                h_stack((
+                    label(|| "Reject all".to_string()).on_click_stop(move |_| {
+                        reject_all.proposal.set(None); reject_all.stale.set(Vec::new());
+                        reject_all.error.set(String::new());
+                        reject_all.notice.set("Proposal rejected. No buffers or source files changed.".into());
+                    }).style(move |s| s.font_size(11.0).padding(5.0).border(1.0).border_radius(4.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_REMOVED))),
+                    label(|| "Accept all".to_string()).on_click_stop(move |_| {
+                        if let Err(e) = accept_all.apply(&accept_tab, &all_proposal) { accept_all.error.set(e); }
+                    }).style(move |s| s.font_size(11.0).padding(5.0).border(1.0).border_radius(4.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_ADDED))),
+                )).style(|s| s.width_full().min_width(0.0).gap(6.0)),
+                label(|| "Accept applies to open buffers only, not saved.".to_string()).style(|s| s.font_size(10.0).width_full().min_width(0.0).text_overflow(floem::style::TextOverflow::Wrap)),
                 label(move || format!("Proposal {digest}")).style(|s| s.font_size(10.0).max_width_full()),
-                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), |(change, mask)| change_view(change, Some(mask)))
+                dyn_stack(move || items.clone(), |(c, _): &(Change, RwSignal<Vec<bool>>)| c.path.clone(), move |(change, mask)| change_view(change, Some(mask), config))
                     .style(|s| s.flex_col().width_full().min_width(0.0)),
                 label(|| "Apply accepted hunks".to_string()).on_click_stop(move |_| {
                     let masks: Vec<Vec<bool>> = items_apply.iter().map(|(_, m)| m.get_untracked()).collect();
@@ -680,7 +697,7 @@ pub fn panel(tab: Rc<WindowTabData>) -> impl View {
                             }
                         },
                         |c: &Change| c.path.clone(),
-                        |change| change_view(change, None),
+                        move |change| change_view(change, None, config),
                     ),
                     v_stack((
                         label(|| "Restore checkpoint (all owned buffers)".to_string()).on_click_stop(move |_| {
@@ -782,71 +799,42 @@ pub fn short_digest(digest: &str) -> String {
     short
 }
 
-fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>) -> impl View {
+fn change_view(change: Change, mask: Option<RwSignal<Vec<bool>>>, config: ReadSignal<Arc<LapceConfig>>) -> impl View {
     let before = change.base.text;
     let after = change.proposed;
     let path = change.path;
     let hunks = crate::agent_changes::hunks(&before, &after);
     let diff = change_diff(&before, &after);
-    let hunk_rows: Vec<(usize, String)> = hunks
-        .iter()
-        .enumerate()
-        .map(|(i, h)| {
-            let mut body = String::new();
-            for line in &h.removed {
-                body.push('-');
-                body.push_str(line);
-                if !line.ends_with('\n') {
-                    body.push_str(" [no newline]\n");
-                }
-            }
-            for line in &h.added {
-                body.push('+');
-                body.push_str(line);
-                if !line.ends_with('\n') {
-                    body.push_str(" [no newline]\n");
-                }
-            }
-            (
-                i,
-                format!(
-                    "Hunk {} @ line {} (-{}/+{})\n{body}",
-                    i + 1,
-                    h.base_start + 1,
-                    h.removed.len(),
-                    h.added.len()
-                ),
-            )
-        })
-        .collect();
+    let hunk_rows: Vec<_> = hunks.iter().enumerate().map(|(i, h)| {
+        let title = format!("Hunk {} @ line {} (-{}/+{})", i + 1, h.base_start + 1, h.removed.len(), h.added.len());
+        let lines: Vec<(usize, bool, String)> = h.removed.iter().map(|line| (false, line))
+            .chain(h.added.iter().map(|line| (true, line))).enumerate()
+            .map(|(n, (added, line))| (n, added, format!("{}{}{}", if added { "+" } else { "-" }, line.trim_end_matches('\n'), if line.ends_with('\n') { "" } else { " [no newline]" }))).collect();
+        (i, title, lines)
+    }).collect();
     let body_view: AnyView = match mask {
         Some(mask) => scroll(dyn_stack(
             move || hunk_rows.clone(),
-            |(i, _): &(usize, String)| *i,
-            move |(i, text)| {
-                h_stack((
-                    label(move || {
-                        if mask.with(|m| m.get(i).copied().unwrap_or(true)) {
-                            "\u{2611}"
-                        } else {
-                            "\u{2610}"
-                        }
-                    })
-                    .style(|s| s.width(16.0).selectable(false).cursor(CursorStyle::Pointer))
-                    .on_click_stop(move |_| {
-                        mask.update(|m| {
-                            if let Some(v) = m.get_mut(i) {
-                                *v = !*v;
-                            }
-                        })
-                    }),
-                    label(move || text.clone())
-                        .style(|s| s.font_size(11.0).min_width(0.0).max_width_full().text_overflow(floem::style::TextOverflow::Wrap)),
-                ))
-                .style(|s| s.width_full().min_width(0.0).gap(4.0))
+            |(i, _, _)| *i,
+            move |(i, title, lines)| {
+                v_stack((
+                    label(move || format!("{}: {}", title, if mask.with(|m| m.get(i).copied().unwrap_or(true)) { "accepted" } else { "rejected" }))
+                        .style(|s| s.font_size(10.0).width_full().min_width(0.0).text_overflow(floem::style::TextOverflow::Wrap)),
+                    dyn_stack(move || lines.clone(), |(n, _, _)| *n, move |(_, added, text)| {
+                        label(move || text.clone()).style(move |s| s.font_size(11.0).width_full().min_width(0.0)
+                            .text_overflow(floem::style::TextOverflow::Wrap)
+                            .color(config.get().color(if added { LapceColor::SOURCE_CONTROL_ADDED } else { LapceColor::SOURCE_CONTROL_REMOVED })))
+                    }).style(|s| s.flex_col().width_full().min_width(0.0)),
+                    h_stack((
+                        label(|| "Accept".to_string()).on_click_stop(move |_| mask.update(|m| { if let Some(v) = m.get_mut(i) { *v = true; } }))
+                            .style(move |s| s.font_size(10.0).padding_horiz(5.0).padding_vert(2.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_ADDED))),
+                        label(|| "Reject".to_string()).on_click_stop(move |_| mask.update(|m| { if let Some(v) = m.get_mut(i) { *v = false; } }))
+                            .style(move |s| s.font_size(10.0).padding_horiz(5.0).padding_vert(2.0).border(1.0).border_radius(3.0).cursor(CursorStyle::Pointer).color(config.get().color(LapceColor::SOURCE_CONTROL_REMOVED))),
+                    )).style(|s| s.gap(6.0)),
+                )).style(|s| s.width_full().min_width(0.0).gap(4.0).padding_bottom(6.0))
             },
         ).style(|s| s.flex_col().width_full().min_width(0.0)))
-        .style(|s| s.max_height(140.0).width_full())
+        .style(|s| s.max_height(180.0).width_full())
         .into_any(),
         None => scroll(
             label(move || diff.clone())

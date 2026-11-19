@@ -24,6 +24,8 @@ The heading follows the first user message. Assistant answers sit directly on th
 
 A staged edit proposal shows its real file count and added/removed line counts, with **Review** opening the existing diff review. "Proposed" does not mean applied. Checkpoints show their own state separately. An ordinary Chat answer has no staged diff and does not need edit review. **Prepare review** accepts changes JSON from the composer; plain prose produces an explanation without changing any files.
 
+Changed hunks show added lines in green and removed lines in red. **Accept** and **Reject** set each hunk's selection; **Apply accepted hunks** commits that selection to open buffers. **Accept all** applies the whole displayed proposal through the same stale-buffer and checkpoint checks. **Reject all** drops the proposal without changing buffers. These controls never save source files. This review remains in the Agent panel, not inline in the main editor.
+
 ## Pick the right mode
 
 - **Chat** uses conversation and attached context, without the project tool loop.
