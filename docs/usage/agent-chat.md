@@ -64,3 +64,5 @@ Choosing a mode, external-agent preset or model also returns focus to the existi
 Main-editor proposal diffs reserve a separate rail for visible hunk decisions, so long proposed lines do not run behind Accept/Reject. Proposal snapshots scroll horizontally rather than soft wrap. The rail is released when no pending proposal matches those snapshots.
 
 The review section shows preparation instructions only when no proposal or checkpoint is present. Active reviews keep their hunk controls and buffer-only warning, without repeating setup instructions above them.
+
+Dismissing a checkpoint replaces old restore instructions with a confirmation that buffers are unchanged and one-click restore is no longer available. If journal removal fails, the checkpoint and its recovery guidance remain.

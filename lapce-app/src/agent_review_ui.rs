@@ -436,6 +436,8 @@ impl ReviewData {
         self.checkpoint.set(None);
         self.checkpoint_owners.set(BTreeMap::new());
         self.recovered.set(false);
+        self.error.set(String::new());
+        self.notice.set("Checkpoint dismissed. Buffers are unchanged; one-click restore is no longer available.".into());
         Ok(())
     }
 
@@ -1200,6 +1202,59 @@ mod creation_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dismissal_checkpoint() -> Checkpoint {
+        Checkpoint {
+            version: 1,
+            proposal_digest: "a".repeat(64),
+            snapshot: crate::agent_changes::Snapshot {
+                before: BTreeMap::new(), applied: BTreeMap::new(),
+            },
+            state: State::Applied,
+        }
+    }
+
+    #[test]
+    fn checkpoint_dismissal_replaces_stale_restore_notice_after_journal_removal() {
+        let cx = Scope::new();
+        let data = ReviewData::new(cx, None);
+        let path = std::env::temp_dir().join(format!("review-dismiss-success-{}", std::process::id()));
+        std::fs::write(&path, "synthetic journal").unwrap();
+        data.path.set(Some(path.clone()));
+        data.checkpoint.set(Some(dismissal_checkpoint()));
+        data.recovered.set(true);
+        data.checkpoint_owners.set(BTreeMap::from([("fixture.php".into(), 7)]));
+        data.notice.set("Old restore instructions".into());
+        data.error.set("Old restore error".into());
+        data.dismiss_checkpoint().unwrap();
+        assert!(!path.exists());
+        assert!(data.path.get_untracked().is_none());
+        assert!(data.checkpoint.get_untracked().is_none());
+        assert!(data.checkpoint_owners.get_untracked().is_empty());
+        assert!(!data.recovered.get_untracked());
+        assert!(data.error.get_untracked().is_empty());
+        assert_eq!(data.notice.get_untracked(), "Checkpoint dismissed. Buffers are unchanged; one-click restore is no longer available.");
+        cx.dispose();
+    }
+
+    #[test]
+    fn failed_checkpoint_dismissal_retains_recovery_and_notice() {
+        let cx = Scope::new();
+        let data = ReviewData::new(cx, None);
+        let path = std::env::temp_dir().join(format!("review-dismiss-failure-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        data.path.set(Some(path.clone()));
+        data.checkpoint.set(Some(dismissal_checkpoint()));
+        data.recovered.set(true);
+        data.notice.set("Keep recovery instructions".into());
+        assert!(data.dismiss_checkpoint().is_err());
+        assert_eq!(data.path.get_untracked(), Some(path.clone()));
+        assert!(data.checkpoint.get_untracked().is_some());
+        assert!(data.recovered.get_untracked());
+        assert_eq!(data.notice.get_untracked(), "Keep recovery instructions");
+        std::fs::remove_dir(&path).unwrap();
+        cx.dispose();
+    }
 
     #[test]
     fn preparation_help_does_not_displace_active_review_or_checkpoint() {
