@@ -750,6 +750,7 @@ fn mention_score(query: &str, path: &str) -> Option<i64> {
 fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> {
     let mut scored: Vec<(i64, &String)> = files
         .iter()
+        .filter(|f| crate::chat::file_mention_path(f) == Some(f.as_str()))
         .filter_map(|f| mention_score(query, f).map(|s| (s, f)))
         .collect();
     scored.sort_by(|a, b| {
@@ -768,6 +769,7 @@ fn mention_row_selected(path: &str, selected: usize, items: &[String]) -> bool {
 /// must not remove text after the user has already edited the draft.
 fn mention_completion(text: &str, start: usize, path: &str) -> Option<(String, usize)> {
     let (query, current_start) = trailing_mention(text)?;
+    if crate::chat::file_mention_path(path) != Some(path) { return None; }
     if start != current_start || mention_score(&query, path).is_none() {
         return None;
     }
@@ -5749,6 +5751,24 @@ mod completed_duration_tests {
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
     #[test]
+    fn suggested_paths_round_trip_through_the_send_parser_before_capping() {
+        use super::{mention_candidates, mention_completion};
+        let mut files = vec!["README".into(), "file with spaces.rs".into(), "café.rs".into(),
+            "example.rs.".into(), "example.rs,".into(), "bad\nname.rs".into(),
+            "x".repeat(253) + ".rs"];
+        let max_path = "x".repeat(252) + ".rs";
+        files.extend(["src/Makefile".into(), ".gitignore".into(), "example.rs".into(), max_path.clone()]);
+        let candidates = mention_candidates("", &files, 8);
+        assert_eq!(candidates.len(), 4);
+        assert!(candidates.contains(&max_path));
+        for path in &candidates {
+            let (inserted, _) = mention_completion("@", 0, path).unwrap();
+            assert_eq!(crate::chat::extract_mentions(&inserted), vec![path.clone()]);
+        }
+        assert_eq!(mention_candidates("", &files, 1), vec![".gitignore".to_string()]);
+        for path in &files[..7] { assert!(mention_completion("@", 0, path).is_none()); }
+    }
+    #[test]
     fn mention_highlight_follows_live_path_after_filtering_and_reranking() {
         use super::{mention_candidates, mention_row_selected as selected};
         let files = vec!["example.php".into(), "src/example_service_00.php".into(), "src/example_service_01.php".into()];
@@ -5779,7 +5799,7 @@ mod quiet_conversation_tests {
     fn mention_completion_tracks_utf8_caret_and_rejects_stale_tail() {
         use super::mention_completion as complete;
         assert_eq!(complete("check @ex", 6, "example.php"), Some(("@example.php ".into(), 19)));
-        assert_eq!(complete("é @ca", 3, "café.php"), Some(("@café.php ".into(), 14)));
+        assert_eq!(complete("é @ca", 3, "cafe.php"), Some(("@cafe.php ".into(), 13)));
         assert_eq!(complete("@", 0, "example.php"), Some(("@example.php ".into(), 13)));
         assert_eq!(complete("check @ex ", 6, "example.php"), None);
         assert_eq!(complete("check changed", 6, "example.php"), None);

@@ -115,6 +115,19 @@ pub fn acp_agent_name(command: &str) -> &'static str {
 }
 
 
+/// Parse the path body with the same grammar used on Send. Suggestion rows
+/// require an exact round trip, so punctuation stripping cannot change a file.
+pub(crate) fn file_mention_path(body: &str) -> Option<&str> {
+    let body = body.trim_end_matches([',', '.', ';', ':', '!', '?', ')', ']']);
+    if body.len() > 255 || body.is_empty()
+        || !body.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '/' | '-'))
+        || !(body.contains('/') || body.contains('.'))
+    {
+        return None;
+    }
+    Some(body)
+}
+
 /// `@path` composer mentions (Antigravity parity: context mentions).
 /// A mention is `@` at the start or after whitespace, followed by a
 /// path-like token ([A-Za-z0-9_./-]+ that contains '/' or '.', up to
@@ -126,16 +139,7 @@ pub fn extract_mentions(input: &str) -> Vec<String> {
         let Some(body) = token.strip_prefix('@') else {
             continue;
         };
-        let body = body.trim_end_matches([',', '.', ';', ':', '!', '?', ')', ']']);
-        if body.len() > 255
-            || body.is_empty()
-            || !body
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '/' | '-'))
-            || !(body.contains('/') || body.contains('.'))
-        {
-            continue;
-        }
+        let Some(body) = file_mention_path(body) else { continue; };
         let body = body.to_string();
         if !out.contains(&body) {
             out.push(body);
