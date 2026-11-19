@@ -3429,7 +3429,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         })
     };
     v_stack((
-    scroll(v_stack((
         // Conversation title with the existing pane actions. The title
         // yields width to the actions; model controls live in the composer.
         h_stack((
@@ -3577,7 +3576,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .items_center()
                 .justify_between()
                 .padding_vert(2.0)
+                .padding_horiz(8.0)
+                .margin_top(8.0)
+                .flex_shrink(0.0)
         }),
+    // Keep New, tools and Stop reachable while the body scrolls.
+    scroll(v_stack((
         v_stack((
         v_stack((
             label(move || {
