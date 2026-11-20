@@ -150,3 +150,5 @@ Keyboard highlighting in the mode list scrolls the highlighted built-in choice i
 Mode-key navigation validates its current row before acting. An obsolete highlight cannot pick a missing row; arrows and letter jumps restart within the offered choices.
 
 Mode and model letter jumps also accept Shift for uppercase letters. Control, Alt and Meta shortcuts remain untouched; Shift does not activate a highlighted row.
+
+Agent command rows participate in mode-menu arrow, Home/End and letter navigation. Enter or Space selects a command and returns to the draft, without launching the agent or sending anything.

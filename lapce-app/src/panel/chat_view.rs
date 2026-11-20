@@ -859,24 +859,8 @@ fn resolve_mentions(
 /// One row of the ACP agent picker: picking an agent writes the
 /// launch command to settings.toml (the config file is watched) and
 /// to the live config, and switches the composer to ACP mode.
-fn acp_agent_row(
-    data: ChatData,
-    set_config: WriteSignal<Arc<LapceConfig>>,
-    config: ReadSignal<Arc<LapceConfig>>,
-    mode_expanded: RwSignal<bool>,
-    restore_composer_focus: RwSignal<bool>,
-    mode_keyboard: RwSignal<Option<usize>>,
-    name: &'static str,
-    command: &'static str,
-) -> impl View {
-    let click = data.clone();
-    let state = data;
-    label(move || format!("Agent: {name}"))
-        .on_event_cont(EventListener::PointerMove, move |_| {
-            if mode_keyboard.get_untracked().is_some() { mode_keyboard.set(None); }
-        })
-        .on_click_stop(move |_| {
-            if !click.busy.get_untracked() {
+fn pick_composer_agent(data: &ChatData, set_config: WriteSignal<Arc<LapceConfig>>, config: ReadSignal<Arc<LapceConfig>>, command: &str) {
+            if !data.busy.get_untracked() {
                 crate::config::LapceConfig::update_file(
                     "ai-chat",
                     "acp-command",
@@ -886,11 +870,32 @@ fn acp_agent_row(
                 Arc::make_mut(&mut new_config).ai_chat.acp_command =
                     command.to_string();
                 set_config.set(new_config);
-                click.mode.set(None);
-                click.acp.set(true);
-                click.acp_resume.set(false);
-                click.resume_id.set(None);
+                data.mode.set(None);
+                data.acp.set(true);
+                data.acp_resume.set(false);
+                data.resume_id.set(None);
             }
+}
+
+fn acp_agent_row(
+    data: ChatData,
+    set_config: WriteSignal<Arc<LapceConfig>>,
+    config: ReadSignal<Arc<LapceConfig>>,
+    mode_expanded: RwSignal<bool>,
+    restore_composer_focus: RwSignal<bool>,
+    mode_keyboard: RwSignal<Option<usize>>,
+    index: usize,
+    name: &'static str,
+    command: &'static str,
+) -> impl View {
+    let click = data.clone();
+    let state = data;
+    composer_mode_keyboard_row(label(move || format!("Agent: {name}"))
+        .on_event_cont(EventListener::PointerMove, move |_| {
+            if mode_keyboard.get_untracked() != Some(index) { mode_keyboard.set(Some(index)); }
+        })
+        .on_click_stop(move |_| {
+            pick_composer_agent(&click, set_config, config, command);
             mode_expanded.set(false);
             restore_composer_focus.set(true);
         })
@@ -902,8 +907,8 @@ fn acp_agent_row(
                     && !state.acp_resume.get()
                     && config.get_untracked().ai_chat.acp_command.trim()
                         == command,
-            )
-        })
+            ).apply_if(mode_keyboard.get() == Some(index), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
+        }), index, mode_keyboard)
 }
 
 /// Fetch @http(s)://... tokens and inline the pages like mentioned
@@ -2391,6 +2396,18 @@ fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sele
     })
 }
 
+/// Include agent command rows in explicit keyboard navigation. Picking a row
+/// only configures the composer; it never starts an agent or sends a draft.
+fn composer_all_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>) -> Option<ComposerModeMenuKey> {
+    let mut labels = vec!["Chat".to_string(), "Ask".into(), "Plan".into(), "Act".into(), "ACP".into(), "Resume".into()];
+    labels.extend(crate::chat::ACP_AGENTS.iter().map(|(name, _)| format!("Agent: {name}")));
+    let selected = selected.filter(|index| *index < labels.len());
+    composer_model_menu_key(key, modifiers, selected, &vec![true; labels.len()]).or_else(|| {
+        let labels = labels.iter().map(|label| (label.as_str(), true)).collect::<Vec<_>>();
+        composer_menu_letter_key(key, modifiers, selected, &labels).map(ComposerModeMenuKey::Highlight)
+    })
+}
+
 fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>, pickable: &[bool]) -> Option<ComposerModeMenuKey> {
     if !modifiers.is_empty() { return None; }
     use ComposerModeMenuKey::*;
@@ -3133,10 +3150,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let mode_keyboard = floem::reactive::create_rw_signal(None::<usize>);
                     let keyboard_data = picker_data.clone();
                     let mode_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
-                        match composer_mode_menu_key(key, mods, mode_keyboard.get_untracked()) {
+                        match composer_all_mode_menu_key(key, mods, mode_keyboard.get_untracked()) {
                             Some(ComposerModeMenuKey::Highlight(index)) => mode_keyboard.set(Some(index)),
                             Some(ComposerModeMenuKey::Pick(index)) => {
-                                pick_composer_mode(&keyboard_data, index);
+                                if index < 6 {
+                                    pick_composer_mode(&keyboard_data, index);
+                                } else if let Some((_, command)) = crate::chat::ACP_AGENTS.get(index - 6) {
+                                    pick_composer_agent(&keyboard_data, picker_set_config, config, command);
+                                }
                                 mode_expanded.set(false);
                                 restore_composer_focus.set(true);
                             }
@@ -3321,6 +3342,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 mode_expanded,
                                 restore_composer_focus,
                                 mode_keyboard,
+                                6,
                                 crate::chat::ACP_AGENTS[0].0,
                                 crate::chat::ACP_AGENTS[0].1,
                             ),
@@ -3331,6 +3353,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 mode_expanded,
                                 restore_composer_focus,
                                 mode_keyboard,
+                                7,
                                 crate::chat::ACP_AGENTS[1].0,
                                 crate::chat::ACP_AGENTS[1].1,
                             ),
@@ -3341,6 +3364,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 mode_expanded,
                                 restore_composer_focus,
                                 mode_keyboard,
+                                8,
                                 crate::chat::ACP_AGENTS[2].0,
                                 crate::chat::ACP_AGENTS[2].1,
                             ),
@@ -3351,6 +3375,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 mode_expanded,
                                 restore_composer_focus,
                                 mode_keyboard,
+                                9,
                                 crate::chat::ACP_AGENTS[3].0,
                                 crate::chat::ACP_AGENTS[3].1,
                             ),
@@ -5946,6 +5971,25 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn agent_rows_are_explicit_keyboard_choices_without_implicit_picks() {
+        use super::{composer_all_mode_menu_key as key, ComposerModeMenuKey::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        let plain = Modifiers::empty();
+        let last = 5 + crate::chat::ACP_AGENTS.len();
+        assert_eq!(key(&Key::Named(End), plain, None), Some(Highlight(last)));
+        assert_eq!(key(&Key::Named(ArrowDown), plain, Some(5)), Some(Highlight(6)));
+        assert_eq!(key(&Key::Named(ArrowUp), plain, Some(6)), Some(Highlight(5)));
+        for index in 6..=last {
+            assert_eq!(key(&Key::Named(Enter), plain, Some(index)), Some(Pick(index)));
+            assert_eq!(key(&Key::Named(Space), plain, Some(index)), Some(Pick(index)));
+            assert_eq!(key(&Key::Named(Enter), Modifiers::SHIFT, Some(index)), None);
+        }
+        assert_eq!(key(&Key::Named(Enter), plain, None), None);
+        assert_eq!(key(&Key::Named(Enter), plain, Some(usize::MAX)), None);
+        assert_eq!(key(&Key::Character("a".into()), plain, Some(4)), Some(Highlight(6)));
+    }
+
     #[test]
     fn stale_mode_highlights_cannot_overflow_or_pick_a_missing_row() {
         use super::{composer_mode_menu_key as key, ComposerModeMenuKey::*};
