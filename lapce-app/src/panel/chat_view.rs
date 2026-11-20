@@ -2473,6 +2473,12 @@ fn composer_model_refresh(selected: Option<usize>, old: &[(String, bool)], new: 
     composer_model_hover(id, new)
 }
 
+/// A model row captures its index and availability in event/style closures.
+/// Rebuild it whenever those inputs change, even if its visible label does not.
+fn composer_model_row_key(index: usize, text: &str, id: &str, enabled: bool, cap: Option<bool>) -> (usize, String, String, bool, Option<bool>) {
+    (index, text.to_string(), id.to_string(), enabled, cap)
+}
+
 fn composer_model_hover(id: &str, rows: &[(String, bool)]) -> Option<usize> {
     rows.iter().position(|(model, enabled)| *enabled && model == id)
 }
@@ -3556,8 +3562,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             model_keyboard.set(next);
                             rows.into_iter().enumerate().collect::<Vec<_>>()
                         },
-                        |(_, (text, _, _, _)): &(usize, (String, String, bool, Option<bool>))| {
-                            text.clone()
+                        |(index, (text, id, enabled, cap)): &(usize, (String, String, bool, Option<bool>))| {
+                            composer_model_row_key(*index, text, id, *enabled, *cap)
                         },
                         move |(index, (text, id, pickable, cap))| {
                             let id_pick = id.clone();
@@ -6024,6 +6030,19 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn model_row_identity_includes_captured_index_and_availability() {
+        use super::composer_model_row_key as key;
+        let base = key(0, "model", "id", true, None);
+        assert_eq!(base, key(0, "model", "id", true, None));
+        assert_ne!(base, key(1, "model", "id", true, None));
+        assert_ne!(base, key(0, "model", "other", true, None));
+        assert_ne!(base, key(0, "model", "id", false, None));
+        assert_ne!(base, key(0, "model", "id", true, Some(false)));
+        assert_ne!(base, key(0, "model (no tools)", "id", true, None));
+        assert_ne!(key(0, "model", "id", true, Some(true)), key(0, "model", "id", true, Some(false)));
+    }
+
     #[test]
     fn model_refresh_preserves_identity_and_rejects_stale_targets() {
         use super::composer_model_refresh as refresh;
