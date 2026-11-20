@@ -154,3 +154,5 @@ Mode and model letter jumps also accept Shift for uppercase letters. Control, Al
 Agent command rows participate in mode-menu arrow, Home/End and letter navigation. Enter or Space selects a command and returns to the draft, without launching the agent or sending anything.
 
 Page Up and Page Down move through five enabled mode/model choices at a time, skipping unavailable models and stopping at list boundaries. These keys only move the highlight; Enter or Space is still required to select.
+
+The @file suggestion list also supports Page Up and Page Down in five-row steps. Paging moves only the highlight, never inserts a mention or sends the draft.

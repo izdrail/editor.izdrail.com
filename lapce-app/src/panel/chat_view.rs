@@ -2317,6 +2317,8 @@ fn mention_navigation_index(key: &Key, selected: usize, count: usize) -> Option<
     Some(match key {
         Key::Named(NamedKey::ArrowDown) => selected.saturating_add(1).min(last),
         Key::Named(NamedKey::ArrowUp) => selected.min(last).saturating_sub(1),
+        Key::Named(NamedKey::PageDown) => selected.saturating_add(5).min(last),
+        Key::Named(NamedKey::PageUp) => selected.min(last).saturating_sub(5),
         Key::Named(NamedKey::Home) => 0,
         Key::Named(NamedKey::End) => last,
         _ => return None,
@@ -2325,7 +2327,7 @@ fn mention_navigation_index(key: &Key, selected: usize, count: usize) -> Option<
 
 fn composer_mention_navigation(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     modifiers.is_empty()
-        && matches!(key, Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp | NamedKey::Home | NamedKey::End | NamedKey::Escape))
+        && matches!(key, Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp | NamedKey::PageDown | NamedKey::PageUp | NamedKey::Home | NamedKey::End | NamedKey::Escape))
 }
 
 fn composer_mention_accepts(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
@@ -5979,6 +5981,29 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_page_navigation_bounds_long_stale_and_empty_lists() {
+        use super::{mention_navigation_index as index, composer_mention_navigation as allowed};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        assert_eq!(index(&Key::Named(PageDown), 0, 8), Some(5));
+        assert_eq!(index(&Key::Named(PageDown), 5, 8), Some(7));
+        assert_eq!(index(&Key::Named(PageUp), 7, 8), Some(2));
+        assert_eq!(index(&Key::Named(PageUp), 2, 8), Some(0));
+        assert_eq!(index(&Key::Named(PageDown), usize::MAX, 8), Some(7));
+        assert_eq!(index(&Key::Named(PageUp), usize::MAX, 8), Some(2));
+        for named in [PageUp, PageDown] {
+            let key = Key::Named(named);
+            assert_eq!(index(&key, 0, 0), None);
+            assert_eq!(index(&key, 0, 1), Some(0));
+            assert!(allowed(&key, Modifiers::empty()));
+            for modifier in [Modifiers::SHIFT, Modifiers::CONTROL, Modifiers::ALT, Modifiers::META] {
+                assert!(!allowed(&key, modifier));
+            }
+            assert!(!super::composer_mention_accepts(&key, Modifiers::empty()));
+            assert!(!super::composer_enter_sends(&key, Modifiers::empty()));
+        }
+    }
+
     #[test]
     fn page_navigation_moves_five_enabled_choices_and_clamps_at_edges() {
         use super::{composer_model_menu_key as key, ComposerModeMenuKey::*};
