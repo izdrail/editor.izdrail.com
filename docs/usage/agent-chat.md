@@ -120,3 +120,5 @@ While file suggestions are open, the existing footer shows the selected position
 A loaded local file query with no offered matches shows a temporary no-matches hint in the existing footer for the current draft query. Changing the query can restore suggestions; adding a space ends the query and restores the normal footer. An index that has not loaded and a remote workspace are not reported as empty results.
 
 The draft focus ring follows the inner text editor, including mouse entry and Escape back from composer controls. Typing in the draft also moves app focus to Chat, so another panel does not remain the active keyboard target. The ring clears when draft focus leaves.
+
+Dismissing a matching suggestion list with Escape is not reported as no matches. The no-match footer uses the actual eligible candidate result and only appears while the draft has focus; switching to another panel restores the regular reminder.

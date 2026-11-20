@@ -5277,10 +5277,16 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             if let Some((_, selected, items)) = mention_popup.get() {
                 if let Some(hint) = mention_footer(selected, items.len()) { return hint; }
             }
+            let input = input_signal.get();
+            let query = mention_at_caret(&input, mention_cursor.get());
+            let files = mention_files.get();
+            let has_matches = query.as_ref().is_some_and(|(query, _)| {
+                files.as_ref().is_some_and(|files| !mention_candidates(query, files, 1).is_empty())
+            });
             if let Some(hint) = mention_empty_footer(
                 footer_local,
-                !action_focused.get() && mention_at_caret(&input_signal.get(), mention_cursor.get()).is_some(),
-                mention_files.get().is_some(), mention_popup.get().is_some(),
+                composer_focused.get() && query.is_some(),
+                files.is_some(), has_matches,
             ) { return hint.to_string(); }
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
@@ -5831,6 +5837,17 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn dismissing_a_matching_popup_does_not_turn_it_into_a_no_match() {
+        use super::{mention_candidates, mention_empty_footer};
+        let files = vec!["example.php".to_string()];
+        // Matching is independent of popup visibility, including Escape.
+        let matching = !mention_candidates("example", &files, 1).is_empty();
+        assert_eq!(mention_empty_footer(true, true, true, matching), None);
+        let missing = !mention_candidates("zzznomatch", &files, 1).is_empty();
+        assert!(mention_empty_footer(true, true, true, missing).is_some());
+        assert_eq!(mention_empty_footer(true, false, true, missing), None);
+    }
     #[test]
     fn empty_file_feedback_only_reports_a_loaded_local_tail_query() {
         use super::mention_empty_footer as footer;
