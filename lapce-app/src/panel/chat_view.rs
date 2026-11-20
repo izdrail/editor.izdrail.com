@@ -2646,7 +2646,7 @@ fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: 
 /// Only count the offered rows, not the whole workspace index.
 fn mention_footer(selected: usize, count: usize) -> Option<String> {
     if count == 0 || selected >= count { return None; }
-    Some(format!("File {}/{}: Up/Down to choose, Home/End to jump. Enter/Tab to insert, Escape to dismiss.", selected + 1, count))
+    Some(format!("File {}/{}: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.", selected + 1, count))
 }
 
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
@@ -6364,10 +6364,13 @@ mod quiet_conversation_tests {
     #[test]
     fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
         use super::mention_footer as footer;
-        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
-        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
+        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
+        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
         assert_eq!(footer(0, 0), None);
         assert_eq!(footer(8, 8), None);
+        let last = footer(usize::MAX - 1, usize::MAX).unwrap();
+        assert!(last.contains("PageUp/PageDown by 5"));
+        assert_eq!(footer(usize::MAX, usize::MAX), None);
         assert_eq!(footer(usize::MAX, 8), None);
     }
     #[test]
