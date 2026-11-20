@@ -140,3 +140,5 @@ The composer footer reserves two lines so opening a picker does not move its tri
 Moving the pointer over a model row updates the keyboard highlight without selecting it. Enter/Space then picks the highlighted enabled model. Disabled, loading or stale rows clear the highlight so Enter cannot choose a previously hovered model.
 
 Mode and model lists prefer opening above their composer buttons, leaving the footer and status bar clear. A button near the top of a short window can open its list below instead; either placement stays within the window edges.
+
+Hovering a built-in mode (Chat, Ask, Plan, Act, ACP or Resume) also updates its keyboard highlight, so Enter/Space picks the row under the pointer. Moving onto a mouse-only agent-command row clears that highlight rather than letting Enter pick the previous mode. Hover alone never changes mode or starts an agent.

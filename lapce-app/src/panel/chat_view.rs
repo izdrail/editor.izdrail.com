@@ -865,12 +865,16 @@ fn acp_agent_row(
     config: ReadSignal<Arc<LapceConfig>>,
     mode_expanded: RwSignal<bool>,
     restore_composer_focus: RwSignal<bool>,
+    mode_keyboard: RwSignal<Option<usize>>,
     name: &'static str,
     command: &'static str,
 ) -> impl View {
     let click = data.clone();
     let state = data;
     label(move || format!("Agent: {name}"))
+        .on_event_cont(EventListener::PointerMove, move |_| {
+            if mode_keyboard.get_untracked().is_some() { mode_keyboard.set(None); }
+        })
         .on_click_stop(move |_| {
             if !click.busy.get_untracked() {
                 crate::config::LapceConfig::update_file(
@@ -2364,6 +2368,12 @@ fn composer_menu_letter_key(key: &Key, modifiers: floem::keyboard::Modifiers, se
     (start..labels.len()).chain(0..start).find(matches)
 }
 
+/// The six built-in choices have keyboard actions. Agent command rows
+/// must clear an old choice until they have their own keyboard action.
+fn composer_mode_hover(index: usize) -> Option<usize> {
+    (index < 6).then_some(index)
+}
+
 fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>) -> Option<ComposerModeMenuKey> {
     if !modifiers.is_empty() { return None; }
     use ComposerModeMenuKey::*;
@@ -3153,6 +3163,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     };
                     let rows = v_stack((
                         label(|| "Chat".to_string())
+                            .on_event_cont(EventListener::PointerMove, move |_| {
+                                let next = composer_mode_hover(0);
+                                if mode_keyboard.get_untracked() != next { mode_keyboard.set(next); }
+                            })
                             .on_click_stop(move |_| {
                                 if !chat_mode.busy.get_untracked() {
                                     chat_mode.mode.set(None);
@@ -3173,6 +3187,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ).apply_if(mode_keyboard.get() == Some(0), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "Ask".to_string())
+                            .on_event_cont(EventListener::PointerMove, move |_| {
+                                let next = composer_mode_hover(1);
+                                if mode_keyboard.get_untracked() != next { mode_keyboard.set(next); }
+                            })
                             .on_click_stop(move |_| {
                                 if !ask_mode.busy.get_untracked() {
                                     ask_mode.mode.set(Some(
@@ -3194,6 +3212,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ).apply_if(mode_keyboard.get() == Some(1), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "Plan".to_string())
+                            .on_event_cont(EventListener::PointerMove, move |_| {
+                                let next = composer_mode_hover(2);
+                                if mode_keyboard.get_untracked() != next { mode_keyboard.set(next); }
+                            })
                             .on_click_stop(move |_| {
                                 if !plan_mode.busy.get_untracked() {
                                     plan_mode.mode.set(Some(
@@ -3215,6 +3237,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ).apply_if(mode_keyboard.get() == Some(2), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "Act".to_string())
+                            .on_event_cont(EventListener::PointerMove, move |_| {
+                                let next = composer_mode_hover(3);
+                                if mode_keyboard.get_untracked() != next { mode_keyboard.set(next); }
+                            })
                             .on_click_stop(move |_| {
                                 if !act_mode.busy.get_untracked() {
                                     act_mode.mode.set(Some(
@@ -3236,6 +3262,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ).apply_if(mode_keyboard.get() == Some(3), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(|| "ACP".to_string())
+                            .on_event_cont(EventListener::PointerMove, move |_| {
+                                let next = composer_mode_hover(4);
+                                if mode_keyboard.get_untracked() != next { mode_keyboard.set(next); }
+                            })
                             .on_click_stop(move |_| {
                                 if !acp_mode.busy.get_untracked() {
                                     acp_mode.mode.set(None);
@@ -3254,6 +3284,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 ).apply_if(mode_keyboard.get() == Some(4), |s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                             }),
                         label(move || format!("Resume ({})", resume_count()))
+                            .on_event_cont(EventListener::PointerMove, move |_| {
+                                let next = composer_mode_hover(5);
+                                if mode_keyboard.get_untracked() != next { mode_keyboard.set(next); }
+                            })
                             .on_click_stop(move |_| {
                                 if !acp_resume.busy.get_untracked() {
                                     acp_resume.mode.set(None);
@@ -3278,6 +3312,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config,
                                 mode_expanded,
                                 restore_composer_focus,
+                                mode_keyboard,
                                 crate::chat::ACP_AGENTS[0].0,
                                 crate::chat::ACP_AGENTS[0].1,
                             ),
@@ -3287,6 +3322,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config,
                                 mode_expanded,
                                 restore_composer_focus,
+                                mode_keyboard,
                                 crate::chat::ACP_AGENTS[1].0,
                                 crate::chat::ACP_AGENTS[1].1,
                             ),
@@ -3296,6 +3332,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config,
                                 mode_expanded,
                                 restore_composer_focus,
+                                mode_keyboard,
                                 crate::chat::ACP_AGENTS[2].0,
                                 crate::chat::ACP_AGENTS[2].1,
                             ),
@@ -3305,6 +3342,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 config,
                                 mode_expanded,
                                 restore_composer_focus,
+                                mode_keyboard,
                                 crate::chat::ACP_AGENTS[3].0,
                                 crate::chat::ACP_AGENTS[3].1,
                             ),
@@ -5900,6 +5938,15 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mode_hover_only_highlights_keyboard_pickable_choices() {
+        for index in 0..6 { assert_eq!(super::composer_mode_hover(index), Some(index)); }
+        for index in [6, 7, 8, 9, usize::MAX] { assert_eq!(super::composer_mode_hover(index), None); }
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        assert_eq!(super::composer_mode_menu_key(&Key::Named(NamedKey::Enter), Modifiers::empty(), super::composer_mode_hover(2)), Some(super::ComposerModeMenuKey::Pick(2)));
+        assert_eq!(super::composer_mode_menu_key(&Key::Named(NamedKey::Enter), Modifiers::empty(), super::composer_mode_hover(8)), None);
+    }
+
     #[test]
     fn composer_menus_prefer_above_and_fall_back_inside_window() {
         use super::composer_menu_y as y;
