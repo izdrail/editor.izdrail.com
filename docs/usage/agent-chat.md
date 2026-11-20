@@ -136,3 +136,5 @@ Moving the pointer over an offered file highlights that row and updates the posi
 Opening the mode or model picker dismisses file suggestions first, so two composer lists do not compete for the same space or keyboard hints. Closing the picker preserves the draft; editing its query opens file suggestions again.
 
 The composer footer reserves two lines so opening a picker does not move its trigger under the pointer when temporary file hints clear.
+
+Moving the pointer over a model row updates the keyboard highlight without selecting it. Enter/Space then picks the highlighted enabled model. Disabled, loading or stale rows clear the highlight so Enter cannot choose a previously hovered model.

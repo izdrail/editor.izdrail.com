@@ -2391,6 +2391,12 @@ fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sel
     }
 }
 
+/// Resolve the live model id after async rows change. Disabled or stale rows
+/// clear keyboard selection rather than leaving Enter aimed at another model.
+fn composer_model_hover(id: &str, rows: &[(String, bool)]) -> Option<usize> {
+    rows.iter().position(|(model, enabled)| *enabled && model == id)
+}
+
 fn pick_composer_mode(data: &ChatData, index: usize) {
     if data.busy.get_untracked() || index > 5 { return; }
     data.mode.set(match index {
@@ -3427,8 +3433,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         move |(index, (text, id, pickable, cap))| {
                             let id_pick = id.clone();
                             let id_active = id.clone();
+                            let id_hover = id.clone();
                             let block_data = view_data.clone();
                             let row = label(move || text.clone())
+                                .on_event_cont(EventListener::PointerMove, move |_| {
+                                    let next = composer_model_hover(&id_hover, &keyboard_rows.get_untracked());
+                                    if model_keyboard.get_untracked() != next {
+                                        model_keyboard.set(next);
+                                    }
+                                })
                                 .on_click_stop(move |_| {
                                     if !pickable {
                                         // A known no-tools model in
@@ -5882,6 +5895,20 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn model_hover_resolves_live_ids_and_clears_disabled_or_stale_rows() {
+        use super::composer_model_hover as hover;
+        let rows = vec![("small".into(), true), ("blocked".into(), false), ("large".into(), true)];
+        assert_eq!(hover("large", &rows), Some(2));
+        assert_eq!(hover("small", &rows), Some(0));
+        assert_eq!(hover("blocked", &rows), None);
+        assert_eq!(hover("removed", &rows), None);
+        assert_eq!(hover("small", &[]), None);
+        let reordered = vec![("large".into(), true), ("small".into(), false)];
+        assert_eq!(hover("large", &reordered), Some(0));
+        assert_eq!(hover("small", &reordered), None);
+    }
+
     #[test]
     fn hover_resolves_live_paths_and_ignores_stale_or_selected_rows() {
         use super::mention_hover_index as hover;
