@@ -172,3 +172,5 @@ When a composer mode/model chip has focus, Left and Right move focus along the c
 Left from the focused Send/Stop button returns to the model chip; Right returns to the draft. These arrows only move focus, including while a run is active. Enter/Space remain the explicit Send/Stop actions.
 
 The @file suggestion footer lists PageUp/PageDown alongside single-row and end jumps, including the five-row page size. These keys only move the highlight; Enter or Tab inserts the file path.
+
+With a mode/model chip focused, Up or Down opens its choice list at the current choice. It does not pick a different mode/model or send the draft. Enter/Space still opens the list; modified arrows keep their normal shortcuts.

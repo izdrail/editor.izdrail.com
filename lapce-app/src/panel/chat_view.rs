@@ -2609,6 +2609,16 @@ enum ComposerFocusTarget {
     Send,
 }
 
+/// Arrow keys open a closed choice list without changing the current choice.
+/// Leave Enter/Space to the standard keyboard-click behavior.
+fn composer_chip_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, _expanded: bool) -> Option<bool> {
+    if !modifiers.is_empty() { return None; }
+    match key {
+        Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp) => Some(true),
+        _ => None,
+    }
+}
+
 fn composer_chip_key_target(
     model_chip: bool,
     key: &Key,
@@ -5245,9 +5255,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .on_click_stop(move |_| {
                         let open = !mode_expanded.get_untracked();
                         mode_expanded.set(open);
-                        if open {
-                            model_expanded.set(false);
-                        }
+                        if open { model_expanded.set(false); }
                     })
                     .on_move(move |point| {
                         mode_origin.set(point);
@@ -5261,6 +5269,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(move |s| dropdown_button_style(s, config));
                     let chip = chip.on_event(EventListener::KeyDown, move |event| {
                         if let Event::KeyDown(key) = event {
+                            if let Some(open) = composer_chip_menu_key(&key.key.logical_key, key.modifiers, mode_expanded.get_untracked()) {
+                                mode_expanded.set(open);
+                                if open { model_expanded.set(false); }
+                                return EventPropagation::Stop;
+                            }
                             if let Some(target) = composer_chip_key_target(
                                 false, &key.key.logical_key, key.modifiers,
                             ) {
@@ -5285,6 +5298,22 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     chip
                     },
                     {
+                    let set_model_open = Rc::new(move |open: bool| {
+                        let settings = config.get_untracked().ai_chat.clone();
+                        model_expanded.set(open);
+                        if open { mode_expanded.set(false); }
+                        if open && settings.backend != "local" && !data.acp.get_untracked() {
+                            endpoint_models_loading.set(true);
+                            endpoint_models_error.set(None);
+                            let tx = models_tx.clone();
+                            let endpoint = settings.endpoint.clone();
+                            std::thread::spawn(move || {
+                                let result = crate::chat::models_with_source(&endpoint);
+                                let _ = tx.send((endpoint, result));
+                            });
+                        }
+                    });
+                    let click_model_open = set_model_open.clone();
                     let chip = h_stack((
                         label(move || {
                             let c = config.get();
@@ -5320,28 +5349,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         }),
                     ))
                     .keyboard_navigable()
-                    .on_click_stop(move |_| {
-                        let settings = config.get_untracked().ai_chat.clone();
-                        let open = !model_expanded.get_untracked();
-                        model_expanded.set(open);
-                        if open {
-                            mode_expanded.set(false);
-                        }
-                        // Endpoint backend (item 206): the chip opens an
-                        // on-demand model list from the configured
-                        // endpoint instead of being display-only.
-                        if open && settings.backend != "local" && !data.acp.get_untracked() {
-                            endpoint_models_loading.set(true);
-                            endpoint_models_error.set(None);
-                            let tx = models_tx.clone();
-                            let endpoint = settings.endpoint.clone();
-                            std::thread::spawn(move || {
-                                let result =
-                                    crate::chat::models_with_source(&endpoint);
-                                let _ = tx.send((endpoint, result));
-                            });
-                        }
-                    })
+                    .on_click_stop(move |_| click_model_open(!model_expanded.get_untracked()))
                     .on_move(move |point| {
                         model_origin.set(point);
                         if model_expanded.get_untracked() {
@@ -5354,6 +5362,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .style(move |s| dropdown_button_style(s, config));
                     let chip = chip.on_event(EventListener::KeyDown, move |event| {
                         if let Event::KeyDown(key) = event {
+                            if let Some(open) = composer_chip_menu_key(&key.key.logical_key, key.modifiers, model_expanded.get_untracked()) {
+                                set_model_open(open);
+                                return EventPropagation::Stop;
+                            }
                             if let Some(target) = composer_chip_key_target(
                                 true, &key.key.logical_key, key.modifiers,
                             ) {
@@ -6361,6 +6373,27 @@ mod quiet_conversation_tests {
             assert_eq!(footer(local, active, loaded, rows).is_some(), local && active && loaded && !rows);
         }
     }
+    #[test]
+    fn composer_choice_chips_open_with_vertical_arrows_without_picking() {
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        use super::composer_chip_menu_key as action;
+        for key in [ArrowDown, ArrowUp] {
+            for expanded in [false, true] {
+                assert_eq!(action(&Key::Named(key.clone()), Modifiers::empty(), expanded), Some(true));
+                for mods in [Modifiers::SHIFT, Modifiers::CONTROL, Modifiers::ALT, Modifiers::META] {
+                    assert_eq!(action(&Key::Named(key.clone()), mods, expanded), None);
+                }
+            }
+        }
+        for key in [Enter, Space] {
+            assert_eq!(action(&Key::Named(key.clone()), Modifiers::empty(), false), None);
+            assert_eq!(action(&Key::Named(key), Modifiers::empty(), true), None);
+        }
+        for key in [ArrowLeft, ArrowRight, Tab, Escape] {
+            assert_eq!(action(&Key::Named(key), Modifiers::empty(), false), None);
+        }
+    }
+
     #[test]
     fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
         use super::mention_footer as footer;
