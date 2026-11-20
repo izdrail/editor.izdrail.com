@@ -142,3 +142,5 @@ Moving the pointer over a model row updates the keyboard highlight without selec
 Mode and model lists prefer opening above their composer buttons, leaving the footer and status bar clear. A button near the top of a short window can open its list below instead; either placement stays within the window edges.
 
 Hovering a built-in mode (Chat, Ask, Plan, Act, ACP or Resume) also updates its keyboard highlight, so Enter/Space picks the row under the pointer. Moving onto a mouse-only agent-command row clears that highlight rather than letting Enter pick the previous mode. Hover alone never changes mode or starts an agent.
+
+In a short window, mode/model lists reduce their scroll area to the available window height rather than keeping a fixed-height card that extends offscreen. The height updates when the window is resized.

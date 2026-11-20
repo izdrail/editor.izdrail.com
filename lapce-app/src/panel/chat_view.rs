@@ -2443,6 +2443,10 @@ fn composer_menu_y(origin: f64, trigger: f64, list: f64, window: f64) -> f64 {
     preferred.clamp(5.0, (window - list - 5.0).max(5.0))
 }
 
+fn composer_menu_height(window_height: f64) -> f64 {
+    (window_height - 10.0).clamp(0.0, 220.0)
+}
+
 fn composer_dropdown_overlay<V: View + 'static>(
     rows: V,
     menu_key: Option<Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool>>,
@@ -2457,9 +2461,9 @@ fn composer_dropdown_overlay<V: View + 'static>(
     scroll(
         rows.style(|s| s.flex_col().width_full().min_width(0.0).cursor(CursorStyle::Pointer)),
     )
-    .style(|s| {
+    .style(move |s| {
         s.width_pct(100.0)
-            .max_height(220.0)
+            .max_height(composer_menu_height(window_size.get().height) as f32)
             .set(PropagatePointerWheel, false)
     })
     .keyboard_navigable()
@@ -5938,6 +5942,22 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn composer_menu_height_tracks_short_windows_without_negative_sizes() {
+        use super::composer_menu_height as height;
+        assert_eq!(height(796.0), 220.0);
+        assert_eq!(height(230.0), 220.0);
+        assert_eq!(height(180.0), 170.0);
+        assert_eq!(height(10.0), 0.0);
+        assert_eq!(height(2.0), 0.0);
+        for window in [20.0, 80.0, 180.0, 230.0, 796.0] {
+            let list = height(window);
+            let y = super::composer_menu_y(window - 25.0, 24.0, list, window);
+            assert!(y >= 5.0);
+            assert!(y + list <= window - 5.0);
+        }
+    }
+
     #[test]
     fn mode_hover_only_highlights_keyboard_pickable_choices() {
         for index in 0..6 { assert_eq!(super::composer_mode_hover(index), Some(index)); }
