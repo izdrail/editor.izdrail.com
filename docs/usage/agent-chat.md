@@ -166,3 +166,5 @@ Agent command letter jumps match the agent name as well as the visible Agent pre
 Model picker refreshes preserve the highlighted model by ID, even if rows reorder or capability labels arrive. If that model disappears or becomes unavailable, selection clears instead of pointing Enter at another model.
 
 Model rows rebuild their event handlers and highlight/scroll state when their position or availability changes, even when the visible name stays the same.
+
+When a composer mode/model chip has focus, Left and Right move focus along the controls without opening a menu, changing a choice or sending. Left from the mode chip returns to the draft; Right from the model chip focuses Send. Tab and Shift+Tab remain available.

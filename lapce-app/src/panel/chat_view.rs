@@ -2618,12 +2618,15 @@ fn composer_chip_key_target(
     if *key == Key::Named(NamedKey::Escape) && modifiers.is_empty() {
         return Some(ComposerFocusTarget::Draft);
     }
-    if *key != Key::Named(NamedKey::Tab)
-        || !(modifiers.is_empty() || modifiers == Modifiers::SHIFT)
-    {
-        return None;
-    }
-    let reverse = modifiers == Modifiers::SHIFT;
+    let reverse = if modifiers.is_empty() {
+        match key {
+            Key::Named(NamedKey::ArrowLeft) => true,
+            Key::Named(NamedKey::ArrowRight | NamedKey::Tab) => false,
+            _ => return None,
+        }
+    } else if modifiers == Modifiers::SHIFT && *key == Key::Named(NamedKey::Tab) {
+        true
+    } else { return None; };
     Some(match (model_chip, reverse) {
         (false, false) => ComposerFocusTarget::Model,
         (false, true) => ComposerFocusTarget::Draft,
@@ -6030,6 +6033,22 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn composer_chips_support_horizontal_focus_without_activation() {
+        use super::{composer_chip_key_target as target, ComposerFocusTarget::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        assert_eq!(target(false, &Key::Named(ArrowRight), Modifiers::empty()), Some(Model));
+        assert_eq!(target(true, &Key::Named(ArrowRight), Modifiers::empty()), Some(Send));
+        assert_eq!(target(true, &Key::Named(ArrowLeft), Modifiers::empty()), Some(Mode));
+        assert_eq!(target(false, &Key::Named(ArrowLeft), Modifiers::empty()), Some(Draft));
+        for model in [false, true] {
+            for modifiers in [Modifiers::SHIFT, Modifiers::CONTROL, Modifiers::ALT, Modifiers::META] {
+                for key in [ArrowLeft, ArrowRight] { assert_eq!(target(model, &Key::Named(key), modifiers), None); }
+            }
+            for key in [ArrowUp, ArrowDown, Enter, Space] { assert_eq!(target(model, &Key::Named(key), Modifiers::empty()), None); }
+        }
+    }
+
     #[test]
     fn model_row_identity_includes_captured_index_and_availability() {
         use super::composer_model_row_key as key;
