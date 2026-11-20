@@ -2277,9 +2277,21 @@ fn conversation_body(text: &str, user: bool, config: &LapceConfig) -> Vec<Markdo
     }
 }
 
+fn mention_navigation_index(key: &Key, selected: usize, count: usize) -> Option<usize> {
+    if count == 0 { return None; }
+    let last = count - 1;
+    Some(match key {
+        Key::Named(NamedKey::ArrowDown) => selected.saturating_add(1).min(last),
+        Key::Named(NamedKey::ArrowUp) => selected.min(last).saturating_sub(1),
+        Key::Named(NamedKey::Home) => 0,
+        Key::Named(NamedKey::End) => last,
+        _ => return None,
+    })
+}
+
 fn composer_mention_navigation(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     modifiers.is_empty()
-        && matches!(key, Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp | NamedKey::Escape))
+        && matches!(key, Key::Named(NamedKey::ArrowDown | NamedKey::ArrowUp | NamedKey::Home | NamedKey::End | NamedKey::Escape))
 }
 
 fn composer_mention_accepts(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
@@ -2505,7 +2517,7 @@ fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: 
 /// Only count the offered rows, not the whole workspace index.
 fn mention_footer(selected: usize, count: usize) -> Option<String> {
     if count == 0 || selected >= count { return None; }
-    Some(format!("File {}/{}: Up/Down to choose, Enter or Tab to insert. Escape to dismiss.", selected + 1, count))
+    Some(format!("File {}/{}: Up/Down to choose, Home/End to jump. Enter/Tab to insert, Escape to dismiss.", selected + 1, count))
 }
 
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
@@ -3598,21 +3610,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 })
             {
                 let consumed = match &keypress.key {
-                    KeyInput::Keyboard(key @ Key::Named(NamedKey::ArrowDown), _) if composer_mention_navigation(key, mods) => {
-                        let last = items.len().saturating_sub(1);
-                        mention_popup.set(Some((
-                            start,
-                            (selected + 1).min(last),
-                            items,
-                        )));
-                        true
-                    }
-                    KeyInput::Keyboard(key @ Key::Named(NamedKey::ArrowUp), _) if composer_mention_navigation(key, mods) => {
-                        mention_popup.set(Some((
-                            start,
-                            selected.saturating_sub(1),
-                            items,
-                        )));
+                    KeyInput::Keyboard(key, _) if composer_mention_navigation(key, mods)
+                        && mention_navigation_index(key, selected, items.len()).is_some() => {
+                        let index = mention_navigation_index(key, selected, items.len()).unwrap();
+                        mention_popup.set(Some((start, index, items)));
                         true
                     }
                     KeyInput::Keyboard(key, _) if composer_mention_accepts(key, mods) => {
@@ -5838,6 +5839,24 @@ mod completed_duration_tests {
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
     #[test]
+    fn mention_navigation_jumps_to_ends_and_bounds_stale_indices() {
+        use super::{mention_navigation_index as index, composer_mention_navigation as allowed};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        assert_eq!(index(&Key::Named(Home), 5, 8), Some(0));
+        assert_eq!(index(&Key::Named(End), 0, 8), Some(7));
+        assert_eq!(index(&Key::Named(ArrowDown), usize::MAX, 8), Some(7));
+        assert_eq!(index(&Key::Named(ArrowUp), usize::MAX, 8), Some(6));
+        for key in [Home, End, ArrowUp, ArrowDown] {
+            assert_eq!(index(&Key::Named(key), 0, 0), None);
+            assert_eq!(index(&Key::Named(key), 0, 1), Some(0));
+            assert!(allowed(&Key::Named(key), Modifiers::empty()));
+            for mods in [Modifiers::CONTROL, Modifiers::SHIFT, Modifiers::ALT, Modifiers::META] {
+                assert!(!allowed(&Key::Named(key), mods));
+            }
+        }
+        assert_eq!(index(&Key::Named(Escape), 0, 8), None);
+    }
+    #[test]
     fn dismissing_a_matching_popup_does_not_turn_it_into_a_no_match() {
         use super::{mention_candidates, mention_empty_footer};
         let files = vec!["example.php".to_string()];
@@ -5863,8 +5882,8 @@ mod quiet_conversation_tests {
     #[test]
     fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
         use super::mention_footer as footer;
-        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, Enter or Tab to insert. Escape to dismiss.");
-        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, Enter or Tab to insert. Escape to dismiss.");
+        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
+        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
         assert_eq!(footer(0, 0), None);
         assert_eq!(footer(8, 8), None);
         assert_eq!(footer(usize::MAX, 8), None);

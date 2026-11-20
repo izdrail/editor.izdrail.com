@@ -122,3 +122,5 @@ A loaded local file query with no offered matches shows a temporary no-matches h
 The draft focus ring follows the inner text editor, including mouse entry and Escape back from composer controls. Typing in the draft also moves app focus to Chat, so another panel does not remain the active keyboard target. The ring clears when draft focus leaves.
 
 Dismissing a matching suggestion list with Escape is not reported as no matches. The no-match footer uses the actual eligible candidate result and only appears while the draft has focus; switching to another panel restores the regular reminder.
+
+With file suggestions open, plain Home and End jump to the first and last offered file and keep that row visible. Modified Home/End keep their normal editor behavior; Enter/Tab still inserts only the selected row. The temporary footer includes these keys.
