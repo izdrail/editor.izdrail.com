@@ -2645,6 +2645,13 @@ fn composer_chip_key_target(
     })
 }
 
+/// Exit a choice list horizontally along the same control order as its chip.
+/// Tab/Escape remain handled by the overlay's existing return-to-draft path.
+fn composer_menu_horizontal_target(model_chip: bool, key: &Key, modifiers: floem::keyboard::Modifiers) -> Option<ComposerFocusTarget> {
+    if !matches!(key, Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowRight)) { return None; }
+    composer_chip_key_target(model_chip, key, modifiers)
+}
+
 /// A loaded empty result is different from an index that has not arrived.
 /// Never imply that a bare unmatched token will attach a workspace file.
 fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: bool) -> Option<&'static str> {
@@ -3211,6 +3218,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // trigger; closing removes it. The overlay takes keyboard focus, so
     // a click anywhere outside it (FocusLost) or Escape dismisses it.
     let restore_composer_focus = floem::reactive::create_rw_signal(false);
+    let mode_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
+    let model_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
+    let send_button_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
     let mode_overlay = floem::reactive::create_rw_signal(None);
     let model_overlay = floem::reactive::create_rw_signal(None);
     let mode_origin = floem::reactive::create_rw_signal(Point::ZERO);
@@ -3232,6 +3242,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let mode_keyboard = floem::reactive::create_rw_signal(Some(initial));
                     let keyboard_data = picker_data.clone();
                     let mode_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
+                        if let Some(target) = composer_menu_horizontal_target(false, key, mods) {
+                            mode_expanded.set(false);
+                            match target {
+                                ComposerFocusTarget::Draft => restore_composer_focus.set(true),
+                                ComposerFocusTarget::Model => {
+                                    if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
+                                }
+                                _ => {},
+                            }
+                            return true;
+                        }
                         match composer_all_mode_menu_key(key, mods, mode_keyboard.get_untracked()) {
                             Some(ComposerModeMenuKey::Highlight(index)) => mode_keyboard.set(Some(index)),
                             Some(ComposerModeMenuKey::Pick(index)) => {
@@ -3493,6 +3514,16 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     let model_keyboard = floem::reactive::create_rw_signal(None::<usize>);
                     let keyboard_rows = floem::reactive::create_rw_signal(Vec::<(String, bool)>::new());
                     let model_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
+                        if let Some(target) = composer_menu_horizontal_target(true, key, mods) {
+                            model_expanded.set(false);
+                            let id = match target {
+                                ComposerFocusTarget::Mode => mode_chip_id.get_untracked(),
+                                ComposerFocusTarget::Send => send_button_id.get_untracked(),
+                                _ => None,
+                            };
+                            if let Some(id) = id { id.request_focus(); }
+                            return true;
+                        }
                         let rows = keyboard_rows.get_untracked();
                         let enabled = rows.iter().map(|(_, enabled)| *enabled).collect::<Vec<_>>();
                         let selected = model_keyboard.get_untracked();
@@ -3795,9 +3826,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // hook is the condition point floem routes every key through:
     // while the mention popup is open, arrows/Enter/Tab/Escape are
     // consumed here and everything else falls to the default keymap.
-    let mode_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
-    let model_chip_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
-    let send_button_id = floem::reactive::create_rw_signal(None::<floem::ViewId>);
     let keyboard_send_tab = tab.clone();
     let composer = text_editor_keys(
         data.input.get_untracked(),
@@ -6373,6 +6401,23 @@ mod quiet_conversation_tests {
             assert_eq!(footer(local, active, loaded, rows).is_some(), local && active && loaded && !rows);
         }
     }
+    #[test]
+    fn composer_open_menus_exit_horizontally_without_picking() {
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        use super::{composer_menu_horizontal_target as target, ComposerFocusTarget::*};
+        for (model, key, expected) in [(false, ArrowLeft, Draft), (false, ArrowRight, Model), (true, ArrowLeft, Mode), (true, ArrowRight, Send)] {
+            assert_eq!(target(model, &Key::Named(key.clone()), Modifiers::empty()), Some(expected));
+            for mods in [Modifiers::SHIFT, Modifiers::CONTROL, Modifiers::ALT, Modifiers::META] {
+                assert_eq!(target(model, &Key::Named(key.clone()), mods), None);
+            }
+        }
+        for key in [Tab, Escape, Enter, Space, ArrowUp, ArrowDown] {
+            for model in [false, true] {
+                assert_eq!(target(model, &Key::Named(key.clone()), Modifiers::empty()), None);
+            }
+        }
+    }
+
     #[test]
     fn composer_choice_chips_open_with_vertical_arrows_without_picking() {
         use floem::keyboard::{Key, NamedKey::*, Modifiers};
