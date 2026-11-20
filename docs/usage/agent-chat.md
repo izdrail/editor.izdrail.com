@@ -132,3 +132,7 @@ The file suggestion picker retains only the best offered rows while scanning the
 Switching keyboard ownership from Chat to the terminal or source editor dismisses file suggestions and restores the normal footer. A late workspace-index reply cannot reopen the list in another panel. Returning to the draft preserves its text; editing the query opens suggestions again.
 
 Moving the pointer over an offered file highlights that row and updates the position hint without inserting it or stealing draft focus. Enter/Tab can then accept the highlighted row; click still inserts directly. Hover resolves the current path after filtering rather than keeping an old row index.
+
+Opening the mode or model picker dismisses file suggestions first, so two composer lists do not compete for the same space or keyboard hints. Closing the picker preserves the draft; editing its query opens file suggestions again.
+
+The composer footer reserves two lines so opening a picker does not move its trigger under the pointer when temporary file hints clear.

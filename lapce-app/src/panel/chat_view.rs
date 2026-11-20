@@ -3534,7 +3534,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // after the user has switched to the terminal or source editor.
     create_effect(move |_| {
         let chat_active = focus.get() == Focus::Panel(PanelKind::Chat);
-        if !chat_active && mention_popup.get().is_some() {
+        let picker_open = mode_expanded.get() || model_expanded.get();
+        if (!chat_active || picker_open) && mention_popup.get().is_some() {
             mention_popup.set(None);
         }
     });
@@ -5335,7 +5336,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
-            s.font_size(11.0)
+            s.font_size(11.0).min_height(24.0)
                 .max_width_full().min_width(0.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)
                 .align_self(Some(floem::style::AlignItems::Center))
