@@ -182,3 +182,5 @@ Focusing a mode/model chip replaces the general composer note with its keyboard 
 The focused Send/Stop footer also names its horizontal exits, including when the empty draft cannot be sent: Left returns to model and Right/Escape returns to the draft.
 
 The composer outline stays focused while the draft, mode, model, or Send/Stop control has keyboard focus. Each control keeps its own focus marker so the current target remains clear. Moving focus outside the composer clears the outline.
+
+While a mode or model list is open, the composer keeps its focus outline and the footer explains highlighting, choosing, and returning to the draft without choosing. Closing the list restores the usual focus-specific help.

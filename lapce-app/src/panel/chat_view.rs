@@ -2672,6 +2672,12 @@ fn mention_footer(selected: usize, count: usize) -> Option<String> {
     Some(format!("File {}/{}: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.", selected + 1, count))
 }
 
+fn composer_menu_footer(mode_open: bool, model_open: bool) -> Option<&'static str> {
+    if model_open { Some("Models: Up/Down to highlight, Enter/Space to choose. Escape/Tab to draft.") }
+    else if mode_open { Some("Modes: Up/Down to highlight, Enter/Space to choose. Escape/Tab to draft.") }
+    else { None }
+}
+
 fn composer_choice_footer(mode_focused: bool, model_focused: bool) -> Option<&'static str> {
     if model_focused { Some("Model: Up/Down or Enter/Space to open. Left/Right to move focus. Escape to draft.") }
     else if mode_focused { Some("Mode: Up/Down or Enter/Space to open. Left/Right to move focus. Escape to draft.") }
@@ -5520,7 +5526,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         )
         .style(move |s| {
             let config = config.get();
-            let ring = if composer_group_focused(composer_focused.get(), mode_focused.get(), model_focused.get(), action_focused.get()) {
+            let ring = if composer_group_focused(composer_focused.get(), mode_focused.get() || mode_expanded.get(), model_focused.get() || model_expanded.get(), action_focused.get()) {
                 config.color(LapceColor::EDITOR_FOCUS)
             } else {
                 config.color(LapceColor::LAPCE_BORDER)
@@ -5536,6 +5542,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         {
         let footer_local = tab.workspace.kind.is_local();
         label(move || {
+            if let Some(hint) = composer_menu_footer(mode_expanded.get(), model_expanded.get()) {
+                return hint.to_string();
+            }
             if let Some(hint) = composer_choice_footer(mode_focused.get(), model_focused.get()) {
                 return hint.to_string();
             }
@@ -6487,6 +6496,19 @@ mod quiet_conversation_tests {
         assert!(last.contains("PageUp/PageDown by 5"));
         assert_eq!(footer(usize::MAX, usize::MAX), None);
         assert_eq!(footer(usize::MAX, 8), None);
+    }
+    #[test]
+    fn open_choice_lists_explain_highlight_pick_and_safe_dismissal() {
+        use super::composer_menu_footer as footer;
+        assert_eq!(footer(false, false), None);
+        for (mode, model, prefix) in [(true, false, "Modes:"), (false, true, "Models:"), (true, true, "Models:")] {
+            let text = footer(mode, model).unwrap();
+            assert!(text.starts_with(prefix));
+            assert!(text.contains("Up/Down to highlight"));
+            assert!(text.contains("Enter/Space to choose"));
+            assert!(text.contains("Escape/Tab to draft"));
+            assert!(!text.contains("to open"));
+        }
     }
     #[test]
     fn composer_outline_follows_every_keyboard_control_and_clears_outside() {
