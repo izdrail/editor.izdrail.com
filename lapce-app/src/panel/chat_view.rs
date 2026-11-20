@@ -2494,6 +2494,14 @@ fn composer_chip_key_target(
     })
 }
 
+/// A loaded empty result is different from an index that has not arrived.
+/// Never imply that a bare unmatched token will attach a workspace file.
+fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: bool) -> Option<&'static str> {
+    if local && active_tail && loaded && !has_rows {
+        Some("No matching files for this @ query. Edit the query or add a space to continue.")
+    } else { None }
+}
+
 /// Only count the offered rows, not the whole workspace index.
 fn mention_footer(selected: usize, count: usize) -> Option<String> {
     if count == 0 || selected >= count { return None; }
@@ -5256,11 +5264,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .border_color(ring)
                 .background(config.color(LapceColor::EDITOR_BACKGROUND))
         }),
-        // Antigravity-style disclaimer under the composer.
+        // Reuse the footer for temporary completion feedback.
+        {
+        let footer_local = tab.workspace.kind.is_local();
         label(move || {
             if let Some((_, selected, items)) = mention_popup.get() {
                 if let Some(hint) = mention_footer(selected, items.len()) { return hint; }
             }
+            if let Some(hint) = mention_empty_footer(
+                footer_local,
+                !action_focused.get() && mention_at_caret(&input_signal.get(), mention_cursor.get()).is_some(),
+                mention_files.get().is_some(), mention_popup.get().is_some(),
+            ) { return hint.to_string(); }
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
@@ -5270,7 +5285,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .align_self(Some(floem::style::AlignItems::Center))
                 .selectable(false)
                 .color(config.get().color(LapceColor::EDITOR_DIM))
-        }),
+        })
+        },
     )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
         .padding_horiz(8.0).padding_bottom(8.0).gap(8.0)),
     ))
@@ -5809,6 +5825,18 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn empty_file_feedback_only_reports_a_loaded_local_tail_query() {
+        use super::mention_empty_footer as footer;
+        assert!(footer(true, true, true, false).unwrap().contains("No matching files"));
+        for mask in 0..16 {
+            let local = mask & 1 != 0;
+            let active = mask & 2 != 0;
+            let loaded = mask & 4 != 0;
+            let rows = mask & 8 != 0;
+            assert_eq!(footer(local, active, loaded, rows).is_some(), local && active && loaded && !rows);
+        }
+    }
     #[test]
     fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
         use super::mention_footer as footer;

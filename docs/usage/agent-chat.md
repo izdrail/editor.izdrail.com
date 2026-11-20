@@ -116,3 +116,5 @@ Keyboard focus cycles from draft to mode, model, Send/Stop and back to draft, wi
 When the Send/Stop button has keyboard focus, the existing footer explains its current action and the Escape route. It tells you to write a message for an empty idle draft, shows Send for a populated draft, and Stop during a run. Leaving the action restores the review-changes reminder without adding another row of controls.
 
 While file suggestions are open, the existing footer shows the selected position among the offered rows and the Up/Down, Enter/Tab and Escape keys. It counts the bounded suggestion list, not every matching workspace file, and returns to its normal hint when the list closes.
+
+A loaded local file query with no offered matches shows a temporary no-matches hint in the existing footer for the current draft query. Changing the query can restore suggestions; adding a space ends the query and restores the normal footer. An index that has not loaded and a remote workspace are not reported as empty results.
