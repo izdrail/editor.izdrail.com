@@ -760,14 +760,22 @@ fn mention_has_candidates(query: &str, files: &[String]) -> bool {
 
 /// The best `cap` workspace paths for a mention query, ranked.
 fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> {
-    let mut scored: Vec<(i64, &String)> = files
-        .iter()
-        .filter_map(|f| mention_candidate_score(query, f).map(|s| (s, f)))
-        .collect();
-    scored.sort_by(|a, b| {
-        a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())).then(a.1.cmp(b.1))
-    });
-    scored.into_iter().take(cap).map(|(_, f)| f.clone()).collect()
+    if cap == 0 { return Vec::new(); }
+    // Keep only the best offered rows. A large workspace must not allocate
+    // and sort an entry for every match when the popup displays eight.
+    let mut scored: Vec<(i64, &String)> = Vec::new();
+    for path in files {
+        let Some(score) = mention_candidate_score(query, path) else { continue; };
+        let rank = |(value, file): &(i64, &String)| {
+            score.cmp(value).then(path.len().cmp(&file.len())).then(path.cmp(file))
+        };
+        let index = scored.partition_point(|entry| rank(entry).is_ge());
+        if index < cap {
+            scored.insert(index, (score, path));
+            if scored.len() > cap { scored.pop(); }
+        }
+    }
+    scored.into_iter().map(|(_, path)| path.clone()).collect()
 }
 
 /// Keyed suggestion rows can survive a filtered/re-ranked result set.
@@ -5849,6 +5857,20 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn bounded_mentions_preserve_full_sort_order_for_every_cap() {
+        use super::{mention_candidates, mention_candidate_score};
+        let mut files: Vec<String> = (0..300).map(|i| format!("src/module{:03}/file{:03}.rs", i % 13, 299 - i)).collect();
+        files.extend(["file.rs", "src/file.rs", "src/file.rs", ".gitignore", "space name.rs", "plain"].into_iter().map(String::from));
+        for query in ["", "file", "FILE", "smf", "module003", "zzznomatch"] {
+            let mut all: Vec<_> = files.iter().filter_map(|p| mention_candidate_score(query, p).map(|score| (score, p))).collect();
+            all.sort_by(|a,b| a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())).then(a.1.cmp(b.1)));
+            for cap in [0, 1, 2, 8, 50, 306, usize::MAX] {
+                let expected: Vec<String> = all.iter().take(cap).map(|(_, p)| (*p).clone()).collect();
+                assert_eq!(mention_candidates(query, &files, cap), expected, "query={query}, cap={cap}");
+            }
+        }
+    }
     #[test]
     fn mention_existence_agrees_with_ranked_candidates() {
         use super::{mention_candidates, mention_has_candidates};

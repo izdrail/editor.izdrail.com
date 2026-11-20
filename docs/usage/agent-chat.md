@@ -126,3 +126,5 @@ Dismissing a matching suggestion list with Escape is not reported as no matches.
 With file suggestions open, plain Home and End jump to the first and last offered file and keep that row visible. Modified Home/End keep their normal editor behavior; Enter/Tab still inserts only the selected row. The temporary footer includes these keys.
 
 No-match feedback checks for the first eligible result without building or sorting a second candidate list. It uses the same path eligibility and query matcher as the ranked suggestions, including after Escape dismisses them.
+
+The file suggestion picker retains only the best offered rows while scanning the workspace. Ranking remains score, shortest path, then path order; the list no longer allocates and sorts every matching workspace path just to offer eight results.
