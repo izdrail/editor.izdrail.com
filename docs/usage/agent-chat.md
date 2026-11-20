@@ -180,3 +180,5 @@ Left/Right also leaves an open mode/model list along the composer controls: mode
 Focusing a mode/model chip replaces the general composer note with its keyboard help. Moving focus away clears that hint, so the quiet new-conversation state keeps its minimal footer.
 
 The focused Send/Stop footer also names its horizontal exits, including when the empty draft cannot be sent: Left returns to model and Right/Escape returns to the draft.
+
+The composer outline stays focused while the draft, mode, model, or Send/Stop control has keyboard focus. Each control keeps its own focus marker so the current target remains clear. Moving focus outside the composer clears the outline.

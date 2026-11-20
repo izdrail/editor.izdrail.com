@@ -2496,6 +2496,12 @@ fn pick_composer_mode(data: &ChatData, index: usize) {
     data.resume_id.set(None);
 }
 
+/// Keep the composer outline active across its whole keyboard focus group.
+/// The individual control ring still identifies the current keyboard target.
+fn composer_group_focused(draft: bool, mode: bool, model: bool, action: bool) -> bool {
+    draft || mode || model || action
+}
+
 /// Grow with the rendered lines, including soft wraps. Only inspect enough
 /// lines to reach the cap so a large paste does not scan the whole draft.
 fn composer_draft_height(lines: impl Iterator, line_height: f32) -> f32 {
@@ -5514,7 +5520,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         )
         .style(move |s| {
             let config = config.get();
-            let ring = if composer_focused.get() {
+            let ring = if composer_group_focused(composer_focused.get(), mode_focused.get(), model_focused.get(), action_focused.get()) {
                 config.color(LapceColor::EDITOR_FOCUS)
             } else {
                 config.color(LapceColor::LAPCE_BORDER)
@@ -6481,6 +6487,13 @@ mod quiet_conversation_tests {
         assert!(last.contains("PageUp/PageDown by 5"));
         assert_eq!(footer(usize::MAX, usize::MAX), None);
         assert_eq!(footer(usize::MAX, 8), None);
+    }
+    #[test]
+    fn composer_outline_follows_every_keyboard_control_and_clears_outside() {
+        use super::composer_group_focused as focused;
+        for bits in 0..16 {
+            assert_eq!(focused(bits & 1 != 0, bits & 2 != 0, bits & 4 != 0, bits & 8 != 0), bits != 0);
+        }
     }
     #[test]
     fn action_footer_explains_the_current_keyboard_action_without_extra_chrome() {
