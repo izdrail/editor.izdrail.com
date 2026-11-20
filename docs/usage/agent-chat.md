@@ -176,3 +176,5 @@ The @file suggestion footer lists PageUp/PageDown alongside single-row and end j
 With a mode/model chip focused, Up or Down opens its choice list at the current choice. It does not pick a different mode/model or send the draft. Enter/Space still opens the list; modified arrows keep their normal shortcuts.
 
 Left/Right also leaves an open mode/model list along the composer controls: mode Left returns to the draft, mode Right focuses model, model Left focuses mode, and model Right focuses Send. The list closes without accepting its highlighted row or activating Send.
+
+Focusing a mode/model chip replaces the general composer note with its keyboard help. Moving focus away clears that hint, so the quiet new-conversation state keeps its minimal footer.

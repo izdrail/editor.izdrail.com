@@ -2666,6 +2666,12 @@ fn mention_footer(selected: usize, count: usize) -> Option<String> {
     Some(format!("File {}/{}: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.", selected + 1, count))
 }
 
+fn composer_choice_footer(mode_focused: bool, model_focused: bool) -> Option<&'static str> {
+    if model_focused { Some("Model: Up/Down or Enter/Space to open. Left/Right to move focus. Escape to draft.") }
+    else if mode_focused { Some("Mode: Up/Down or Enter/Space to open. Left/Right to move focus. Escape to draft.") }
+    else { None }
+}
+
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
     if !action_focused { "AI can make mistakes - review changes." }
     else if busy { "Enter or Space to stop. Escape to draft." }
@@ -3009,6 +3015,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // editor's floem focus events below.
     let composer_focused = floem::reactive::create_rw_signal(false);
     let action_focused = floem::reactive::create_rw_signal(false);
+    let mode_focused = floem::reactive::create_rw_signal(false);
+    let model_focused = floem::reactive::create_rw_signal(false);
     let config = tab.common.config;
     let show_tools = floem::reactive::create_rw_signal(false);
     let tools_review = data.review.proposal;
@@ -5280,6 +5288,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         }),
                     ))
                     .keyboard_navigable()
+                    .on_event_cont(EventListener::FocusGained, move |_| mode_focused.set(true))
+                    .on_event_cont(EventListener::FocusLost, move |_| mode_focused.set(false))
                     .on_click_stop(move |_| {
                         let open = !mode_expanded.get_untracked();
                         mode_expanded.set(open);
@@ -5377,6 +5387,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         }),
                     ))
                     .keyboard_navigable()
+                    .on_event_cont(EventListener::FocusGained, move |_| model_focused.set(true))
+                    .on_event_cont(EventListener::FocusLost, move |_| model_focused.set(false))
                     .on_click_stop(move |_| click_model_open(!model_expanded.get_untracked()))
                     .on_move(move |point| {
                         model_origin.set(point);
@@ -5518,6 +5530,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         {
         let footer_local = tab.workspace.kind.is_local();
         label(move || {
+            if let Some(hint) = composer_choice_footer(mode_focused.get(), model_focused.get()) {
+                return hint.to_string();
+            }
             if let Some((_, selected, items)) = mention_popup.get() {
                 if let Some(hint) = mention_footer(selected, items.len()) { return hint; }
             }
@@ -6401,6 +6416,22 @@ mod quiet_conversation_tests {
             assert_eq!(footer(local, active, loaded, rows).is_some(), local && active && loaded && !rows);
         }
     }
+    #[test]
+    fn composer_choice_help_only_shows_for_the_focused_chip() {
+        use super::composer_choice_footer as hint;
+        assert_eq!(hint(false, false), None);
+        let mode = hint(true, false).unwrap();
+        let model = hint(false, true).unwrap();
+        assert!(mode.starts_with("Mode:"));
+        assert!(model.starts_with("Model:"));
+        for text in [mode, model] {
+            assert!(text.contains("Up/Down or Enter/Space to open"));
+            assert!(text.contains("Left/Right to move focus"));
+            assert!(text.ends_with("Escape to draft."));
+        }
+        assert_eq!(hint(true, true), Some(model));
+    }
+
     #[test]
     fn composer_open_menus_exit_horizontally_without_picking() {
         use floem::keyboard::{Key, NamedKey::*, Modifiers};
