@@ -152,3 +152,5 @@ Mode-key navigation validates its current row before acting. An obsolete highlig
 Mode and model letter jumps also accept Shift for uppercase letters. Control, Alt and Meta shortcuts remain untouched; Shift does not activate a highlighted row.
 
 Agent command rows participate in mode-menu arrow, Home/End and letter navigation. Enter or Space selects a command and returns to the draft, without launching the agent or sending anything.
+
+Page Up and Page Down move through five enabled mode/model choices at a time, skipping unavailable models and stopping at list boundaries. These keys only move the highlight; Enter or Space is still required to select.

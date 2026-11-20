@@ -2415,6 +2415,14 @@ fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sel
     match key {
         Key::Named(NamedKey::ArrowDown) => enabled().find(|i| selected.is_none_or(|current| *i > current)).or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight),
         Key::Named(NamedKey::ArrowUp) => enabled().rev().find(|i| selected.is_none_or(|current| *i < current)).or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight),
+        Key::Named(NamedKey::PageDown) => {
+            let mut rows = enabled().filter(|i| selected.is_none_or(|current| *i > current));
+            rows.by_ref().take(5).last().or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight)
+        }
+        Key::Named(NamedKey::PageUp) => {
+            let mut rows = enabled().rev().filter(|i| selected.is_none_or(|current| *i < current));
+            rows.by_ref().take(5).last().or_else(|| selected.filter(|i| pickable.get(*i) == Some(&true))).map(Highlight)
+        }
         Key::Named(NamedKey::Home) => enabled().next().map(Highlight),
         Key::Named(NamedKey::End) => enabled().next_back().map(Highlight),
         Key::Named(NamedKey::Enter | NamedKey::Space) => selected.filter(|i| pickable.get(*i) == Some(&true)).map(Pick),
@@ -5971,6 +5979,28 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn page_navigation_moves_five_enabled_choices_and_clamps_at_edges() {
+        use super::{composer_model_menu_key as key, ComposerModeMenuKey::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        let rows = [true, false, true, true, false, true, true, true, true, false, true, true];
+        let run = |named, selected| key(&Key::Named(named), Modifiers::empty(), selected, &rows);
+        assert_eq!(run(PageDown, None), Some(Highlight(6)));
+        assert_eq!(run(PageUp, None), Some(Highlight(6)));
+        assert_eq!(run(PageDown, Some(0)), Some(Highlight(7)));
+        assert_eq!(run(PageUp, Some(11)), Some(Highlight(5)));
+        assert_eq!(run(PageDown, Some(10)), Some(Highlight(11)));
+        assert_eq!(run(PageDown, Some(11)), Some(Highlight(11)));
+        assert_eq!(run(PageUp, Some(0)), Some(Highlight(0)));
+        for named in [PageDown, PageUp] {
+            assert_eq!(key(&Key::Named(named), Modifiers::empty(), None, &[]), None);
+            assert_eq!(key(&Key::Named(named), Modifiers::empty(), None, &[false; 3]), None);
+            assert_eq!(key(&Key::Named(named), Modifiers::SHIFT, Some(0), &rows), None);
+        }
+        assert_eq!(super::composer_all_mode_menu_key(&Key::Named(PageDown), Modifiers::empty(), Some(0)), Some(Highlight(5)));
+        assert_eq!(super::composer_all_mode_menu_key(&Key::Named(PageDown), Modifiers::empty(), Some(5)), Some(Highlight(9)));
+    }
+
     #[test]
     fn agent_rows_are_explicit_keyboard_choices_without_implicit_picks() {
         use super::{composer_all_mode_menu_key as key, ComposerModeMenuKey::*};
