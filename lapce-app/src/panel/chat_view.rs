@@ -2494,6 +2494,12 @@ fn composer_chip_key_target(
     })
 }
 
+/// Only count the offered rows, not the whole workspace index.
+fn mention_footer(selected: usize, count: usize) -> Option<String> {
+    if count == 0 || selected >= count { return None; }
+    Some(format!("File {}/{}: Up/Down to choose, Enter or Tab to insert. Escape to dismiss.", selected + 1, count))
+}
+
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
     if !action_focused { "AI can make mistakes - review changes." }
     else if busy { "Enter or Space to stop. Escape to draft." }
@@ -5252,6 +5258,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         }),
         // Antigravity-style disclaimer under the composer.
         label(move || {
+            if let Some((_, selected, items)) = mention_popup.get() {
+                if let Some(hint) = mention_footer(selected, items.len()) { return hint; }
+            }
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
@@ -5800,6 +5809,15 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
+        use super::mention_footer as footer;
+        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, Enter or Tab to insert. Escape to dismiss.");
+        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, Enter or Tab to insert. Escape to dismiss.");
+        assert_eq!(footer(0, 0), None);
+        assert_eq!(footer(8, 8), None);
+        assert_eq!(footer(usize::MAX, 8), None);
+    }
     #[test]
     fn action_footer_explains_the_current_keyboard_action_without_extra_chrome() {
         use super::composer_footer as footer;

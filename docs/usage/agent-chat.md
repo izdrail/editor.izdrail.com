@@ -114,3 +114,5 @@ File suggestions only offer paths that the current @path syntax can attach uncha
 Keyboard focus cycles from draft to mode, model, Send/Stop and back to draft, with Shift+Tab reversing the order. The action button has a visible focus ring; plain Enter or Space uses the same action as clicking it, while Escape returns to the draft. An empty idle draft remains inactive.
 
 When the Send/Stop button has keyboard focus, the existing footer explains its current action and the Escape route. It tells you to write a message for an empty idle draft, shows Send for a populated draft, and Stop during a run. Leaving the action restores the review-changes reminder without adding another row of controls.
+
+While file suggestions are open, the existing footer shows the selected position among the offered rows and the Up/Down, Enter/Tab and Escape keys. It counts the bounded suggestion list, not every matching workspace file, and returns to its normal hint when the list closes.
