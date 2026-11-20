@@ -128,3 +128,5 @@ With file suggestions open, plain Home and End jump to the first and last offere
 No-match feedback checks for the first eligible result without building or sorting a second candidate list. It uses the same path eligibility and query matcher as the ranked suggestions, including after Escape dismisses them.
 
 The file suggestion picker retains only the best offered rows while scanning the workspace. Ranking remains score, shortest path, then path order; the list no longer allocates and sorts every matching workspace path just to offer eight results.
+
+Switching keyboard ownership from Chat to the terminal or source editor dismisses file suggestions and restores the normal footer. A late workspace-index reply cannot reopen the list in another panel. Returning to the draft preserves its text; editing the query opens suggestions again.

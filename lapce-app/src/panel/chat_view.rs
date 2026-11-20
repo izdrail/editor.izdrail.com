@@ -3523,6 +3523,15 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         floem::reactive::create_rw_signal(None::<Vec<String>>);
     let mention_popup =
         floem::reactive::create_rw_signal(None::<(usize, usize, Vec<String>)>);
+    // Suggestions belong to Chat, not whichever panel is typed in next.
+    // Watch popup changes too: a late file-index reply must not reopen it
+    // after the user has switched to the terminal or source editor.
+    create_effect(move |_| {
+        let chat_active = focus.get() == Focus::Panel(PanelKind::Chat);
+        if !chat_active && mention_popup.get().is_some() {
+            mention_popup.set(None);
+        }
+    });
     let mention_cursor = floem::reactive::create_rw_signal(Some(data.input.get_untracked().len()));
     let mention_requested = Rc::new(std::cell::Cell::new(false));
     let (mention_tx, mention_rx) = std::sync::mpsc::channel::<Vec<String>>();
