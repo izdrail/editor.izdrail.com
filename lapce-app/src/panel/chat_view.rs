@@ -2463,6 +2463,16 @@ fn composer_model_initial(id: &str, rows: &[(String, bool)]) -> Option<usize> {
     if id.is_empty() { None } else { composer_model_hover(id, rows) }
 }
 
+/// Keep keyboard intent bound to the model id across async capability or
+/// list updates. A disabled/removed highlighted row is never silently replaced.
+fn composer_model_refresh(selected: Option<usize>, old: &[(String, bool)], new: &[(String, bool)], active: &str) -> Option<usize> {
+    if !old.iter().any(|(_, enabled)| *enabled) {
+        return composer_model_initial(active, new);
+    }
+    let (id, _) = old.get(selected?)?;
+    composer_model_hover(id, new)
+}
+
 fn composer_model_hover(id: &str, rows: &[(String, bool)]) -> Option<usize> {
     rows.iter().position(|(model, enabled)| *enabled && model == id)
 }
@@ -3541,9 +3551,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             ;
                             let keyboard_items = rows.iter().map(|(_, id, enabled, _)| (id.clone(), *enabled)).collect::<Vec<_>>();
                             let active = if c.ai_chat.backend == "local" { &c.ai_chat.local_model } else { &c.ai_chat.model };
-                            let initial = composer_model_initial(active, &keyboard_items);
+                            let next = composer_model_refresh(model_keyboard.get_untracked(), &keyboard_rows.get_untracked(), &keyboard_items, active);
                             keyboard_rows.set(keyboard_items);
-                            model_keyboard.set(initial);
+                            model_keyboard.set(next);
                             rows.into_iter().enumerate().collect::<Vec<_>>()
                         },
                         |(_, (text, _, _, _)): &(usize, (String, String, bool, Option<bool>))| {
@@ -6014,6 +6024,22 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn model_refresh_preserves_identity_and_rejects_stale_targets() {
+        use super::composer_model_refresh as refresh;
+        let rows = |items: &[(&str, bool)]| items.iter().map(|(s, e)| (s.to_string(), *e)).collect::<Vec<_>>();
+        let old = rows(&[("configured", true), ("highlighted", true)]);
+        let reordered = rows(&[("highlighted", true), ("configured", true)]);
+        assert_eq!(refresh(Some(1), &old, &reordered, "configured"), Some(0));
+        assert_eq!(refresh(Some(1), &old, &rows(&[("configured", true)]), "configured"), None);
+        assert_eq!(refresh(Some(1), &old, &rows(&[("configured", true), ("highlighted", false)]), "configured"), None);
+        assert_eq!(refresh(Some(usize::MAX), &old, &reordered, "configured"), None);
+        assert_eq!(refresh(None, &old, &reordered, "configured"), None);
+        assert_eq!(refresh(None, &[], &old, "configured"), Some(0));
+        assert_eq!(refresh(None, &rows(&[("", false)]), &old, "configured"), Some(0));
+        assert_eq!(refresh(None, &[], &old, "missing"), None);
+    }
+
     #[test]
     fn agent_letter_jumps_match_names_and_cycle_shared_initials() {
         use super::composer_menu_letter_key as jump;

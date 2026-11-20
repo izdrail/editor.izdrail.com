@@ -162,3 +162,5 @@ Opening the model list starts the keyboard highlight at the currently configured
 The mode menu also starts at the active mode, Resume choice or configured built-in agent command. Opening a menu never changes the mode or starts a run.
 
 Agent command letter jumps match the agent name as well as the visible Agent prefix. O reaches opencode; repeated C cycles Chat, Claude Code and Codex. No command is chosen until Enter or Space.
+
+Model picker refreshes preserve the highlighted model by ID, even if rows reorder or capability labels arrive. If that model disappears or becomes unavailable, selection clears instead of pointing Enter at another model.
