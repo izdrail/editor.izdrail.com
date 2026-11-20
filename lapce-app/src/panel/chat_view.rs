@@ -3669,19 +3669,25 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 input_signal.set(editor.doc().text().to_string());
             }
         })
-        // Floem focus events fire even where the editor stops pointer
-        // propagation, so this is the reliable hook: ring the composer
-        // card and move the app focus model onto this panel (which is
-        // what lets the terminal cursor go hollow).
-        .on_event_cont(EventListener::FocusGained, move |_| {
+        ;
+    // The text editor focuses its inner content, not this outer wrapper.
+    // Use its focus notifications so panel ownership and the ring agree
+    // with the actual typing target, including keyboard focus restoration.
+    let draft_focus_gained = composer.editor().editor_view_focused;
+    let draft_focus_lost = composer.editor().editor_view_focus_lost;
+    create_effect(move |previous: Option<()>| {
+        draft_focus_gained.track();
+        if previous.is_some() {
             composer_focused.set(true);
             if focus.get_untracked() != Focus::Panel(PanelKind::Chat) {
                 focus.set(Focus::Panel(PanelKind::Chat));
             }
-        })
-        .on_event_cont(EventListener::FocusLost, move |_| {
-            composer_focused.set(false);
-        });
+        }
+    });
+    create_effect(move |previous: Option<()>| {
+        draft_focus_lost.track();
+        if previous.is_some() { composer_focused.set(false); }
+    });
     let mention_cursor_editor = composer.editor().clone();
     create_effect(move |_| {
         let caret = mention_caret(&mention_cursor_editor);

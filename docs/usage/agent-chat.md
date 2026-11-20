@@ -118,3 +118,5 @@ When the Send/Stop button has keyboard focus, the existing footer explains its c
 While file suggestions are open, the existing footer shows the selected position among the offered rows and the Up/Down, Enter/Tab and Escape keys. It counts the bounded suggestion list, not every matching workspace file, and returns to its normal hint when the list closes.
 
 A loaded local file query with no offered matches shows a temporary no-matches hint in the existing footer for the current draft query. Changing the query can restore suggestions; adding a space ends the query and restores the normal footer. An index that has not loaded and a remote workspace are not reported as empty results.
+
+The draft focus ring follows the inner text editor, including mouse entry and Escape back from composer controls. Typing in the draft also moves app focus to Chat, so another panel does not remain the active keyboard target. The ring clears when draft focus leaves.
