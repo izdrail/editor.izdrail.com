@@ -746,12 +746,23 @@ fn mention_score(query: &str, path: &str) -> Option<i64> {
     Some(2)
 }
 
+/// Shared eligibility for suggestions and no-match feedback.
+fn mention_candidate_score(query: &str, path: &str) -> Option<i64> {
+    if crate::chat::file_mention_path(path) != Some(path) { return None; }
+    mention_score(query, path)
+}
+
+/// Existence checks need no sorted vector or cloned paths. Stop at the
+/// first eligible result, even when the suggestion popup was dismissed.
+fn mention_has_candidates(query: &str, files: &[String]) -> bool {
+    files.iter().any(|path| mention_candidate_score(query, path).is_some())
+}
+
 /// The best `cap` workspace paths for a mention query, ranked.
 fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> {
     let mut scored: Vec<(i64, &String)> = files
         .iter()
-        .filter(|f| crate::chat::file_mention_path(f) == Some(f.as_str()))
-        .filter_map(|f| mention_score(query, f).map(|s| (s, f)))
+        .filter_map(|f| mention_candidate_score(query, f).map(|s| (s, f)))
         .collect();
     scored.sort_by(|a, b| {
         a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())).then(a.1.cmp(b.1))
@@ -5282,7 +5293,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             let query = mention_at_caret(&input, mention_cursor.get());
             let files = mention_files.get();
             let has_matches = query.as_ref().is_some_and(|(query, _)| {
-                files.as_ref().is_some_and(|files| !mention_candidates(query, files, 1).is_empty())
+                files.as_ref().is_some_and(|files| mention_has_candidates(query, files))
             });
             if let Some(hint) = mention_empty_footer(
                 footer_local,
@@ -5838,6 +5849,18 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mention_existence_agrees_with_ranked_candidates() {
+        use super::{mention_candidates, mention_has_candidates};
+        let files: Vec<String> = ["src/main.rs", "src/other.rs", ".gitignore", "plain", "src/space name.rs", "src/café.rs", "src/file.rs.", "src/file.rs", "README.md"]
+            .into_iter().map(String::from).collect();
+        for query in ["", "main", "MAIN", "smr", "git", "plain", "space", "café", "file", "read", "zzznomatch"] {
+            assert_eq!(mention_has_candidates(query, &files), !mention_candidates(query, &files, 1).is_empty(), "query={query}");
+        }
+        assert!(!mention_has_candidates("", &[]));
+        assert!(!mention_has_candidates("", &["plain".into(), "space name.rs".into()]));
+        assert!(mention_has_candidates("", &["src/main.rs".into()]));
+    }
     #[test]
     fn mention_navigation_jumps_to_ends_and_bounds_stale_indices() {
         use super::{mention_navigation_index as index, composer_mention_navigation as allowed};
