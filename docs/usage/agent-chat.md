@@ -138,3 +138,5 @@ Opening the mode or model picker dismisses file suggestions first, so two compos
 The composer footer reserves two lines so opening a picker does not move its trigger under the pointer when temporary file hints clear.
 
 Moving the pointer over a model row updates the keyboard highlight without selecting it. Enter/Space then picks the highlighted enabled model. Disabled, loading or stale rows clear the highlight so Enter cannot choose a previously hovered model.
+
+Mode and model lists prefer opening above their composer buttons, leaving the footer and status bar clear. A button near the top of a short window can open its list below instead; either placement stays within the window edges.

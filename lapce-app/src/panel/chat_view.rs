@@ -2422,6 +2422,17 @@ fn composer_menu_width(window_width: f64) -> f64 {
     (window_width - 10.0).clamp(0.0, 240.0)
 }
 
+/// Prefer opening toward the conversation, not over the footer/status bar.
+/// Fall back below only when the full card does not fit above the trigger.
+fn composer_menu_y(origin: f64, trigger: f64, list: f64, window: f64) -> f64 {
+    let above = origin - list + 1.0;
+    let below = origin + trigger - 1.0;
+    let preferred = if above >= 5.0 { above }
+        else if below + list + 5.0 <= window { below }
+        else { above };
+    preferred.clamp(5.0, (window - list - 5.0).max(5.0))
+}
+
 fn composer_dropdown_overlay<V: View + 'static>(
     rows: V,
     menu_key: Option<Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool>>,
@@ -2480,13 +2491,7 @@ fn composer_dropdown_overlay<V: View + 'static>(
         } else {
             origin.x
         };
-        let y = if origin.y + trigger.height + list.height + 5.0
-            > window.height
-        {
-            origin.y - list.height + 1.0
-        } else {
-            origin.y + trigger.height - 1.0
-        };
+        let y = composer_menu_y(origin.y, trigger.height, list.height, window.height);
         // Never render past the window edges: a stale measurement or a
         // click at the very bottom must not clip the overlay.
         let x = x.clamp(5.0, (window.width - list.width - 5.0).max(5.0));
@@ -5895,6 +5900,20 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn composer_menus_prefer_above_and_fall_back_inside_window() {
+        use super::composer_menu_y as y;
+        // A short model list fits both sides, but belongs above the composer.
+        assert_eq!(y(700.0, 24.0, 60.0, 900.0), 641.0);
+        assert_eq!(y(700.0, 24.0, 220.0, 796.0), 481.0);
+        // A trigger near the top can still expose its full list below.
+        assert_eq!(y(20.0, 24.0, 60.0, 900.0), 43.0);
+        // Stale or oversized measurements never produce negative positions.
+        assert_eq!(y(20.0, 24.0, 220.0, 100.0), 5.0);
+        assert_eq!(y(1000.0, 24.0, 60.0, 796.0), 731.0);
+        assert_eq!(y(0.0, 0.0, 0.0, 0.0), 5.0);
+    }
+
     #[test]
     fn model_hover_resolves_live_ids_and_clears_disabled_or_stale_rows() {
         use super::composer_model_hover as hover;
