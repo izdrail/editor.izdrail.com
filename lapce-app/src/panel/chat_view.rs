@@ -2434,6 +2434,12 @@ fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, sel
 
 /// Resolve the live model id after async rows change. Disabled or stale rows
 /// clear keyboard selection rather than leaving Enter aimed at another model.
+/// Opening the list starts at its current enabled model, not an unrelated
+/// first row. Status rows and missing/disabled configured ids stay unpicked.
+fn composer_model_initial(id: &str, rows: &[(String, bool)]) -> Option<usize> {
+    if id.is_empty() { None } else { composer_model_hover(id, rows) }
+}
+
 fn composer_model_hover(id: &str, rows: &[(String, bool)]) -> Option<usize> {
     rows.iter().position(|(model, enabled)| *enabled && model == id)
 }
@@ -3509,8 +3515,11 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 rows
                             }
                             ;
-                            keyboard_rows.set(rows.iter().map(|(_, id, enabled, _)| (id.clone(), *enabled)).collect());
-                            model_keyboard.set(None);
+                            let keyboard_items = rows.iter().map(|(_, id, enabled, _)| (id.clone(), *enabled)).collect::<Vec<_>>();
+                            let active = if c.ai_chat.backend == "local" { &c.ai_chat.local_model } else { &c.ai_chat.model };
+                            let initial = composer_model_initial(active, &keyboard_items);
+                            keyboard_rows.set(keyboard_items);
+                            model_keyboard.set(initial);
                             rows.into_iter().enumerate().collect::<Vec<_>>()
                         },
                         |(_, (text, _, _, _)): &(usize, (String, String, bool, Option<bool>))| {
@@ -5981,6 +5990,22 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn model_menu_starts_at_current_enabled_model_without_status_row_picks() {
+        use super::{composer_model_initial as initial, composer_model_menu_key as key, ComposerModeMenuKey::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        let rows = vec![("".into(), false), ("small".into(), true), ("medium".into(), true), ("large".into(), false)];
+        assert_eq!(initial("medium", &rows), Some(2));
+        assert_eq!(initial("small", &rows), Some(1));
+        for missing in ["", "large", "removed"] { assert_eq!(initial(missing, &rows), None); }
+        assert_eq!(initial("small", &[]), None);
+        assert_eq!(initial("", &[("".into(), true)]), None);
+        let enabled = [false, true, true, false];
+        assert_eq!(key(&Key::Named(Enter), Modifiers::empty(), initial("medium", &rows), &enabled), Some(Pick(2)));
+        assert_eq!(key(&Key::Named(ArrowUp), Modifiers::empty(), initial("medium", &rows), &enabled), Some(Highlight(1)));
+        assert_eq!(key(&Key::Named(Enter), Modifiers::empty(), initial("large", &rows), &enabled), None);
+    }
+
     #[test]
     fn mention_page_navigation_bounds_long_stale_and_empty_lists() {
         use super::{mention_navigation_index as index, composer_mention_navigation as allowed};

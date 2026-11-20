@@ -156,3 +156,5 @@ Agent command rows participate in mode-menu arrow, Home/End and letter navigatio
 Page Up and Page Down move through five enabled mode/model choices at a time, skipping unavailable models and stopping at list boundaries. These keys only move the highlight; Enter or Space is still required to select.
 
 The @file suggestion list also supports Page Up and Page Down in five-row steps. Paging moves only the highlight, never inserts a mention or sends the draft.
+
+Opening the model list starts the keyboard highlight at the currently configured model when it is available and enabled. Enter confirms that model; arrows move from it. Loading, unavailable and disabled models never become an implicit selection.
