@@ -158,3 +158,5 @@ Page Up and Page Down move through five enabled mode/model choices at a time, sk
 The @file suggestion list also supports Page Up and Page Down in five-row steps. Paging moves only the highlight, never inserts a mention or sends the draft.
 
 Opening the model list starts the keyboard highlight at the currently configured model when it is available and enabled. Enter confirms that model; arrows move from it. Loading, unavailable and disabled models never become an implicit selection.
+
+The mode menu also starts at the active mode, Resume choice or configured built-in agent command. Opening a menu never changes the mode or starts a run.

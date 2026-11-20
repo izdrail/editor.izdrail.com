@@ -2385,6 +2385,19 @@ fn composer_mode_keyboard_row<V: View + 'static>(row: V, index: usize, selected:
     row
 }
 
+fn composer_mode_initial(mode: Option<crate::agent_loop::Mode>, acp: bool, resume: bool, command: &str) -> usize {
+    if acp {
+        if resume { return 5; }
+        return crate::chat::ACP_AGENTS.iter().position(|(_, candidate)| *candidate == command.trim()).map_or(4, |index| index + 6);
+    }
+    match mode {
+        Some(crate::agent_loop::Mode::Ask) => 1,
+        Some(crate::agent_loop::Mode::Plan) => 2,
+        Some(crate::agent_loop::Mode::Act) => 3,
+        _ => 0,
+    }
+}
+
 fn composer_mode_hover(index: usize) -> Option<usize> {
     (index < 6).then_some(index)
 }
@@ -3163,7 +3176,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 let picker_data = picker_data.clone();
                 let id = add_overlay(Point::ZERO, move |_| {
                     let resume_tab = run_tab.clone();
-                    let mode_keyboard = floem::reactive::create_rw_signal(None::<usize>);
+                    let initial = composer_mode_initial(picker_data.mode.get_untracked(), picker_data.acp.get_untracked(), picker_data.acp_resume.get_untracked(), &config.get_untracked().ai_chat.acp_command);
+                    let mode_keyboard = floem::reactive::create_rw_signal(Some(initial));
                     let keyboard_data = picker_data.clone();
                     let mode_key: Rc<dyn Fn(&Key, floem::keyboard::Modifiers) -> bool> = Rc::new(move |key, mods| {
                         match composer_all_mode_menu_key(key, mods, mode_keyboard.get_untracked()) {
@@ -5990,6 +6004,24 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn mode_menu_starts_at_current_mode_resume_or_configured_agent() {
+        use super::composer_mode_initial as initial;
+        use crate::agent_loop::Mode;
+        assert_eq!(initial(None, false, false, ""), 0);
+        assert_eq!(initial(Some(Mode::Ask), false, false, ""), 1);
+        assert_eq!(initial(Some(Mode::Plan), false, false, ""), 2);
+        assert_eq!(initial(Some(Mode::Act), false, false, ""), 3);
+        assert_eq!(initial(None, true, false, "custom-agent"), 4);
+        assert_eq!(initial(Some(Mode::Plan), true, true, "custom-agent"), 5);
+        for (index, (_, command)) in crate::chat::ACP_AGENTS.iter().enumerate() {
+            assert_eq!(initial(None, true, false, command), index + 6);
+            assert_eq!(initial(None, true, false, &format!(" {command} ")), index + 6);
+            assert_eq!(initial(None, true, true, command), 5);
+            assert_eq!(initial(None, false, false, command), 0);
+        }
+    }
+
     #[test]
     fn model_menu_starts_at_current_enabled_model_without_status_row_picks() {
         use super::{composer_model_initial as initial, composer_model_menu_key as key, ComposerModeMenuKey::*};
