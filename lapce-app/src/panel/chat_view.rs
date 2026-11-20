@@ -2656,6 +2656,19 @@ fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static st
     else { "Enter or Space to send. Escape to draft." }
 }
 
+fn composer_action_focus_target(key: &Key, modifiers: floem::keyboard::Modifiers) -> Option<ComposerFocusTarget> {
+    use floem::keyboard::Modifiers;
+    if modifiers.is_empty() {
+        match key {
+            Key::Named(NamedKey::ArrowLeft) => Some(ComposerFocusTarget::Model),
+            Key::Named(NamedKey::ArrowRight | NamedKey::Tab | NamedKey::Escape) => Some(ComposerFocusTarget::Draft),
+            _ => None,
+        }
+    } else if modifiers == Modifiers::SHIFT && *key == Key::Named(NamedKey::Tab) {
+        Some(ComposerFocusTarget::Model)
+    } else { None }
+}
+
 fn composer_action_key(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     modifiers.is_empty() && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
 }
@@ -5404,13 +5417,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 activate();
                                 return EventPropagation::Stop;
                             }
-                            if key.modifiers.is_empty() && key.key.logical_key == Key::Named(NamedKey::Escape) {
-                                restore_composer_focus.set(true);
-                                return EventPropagation::Stop;
-                            }
-                            if key.key.logical_key == Key::Named(NamedKey::Tab)
-                                && (key.modifiers.is_empty() || key.modifiers == floem::keyboard::Modifiers::SHIFT) {
-                                if key.modifiers.is_empty() { restore_composer_focus.set(true); }
+                            if let Some(target) = composer_action_focus_target(&key.key.logical_key, key.modifiers) {
+                                if target == ComposerFocusTarget::Draft { restore_composer_focus.set(true); }
                                 else if let Some(id) = model_chip_id.get_untracked() { id.request_focus(); }
                                 return EventPropagation::Stop;
                             }
@@ -6033,6 +6041,20 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn action_horizontal_navigation_never_activates_send_or_stop() {
+        use super::{composer_action_focus_target as target, composer_action_key as activates, ComposerFocusTarget::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        assert_eq!(target(&Key::Named(ArrowLeft), Modifiers::empty()), Some(Model));
+        for key in [ArrowRight, Tab, Escape] { assert_eq!(target(&Key::Named(key), Modifiers::empty()), Some(Draft)); }
+        assert_eq!(target(&Key::Named(Tab), Modifiers::SHIFT), Some(Model));
+        for key in [ArrowLeft, ArrowRight] {
+            assert!(!activates(&Key::Named(key), Modifiers::empty()));
+            for mods in [Modifiers::SHIFT, Modifiers::CONTROL, Modifiers::ALT, Modifiers::META] { assert_eq!(target(&Key::Named(key), mods), None); }
+        }
+        for key in [Enter, Space, ArrowUp, ArrowDown] { assert_eq!(target(&Key::Named(key), Modifiers::empty()), None); }
+    }
+
     #[test]
     fn composer_chips_support_horizontal_focus_without_activation() {
         use super::{composer_chip_key_target as target, ComposerFocusTarget::*};

@@ -168,3 +168,5 @@ Model picker refreshes preserve the highlighted model by ID, even if rows reorde
 Model rows rebuild their event handlers and highlight/scroll state when their position or availability changes, even when the visible name stays the same.
 
 When a composer mode/model chip has focus, Left and Right move focus along the controls without opening a menu, changing a choice or sending. Left from the mode chip returns to the draft; Right from the model chip focuses Send. Tab and Shift+Tab remain available.
+
+Left from the focused Send/Stop button returns to the model chip; Right returns to the draft. These arrows only move focus, including while a run is active. Enter/Space remain the explicit Send/Stop actions.
