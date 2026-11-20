@@ -148,3 +148,5 @@ In a short window, mode/model lists reduce their scroll area to the available wi
 Keyboard highlighting in the mode list scrolls the highlighted built-in choice into view, including in a short window. Arrow keys, Home/End and letter jumps do not leave their target hidden above or below the scroll area.
 
 Mode-key navigation validates its current row before acting. An obsolete highlight cannot pick a missing row; arrows and letter jumps restart within the offered choices.
+
+Mode and model letter jumps also accept Shift for uppercase letters. Control, Alt and Meta shortcuts remain untouched; Shift does not activate a highlighted row.

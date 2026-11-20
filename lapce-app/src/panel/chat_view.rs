@@ -2348,7 +2348,7 @@ fn composer_menu_returns_to_draft(key: &Key, modifiers: floem::keyboard::Modifie
 enum ComposerModeMenuKey { Highlight(usize), Pick(usize) }
 
 fn composer_menu_is_letter(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
-    if !modifiers.is_empty() { return false; }
+    if !modifiers.is_empty() && modifiers != floem::keyboard::Modifiers::SHIFT { return false; }
     let Key::Character(text) = key else { return false; };
     let mut chars = text.chars();
     chars.next().is_some_and(char::is_alphanumeric) && chars.next().is_none()
@@ -2357,7 +2357,7 @@ fn composer_menu_is_letter(key: &Key, modifiers: floem::keyboard::Modifiers) -> 
 /// A single letter or digit jumps to the next matching, enabled row.
 /// Repeating it cycles, without changing the selected mode or model.
 fn composer_menu_letter_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>, labels: &[(&str, bool)]) -> Option<usize> {
-    if !modifiers.is_empty() { return None; }
+    if !modifiers.is_empty() && modifiers != floem::keyboard::Modifiers::SHIFT { return None; }
     let Key::Character(text) = key else { return None; };
     let mut chars = text.chars();
     let first = chars.next()?;
@@ -2383,7 +2383,6 @@ fn composer_mode_hover(index: usize) -> Option<usize> {
 }
 
 fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>) -> Option<ComposerModeMenuKey> {
-    if !modifiers.is_empty() { return None; }
     // Resolve navigation against the rows actually offered, just like models.
     // An invalid old highlight must not overflow or turn Enter into a pick.
     let selected = selected.filter(|index| *index < 6);
@@ -6226,13 +6225,21 @@ mod quiet_conversation_tests {
         for bits in 1..16 {
             let mut mods = Modifiers::empty();
             for (bit, modifier) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] { if bits & bit != 0 { mods |= modifier; } }
-            assert_eq!(jump(&letter("a"), mods, None, &rows), None);
+            let expected = if mods == Modifiers::SHIFT { Some(0) } else { None };
+            assert_eq!(jump(&letter("A"), mods, None, &rows), expected);
+            assert_eq!(super::composer_menu_is_letter(&letter("A"), mods), mods == Modifiers::SHIFT);
         }
         use super::{composer_mode_menu_key as mode, ComposerModeMenuKey::*};
         assert_eq!(mode(&letter("a"), Modifiers::empty(), None), Some(Highlight(1)));
         assert_eq!(mode(&letter("a"), Modifiers::empty(), Some(1)), Some(Highlight(3)));
         assert_eq!(mode(&letter("a"), Modifiers::empty(), Some(3)), Some(Highlight(4)));
         assert_eq!(mode(&letter("p"), Modifiers::empty(), Some(4)), Some(Highlight(2)));
+        assert_eq!(mode(&letter("P"), Modifiers::SHIFT, Some(4)), Some(Highlight(2)));
+        assert_eq!(jump(&letter("É"), Modifiers::SHIFT, None, &rows), Some(5));
+        for named in [floem::keyboard::NamedKey::Enter, floem::keyboard::NamedKey::ArrowDown] {
+            assert_eq!(mode(&Key::Named(named), Modifiers::SHIFT, Some(2)), None);
+        }
+
     }
     #[test]
     fn composer_menu_width_leaves_window_insets_without_negative_sizes() {
