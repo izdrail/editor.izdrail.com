@@ -160,3 +160,5 @@ The @file suggestion list also supports Page Up and Page Down in five-row steps.
 Opening the model list starts the keyboard highlight at the currently configured model when it is available and enabled. Enter confirms that model; arrows move from it. Loading, unavailable and disabled models never become an implicit selection.
 
 The mode menu also starts at the active mode, Resume choice or configured built-in agent command. Opening a menu never changes the mode or starts a run.
+
+Agent command letter jumps match the agent name as well as the visible Agent prefix. O reaches opencode; repeated C cycles Chat, Claude Code and Codex. No command is chosen until Enter or Space.

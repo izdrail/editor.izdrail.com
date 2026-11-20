@@ -2361,6 +2361,13 @@ fn composer_menu_is_letter(key: &Key, modifiers: floem::keyboard::Modifiers) -> 
     chars.next().is_some_and(char::is_alphanumeric) && chars.next().is_none()
 }
 
+/// Agent rows keep their descriptive prefix on screen while also matching
+/// the actual agent name, so C can reach Claude Code/Codex and O opencode.
+fn composer_menu_label_matches(label: &str, prefix: &str) -> bool {
+    let label = label.to_lowercase();
+    label.starts_with(prefix) || label.strip_prefix("agent: ").is_some_and(|name| name.starts_with(prefix))
+}
+
 /// A single letter or digit jumps to the next matching, enabled row.
 /// Repeating it cycles, without changing the selected mode or model.
 fn composer_menu_letter_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>, labels: &[(&str, bool)]) -> Option<usize> {
@@ -2370,7 +2377,10 @@ fn composer_menu_letter_key(key: &Key, modifiers: floem::keyboard::Modifiers, se
     let first = chars.next()?;
     if chars.next().is_some() || !first.is_alphanumeric() { return None; }
     let prefix = first.to_lowercase().collect::<String>();
-    let matches = |i: &usize| labels[*i].1 && labels[*i].0.to_lowercase().starts_with(&prefix);
+    let matches = |i: &usize| {
+        let (label, enabled) = labels[*i];
+        enabled && composer_menu_label_matches(label, &prefix)
+    };
     let start = selected.filter(|i| *i < labels.len()).map_or(0, |i| i + 1);
     (start..labels.len()).chain(0..start).find(matches)
 }
@@ -6004,6 +6014,22 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn agent_letter_jumps_match_names_and_cycle_shared_initials() {
+        use super::composer_menu_letter_key as jump;
+        use floem::keyboard::{Key, Modifiers};
+        let rows = [("Chat", true), ("Agent: opencode", true), ("Agent: Claude Code", true), ("Agent: Codex", true), ("Agent: Antigravity", true)];
+        let key = |s: &str| Key::Character(s.into());
+        assert_eq!(jump(&key("o"), Modifiers::empty(), Some(0), &rows), Some(1));
+        assert_eq!(jump(&key("c"), Modifiers::empty(), Some(0), &rows), Some(2));
+        assert_eq!(jump(&key("c"), Modifiers::empty(), Some(2), &rows), Some(3));
+        assert_eq!(jump(&key("c"), Modifiers::empty(), Some(3), &rows), Some(0));
+        assert_eq!(jump(&key("A"), Modifiers::SHIFT, Some(3), &rows), Some(4));
+        assert_eq!(jump(&key("c"), Modifiers::empty(), None, &[("Agent: Codex", false)]), None);
+        assert_eq!(jump(&key("c"), Modifiers::CONTROL, None, &rows), None);
+        assert!(!super::composer_menu_label_matches("Not an agent: Codex", "c"));
+    }
+
     #[test]
     fn mode_menu_starts_at_current_mode_resume_or_configured_agent() {
         use super::composer_mode_initial as initial;
