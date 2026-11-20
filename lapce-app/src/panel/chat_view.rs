@@ -2674,9 +2674,9 @@ fn composer_choice_footer(mode_focused: bool, model_focused: bool) -> Option<&'s
 
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
     if !action_focused { "AI can make mistakes - review changes." }
-    else if busy { "Enter or Space to stop. Escape to draft." }
-    else if input.trim().is_empty() { "Write a message to send. Escape to draft." }
-    else { "Enter or Space to send. Escape to draft." }
+    else if busy { "Enter/Space to stop. Left to model. Right/Escape to draft." }
+    else if input.trim().is_empty() { "Write a message to send. Left to model. Right/Escape to draft." }
+    else { "Enter/Space to send. Left to model. Right/Escape to draft." }
 }
 
 fn composer_action_focus_target(key: &Key, modifiers: floem::keyboard::Modifiers) -> Option<ComposerFocusTarget> {
@@ -6487,9 +6487,9 @@ mod quiet_conversation_tests {
         use super::composer_footer as footer;
         assert_eq!(footer(false, false, ""), "AI can make mistakes - review changes.");
         assert_eq!(footer(false, true, "draft"), footer(false, false, ""));
-        assert_eq!(footer(true, false, " \n"), "Write a message to send. Escape to draft.");
-        assert_eq!(footer(true, false, "draft"), "Enter or Space to send. Escape to draft.");
-        assert_eq!(footer(true, true, ""), "Enter or Space to stop. Escape to draft.");
+        assert_eq!(footer(true, false, " \n"), "Write a message to send. Left to model. Right/Escape to draft.");
+        assert_eq!(footer(true, false, "draft"), "Enter/Space to send. Left to model. Right/Escape to draft.");
+        assert_eq!(footer(true, true, ""), "Enter/Space to stop. Left to model. Right/Escape to draft.");
         assert_eq!(footer(true, true, "draft"), footer(true, true, ""));
     }
     #[test]

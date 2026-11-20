@@ -178,3 +178,5 @@ With a mode/model chip focused, Up or Down opens its choice list at the current 
 Left/Right also leaves an open mode/model list along the composer controls: mode Left returns to the draft, mode Right focuses model, model Left focuses mode, and model Right focuses Send. The list closes without accepting its highlighted row or activating Send.
 
 Focusing a mode/model chip replaces the general composer note with its keyboard help. Moving focus away clears that hint, so the quiet new-conversation state keeps its minimal footer.
+
+The focused Send/Stop footer also names its horizontal exits, including when the empty draft cannot be sent: Left returns to model and Right/Escape returns to the draft.
