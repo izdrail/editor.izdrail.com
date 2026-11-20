@@ -2384,15 +2384,12 @@ fn composer_mode_hover(index: usize) -> Option<usize> {
 
 fn composer_mode_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>) -> Option<ComposerModeMenuKey> {
     if !modifiers.is_empty() { return None; }
-    use ComposerModeMenuKey::*;
-    match key {
-        Key::Named(NamedKey::ArrowDown) => Some(Highlight(selected.map_or(0, |i| (i + 1).min(5)))),
-        Key::Named(NamedKey::ArrowUp) => Some(Highlight(selected.map_or(5, |i| i.saturating_sub(1)))),
-        Key::Named(NamedKey::Home) => Some(Highlight(0)),
-        Key::Named(NamedKey::End) => Some(Highlight(5)),
-        Key::Named(NamedKey::Enter | NamedKey::Space) => selected.map(Pick),
-        _ => composer_menu_letter_key(key, modifiers, selected, &[("Chat", true), ("Ask", true), ("Plan", true), ("Act", true), ("ACP", true), ("Resume", true)]).map(Highlight),
-    }
+    // Resolve navigation against the rows actually offered, just like models.
+    // An invalid old highlight must not overflow or turn Enter into a pick.
+    let selected = selected.filter(|index| *index < 6);
+    composer_model_menu_key(key, modifiers, selected, &[true; 6]).or_else(|| {
+        composer_menu_letter_key(key, modifiers, selected, &[("Chat", true), ("Ask", true), ("Plan", true), ("Act", true), ("ACP", true), ("Resume", true)]).map(ComposerModeMenuKey::Highlight)
+    })
 }
 
 fn composer_model_menu_key(key: &Key, modifiers: floem::keyboard::Modifiers, selected: Option<usize>, pickable: &[bool]) -> Option<ComposerModeMenuKey> {
@@ -5950,6 +5947,22 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn stale_mode_highlights_cannot_overflow_or_pick_a_missing_row() {
+        use super::{composer_mode_menu_key as key, ComposerModeMenuKey::*};
+        use floem::keyboard::{Key, NamedKey::*, Modifiers};
+        for stale in [6, 90, usize::MAX] {
+            let run = |named| key(&Key::Named(named), Modifiers::empty(), Some(stale));
+            assert_eq!(run(ArrowDown), Some(Highlight(0)));
+            assert_eq!(run(ArrowUp), Some(Highlight(5)));
+            assert_eq!(run(Home), Some(Highlight(0)));
+            assert_eq!(run(End), Some(Highlight(5)));
+            assert_eq!(run(Enter), None);
+            assert_eq!(run(Space), None);
+            assert_eq!(key(&Key::Character("p".into()), Modifiers::empty(), Some(stale)), Some(Highlight(2)));
+        }
+    }
+
     #[test]
     fn composer_menu_height_tracks_short_windows_without_negative_sizes() {
         use super::composer_menu_height as height;
