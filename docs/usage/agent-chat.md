@@ -130,3 +130,5 @@ No-match feedback checks for the first eligible result without building or sorti
 The file suggestion picker retains only the best offered rows while scanning the workspace. Ranking remains score, shortest path, then path order; the list no longer allocates and sorts every matching workspace path just to offer eight results.
 
 Switching keyboard ownership from Chat to the terminal or source editor dismisses file suggestions and restores the normal footer. A late workspace-index reply cannot reopen the list in another panel. Returning to the draft preserves its text; editing the query opens suggestions again.
+
+Moving the pointer over an offered file highlights that row and updates the position hint without inserting it or stealing draft focus. Enter/Tab can then accept the highlighted row; click still inserts directly. Hover resolves the current path after filtering rather than keeping an old row index.

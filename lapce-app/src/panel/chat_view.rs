@@ -784,6 +784,12 @@ fn mention_row_selected(path: &str, selected: usize, items: &[String]) -> bool {
     items.get(selected).is_some_and(|current| current == path)
 }
 
+/// A surviving keyed row resolves its hover against the current result list.
+/// Ignore stale rows and unchanged movement rather than re-publishing state.
+fn mention_hover_index(path: &str, selected: usize, items: &[String]) -> Option<usize> {
+    items.iter().position(|item| item == path).filter(|index| *index != selected)
+}
+
 /// Validate the currently displayed tail before replacing it. A stale row
 /// must not remove text after the user has already edited the draft.
 fn mention_completion(text: &str, start: usize, path: &str) -> Option<(String, usize)> {
@@ -4921,6 +4927,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         move |(path, _)| {
                             let row_accept = accept_mention.clone();
                             let row_path = path.clone();
+                            let hover_path = path.clone();
                             let style_path = path.clone();
                             let scroll_path = path.clone();
                             let row = label(move || path.clone())
@@ -4935,6 +4942,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                             row_accept(index);
                                         }
                                     }
+                                })
+                                .on_event(EventListener::PointerMove, move |_| {
+                                    if let Some((start, selected, items)) = mention_popup.get_untracked() {
+                                        if let Some(index) = mention_hover_index(&hover_path, selected, &items) {
+                                            mention_popup.set(Some((start, index, items)));
+                                        }
+                                    }
+                                    EventPropagation::Continue
                                 })
                                 .style(move |s| {
                                     let s = s
@@ -5866,6 +5881,17 @@ mod completed_duration_tests {
 #[cfg(test)]
 mod quiet_conversation_tests {
     use super::{conversation_review_visible, project_approval_visible};
+    #[test]
+    fn hover_resolves_live_paths_and_ignores_stale_or_selected_rows() {
+        use super::mention_hover_index as hover;
+        let broad = vec!["a.rs".into(), "b.rs".into(), "c.rs".into()];
+        assert_eq!(hover("c.rs", 0, &broad), Some(2));
+        assert_eq!(hover("a.rs", 0, &broad), None);
+        let filtered = vec!["c.rs".into(), "b.rs".into()];
+        assert_eq!(hover("c.rs", 1, &filtered), Some(0));
+        assert_eq!(hover("a.rs", 0, &filtered), None);
+        assert_eq!(hover("c.rs", 0, &[]), None);
+    }
     #[test]
     fn bounded_mentions_preserve_full_sort_order_for_every_cap() {
         use super::{mention_candidates, mention_candidate_score};
