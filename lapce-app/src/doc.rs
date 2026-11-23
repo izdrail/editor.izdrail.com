@@ -686,11 +686,10 @@ impl Doc {
         if !matches!(input, "(" | "[" | "{" | "\"" | "'" | "`") { return allowed; }
         let lapce_core::cursor::CursorMode::Insert(selection) = &cursor.mode else { return allowed; };
         let permits = |doc: &Doc, offset| doc.syntax.with_untracked(|syntax| {
-            if syntax.rev != doc.rev() { return false; }
-            syntax.lexilla.as_ref().is_some_and(|snapshot| {
-                snapshot.len() == doc.buffer.with_untracked(|buffer| buffer.len())
-                    && lapce_core::pairing_context::permits_partner(snapshot, offset)
-            })
+            lapce_core::pairing_context::permits_current_partner(
+                syntax.lexilla.as_deref(), syntax.rev, doc.rev(),
+                doc.buffer.with_untracked(|buffer| buffer.len()), offset)
+
         });
         for region in selection.regions().iter().filter(|region| region.is_caret()) {
             let offset = region.end;

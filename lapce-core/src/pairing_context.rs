@@ -1,6 +1,15 @@
 //! Pair insertion context from the existing lexer snapshot, never a second parser.
 use lexilla_rs::Snapshot;
 
+/// An async snapshot may add partners only for the exact current revision
+/// and byte length. Unknown context always leaves literal insertion intact.
+pub fn permits_current_partner(snapshot: Option<&Snapshot>, snapshot_revision: u64,
+    buffer_revision: u64, buffer_len: usize, offset: usize) -> bool {
+    snapshot_revision == buffer_revision && snapshot.is_some_and(|snapshot| {
+        snapshot.len() == buffer_len && permits_partner(snapshot, offset)
+    })
+}
+
 /// This policy only decides whether to ADD a partner. Literal insertion,
 /// explicit wrapping and moving over existing closers are separate actions.
 /// A snapshot must belong to the current text, checked by the caller.
@@ -54,6 +63,37 @@ mod tests {
             let offset = text.find("comment ").unwrap() + "comment ".len();
             assert!(!permits_partner(&snapshot, offset), "{language:?}: end of line comment");
         }
+    }
+
+    #[test]
+    fn pairing_context_stale_missing_and_wrong_length_snapshots_cannot_add() {
+        let text = "let value = 1;\n";
+        let snapshot = lexilla::highlight(crate::language::LapceLanguage::Rust, &Rope::from(text)).unwrap();
+        assert!(permits_current_partner(Some(&snapshot), 7, 7, text.len(), 0));
+        assert!(!permits_current_partner(Some(&snapshot), 6, 7, text.len(), 0));
+        assert!(!permits_current_partner(Some(&snapshot), 8, 7, text.len(), 0));
+        assert!(!permits_current_partner(Some(&snapshot), 7, 7, text.len()+1, 0));
+        assert!(!permits_current_partner(None, 7, 7, text.len(), 0));
+    }
+
+    #[test]
+    fn pairing_context_native_mixed_carets_follow_real_snapshot() {
+        use crate::{buffer::Buffer, cursor::{Cursor, CursorMode}, editor::{Action, PairingOptions}, selection::{Selection, SelRegion}};
+        let text = "// λ comment \nlet value = \"a value\";\n\n";
+        let snapshot = lexilla::highlight(crate::language::LapceLanguage::Rust, &Rope::from(text)).unwrap();
+        let comment = text.find("comment ").unwrap()+8;
+        let string = text.find("a value").unwrap()+2;
+        let mut selection = Selection::caret(comment);
+        selection.add_region(SelRegion::caret(string));
+        selection.add_region(SelRegion::caret(text.len()));
+        let mut buffer = Buffer::new(&text);
+        let mut cursor = Cursor::new(CursorMode::Insert(selection), None, None);
+        Action::insert_with_partner_filter(&mut cursor, &mut buffer, "(", &|_,_,_|None,
+            PairingOptions::legacy(true,true), &|offset| permits_partner(&snapshot,offset));
+        let expected = text.replace("comment ", "comment (").replace("a value", "a (value")+"()";
+        assert_eq!(buffer.to_string(), expected);
+        buffer.do_undo().unwrap(); assert_eq!(buffer.to_string(), text);
+        buffer.do_redo().unwrap(); assert_eq!(buffer.to_string(), expected);
     }
 
     #[test]
