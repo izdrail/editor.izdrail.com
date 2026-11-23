@@ -679,6 +679,29 @@ impl Doc {
         });
         Some(deltas)
     }
+    /// No synchronous lexing on a keystroke. A stale/missing snapshot cannot
+    /// authorize an extra character, but literal insertion still proceeds.
+    fn current_pairing_offsets(&self, cursor: &Cursor, input: &str) -> std::collections::HashSet<usize> {
+        let mut allowed = std::collections::HashSet::new();
+        if !matches!(input, "(" | "[" | "{" | "\"" | "'" | "`") { return allowed; }
+        let lapce_core::cursor::CursorMode::Insert(selection) = &cursor.mode else { return allowed; };
+        let permits = |doc: &Doc, offset| doc.syntax.with_untracked(|syntax| {
+            if syntax.rev != doc.rev() { return false; }
+            syntax.lexilla.as_ref().is_some_and(|snapshot| {
+                snapshot.len() == doc.buffer.with_untracked(|buffer| buffer.len())
+                    && lapce_core::pairing_context::permits_partner(snapshot, offset)
+            })
+        });
+        for region in selection.regions().iter().filter(|region| region.is_caret()) {
+            let offset = region.end;
+            let ok = if self.projection.get_untracked().is_some() {
+                self.projection_navigation_source(offset).is_some_and(|(source, anchor)| permits(&source, anchor))
+            } else { permits(self, offset) };
+            if ok { allowed.insert(offset); }
+        }
+        allowed
+    }
+
     pub fn do_insert(
         &self,
         cursor: &mut Cursor,
@@ -693,9 +716,11 @@ impl Doc {
                 }
             }
         }
+        let partner_offsets = self.current_pairing_offsets(cursor, s);
+        let permits_partner = |offset| partner_offsets.contains(&offset);
         if let Some(binding)=self.projection.get_untracked() {
             let docs=binding.docs.get_untracked();
-            if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert_with_pairing_options(cursor,buffer,s,&|_,opening,display| {
+            if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert_with_partner_filter(cursor,buffer,s,&|_,opening,display| {
                 crate::multibuffer::projection_closer_indent(&binding.projection.borrow(),display,opening,|anchor,opening| {
                     let source=docs.get(&anchor.source)?;
                     if source.buffer_id.0!=anchor.buffer_id || source.rev()!=anchor.revision || !source.loaded() {return None;}
@@ -705,7 +730,7 @@ impl Doc {
                         Some(buffer.indent_on_line(buffer.line_of_offset(opener)))
                     }))
                 })
-            },config.editor.pairing_options())) {return deltas;}
+            },config.editor.pairing_options(), &permits_partner)) {return deltas;}
         }
         if self.content.with_untracked(|c| c.read_only()) {
             return Vec::new();
@@ -715,7 +740,7 @@ impl Doc {
         let deltas = self.syntax.with_untracked(|syntax| {
             self.buffer
                 .try_update(|buffer| {
-                    Action::insert_with_pairing_options(
+                    Action::insert_with_partner_filter(
                         cursor,
                         buffer,
                         s,
@@ -724,6 +749,7 @@ impl Doc {
                                 .map(|opening| buffer.indent_on_line(buffer.line_of_offset(opening)))
                         },
                         config.editor.pairing_options(),
+                        &permits_partner,
                     )
                 })
                 .unwrap()

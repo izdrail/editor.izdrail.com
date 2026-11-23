@@ -138,6 +138,16 @@ impl Action {
         closer_indent: &dyn Fn(&Buffer, char, usize) -> Option<String>,
         options: PairingOptions,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
+        Self::insert_with_partner_filter(cursor, buffer, s, closer_indent, options, &|_| true)
+    }
+
+    /// The caller supplies current lexical context separately for each caret.
+    /// The filter only controls newly added partners, never literal input.
+    pub fn insert_with_partner_filter(
+        cursor: &mut Cursor, buffer: &mut Buffer, s: &str,
+        closer_indent: &dyn Fn(&Buffer, char, usize) -> Option<String>,
+        options: PairingOptions, permits_partner: &dyn Fn(usize) -> bool,
+    ) -> Vec<(Rope, RopeDelta, InvalLines)> {
         let mut deltas = Vec::new();
         if let CursorMode::Insert(selection) = &cursor.mode {
             if s.chars().count() != 1 {
@@ -265,7 +275,7 @@ impl Action {
                                 _ => is_whitespace_or_punct,
                             };
 
-                            if should_insert_pair {
+                            if should_insert_pair && permits_partner(offset) {
                                 let insert_after = match c {
                                     '"' => '"',
                                     '\'' => '\'',

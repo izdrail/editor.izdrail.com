@@ -245,3 +245,34 @@ fn explicit_selection_with_surround_disabled_replaces_instead_of_skipping() {
         assert_eq!(buffer.to_string(), text);
     }
 }
+
+#[test]
+fn partner_filter_is_per_caret_and_does_not_suppress_literal_edits() {
+    use crate::editor::PairingOptions;
+    let mut buffer = Buffer::new("\n");
+    let mut selection = Selection::caret(0);
+    selection.add_region(SelRegion::caret(1));
+    let mut cursor = Cursor::new(CursorMode::Insert(selection), None, None);
+    Action::insert_with_partner_filter(&mut cursor, &mut buffer, "(", &|_,_,_| None,
+        PairingOptions::legacy(true, true), &|offset| offset == 0);
+    assert_eq!(buffer.to_string(), "()\n(");
+    buffer.do_undo().unwrap();
+    assert_eq!(buffer.to_string(), "\n");
+    buffer.do_redo().unwrap();
+    assert_eq!(buffer.to_string(), "()\n(");
+}
+
+#[test]
+fn partner_filter_preserves_closer_skip_and_selection_wrap() {
+    use crate::editor::PairingOptions;
+    let mut buffer = Buffer::new(")");
+    let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(0)), None, None);
+    Action::insert_with_partner_filter(&mut cursor, &mut buffer, ")", &|_,_,_| None,
+        PairingOptions::legacy(true, true), &|_| false);
+    assert_eq!(buffer.to_string(), ")");
+    assert_eq!(cursor.offset(), 1);
+    let mut cursor = Cursor::new(CursorMode::Insert(Selection::region(0, 1)), None, None);
+    Action::insert_with_partner_filter(&mut cursor, &mut buffer, "(", &|_,_,_| None,
+        PairingOptions::legacy(true, true), &|_| false);
+    assert_eq!(buffer.to_string(), "())");
+}
