@@ -44,6 +44,18 @@ class LinuxBuildTests(unittest.TestCase):
         self.assertIn('set -euo pipefail', script)
         self.assertIn('ulimit -n 65536', script)
 
+    def test_hosted_gui_captures_are_synthetic_and_not_auto_acceptance(self):
+        workflow = (ROOT / '.github/workflows/linux-build.yml').read_text()
+        self.assertIn('python3 scripts/qa/composer-hosted.py', workflow)
+        self.assertIn('name: composer-gui-acceptance', workflow)
+        script = (ROOT / 'scripts/qa/composer-hosted.py').read_text()
+        compile(script, 'composer-hosted.py', 'exec')
+        self.assertIn('Inspect PNGs before visual acceptance', script)
+        self.assertIn('source unchanged', script)
+        self.assertNotIn("run('key', 'Return')", script[script.index("shot('00-initial')"):])
+        self.assertIn('app.terminate()', script)
+        self.assertIn('xvfb.terminate()', script)
+
     def test_source_mtimes_preserve_only_identical_bytes(self):
         script = (ROOT / 'scripts/restore-source-mtimes.py').read_text()
         with tempfile.TemporaryDirectory() as tmp:
