@@ -9,3 +9,5 @@ Supported delimiters are single quotes, double quotes and backticks. Click insid
 Acceptance uses a disposable PHP source and target with language servers disabled. Inspect source and target screenshots before accepting the gesture. Unit tests cover source-folder precedence, workspace paths, parent paths, Unicode byte boundaries, malformed/dynamic strings and outside symlinks.
 
 Rapid Ctrl-click navigation uses the exact pointer offset, even when the operating system reports a double/triple click. It resolves on the clicked editor directly instead of routing through a potentially stale globally active editor. Ordinary unmodified double/triple-click selection remains unchanged.
+
+Language-server definitions are compared by both file URI and symbol position. A definition at the same line and column in another file opens that destination rather than requesting usages. Only a definition at the source symbol in the same file switches to references. Focused tests cover cross-file coordinate collisions, same-file self/other symbols, encoded spaces in source paths and non-file URIs.

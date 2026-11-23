@@ -14,6 +14,7 @@ ulimit -n 65536
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 mkdir -p target/acceptance-logs
 python3 scripts/test-linux-build.py 2>&1 | tee target/acceptance-logs/packaging.log
+cargo test --locked -p lapce-app definition_identity_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/definition-identity.log
 cargo test --locked -p lapce-app file_refs::tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/file-refs.log
 cargo test --locked -p lapce-core smart_editing_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/smart-editing.log
 cargo test --locked -p lapce-app editor_review_binding -- --test-threads=1 2>&1 | tee target/acceptance-logs/lexer.log

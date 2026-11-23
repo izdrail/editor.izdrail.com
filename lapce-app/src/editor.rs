@@ -2178,7 +2178,7 @@ impl EditorData {
                             })
                         }
                     } {
-                        if location.range.start == start_position {
+                        if definition_is_current_symbol(&path, start_position, &location) {
                             proxy.get_references(
                                 path.clone(),
                                 position,
@@ -6707,5 +6707,64 @@ mod projection_highlight_position_tests {
         for range in [range(1, 2), range(1, 200), range(7, 3), range(3, 3), lsp_types::Range::new(lsp_types::Position::new(0, 1), lsp_types::Position::new(u32::MAX, 0))] {
             assert!(canonical_highlight_offsets(&buffer, range).is_none());
         }
+    }
+}
+
+/// A definition at identical coordinates in another file is still a destination.
+/// Only a definition of this symbol in this document should switch to usages.
+fn definition_is_current_symbol(
+    source: &std::path::Path,
+    symbol_start: lsp_types::Position,
+    definition: &Location,
+) -> bool {
+    definition.range.start == symbol_start
+        && lsp_types::Url::from_file_path(source)
+            .is_ok_and(|source_uri| source_uri == definition.uri)
+}
+
+#[cfg(test)]
+mod definition_identity_tests {
+    use super::*;
+    use lsp_types::{Position, Url};
+    use std::path::PathBuf;
+
+    fn source() -> PathBuf {
+        std::env::temp_dir().join("gravity definition identity").join("source.php")
+    }
+
+    fn location(path: &std::path::Path, line: u32, character: u32) -> Location {
+        let start = Position::new(line, character);
+        Location::new(Url::from_file_path(path).unwrap(), Range::new(start, start))
+    }
+
+    #[test]
+    fn definition_identity_cross_file_equal_coordinates_is_destination() {
+        let source = source();
+        let target = source.with_file_name("target.php");
+        let start = Position::new(4, 8);
+        assert!(!definition_is_current_symbol(&source, start, &location(&target, 4, 8)));
+    }
+
+    #[test]
+    fn definition_identity_same_file_same_symbol_opens_usages() {
+        let source = source();
+        assert!(definition_is_current_symbol(&source, Position::new(4, 8), &location(&source, 4, 8)));
+    }
+
+    #[test]
+    fn definition_identity_same_file_other_symbol_is_destination() {
+        let source = source();
+        for (line, col) in [(3, 8), (4, 7), (5, 8), (4, 9)] {
+            assert!(!definition_is_current_symbol(&source, Position::new(4, 8), &location(&source, line, col)));
+        }
+    }
+
+    #[test]
+    fn definition_identity_non_file_uri_is_not_self() {
+        let source = source();
+        let start = Position::new(4, 8);
+        let definition = Location::new(Url::parse("untitled:generated.php").unwrap(), Range::new(start, start));
+        assert!(!definition_is_current_symbol(&source, start, &definition));
+        assert!(!definition_is_current_symbol(std::path::Path::new("relative.php"), start, &location(&source, 4, 8)));
     }
 }
