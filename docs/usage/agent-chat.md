@@ -190,3 +190,5 @@ Composer guidance uses normal text contrast while you are typing, using a compos
 Open mode/model lists advertise PageUp/PageDown jumps of five enabled choices and Home/End jumps to the first/last enabled choice. These keys only change the highlight; Enter/Space chooses.
 
 With the draft focused, the footer explains Enter to send, Shift+Enter for a new line, Tab to mode and Shift+Tab to Send/Stop. Mention feedback and open-list help take priority.
+
+Draft guidance follows the current state: an empty draft asks for a message; a reply in progress offers continued drafting and Shift+Tab to Stop rather than promising another send.

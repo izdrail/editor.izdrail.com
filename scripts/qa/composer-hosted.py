@@ -59,6 +59,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); time.sleep(2)
         shot('00-initial')
         run('mousemove', '1250', '640', 'click', '1')
+        shot('00a-empty-focused')
         run('type', '--clearmodifiers', 'Hosted synthetic draft, never send')
         shot('01-draft')
         run('key', 'Tab'); shot('02-mode')
@@ -71,6 +72,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Home'); shot('05b-model-home')
         run('key', 'Escape'); run('key', 'Tab', 'Right', 'Right'); shot('06-send-focus')
         run('key', 'Right'); run('type', '--clearmodifiers', ' after focus return'); shot('07-draft-return')
+        run('key', 'shift+Return'); run('type', '--clearmodifiers', 'Second unsent line'); shot('07a-newline')
+        run('key', 'shift+Tab'); shot('07b-reverse-send-focus')
+        run('key', 'Right')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')

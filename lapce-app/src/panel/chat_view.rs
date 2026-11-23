@@ -2690,8 +2690,11 @@ fn composer_footer_color(active: bool) -> &'static str {
     if active { LapceColor::EDITOR_FOREGROUND } else { LapceColor::EDITOR_DIM }
 }
 
-fn composer_draft_footer(focused: bool) -> Option<&'static str> {
-    focused.then_some("Enter to send. Shift+Enter for a new line. Tab to mode, Shift+Tab to Send/Stop.")
+fn composer_draft_footer(focused: bool, busy: bool, input: &str) -> Option<&'static str> {
+    if !focused { None }
+    else if busy { Some("Reply in progress. Keep drafting; Shift+Tab to Stop. Shift+Enter for a new line.") }
+    else if input.trim().is_empty() { Some("Write a message to send. Shift+Enter for a new line. Tab to mode, Shift+Tab to Send.") }
+    else { Some("Enter to send. Shift+Enter for a new line. Tab to mode, Shift+Tab to Send.") }
 }
 
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
@@ -5572,7 +5575,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 composer_focused.get() && query.is_some(),
                 files.is_some(), has_matches,
             ) { return hint.to_string(); }
-            if let Some(hint) = composer_draft_footer(composer_focused.get()) { return hint.to_string(); }
+            if let Some(hint) = composer_draft_footer(composer_focused.get(), stop_busy.get(), &input) { return hint.to_string(); }
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
@@ -6513,10 +6516,26 @@ mod quiet_conversation_tests {
     }
     #[test]
     fn draft_help_explains_send_newline_and_control_traversal() {
-        assert_eq!(super::composer_draft_footer(false), None);
-        let text = super::composer_draft_footer(true).unwrap();
-        for hint in ["Enter to send", "Shift+Enter for a new line", "Tab to mode", "Shift+Tab to Send/Stop"] {
+        assert_eq!(super::composer_draft_footer(false, false, "draft"), None);
+        let text = super::composer_draft_footer(true, false, "draft").unwrap();
+        for hint in ["Enter to send", "Shift+Enter for a new line", "Tab to mode", "Shift+Tab to Send"] {
             assert!(text.contains(hint));
+        }
+    }
+    #[test]
+    fn draft_help_does_not_offer_send_for_empty_or_busy_drafts() {
+        use super::composer_draft_footer as help;
+        for input in ["", " \n\t", "draft"] {
+            assert_eq!(help(false, true, input), None);
+            let busy = help(true, true, input).unwrap();
+            assert!(busy.contains("Reply in progress"));
+            assert!(busy.contains("Shift+Tab to Stop"));
+            assert!(!busy.contains("Enter to send"));
+        }
+        for empty in ["", " \n\t"] {
+            let text = help(true, false, empty).unwrap();
+            assert!(text.starts_with("Write a message"));
+            assert!(!text.contains("Enter to send"));
         }
     }
     #[test]
