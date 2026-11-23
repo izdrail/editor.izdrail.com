@@ -57,3 +57,6 @@ mod line_ending_save_tests {
         assert!(LineEnding::CrLf.normalize_delta(&Rope::from("no newline")).is_none());
     }
 }
+
+#[cfg(test)]
+mod smart_editing_tests;

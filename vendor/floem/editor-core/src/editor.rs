@@ -11,8 +11,7 @@ use crate::{
     register::{Clipboard, Register, RegisterData, RegisterKind},
     selection::{InsertDrift, SelRegion, Selection},
     util::{
-        has_unmatched_pair, matching_char, matching_pair_direction, str_is_pair_left,
-        str_matching_pair,
+        has_unmatched_pair, matching_char, matching_pair_direction,
     },
     word::{get_char_property, CharClassification},
 };
@@ -1218,7 +1217,7 @@ impl Action {
                         let indent = buffer.indent_unit();
                         let mut new_selection = Selection::new();
                         for region in selection.regions() {
-                            let new_region = if region.is_caret() {
+                            let mut new_region = if region.is_caret() {
                                 if indent.starts_with('\t') {
                                     let new_end = buffer.move_left(region.end, Mode::Insert, 1);
                                     SelRegion::new(region.start, new_end, None)
@@ -1242,40 +1241,24 @@ impl Action {
                             } else {
                                 *region
                             };
+                            // Pair deletion is a per-caret edit. Explicit ranges
+                            // must remove exactly the selected text, and another
+                            // caret must not disable pairing for this one.
+                            if region.is_caret() {
+                                let deleted = buffer.slice_to_cow(new_region.min()..new_region.max());
+                                let closer = match deleted.as_ref() {
+                                    "(" => Some(')'), "[" => Some(']'), "{" => Some('}'),
+                                    "\"" => Some('"'), "'" => Some('\''), "`" => Some('`'),
+                                    _ => None,
+                                };
+                                if closer.is_some() && buffer.char_at_offset(new_region.max()) == closer {
+                                    new_region = SelRegion::new(new_region.min(), new_region.max() + 1, None);
+                                }
+                            }
                             new_selection.add_region(new_region);
                         }
 
-                        let mut selection = new_selection;
-                        if selection.regions().len() == 1 {
-                            let delete_str = buffer
-                                .slice_to_cow(selection.min_offset()..selection.max_offset())
-                                .to_string();
-                            if str_is_pair_left(&delete_str)
-                                || delete_str == "\""
-                                || delete_str == "'"
-                                || delete_str == "`"
-                            {
-                                let matching_char = match delete_str.as_str() {
-                                    "\"" => Some('"'),
-                                    "'" => Some('\''),
-                                    "`" => Some('`'),
-                                    _ => str_matching_pair(&delete_str),
-                                };
-                                if let Some(c) = matching_char {
-                                    let offset = selection.max_offset();
-                                    let line = buffer.line_of_offset(offset);
-                                    let line_end = buffer.line_end_offset(line, true);
-                                    let content = buffer.slice_to_cow(offset..line_end).to_string();
-                                    if content.trim().starts_with(&c.to_string()) {
-                                        let index = content.match_indices(c).next().unwrap().0;
-                                        selection = Selection::region(
-                                            selection.min_offset(),
-                                            offset + index + 1,
-                                        );
-                                    }
-                                }
-                            }
-                        }
+                        let selection = new_selection;
                         (selection, edit_type)
                     }
                 };
