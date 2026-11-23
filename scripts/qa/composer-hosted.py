@@ -21,7 +21,15 @@ for index in range(10):
 config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
 (config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
-(config / 'language-servers.toml').write_text('enabled = false\nauto-install = false\n')
+# Only the deterministic local Python fixture runs. PHP and all package
+# downloads remain disabled; the composer never contacts a language service.
+lsp_log = out / 'navigation-lsp.log'
+lsp_fixture = Path(__file__).with_name('navigation-lsp-fixture.py').resolve()
+import json
+(config / 'language-servers.toml').write_text(
+    'enabled = true\nauto-install = false\n[servers.navigation-fixture]\n'
+    'languages = ["python"]\ncommand = "python3"\nargs = '
+    + json.dumps([str(lsp_fixture), str(lsp_log)]) + '\n')
 env = os.environ | {'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(name, None)
@@ -198,6 +206,23 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Navigation unexpectedly saved the edited source')
         if jump_target.read_text() != "<?php // Ctrl-click destination fixture.\n":
             raise RuntimeError('Navigation changed the destination file')
+        lsp_source = project / 'lsp_source.py'
+        lsp_target = project / 'lsp_target.py'
+        lsp_source.write_text('probe()\n# source symbol begins at the same coordinates as target\n')
+        lsp_target.write_text("probe = 'Cross-file LSP destination at line 1 column 1'\n")
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'lsp_source.py')
+        run('key', 'Return'); time.sleep(3)
+        shot('11-lsp-equal-coordinates-source')
+        run('mousemove', '355', '95', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(3); shot('11a-lsp-equal-coordinates-target')
+        events = [json.loads(line) for line in lsp_log.read_text().splitlines()]
+        if not any(event['method'] == 'textDocument/definition' for event in events):
+            raise RuntimeError('Ctrl-click never reached the local LSP definition fixture')
+        if any(event['method'] == 'textDocument/references' for event in events):
+            raise RuntimeError('Cross-file coordinate collision incorrectly requested references')
+        if lsp_source.read_text() != 'probe()\n# source symbol begins at the same coordinates as target\n':
+            raise RuntimeError('LSP navigation changed source bytes')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
