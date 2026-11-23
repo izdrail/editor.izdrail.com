@@ -28,3 +28,5 @@ Partner insertion now consults the existing current-revision lexer snapshot sepa
 The verified snapshot cases cover PHP, Python, Rust, JavaScript, TypeScript, CSS, HTML, Blade and Vue. The current Lexilla adapter has no Go route, so Go receives conservative literal insertion until that existing language-highlighting gap is addressed. This is not complete language-specific quoting: raw strings, Rust lifetimes and complex interpolation still require dedicated acceptance.
 
 Bracket highlighting now reaches the existing structural fallback when the current syntax state has no tree layers. The fallback checks a bracket directly under the caret before its enclosing pair, so opening brackets are included. This fallback is language-unaware and does not claim string/comment filtering or unmatched-bracket feedback.
+
+Structural matching also checks the character immediately before the caret, including after a closing bracket at end of file. A bracket under the caret takes precedence over the previous character for touching pairs such as `()[]`.

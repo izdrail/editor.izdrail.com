@@ -343,6 +343,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+Home', 'Down', 'Home'); shot('14-bracket-opening-highlight')
         run('key', 'Right', 'Right'); shot('14a-bracket-inner-highlight')
         run('key', 'End', 'Left'); shot('14b-bracket-closing-highlight')
+        run('key', 'Right'); shot('14c-bracket-after-closing-highlight')
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

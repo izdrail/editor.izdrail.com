@@ -149,6 +149,11 @@ pub fn fallback_bracket_pair(text: &lapce_xi_rope::Rope, offset: usize) -> Optio
     if let Some(other)=WordCursor::new(text,offset).match_pairs() {
         return Some((offset.min(other),offset.max(other)));
     }
+    if let Some(previous) = offset.checked_sub(1).and_then(|offset| text.at_or_prev_codepoint_boundary(offset)) {
+        if let Some(other)=WordCursor::new(text,previous).match_pairs() {
+            return Some((previous.min(other),previous.max(other)));
+        }
+    }
     WordCursor::new(text,offset).find_enclosing_pair()
 }
 
@@ -170,5 +175,10 @@ mod bracket_fallback_tests {
         assert_eq!(fallback_bracket_pair(&text,1),None);
         assert_eq!(fallback_bracket_pair(&text,usize::MAX),None);
         assert_eq!(fallback_bracket_pair(&Rope::from("("),0),None);
+        assert_eq!(fallback_bracket_pair(&Rope::from("()"),2),Some((0,1)));
+        assert_eq!(fallback_bracket_pair(&Rope::from("{()}"),3),Some((0,3)));
+        assert_eq!(fallback_bracket_pair(&Rope::from("{() x}"),3),Some((1,2)));
+        assert_eq!(fallback_bracket_pair(&Rope::from("()[]"),2),Some((2,3)));
+        assert_eq!(fallback_bracket_pair(&Rope::from("λ()"),4),Some((2,3)));
     }
 }
