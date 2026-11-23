@@ -6446,6 +6446,7 @@ mod quiet_conversation_tests {
         for query in ["", "file", "FILE", "smf", "module003", "zzznomatch"] {
             let mut all: Vec<_> = files.iter().filter_map(|p| mention_candidate_score(query, p).map(|score| (score, p))).collect();
             all.sort_by(|a,b| a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())).then(a.1.cmp(b.1)));
+            all.dedup_by(|a, b| a.1 == b.1);
             for cap in [0, 1, 2, 8, 50, 306, usize::MAX] {
                 let expected: Vec<String> = all.iter().take(cap).map(|(_, p)| (*p).clone()).collect();
                 assert_eq!(mention_candidates(query, &files, cap), expected, "query={query}, cap={cap}");
