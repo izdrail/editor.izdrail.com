@@ -186,7 +186,17 @@ impl Action {
                         continue;
                     }
 
-                    if options.brackets || options.quotes || options.skip_closing {
+                    // A quote after an odd run of backslashes is literal.
+                    // Scan only the adjacent run, never the whole line/document.
+                    let quote = matches!(c, '"' | '\'' | '`');
+                    let mut escape_start = offset;
+                    if quote {
+                        while escape_start > 0 && buffer.char_at_offset(escape_start - 1) == Some('\\') {
+                            escape_start -= 1;
+                        }
+                    }
+                    let escaped_quote = quote && (offset - escape_start) % 2 == 1;
+                    if region.is_caret() && !escaped_quote && (options.brackets || options.quotes || options.skip_closing) {
                         if options.skip_closing && (c == '"' || c == '\'' || c == '`') && cursor_char == Some(c) {
                             // Skip the closing character
                             let new_offset = buffer.next_grapheme_offset(offset, 1, buffer.len());

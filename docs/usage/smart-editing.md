@@ -20,3 +20,5 @@ All new controls default to enabled, including when loading an older settings fi
 This is the first granular settings slice, not a finished smart-editing settings page or language-context policy. Context-aware pairing, language-specific overrides and dedicated settings organization remain open.
 
 `smart-enter = false` stops structural Enter expansion while retaining line indentation if `smart-indent` is enabled. `smart-indent = false` inserts a plain line break without preserving or adding indentation. These switches apply in ordinary and source-mapped excerpt editors. Defaults preserve existing behavior.
+
+Quotes and backticks immediately after an odd-length backslash run insert literally, without pairing or skipping. Even runs retain normal pairing/skipping. Explicit selected ranges are always replaced when selection wrapping is disabled; closer skipping only applies to carets. This is a conservative core fix, not complete language-aware string/comment pairing.

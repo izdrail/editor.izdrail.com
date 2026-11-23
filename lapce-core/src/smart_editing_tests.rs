@@ -211,3 +211,37 @@ fn enter_controls_separate_structural_expansion_from_indent_retention() {
         assert_eq!(buffer.to_string(), expected);
     }
 }
+
+#[test]
+fn escaped_quotes_insert_literally_instead_of_skipping_or_pairing() {
+    for quote in ['"', '\'', '`'] {
+        for slashes in [1, 2, 3, 4] {
+            for existing in [false, true] {
+                let prefix = "\\".repeat(slashes);
+                let text = format!("{prefix}{}", if existing {quote.to_string()} else {String::new()});
+                let mut buffer = Buffer::new(&text);
+                let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(slashes)), None, None);
+                Action::insert(&mut cursor, &mut buffer, &quote.to_string(), &|_,_,_| None, true, true);
+                let expected = if slashes % 2 == 1 {
+                    format!("{prefix}{quote}{}", if existing {quote.to_string()} else {String::new()})
+                } else if existing { format!("{prefix}{quote}") }
+                else { format!("{prefix}{quote}{quote}") };
+                assert_eq!(buffer.to_string(), expected, "slashes={slashes}, existing={existing}");
+                assert_eq!(cursor.offset(), slashes + 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn explicit_selection_with_surround_disabled_replaces_instead_of_skipping() {
+    for closing in [')', ']', '}', '"', '\'', '`'] {
+        let text = format!("{closing}abc");
+        let mut buffer = Buffer::new(&text);
+        let mut cursor = Cursor::new(CursorMode::Insert(Selection::region(text.len(), 0)), None, None);
+        Action::insert(&mut cursor, &mut buffer, &closing.to_string(), &|_,_,_| None, true, false);
+        assert_eq!(buffer.to_string(), closing.to_string());
+        buffer.do_undo().unwrap();
+        assert_eq!(buffer.to_string(), text);
+    }
+}
