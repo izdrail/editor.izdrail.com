@@ -345,6 +345,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'End', 'Left'); shot('14b-bracket-closing-highlight')
         run('key', 'Right'); shot('14c-bracket-after-closing-highlight')
         run('key', 'ctrl+shift+backslash'); shot('14d-bracket-jump-from-adjacent')
+        run('key', 'ctrl+shift+backslash'); shot('14e-bracket-jump-back')
+        run('key', 'End', 'shift+Left'); shot('14f-shift-arrow-still-selects')
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

@@ -1065,7 +1065,7 @@ impl EditorData {
                 &mut cursor,
                 movement,
                 count.unwrap_or(1),
-                mods.shift(),
+                movement_extends_selection(movement, mods),
                 register,
             )
         });
@@ -6560,6 +6560,29 @@ fn find_hint(mut pre_hint_len: u32, index: u32, hint: &InlayHint) -> FindHintRs 
             }
             NoMatchContinue { pre_hint_len }
         }
+    }
+}
+
+// Shift is part of the Match Pairs shortcut, not a request to select the span.
+// Other shifted movements retain normal selection extension.
+fn movement_extends_selection(movement: &lapce_core::movement::Movement, mods: Modifiers) -> bool {
+    mods.shift() && !matches!(movement, lapce_core::movement::Movement::MatchPairs)
+}
+
+#[cfg(test)]
+mod match_pairs_modifier_tests {
+    use super::movement_extends_selection;
+    use floem::keyboard::Modifiers;
+    use lapce_core::movement::Movement;
+
+    #[test]
+    fn shortcut_shift_is_not_selection_but_arrows_still_extend() {
+        let shortcut = Modifiers::CONTROL | Modifiers::SHIFT;
+        assert!(!movement_extends_selection(&Movement::MatchPairs, shortcut));
+        assert!(!movement_extends_selection(&Movement::MatchPairs, Modifiers::empty()));
+        assert!(movement_extends_selection(&Movement::Left, Modifiers::SHIFT));
+        assert!(movement_extends_selection(&Movement::Right, shortcut));
+        assert!(!movement_extends_selection(&Movement::Left, Modifiers::CONTROL));
     }
 }
 

@@ -2,6 +2,10 @@
 
 Audit baseline: `3b889a8`, 23 November 2026. This is a source audit, not a claim of runtime acceptance or cross-language parity. The requested four phases remain open. Existing LSP services and rope-based editing stay in place.
 
+## Expanded initiative, 23 November
+
+The [professional IDE roadmap](professional-ide-roadmap.md) extends these four phases with prioritized PHP/full-stack development tickets and source-evidence boundaries. The [UI/UX audit](ui-ux-audit.md) inventories the required runtime surface checks and known gaps. Earlier baseline findings below are historical, not current absence claims: separate pairing/quote/skip/Smart Enter/indent controls and current-snapshot context guards have since landed; language-specific context and full workflow acceptance remain open.
+
 ## Already present, extend rather than duplicate
 
 | Area | Evidence and current boundary |
