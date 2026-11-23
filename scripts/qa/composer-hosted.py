@@ -272,7 +272,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Quote pairing setting did not reload or disable insertion')
         settings_file.write_text(initial_settings + '\n[editor]\nauto-close-quotes = true\nauto-close-brackets = true\nskip-existing-closing = false\n')
         time.sleep(3)
-        run('key', 'ctrl+a', 'BackSpace'); run('type', '--clearmodifiers', '(')
+        run('key', 'ctrl+a', 'BackSpace'); time.sleep(1); run('type', '--clearmodifiers', '(')
         run('type', '--clearmodifiers', ')')
         run('key', 'ctrl+s'); time.sleep(1); shot('12b-pairing-closer-skip-disabled')
         if pairing_file.read_text() != '())':
@@ -311,6 +311,29 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1); shot('12f-selection-replaced-by-closer')
         if literal_file.read_text() != ')':
             raise RuntimeError('Explicit selected range was not replaced by closer')
+        context_file = project / 'pairing_context.php'
+        context_text = '<?php\n// comment \n$value = "a value";\n\n'
+        context_file.write_text(context_text)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'pairing_context.php')
+        run('key', 'Return'); time.sleep(3)
+        run('key', 'ctrl+Home', 'Down', 'End')
+        run('type', '--clearmodifiers', '(')
+        run('key', 'ctrl+s'); time.sleep(1); shot('13-pairing-comment-literal')
+        expected_context = context_text.replace('// comment ', '// comment (')
+        if context_file.read_text() != expected_context:
+            raise RuntimeError('Comment context added an unwanted partner')
+        run('key', 'ctrl+Home', 'Down', 'Down', 'End', 'Left', 'Left')
+        run('type', '--clearmodifiers', '(')
+        run('key', 'ctrl+s'); time.sleep(1); shot('13a-pairing-string-literal')
+        expected_context = expected_context.replace('a value', 'a value(')
+        if context_file.read_text() != expected_context:
+            raise RuntimeError('String interior added an unwanted partner')
+        run('key', 'ctrl+End')
+        run('type', '--clearmodifiers', '(')
+        run('key', 'ctrl+s'); time.sleep(1); shot('13b-pairing-code-partner')
+        if context_file.read_text() != expected_context + '()':
+            raise RuntimeError('Current PHP code context did not add a partner')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
