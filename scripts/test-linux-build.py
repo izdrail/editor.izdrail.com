@@ -72,7 +72,7 @@ class LinuxBuildTests(unittest.TestCase):
             self.assertIn(f"shot('{state}')", script)
         self.assertIn("'ctrl+Home', 'Down', 'Right', 'ctrl+alt+Down'", script)
         self.assertIn("if core_file.read_text() != core_original:", script)
-        for state in ['10-file-reference-source', '10a-file-reference-target']:
+        for state in ['09d-core-enter-before', '09e-core-enter-expanded', '09f-core-enter-undo', '10-file-reference-source', '10a-file-reference-target']:
             self.assertIn(f"shot('{state}')", script)
         self.assertIn("home.rglob('*.log')", script)
         self.assertIn('app.terminate()', script)

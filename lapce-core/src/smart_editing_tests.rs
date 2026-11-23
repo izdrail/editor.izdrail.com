@@ -64,3 +64,70 @@ fn mixed_carets_ranges_and_unicode_keep_independent_edits() {
     buffer.do_undo().unwrap();
     assert_eq!(buffer.to_string(), "()\nabc\né[]");
 }
+
+#[test]
+fn all_pair_insert_skip_and_selection_wrap_use_native_action() {
+    for (open, close) in [('(', ')'), ('[', ']'), ('{', '}'), ('"', '"'), ('\'', '\''), ('`', '`')] {
+        let mut buffer = Buffer::new("");
+        let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(0)), None, None);
+        Action::insert(&mut cursor, &mut buffer, &open.to_string(), &|_,_,_|None, true, true);
+        assert_eq!(buffer.to_string(), format!("{open}{close}"));
+        assert_eq!(cursor.offset(), 1);
+        Action::insert(&mut cursor, &mut buffer, &close.to_string(), &|_,_,_|None, true, true);
+        assert_eq!(buffer.to_string(), format!("{open}{close}"));
+        assert_eq!(cursor.offset(), 2);
+        let mut buffer = Buffer::new("value");
+        let mut cursor = Cursor::new(CursorMode::Insert(Selection::region(0, 5)), None, None);
+        Action::insert(&mut cursor, &mut buffer, &open.to_string(), &|_,_,_|None, true, true);
+        assert_eq!(buffer.to_string(), format!("{open}value{close}"));
+        buffer.do_undo().unwrap();
+        assert_eq!(buffer.to_string(), "value");
+        buffer.do_redo().unwrap();
+        assert_eq!(buffer.to_string(), format!("{open}value{close}"));
+    }
+}
+#[test]
+fn nested_insertions_and_paste_are_not_reinterpreted_as_pairs() {
+    let mut buffer = Buffer::new("");
+    let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(0)), None, None);
+    for text in ["(", "[", "{"] {
+        Action::insert(&mut cursor, &mut buffer, text, &|_,_,_|None, true, true);
+    }
+    assert_eq!(buffer.to_string(), "([{}])");
+    assert_eq!(cursor.offset(), 3);
+    Action::insert(&mut cursor, &mut buffer, "pasted(\"text\")", &|_,_,_|None, true, true);
+    assert_eq!(buffer.to_string(), "([{pasted(\"text\")}])");
+}
+#[test]
+fn smart_enter_expands_all_structural_pairs_with_configured_indent_and_one_undo() {
+    use crate::indent::IndentStyle;
+    for pair in ["{}", "[]", "()"] {
+        for style in [IndentStyle::Tabs, IndentStyle::Spaces(2), IndentStyle::Spaces(4)] {
+            let mut buffer = Buffer::new(pair);
+            buffer.set_indent_style(style);
+            let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(1)), None, None);
+            Action::do_edit(&mut cursor, &mut buffer, &EditCommand::InsertNewLine, &mut NoClipboard,
+                &mut Register::default(), EditConf { comment_tokens: &|_| ("", ""), modal: false,
+                smart_tab: true, keep_indent: true, auto_indent: true });
+            assert_eq!(buffer.to_string(), format!("{}\n{}\n{}", &pair[..1], style.as_str(), &pair[1..]));
+            assert_eq!(cursor.offset(), 2 + style.as_str().len());
+            buffer.do_undo().unwrap();
+            assert_eq!(buffer.to_string(), pair);
+            buffer.do_redo().unwrap();
+            assert_eq!(buffer.to_string(), format!("{}\n{}\n{}", &pair[..1], style.as_str(), &pair[1..]));
+        }
+    }
+}
+#[test]
+fn indentation_backspace_obeys_tab_and_space_stops() {
+    use crate::indent::IndentStyle;
+    for (text, style, expected) in [("      x", IndentStyle::Spaces(4), "    x"),
+        ("    x", IndentStyle::Spaces(4), "x"), ("\t\tx", IndentStyle::Tabs, "\tx")] {
+        let offset = text.find('x').unwrap();
+        let mut buffer = Buffer::new(text);
+        buffer.set_indent_style(style);
+        let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(offset)), None, None);
+        backspace(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), expected);
+    }
+}

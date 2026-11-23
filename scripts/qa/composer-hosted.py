@@ -142,6 +142,20 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1)
         if core_file.read_text() != '<?php\n\n\n':
             raise RuntimeError('One redo did not delete both empty pairs')
+        enter_file = project / 'core_enter.php'
+        enter_file.write_text('<?php\n{}\n')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'core_enter.php')
+        run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+Home', 'Down', 'Right'); shot('09d-core-enter-before')
+        run('key', 'Return'); shot('09e-core-enter-expanded')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if enter_file.read_text() != '<?php\n{\n    \n}\n':
+            raise RuntimeError('Smart Enter did not expand an empty PHP brace pair')
+        run('key', 'ctrl+z'); shot('09f-core-enter-undo')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if enter_file.read_text() != '<?php\n{}\n':
+            raise RuntimeError('One undo did not restore the empty brace pair')
         jump_source = project / 'jump_source.php'
         jump_target = project / 'jump_target.php'
         jump_source.write_text("<?php\nrequire './jump_target.php';\n")
