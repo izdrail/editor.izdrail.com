@@ -1248,3 +1248,38 @@ mod projection_inline_ai_tests {
         for range in [0..1, start-2..start+2, start..start, start+1..start+3, start..start+8] { assert!(p.inline_ai_source_range(range).is_none()); }
     }
 }
+
+#[cfg(test)]
+mod pairing_context_projection_tests {
+    use super::*;
+    use lapce_core::{buffer::Buffer, cursor::{Cursor,CursorMode}, editor::{Action,PairingOptions}, language::LapceLanguage, selection::{Selection,SelRegion}};
+    use lapce_xi_rope::Rope;
+
+    #[test]
+    fn current_source_context_drives_disjoint_excerpt_carets() {
+        let text = "unshown prefix\n// comment \nlet x = 1;\n\n";
+        let source = Snapshot {path:"source.rs".into(),buffer_id:3,revision:9,read_only:false,text:text.into()};
+        let start = text.find("//").unwrap();
+        let sources = vec![source.clone()];
+        let projection = Projection::build(&sources,&[(source.path.clone(),start..text.len())],1000).unwrap();
+        let snapshot = lapce_core::lexilla::highlight(LapceLanguage::Rust,&Rope::from(text)).unwrap();
+        let display = projection.excerpts[0].display_range.start;
+        let comment = display + "// comment ".len();
+        let code = projection.excerpts[0].display_range.end;
+        let mut selection = Selection::caret(comment);
+        selection.add_region(SelRegion::caret(code));
+        let mut cursor = Cursor::new(CursorMode::Insert(selection),None,None);
+        let mut buffer = Buffer::new(&projection.text);
+        let deltas = Action::insert_with_partner_filter(&mut cursor,&mut buffer,"(",&|_,_,_|None,
+            PairingOptions::legacy(true,true),&|display| {
+                let Some(anchor)=projection.navigation_anchor(display) else {return false;};
+                lapce_core::pairing_context::permits_current_partner(Some(&snapshot),9,anchor.revision,text.len(),anchor.offset)
+            });
+        let delta=compose_projection_deltas(&projection,&deltas.iter().map(|(_,d,_)|d.clone()).collect::<Vec<_>>()).unwrap();
+        let plan=projection.plan(&sources,&display_edits_from_delta(&projection.text,&delta).unwrap()).unwrap();
+        let mut expected=text.to_string();
+        for edit in plan.iter().rev() {expected.replace_range(edit.range.clone(),&edit.replacement);}
+        assert_eq!(expected,text.replace("// comment ","// comment (")+"()");
+        assert!(expected.starts_with("unshown prefix\n"));
+    }
+}
