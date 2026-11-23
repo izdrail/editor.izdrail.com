@@ -16,6 +16,20 @@ The owner's newer autocomplete/formatting/AI settings task supersedes the earlie
 
 Phase 1 ticket detail: CFG-001 settings search/navigation and meaningful empty states; CFG-002 responsive spacing and accessible controls; CFG-003 existing AI settings duplication/routing clarity; CFG-004 toolbar/context-action inventory and runtime fixes. Phase 4's unified session interface covers select/start/context/progress/tool-permission/error/cancel only where the underlying real integration supports it. The standing development rule remains Ollama/local only, with no hosted AI calls.
 
+## Search initiative update, 23:19
+
+Search joins the backlog without weakening the critical strict phase order. Complete Phase 1 UI/UX first. Then run search architecture/benchmark work alongside Phase 2 completion, but prioritize completion acceptance over search feature expansion. Search UI fixes discovered during Phase 1 can land within that audit; a new indexing service cannot bypass it.
+
+| Tickets | Search scope and gate |
+| --- | --- |
+| SRCH-001 | Audit native Rust app/proxy file access, unsaved buffers, existing watcher/index/cache and UI/RPC path. Evaluate ripgrep, Tantivy, Tree-sitter and SQLite FTS5 against existing dependencies. MiniSearch/workers are browser alternatives, not default infrastructure for this native editor. Licence review before adding dependencies. |
+| SRCH-002 | Design a modular coordinator/providers/ranking/cache/history/indexer/storage/worker layer adapted to existing modules. Reuse existing providers and watcher. No duplicate service and no architectural decision without audit evidence. |
+| SRCH-003 | Background incremental persistent index: mtime/hash, changed-only updates/deletes, in-memory unsaved overlays, async writes, restart validation/config-parser invalidation, cancellation/resumable recovery and low-noise progress. Never block UI or rebuild everything after one change. |
+| SRCH-004 | Unified Search Everywhere, file/symbol/text/regex/usages/recents with scopes, filters, git awareness and previews. Semantic references remain distinct from text hits. Resolve double Shift and requested shortcuts against existing bindings; no silent shortcut regressions. |
+| SRCH-005 | Rank exact filename, exact symbol, filename prefix, symbol prefix, word-boundary, partial, fuzzy, then text. Recency cannot displace better exact matches. 50-100ms debounce, obsolete cancellation, streaming, bounded concurrency, virtualized results and configurable ignore/binary exclusions. |
+| SRCH-006 | Measure cold indexing separately; cached filename <20ms, symbol <50ms, indexed text/UI <100ms and typical small-file update <50ms are targets, not claims. Small/medium/large/thousands/large-file/frequent-edit fixtures, memory/concurrency/cancel/persistence/unsaved/delete tests. Report before/after measurements and misses. |
+| SRCH-007 | Keyboard-first runtime UI acceptance of all dialogs/scopes/filters/previews/empty-error-loading states, focus and dark/light/responsive layouts. Report architecture decisions, changed files, real tests, measurements, limits and deployment requirements. No deploy. |
+
 ## Architecture audit and evidence
 
 Gravity is a native Rust application built on Lapce and vendored Floem, not a Monaco/CodeMirror web application. `lapce-app` owns editor and panel state, `lapce-core` owns language/syntax support, `lapce-proxy` owns processes and services, `lapce-rpc` defines their protocol, and `lapce-ai` supplies existing AI support. Extend those boundaries rather than adding a parallel editor, parser, LSP client or service framework.
