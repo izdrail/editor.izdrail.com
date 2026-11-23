@@ -2664,6 +2664,13 @@ fn mention_suggestions_allowed(draft_focused: bool, chat_active: bool, picker_op
     draft_focused && chat_active && !picker_open
 }
 
+fn mention_index_footer(local: bool, active_tail: bool, has_root: bool, loaded: bool) -> Option<&'static str> {
+    if !local || !active_tail { None }
+    else if !has_root { Some("Open a local folder to mention workspace files. This @ query has not attached a file.") }
+    else if !loaded { Some("Loading workspace files for this @ query. No file has been attached yet.") }
+    else { None }
+}
+
 fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: bool) -> Option<&'static str> {
     if local && active_tail && loaded && !has_rows {
         Some("No matching files for this @ query. Edit the query or add a space to continue.")
@@ -5562,6 +5569,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         // Reuse the footer for temporary completion feedback.
         {
         let footer_local = tab.workspace.kind.is_local();
+        let footer_has_root = tab.workspace.path.is_some();
         label(move || {
             if let Some(hint) = composer_menu_footer(mode_expanded.get(), model_expanded.get()) {
                 return hint.to_string();
@@ -5578,6 +5586,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             let has_matches = query.as_ref().is_some_and(|(query, _)| {
                 files.as_ref().is_some_and(|files| mention_has_candidates(query, files))
             });
+            if let Some(hint) = mention_index_footer(
+                footer_local, composer_focused.get() && query.is_some(),
+                footer_has_root, files.is_some(),
+            ) { return hint.to_string(); }
             if let Some(hint) = mention_empty_footer(
                 footer_local,
                 composer_focused.get() && query.is_some(),
@@ -6510,6 +6522,25 @@ mod quiet_conversation_tests {
         }
     }
 
+    #[test]
+    fn mention_index_feedback_distinguishes_loading_and_missing_folder() {
+        use super::mention_index_footer as feedback;
+        for local in [false, true] {
+            for active in [false, true] {
+                for root in [false, true] {
+                    for loaded in [false, true] {
+                        let text = feedback(local, active, root, loaded);
+                        assert_eq!(text.is_some(), local && active && (!root || !loaded));
+                        if let Some(text) = text {
+                            assert!(text.contains("@ query"));
+                            if root { assert!(text.starts_with("Loading")); }
+                            else { assert!(text.starts_with("Open a local folder")); }
+                        }
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn mention_suggestions_require_the_actual_draft_not_just_chat_panel_ownership() {
         for bits in 0..8 {

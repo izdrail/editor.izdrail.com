@@ -194,3 +194,5 @@ With the draft focused, the footer explains Enter to send, Shift+Enter for a new
 Draft guidance follows the current state: an empty draft asks for a message; a reply in progress offers continued drafting and Shift+Tab to Stop rather than promising another send.
 
 File suggestions belong to the focused draft. Moving to a composer control clears them, and a late file-index response cannot reopen them while focus is elsewhere. Returning to the unchanged draft can show matching files again.
+
+While the workspace file index is loading, the focused @ query says that no file has been attached yet. Without an open local folder it asks for one instead. After the index arrives, a no-match message distinguishes a query from an inserted file reference.
