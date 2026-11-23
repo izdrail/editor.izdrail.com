@@ -196,3 +196,5 @@ Draft guidance follows the current state: an empty draft asks for a message; a r
 File suggestions belong to the focused draft. Moving to a composer control clears them, and a late file-index response cannot reopen them while focus is elsewhere. Returning to the unchanged draft can show matching files again.
 
 While the workspace file index is loading, the focused @ query says that no file has been attached yet. Without an open local folder it asks for one instead. After the index arrives, a no-match message distinguishes a query from an inserted file reference.
+
+A failed file-index request says that suggestions could not load, rather than claiming loading is still in progress or that no files match. Remove the active @ query and type it again to retry. Typing more characters in the same failed query does not keep retrying.

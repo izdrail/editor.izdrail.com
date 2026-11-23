@@ -2664,9 +2664,10 @@ fn mention_suggestions_allowed(draft_focused: bool, chat_active: bool, picker_op
     draft_focused && chat_active && !picker_open
 }
 
-fn mention_index_footer(local: bool, active_tail: bool, has_root: bool, loaded: bool) -> Option<&'static str> {
+fn mention_index_footer(local: bool, active_tail: bool, has_root: bool, loaded: bool, failed: bool) -> Option<&'static str> {
     if !local || !active_tail { None }
     else if !has_root { Some("Open a local folder to mention workspace files. This @ query has not attached a file.") }
+    else if failed { Some("File suggestions could not load. Remove this @ query, then type it again to retry.") }
     else if !loaded { Some("Loading workspace files for this @ query. No file has been attached yet.") }
     else { None }
 }
@@ -3790,14 +3791,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     });
     let mention_cursor = floem::reactive::create_rw_signal(Some(data.input.get_untracked().len()));
     let mention_requested = Rc::new(std::cell::Cell::new(false));
-    let (mention_tx, mention_rx) = std::sync::mpsc::channel::<Vec<String>>();
+    let mention_failed = floem::reactive::create_rw_signal(false);
+    let (mention_tx, mention_rx) = std::sync::mpsc::channel::<Result<Vec<String>, ()>>();
     let mention_tx = Rc::new(mention_tx);
     {
         let mention_from_proxy =
             floem::ext_event::create_signal_from_channel(mention_rx);
         create_effect(move |_| {
-            if let Some(items) = mention_from_proxy.get() {
-                mention_files.set(Some(items));
+            if let Some(result) = mention_from_proxy.get() {
+                match result {
+                    Ok(items) => { mention_failed.set(false); mention_files.set(Some(items)); }
+                    Err(()) => { mention_failed.set(true); }
+                }
             }
         });
     }
@@ -3808,11 +3813,18 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         let mention_tx = mention_tx.clone();
         create_effect(move |_| {
             let input = mention_data.input.get();
+            let query = mention_at_caret(&input, mention_cursor.get());
+            // A failed request retries only after leaving the token, never
+            // in a reactive loop or once per keystroke in the same query.
+            if query.is_none() && mention_failed.get_untracked() {
+                mention_failed.set(false);
+                mention_requested.set(false);
+            }
             let allowed = mention_suggestions_allowed(
                 composer_focused.get(), focus.get() == Focus::Panel(PanelKind::Chat),
                 mode_expanded.get() || model_expanded.get(),
             );
-            let next = match mention_at_caret(&input, mention_cursor.get()) {
+            let next = match query {
                 Some((query, start)) if allowed && mention_tab.workspace.kind.is_local() => {
                     match mention_files.get() {
                         Some(files) => {
@@ -3831,12 +3843,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     let tx = (*mention_tx).clone();
                                     mention_tab.common.proxy.get_files(
                                         move |result| {
-                                            if let Ok(
-                                                lapce_rpc::proxy::ProxyResponse::GetFilesResponse {
-                                                    items,
-                                                },
-                                            ) = result
-                                            {
+                                            if let Ok(lapce_rpc::proxy::ProxyResponse::GetFilesResponse { items }) = result {
                                                 let mut rel: Vec<String> = items
                                                     .into_iter()
                                                     .filter_map(|p| {
@@ -3853,7 +3860,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                                     })
                                                     .collect();
                                                 rel.sort();
-                                                let _ = tx.send(rel);
+                                                let _ = tx.send(Ok(rel));
+                                            } else {
+                                                let _ = tx.send(Err(()));
                                             }
                                         },
                                     );
@@ -5588,7 +5597,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             });
             if let Some(hint) = mention_index_footer(
                 footer_local, composer_focused.get() && query.is_some(),
-                footer_has_root, files.is_some(),
+                footer_has_root, files.is_some(), mention_failed.get(),
             ) { return hint.to_string(); }
             if let Some(hint) = mention_empty_footer(
                 footer_local,
@@ -6529,7 +6538,7 @@ mod quiet_conversation_tests {
             for active in [false, true] {
                 for root in [false, true] {
                     for loaded in [false, true] {
-                        let text = feedback(local, active, root, loaded);
+                        let text = feedback(local, active, root, loaded, false);
                         assert_eq!(text.is_some(), local && active && (!root || !loaded));
                         if let Some(text) = text {
                             assert!(text.contains("@ query"));
@@ -6540,6 +6549,18 @@ mod quiet_conversation_tests {
                 }
             }
         }
+    }
+    #[test]
+    fn mention_index_failure_is_not_loading_or_a_no_match_result() {
+        use super::mention_index_footer as feedback;
+        let text = feedback(true, true, true, false, true).unwrap();
+        assert!(text.contains("could not load"));
+        assert!(text.contains("type it again to retry"));
+        assert!(!text.contains("Loading"));
+        assert!(!text.contains("No matching"));
+        assert_eq!(feedback(true, false, true, false, true), None);
+        assert_eq!(feedback(false, true, true, false, true), None);
+        assert!(feedback(true, true, false, false, true).unwrap().starts_with("Open a local folder"));
     }
     #[test]
     fn mention_suggestions_require_the_actual_draft_not_just_chat_panel_ownership() {
