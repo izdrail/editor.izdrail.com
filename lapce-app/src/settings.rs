@@ -365,6 +365,41 @@ fn ai_settings_section(kind: &str) -> &str {
     }
 }
 
+/// Keep headers only when their section contains a matching row. Matching a
+/// section title reveals that section, not unrelated empty headings.
+fn settings_search_indices(rows: &[(bool, String)], pattern: &str) -> Vec<usize> {
+    let pattern = pattern.trim().to_lowercase();
+    if pattern.is_empty() { return (0..rows.len()).collect(); }
+    let mut result = Vec::new();
+    let mut header = None;
+    let mut section_matches = false;
+    let mut emitted_header = false;
+    for (index, (is_header, text)) in rows.iter().enumerate() {
+        if *is_header {
+            header = Some(index);
+            section_matches = text.to_lowercase().contains(&pattern);
+            emitted_header = false;
+        } else if section_matches || text.to_lowercase().contains(&pattern) {
+            if !emitted_header {
+                if let Some(header) = header { result.push(header); }
+                emitted_header = true;
+            }
+            result.push(index);
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod settings_search_tests {
+    use super::settings_search_indices;
+    fn rows() -> Vec<(bool,String)> { [(true,"Editor"),(false,"pairing bracket"),(false,"font size"),(true,"AI"),(false,"model endpoint"),(true,"Empty plugin")].into_iter().map(|(h,t)|(h,t.into())).collect() }
+    #[test] fn unmatched_search_has_no_orphan_headers() { assert!(settings_search_indices(&rows(),"unknown setting").is_empty()); }
+    #[test] fn matching_rows_keep_only_their_own_header() { assert_eq!(settings_search_indices(&rows(),"FONT"),vec![0,2]); assert_eq!(settings_search_indices(&rows(),"endpoint"),vec![3,4]); }
+    #[test] fn section_search_reveals_its_settings() { assert_eq!(settings_search_indices(&rows()," editor "),vec![0,1,2]); assert!(settings_search_indices(&rows(),"Empty plugin").is_empty()); }
+    #[test] fn empty_search_preserves_order_and_whitespace_is_empty() { assert_eq!(settings_search_indices(&rows(),"  "),vec![0,1,2,3,4,5]); }
+}
+
 pub fn settings_view(
     installed_plugins: RwSignal<IndexMap<VoltID, InstalledVoltData>>,
     editors: Editors,
@@ -390,23 +425,10 @@ pub fn settings_view(
         let pattern = doc.buffer.with(|b| b.to_string().to_lowercase());
         let plugin_items = settings_data.plugin_items.get();
         let mut items = items.get();
-        if pattern.is_empty() {
-            items.extend(plugin_items);
-            filtered_items_signal.set(items);
-            return;
-        }
-
-        let mut filtered_items = im::Vector::new();
-        for item in &items {
-            if item.header || item.filter_text.contains(&pattern) {
-                filtered_items.push_back(item.clone());
-            }
-        }
-        for item in plugin_items {
-            if item.header || item.filter_text.contains(&pattern) {
-                filtered_items.push_back(item);
-            }
-        }
+        items.extend(plugin_items);
+        let search_rows: Vec<_> = items.iter().map(|item| (item.header, if item.header { item.kind.clone() } else { item.filter_text.clone() })).collect();
+        let indices = settings_search_indices(&search_rows, &pattern);
+        let filtered_items = indices.into_iter().map(|index| items[index].clone()).collect();
         filtered_items_signal.set(filtered_items);
     });
 
@@ -433,6 +455,8 @@ pub fn settings_view(
             .unwrap_or_else(|| "Core".into())
     });
 
+    let available_width = create_rw_signal(1000.0_f64);
+    let content_padding = move || if available_width.get() < 760.0 { 16.0 } else { 32.0 };
     let reflow_anchor = create_rw_signal(None::<String>);
     let content_width = create_rw_signal(0.0_f64);
     let switcher_item = move |k: String,
@@ -444,6 +468,7 @@ pub fn settings_view(
             label(move || k.clone())
                 .style(move |s| s.text_ellipsis().padding_left(margin)),
         )
+        .keyboard_navigable()
         .on_click_stop(move |_| {
             settings_section.set(Some(target_kind.clone()));
             reflow_anchor.set(None);
@@ -451,7 +476,7 @@ pub fn settings_view(
         })
         .style(move |s| {
             let config = config.get();
-            s.padding_horiz(20.0)
+            s.padding_horiz(12.0).padding_vert(4.0)
                 .width_pct(100.0)
                 .apply_if(kind == current_kind.get(), |s| {
                     s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
@@ -519,7 +544,8 @@ pub fn settings_view(
         })
         .style(move |s| {
             s.height_pct(100.0)
-                .width(200.0)
+                .width(if available_width.get() < 760.0 { 140.0 } else { 200.0 })
+                .flex_shrink(0.0)
                 .border_right(1.0)
                 .border_color(config.get().color(LapceColor::LAPCE_BORDER))
         }),
@@ -539,7 +565,11 @@ pub fn settings_view(
                     })
                     .request_focus(|| {})
             })
-            .style(|s| s.padding_horiz(50.0).padding_vert(20.0)),
+            .style(move |s| s.padding_horiz(content_padding()).padding_vert(16.0)),
+            label(|| "No settings match your search. Try a setting name or section.".to_string())
+                .style(move |s| s.padding_horiz(content_padding()).padding_vert(16.0)
+                    .max_width_pct(100.0).text_overflow(floem::style::TextOverflow::Wrap)
+                    .apply_if(!filtered_items_signal.get().is_empty(), |s| s.hide())),
             container({
                 scroll({
                     dyn_stack(
@@ -559,9 +589,9 @@ pub fn settings_view(
                             )
                         },
                     )
-                    .style(|s| {
+                    .style(move |s| {
                         s.flex_col()
-                            .padding_horiz(50.0)
+                            .padding_horiz(content_padding())
                             .min_width_pct(100.0)
                             .max_width(400.0)
                     })
@@ -595,6 +625,7 @@ pub fn settings_view(
         .style(|s| s.flex_col().size_pct(100.0, 100.0)),
     ))
     .style(|s| s.absolute().size_pct(100.0, 100.0))
+    .on_resize(move |rect| available_width.set(rect.width()))
     .debug_name("Settings")
     .on_cleanup(move || {
         editors.remove(search_editor_id);

@@ -2,6 +2,20 @@
 
 Baseline: `0127c7c`, 23 November 2026. This extends [the editing audit](jetbrains-editing-audit.md), not a restart. These are development tickets, not completed-feature claims. The 23:09 owner request sets the order below. No deployments are part of this work.
 
+## Critical execution-order update, 23:16
+
+The owner's newer autocomplete/formatting/AI settings task supersedes the earlier execution order below. **Strict gate: finish Phase 1 UI/UX audit, fixes and runtime acceptance before adding configuration or integrations.** The older feature tickets remain backlog, not concurrent permission to bypass this gate. Signature-help restoration work in progress was paused, not presented as complete.
+
+| Phase / tickets | Scope and acceptance gate |
+| --- | --- |
+| 1 / UX-001..015, CFG-001..004 | Audit existing settings and workspace, fix navigation/organization and toolbar/context actions, standardize spacing/typography/icons/controls, remove confusing duplicates without silently changing saved routing, verify dark/light and responsive layouts. Inventory all visible controls and runtime states. Do not mark the phase complete from a few screenshots. |
+| 2 / CMP-001..005 | Audit existing completion and reuse LSP/local providers. Configurable per-language/context single/multi-character triggers, scoped ranking/deduplication, manual/automatic invoke, debounce/limit, Enter/Tab/custom acceptance, closer integration, cancellation. Validate syntax examples rather than hardcoding universal triggers. Persist user/workspace settings for enabled/auto/triggers/providers/delay/limit/priority/case/inline/AI/shortcuts. Real-language/provider acceptance, not protocol fixtures, closes this phase. |
+| 3 / FMT-001..004 | Audit existing formatter path. PHP-CS-Fixer/Pint/PSR-12/imports, Prettier/ESLint and Vue-aware formatting where supported. Document/selection/save/paste, per-language selection, detected project config and practical preview. Respect .editorconfig and formatter/linter files, never silently override project rules. |
+| 4 / AGT-001..006 | Only after the earlier gates, Settings > AI & Agents: Providers, Coding Agents, Models, Authentication, Context/Permissions, Terminal, Behaviour, Usage/Logs. Investigate real Codex, Claude Code, Pi, Ollama and compatible-provider mechanisms/auth. No REST assumptions. Per-agent enable/name/provider/executable/model/endpoint/auth/workdir/env/context/permissions/default/status, configure/test/remove. Secrets backend-only; retain provider-specific capabilities. |
+| 5 / QA-001..004 | Real runtime tests of settings persistence, triggers/acceptance/cancellation, project-respecting formatting, agent auth/execution/permissions, security and responsive themes. Unavailable tools remain PENDING, never simulated PASS. |
+
+Phase 1 ticket detail: CFG-001 settings search/navigation and meaningful empty states; CFG-002 responsive spacing and accessible controls; CFG-003 existing AI settings duplication/routing clarity; CFG-004 toolbar/context-action inventory and runtime fixes. Phase 4's unified session interface covers select/start/context/progress/tool-permission/error/cancel only where the underlying real integration supports it. The standing development rule remains Ollama/local only, with no hosted AI calls.
+
 ## Architecture audit and evidence
 
 Gravity is a native Rust application built on Lapce and vendored Floem, not a Monaco/CodeMirror web application. `lapce-app` owns editor and panel state, `lapce-core` owns language/syntax support, `lapce-proxy` owns processes and services, `lapce-rpc` defines their protocol, and `lapce-ai` supplies existing AI support. Extend those boundaries rather than adding a parallel editor, parser, LSP client or service framework.

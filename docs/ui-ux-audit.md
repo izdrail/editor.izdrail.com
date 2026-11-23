@@ -2,6 +2,10 @@
 
 Baseline: 23 November 2026, main `0127c7c`. This is an OPEN audit, not a declaration that every control has been tested. It accompanies [the IDE roadmap](professional-ide-roadmap.md) and the existing editing audit. All current captures are hosted CI previews, not deployed/live-product evidence.
 
+## Critical Phase 1 gate
+
+The 23:16 request makes this audit and its fixes the first execution phase. Completion, formatting and new AI agent settings wait for UI/UX acceptance. CFG-001..004 in the roadmap track settings navigation/search, responsive accessible controls, routing/duplicate clarity and toolbar/context actions.
+
 ## Verification contract
 
 Inventory every visible control in each screen. Record its command/handler and expected state change, test pointer and keyboard paths at runtime, inspect actual pixels, and check application/proxy logs and any failed service request. Cover loading, error, empty and success states, disabled controls and unavailable integrations. Check narrow/wide layouts, scrolling/overflow, panel resizing/repositioning, dark/light themes, focus order, labels/tooltips and keyboard accessibility. An unchecked control stays UNVERIFIED, never PASS.
@@ -32,6 +36,7 @@ Each issue needs an ID, severity/priority, reproducible workflow, observed resul
 
 | Issue | Severity / priority | Evidence and disposition |
 | --- | --- | --- |
+| UI-007 | Medium / P0 | Source audit: settings search retained every section header even when no setting matched, leaving an unexplained list of empty headings. Fix in progress: retain only sections with matches, searchable section labels, explicit zero-results state; actual dark/light/narrow runtime acceptance pending. |
 | UI-001 | Medium / P0 | Run `45283575269`, `14d-bracket-jump-from-adjacent.png`: intended Ctrl+Shift+backslash action leaves six characters selected, not the asserted jump to opening brace. Unit tests pass, but this runtime workflow is NOT ACCEPTED. Inspect preset/input mapping and retry via the existing command palette before deciding whether implementation or shortcut is wrong. |
 | UI-002 | Medium / P0 | Earlier Ctrl-click rapid-click/focus dispatch hazards and cross-file equal-coordinate LSP self-detection were fixed. Hosted workflow captures verify exact paths, edited source and deterministic LSP routing; the user's exact failing project/provider remains unverified. Do not close every Ctrl-click scenario from synthetic evidence. |
 | UI-003 | Medium / P0 | Bracket highlights previously failed when current syntax text existed without tree layers. Fixed and runtime-verified in `45275627813`, images `14`, `14a`, `14b`; after-closer highlight verified in `45279064490`, `14c`. Language-aware matching and unmatched feedback remain open. |
