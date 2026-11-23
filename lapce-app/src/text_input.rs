@@ -254,6 +254,11 @@ fn text_input_full<T: KeyPressFocus + 'static>(
     })
     .on_event(EventListener::KeyDown, move |event| {
         if let Event::KeyDown(key_event) = event {
+            // Single-line form inputs use native Tab traversal, not the code
+            // editor's indentation/snippet binding.
+            if form_input_traversal(&key_event.key.logical_key, key_event.modifiers) {
+                return EventPropagation::Continue;
+            }
             let keypress = keypress.get_untracked();
             let key_focus = key_focus
                 .as_ref()
@@ -798,5 +803,23 @@ impl View for TextInput {
 
             cx.restore();
         });
+    }
+}
+
+fn form_input_traversal(key: &floem::keyboard::Key, mods: floem::keyboard::Modifiers) -> bool {
+    *key == floem::keyboard::Key::Named(floem::keyboard::NamedKey::Tab)
+        && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT)
+}
+
+#[cfg(test)]
+mod form_input_traversal_tests {
+    use super::form_input_traversal;
+    use floem::keyboard::{Key,Modifiers,NamedKey};
+    #[test] fn tab_and_shift_tab_traverse_without_changing_text() {
+        let tab=Key::Named(NamedKey::Tab);
+        assert!(form_input_traversal(&tab,Modifiers::empty()));
+        assert!(form_input_traversal(&tab,Modifiers::SHIFT));
+        assert!(!form_input_traversal(&tab,Modifiers::CONTROL));
+        assert!(!form_input_traversal(&Key::Named(NamedKey::Enter),Modifiers::empty()));
     }
 }

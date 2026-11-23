@@ -649,8 +649,12 @@ impl AppData {
                 if let Event::KeyDown(key_event) = event {
                     if key_down_window_data.key_down(key_event) {
                         view_id.request_focus();
+                        EventPropagation::Stop
+                    } else {
+                        // Let Floem perform native form focus traversal for
+                        // keys not handled by the application keymap.
+                        EventPropagation::Continue
                     }
-                    EventPropagation::Stop
                 } else {
                     EventPropagation::Continue
                 }
