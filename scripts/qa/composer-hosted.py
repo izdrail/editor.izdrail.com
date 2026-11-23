@@ -253,6 +253,30 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Expected both stale and fresh delayed definition requests')
         if delayed_source.read_text() != 'probe()\n# delayed definition response fixture\n':
             raise RuntimeError('Navigation unexpectedly saved the revised LSP source')
+        settings_file = config / 'settings.toml'
+        initial_settings = settings_file.read_text()
+        settings_file.write_text(initial_settings + '\n[editor]\nauto-close-quotes = false\nauto-close-brackets = true\nskip-existing-closing = true\n')
+        time.sleep(3)
+        pairing_file = project / 'pairing_controls.php'
+        pairing_file.write_text('')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'pairing_controls.php')
+        run('key', 'Return'); time.sleep(2)
+        run('type', '--clearmodifiers', '(')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12-pairing-brackets-enabled')
+        if pairing_file.read_text() != '()':
+            raise RuntimeError('Bracket pairing did not stay enabled independently')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '"')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12a-pairing-quotes-disabled')
+        if pairing_file.read_text() != '"':
+            raise RuntimeError('Quote pairing setting did not reload or disable insertion')
+        settings_file.write_text(initial_settings + '\n[editor]\nauto-close-quotes = true\nauto-close-brackets = true\nskip-existing-closing = false\n')
+        time.sleep(3)
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '(')
+        run('type', '--clearmodifiers', ')')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12b-pairing-closer-skip-disabled')
+        if pairing_file.read_text() != '())':
+            raise RuntimeError('Closer skip setting did not disable skipping independently')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
