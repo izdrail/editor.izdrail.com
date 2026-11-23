@@ -2335,8 +2335,8 @@ fn composer_mention_accepts(key: &Key, modifiers: floem::keyboard::Modifiers) ->
         && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Tab))
 }
 
-fn mention_index_retry_key(key: &Key, modifiers: floem::keyboard::Modifiers, failed: bool) -> bool {
-    failed && modifiers.is_empty() && *key == Key::Named(NamedKey::F5)
+fn mention_index_retry_key(key: &Key, modifiers: floem::keyboard::Modifiers, refreshable: bool) -> bool {
+    refreshable && modifiers.is_empty() && *key == Key::Named(NamedKey::F5)
 }
 
 fn composer_enter_sends(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
@@ -2678,14 +2678,14 @@ fn mention_index_footer(local: bool, active_tail: bool, has_root: bool, loaded: 
 
 fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: bool) -> Option<&'static str> {
     if local && active_tail && loaded && !has_rows {
-        Some("No matching files for this @ query. Edit the query or add a space to continue.")
+        Some("No matching files for this @ query. F5 to refresh, edit the query or add a space to continue.")
     } else { None }
 }
 
 /// Only count the offered rows, not the whole workspace index.
 fn mention_footer(selected: usize, count: usize) -> Option<String> {
     if count == 0 || selected >= count { return None; }
-    Some(format!("File {}/{}: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.", selected + 1, count))
+    Some(format!("File {}/{}: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss, F5 to refresh.", selected + 1, count))
 }
 
 fn composer_menu_footer(mode_open: bool, model_open: bool) -> Option<&'static str> {
@@ -3894,11 +3894,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         data.input.get_untracked(),
         move |editor_sig, keypress, mods| {
             if let KeyInput::Keyboard(key, _) = &keypress.key {
-                if mention_index_retry_key(key, mods, mention_failed.get_untracked()) {
+                if mention_index_retry_key(key, mods, mention_failed.get_untracked() || mention_files.get_untracked().is_some()) {
                     let editor = editor_sig.get_untracked();
                     if mention_at_caret(&editor.doc().text().to_string(), mention_caret(&editor)).is_some() {
                         keyboard_mention_requested.set(false);
                         mention_failed.set(false);
+                        mention_files.set(None);
                         return CommandExecuted::Yes;
                     }
                 }
@@ -6565,7 +6566,7 @@ mod quiet_conversation_tests {
         }
     }
     #[test]
-    fn mention_retry_requires_plain_f5_and_a_failed_request() {
+    fn mention_refresh_requires_plain_f5_and_a_loaded_or_failed_request() {
         use floem::keyboard::{Key, NamedKey, Modifiers};
         for failed in [false, true] {
             for bits in 0..16 {
@@ -6604,8 +6605,8 @@ mod quiet_conversation_tests {
     #[test]
     fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
         use super::mention_footer as footer;
-        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
-        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss.");
+        assert_eq!(footer(0, 1).unwrap(), "File 1/1: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss, F5 to refresh.");
+        assert_eq!(footer(7, 8).unwrap(), "File 8/8: Up/Down to choose, PageUp/PageDown by 5, Home/End to jump. Enter/Tab to insert, Escape to dismiss, F5 to refresh.");
         assert_eq!(footer(0, 0), None);
         assert_eq!(footer(8, 8), None);
         let last = footer(usize::MAX - 1, usize::MAX).unwrap();

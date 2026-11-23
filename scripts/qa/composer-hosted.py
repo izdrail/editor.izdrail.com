@@ -78,6 +78,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@example'); time.sleep(3); shot('07c-mention')
         run('key', 'shift+Tab'); shot('07d-mention-blur')
         run('key', 'Right'); time.sleep(1); shot('07e-mention-return')
+        run('key', 'F5'); time.sleep(3); shot('07e1-mention-refresh')
         run('key', 'Tab'); shot('07f-mention-insert')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@no_such_synthetic_file_641'); shot('07g-mention-empty')
         run('key', 'shift+Tab'); shot('07h-empty-blur')
