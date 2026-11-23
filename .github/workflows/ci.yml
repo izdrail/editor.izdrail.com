@@ -18,6 +18,7 @@ permissions: {}
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     name: Build and doc tests
     needs: [fmt, clippy]
     strategy:
@@ -59,6 +60,7 @@ jobs:
         run: cargo test --profile ci --doc --workspace
 
   fmt:
+    if: github.ref == 'refs/heads/main'
     name: Formatting and spellchecking
     runs-on: ubuntu-22.04
     steps:
@@ -86,6 +88,7 @@ jobs:
         uses: crate-ci/typos@02ea592e44b3a53c302f697cddca7641cd051c3d
 
   clippy:
+    if: github.ref == 'refs/heads/main'
     name: Clippy on ${{ matrix.os }}
     strategy:
       fail-fast: false

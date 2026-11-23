@@ -184,3 +184,5 @@ The focused Send/Stop footer also names its horizontal exits, including when the
 The composer outline stays focused while the draft, mode, model, or Send/Stop control has keyboard focus. Each control keeps its own focus marker so the current target remains clear. Moving focus outside the composer clears the outline.
 
 While a mode or model list is open, the composer keeps its focus outline and the footer explains highlighting, choosing, and returning to the draft without choosing. Closing the list restores the usual focus-specific help.
+
+Composer guidance uses normal text contrast while you are typing, using a composer control, or choosing from a mode/model list. The idle disclaimer stays dim when focus moves elsewhere.

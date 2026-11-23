@@ -2684,6 +2684,12 @@ fn composer_choice_footer(mode_focused: bool, model_focused: bool) -> Option<&'s
     else { None }
 }
 
+/// Active keyboard instructions need normal text contrast. Keep the idle
+/// disclaimer quiet without also dimming the guidance people are using.
+fn composer_footer_color(active: bool) -> &'static str {
+    if active { LapceColor::EDITOR_FOREGROUND } else { LapceColor::EDITOR_DIM }
+}
+
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
     if !action_focused { "AI can make mistakes - review changes." }
     else if busy { "Enter/Space to stop. Left to model. Right/Escape to draft." }
@@ -5570,7 +5576,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .text_overflow(floem::style::TextOverflow::Wrap)
                 .align_self(Some(floem::style::AlignItems::Center))
                 .selectable(false)
-                .color(config.get().color(LapceColor::EDITOR_DIM))
+                .color(config.get().color(composer_footer_color(composer_group_focused(
+                    composer_focused.get(), mode_focused.get() || mode_expanded.get(),
+                    model_focused.get() || model_expanded.get(), action_focused.get(),
+                ))))
         })
         },
     )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
@@ -6496,6 +6505,15 @@ mod quiet_conversation_tests {
         assert!(last.contains("PageUp/PageDown by 5"));
         assert_eq!(footer(usize::MAX, usize::MAX), None);
         assert_eq!(footer(usize::MAX, 8), None);
+    }
+    #[test]
+    fn footer_guidance_uses_normal_contrast_only_while_composer_is_active() {
+        use super::{composer_footer_color as color, composer_group_focused as active};
+        use crate::config::color::LapceColor;
+        assert_eq!(color(false), LapceColor::EDITOR_DIM);
+        for bits in 1..16 {
+            assert_eq!(color(active(bits & 1 != 0, bits & 2 != 0, bits & 4 != 0, bits & 8 != 0)), LapceColor::EDITOR_FOREGROUND);
+        }
     }
     #[test]
     fn open_choice_lists_explain_highlight_pick_and_safe_dismissal() {

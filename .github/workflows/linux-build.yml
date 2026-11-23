@@ -1,14 +1,9 @@
 name: Linux build
 
-# Builds the Linux x86_64 release binary on every push to main and publishes it
-# as a downloadable workflow artifact. Releases are created by linux-release.yml
-# when a version tag is pushed.
+# Main-only tests and release binaries. Artifacts are downloads, not deployments.
 on:
   push:
     branches: ["main"]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
   workflow_dispatch:
 
 permissions:
@@ -22,8 +17,44 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  tests:
+    name: Rust workspace acceptance
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ubuntu test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential python3 git curl ca-certificates xz-utils clang pkg-config libxkbcommon-x11-dev libvulkan-dev libwayland-dev xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev cmake
+      - name: Install fixed Rust toolchain
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --no-self-update
+          rustup default 1.98.0
+      - name: Cache test dependencies
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          key: hosted-tests-ubuntu-22.04-rust-1.98.0-debug0
+      - name: Lexer, focused and full workspace tests
+        run: bash scripts/test-linux-hosted.sh
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-test-logs
+          path: target/acceptance-logs/
+          if-no-files-found: warn
+          retention-days: 14
   linux:
     name: Linux x86_64 release binary
+    needs: tests
+    if: github.ref == 'refs/heads/main'
     # Standard GitHub-hosted runner, independent of Dell availability.
     runs-on: ubuntu-22.04
     timeout-minutes: 90

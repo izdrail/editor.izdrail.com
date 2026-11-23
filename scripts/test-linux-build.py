@@ -15,7 +15,7 @@ class LinuxBuildTests(unittest.TestCase):
         manifest = (ROOT / 'Cargo.toml').read_text()
         self.assertRegex(manifest, r'default-run\s*=\s*"gravity"')
         self.assertRegex(manifest, r'\[\[bin\]\]\s*name\s*=\s*"gravity"')
-        for name in ['linux-build.yml', 'linux-release.yml']:
+        for name in ['linux-build.yml']:
             workflow = (ROOT / '.github/workflows' / name).read_text()
             self.assertIn('release/gravity ', workflow)
             self.assertIn('Run ./gravity.', workflow)
@@ -27,6 +27,22 @@ class LinuxBuildTests(unittest.TestCase):
         desktop = (ROOT / 'extra/linux/dev.lapce.lapce.desktop').read_text()
         self.assertIn('Exec=gravity %F', desktop)
         self.assertNotIn('Exec=lapce ', desktop)
+
+    def test_hosted_acceptance_is_main_only_and_precedes_release(self):
+        workflow = (ROOT / '.github/workflows/linux-build.yml').read_text()
+        self.assertIn('branches: ["main"]', workflow)
+        self.assertNotIn('tags:', workflow)
+        self.assertNotIn('paths-ignore:', workflow)
+        self.assertIn('needs: tests', workflow)
+        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
+        self.assertIn('bash scripts/test-linux-hosted.sh', workflow)
+        self.assertNotIn('gh release', workflow)
+        self.assertFalse((ROOT / '.github/workflows/linux-release.yml').exists())
+        script = (ROOT / 'scripts/test-linux-hosted.sh').read_text()
+        for gate in ['editor_review_binding', 'quiet_conversation_tests', 'cargo test --locked --workspace -- --test-threads=2']:
+            self.assertIn(gate, script)
+        self.assertIn('set -euo pipefail', script)
+        self.assertIn('ulimit -n 65536', script)
 
     def test_source_mtimes_preserve_only_identical_bytes(self):
         script = (ROOT / 'scripts/restore-source-mtimes.py').read_text()
