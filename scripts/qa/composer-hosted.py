@@ -294,6 +294,23 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1); shot('12d-smart-indent-disabled')
         if enter_controls.read_text() != '<?php\n  {\n}\n':
             raise RuntimeError('Disabled smart indentation should insert a plain newline')
+        settings_file.write_text(initial_settings + '\n[editor]\nauto-surround = false\n')
+        time.sleep(3)
+        literal_file = project / 'quote_literals.php'
+        literal_file.write_text('\\"')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'quote_literals.php')
+        run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+Home', 'Right')
+        run('type', '--clearmodifiers', '"')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12e-escaped-quote-literal')
+        if literal_file.read_text() != '\\""':
+            raise RuntimeError('Escaped quote was skipped instead of inserted literally')
+        run('key', 'ctrl+End', 'ctrl+shift+Home')
+        run('type', '--clearmodifiers', ')')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12f-selection-replaced-by-closer')
+        if literal_file.read_text() != ')':
+            raise RuntimeError('Explicit selected range was not replaced by closer')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')

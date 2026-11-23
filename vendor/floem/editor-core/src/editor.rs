@@ -191,8 +191,12 @@ impl Action {
                     let quote = matches!(c, '"' | '\'' | '`');
                     let mut escape_start = offset;
                     if quote {
-                        while escape_start > 0 && buffer.char_at_offset(escape_start - 1) == Some('\\') {
-                            escape_start -= 1;
+                        while escape_start > 0 {
+                            let previous = buffer.move_left(escape_start, Mode::Normal, 1);
+                            if previous + 1 != escape_start || buffer.char_at_offset(previous) != Some('\\') {
+                                break;
+                            }
+                            escape_start = previous;
                         }
                     }
                     let escaped_quote = quote && (offset - escape_start) % 2 == 1;
