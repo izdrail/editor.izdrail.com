@@ -57,6 +57,8 @@ class LinuxBuildTests(unittest.TestCase):
         self.assertLess(script.index('added.write_text(added_source)'), script.index("shot('07j-new-file-refreshed')"))
         self.assertIn("shot('07k-new-file-inserted')", script)
         self.assertIn("if added.read_text() != added_source:", script)
+        self.assertLess(script.index('added.unlink()'), script.index("shot('07l-deleted-file-refreshed')"))
+        self.assertIn("shot('07m-deleted-file-tab')", script)
         self.assertIn("'--wait', '--new'", script)
         self.assertIn("home.rglob('*.log')", script)
         self.assertIn('app.terminate()', script)

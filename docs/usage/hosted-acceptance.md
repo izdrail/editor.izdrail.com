@@ -11,3 +11,5 @@ The hosted release job also launches the built editor under Xvfb with a fresh sy
 The capture flow also queries for a file absent from the cached index, creates that synthetic file, presses F5 and captures the refreshed result and Tab insertion. Review all three images to verify discovery of new files, not only a refresh of existing results. Both synthetic source files must remain unchanged; Send is never activated.
 
 The GUI launch explicitly requests a fresh window and preserves profile startup logs, including early exits. A process exit before the first capture fails acceptance and does not count as visual verification.
+
+After proving new-file insertion, the synthetic file is removed and the same query refreshed again. Review the no-match and subsequent Tab images to verify the deleted cached suggestion is not inserted and Tab safely moves to mode.

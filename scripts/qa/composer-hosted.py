@@ -91,7 +91,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('07k-new-file-inserted')
         if added.read_text() != added_source:
             raise RuntimeError('New synthetic file changed')
-        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
+        added.unlink()
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@newly_created_645')
+        run('key', 'F5'); time.sleep(3); shot('07l-deleted-file-refreshed')
+        run('key', 'Tab'); shot('07m-deleted-file-tab')
+        run('key', 'Escape'); run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')
