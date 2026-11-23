@@ -221,6 +221,8 @@
                 "auto-close-brackets": {"type": "boolean", "default": true, "description": "Smart editing: close brackets; requires auto-closing-matching-pairs."},
                 "auto-close-quotes": {"type": "boolean", "default": true, "description": "Smart editing: close quotes and backticks; requires auto-closing-matching-pairs."},
                 "skip-existing-closing": {"type": "boolean", "default": true, "description": "Smart editing: skip existing closers; requires auto-closing-matching-pairs."},
+                "smart-enter": {"type": "boolean", "default": true, "description": "Expand bracket structures on Enter; requires smart-indent."},
+                "smart-indent": {"type": "boolean", "default": true, "description": "Preserve indentation and indent bracket structures."},
                 "auto-closing-matching-pairs": {
                     "type": "boolean"
                 },

@@ -129,6 +129,12 @@ pub struct EditorConfig {
     #[serde(default = "enabled_by_default")]
     #[field_names(desc = "Smart editing: move over existing closing brackets and quotes (also requires auto-closing-matching-pairs)")]
     pub skip_existing_closing: bool,
+    #[serde(default = "enabled_by_default")]
+    #[field_names(desc = "Smart editing: expand bracket structures on Enter (also requires smart-indent)")]
+    pub smart_enter: bool,
+    #[serde(default = "enabled_by_default")]
+    #[field_names(desc = "Smart editing: preserve line indentation and indent bracket structures")]
+    pub smart_indent: bool,
     #[field_names(
         desc = "Whether the editor should automatically surround selected text when typing quotes or brackets"
     )]
@@ -357,10 +363,10 @@ mod smart_pairing_settings_tests {
     #[test]
     fn smart_pairing_settings_old_config_retains_enabled_defaults() {
         let mut value = toml::Value::try_from(defaults()).unwrap();
-        for name in ["auto-close-brackets", "auto-close-quotes", "skip-existing-closing"] {
+        for name in ["auto-close-brackets", "auto-close-quotes", "skip-existing-closing", "smart-enter", "smart-indent"] {
             value.as_table_mut().unwrap().remove(name);
         }
         let restored: EditorConfig = value.try_into().unwrap();
-        assert!(restored.auto_close_brackets && restored.auto_close_quotes && restored.skip_existing_closing);
+        assert!(restored.auto_close_brackets && restored.auto_close_quotes && restored.skip_existing_closing && restored.smart_enter && restored.smart_indent);
     }
 }

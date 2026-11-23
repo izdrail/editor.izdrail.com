@@ -404,7 +404,7 @@ impl Action {
             let selection = Selection::region(region.min(), region.max());
 
             let mut caret_tail = 0;
-            if let Some(c) = first_half.chars().rev().find(|&c| c != ' ') {
+            if let Some(c) = first_half.chars().rev().find(|&c| c != ' ').filter(|_| auto_indent) {
                 if let Some(true) = matching_pair_direction(c) {
                     if let Some(c) = matching_char(c) {
                         if second_half_trim.starts_with(c) {

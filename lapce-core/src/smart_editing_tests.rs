@@ -194,3 +194,20 @@ fn independent_pairing_controls_cover_every_pair() {
         }
     }
 }
+
+#[test]
+fn enter_controls_separate_structural_expansion_from_indent_retention() {
+    for (keep, smart, expected) in [(true, true, "  {\n      \n  }"), (true, false, "  {\n  }"), (false, false, "  {\n}")] {
+        let mut buffer = Buffer::new("  {}");
+        buffer.set_indent_style(crate::indent::IndentStyle::Spaces(4));
+        let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(3)), None, None);
+        Action::do_edit(&mut cursor, &mut buffer, &EditCommand::InsertNewLine, &mut NoClipboard,
+            &mut Register::default(), EditConf { comment_tokens: &|_| ("", ""), modal: false,
+                smart_tab: true, keep_indent: keep, auto_indent: smart });
+        assert_eq!(buffer.to_string(), expected, "keep={keep}, smart={smart}");
+        buffer.do_undo().unwrap();
+        assert_eq!(buffer.to_string(), "  {}");
+        buffer.do_redo().unwrap();
+        assert_eq!(buffer.to_string(), expected);
+    }
+}

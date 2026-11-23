@@ -888,7 +888,7 @@ impl Doc {
             let plain=Self::comment_token_resolver(cmd,&Syntax::plaintext(),buffer);
             let comments=source_comments.as_ref().map(|resolver|resolver.as_ref()).unwrap_or(plain.as_ref());
             let mut clipboard=SystemClipboard::new();
-            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:comments,modal,smart_tab,keep_indent:true,auto_indent:source_indent.is_some()})
+            Action::do_edit(cursor,buffer,cmd,&mut clipboard,register,EditConf {comment_tokens:comments,modal,smart_tab,keep_indent:self.common.config.get_untracked().editor.smart_indent,auto_indent:source_indent.is_some() && self.common.config.get_untracked().editor.smart_indent && self.common.config.get_untracked().editor.smart_enter})
         }) {return deltas;}
         if self.content.with_untracked(|c| c.read_only())
             && !cmd.not_changing_buffer()
@@ -915,8 +915,9 @@ impl Doc {
                             comment_tokens: &comment_tokens,
                             modal,
                             smart_tab,
-                            keep_indent: true,
-                            auto_indent: true,
+                            keep_indent: self.common.config.get_untracked().editor.smart_indent,
+                            auto_indent: self.common.config.get_untracked().editor.smart_indent
+                                && self.common.config.get_untracked().editor.smart_enter,
                         },
                     )
                 })
