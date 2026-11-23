@@ -60,3 +60,5 @@ mod line_ending_save_tests {
 
 #[cfg(test)]
 mod smart_editing_tests;
+
+pub mod pairing_context;

@@ -17,6 +17,7 @@ python3 scripts/test-linux-build.py 2>&1 | tee target/acceptance-logs/packaging.
 cargo test --locked -p lapce-app smart_pairing_settings_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/pairing-settings.log
 cargo test --locked -p lapce-app definition_identity_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/definition-identity.log
 cargo test --locked -p lapce-app file_refs::tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/file-refs.log
+cargo test --locked -p lapce-core pairing_context -- --test-threads=1 2>&1 | tee target/acceptance-logs/pairing-context.log
 cargo test --locked -p lapce-core smart_editing_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/smart-editing.log
 cargo test --locked -p lapce-app editor_review_binding -- --test-threads=1 2>&1 | tee target/acceptance-logs/lexer.log
 cargo test --locked -p lapce-app quiet_conversation_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/focused.log
