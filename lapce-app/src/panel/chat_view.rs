@@ -6898,7 +6898,7 @@ mod quiet_conversation_tests {
     fn mention_navigation_leaves_modified_selection_and_movement_to_the_editor() {
         use super::composer_mention_navigation as navigates;
         use floem::keyboard::{Key, NamedKey, Modifiers};
-        for key in [NamedKey::ArrowDown, NamedKey::ArrowUp, NamedKey::Escape] {
+        for key in [NamedKey::ArrowDown, NamedKey::ArrowUp, NamedKey::PageDown, NamedKey::PageUp, NamedKey::Home, NamedKey::End, NamedKey::Escape] {
             assert!(navigates(&Key::Named(key), Modifiers::empty()));
             for bits in 1..16 {
                 let mut modifiers = Modifiers::empty();

@@ -64,6 +64,8 @@ class LinuxBuildTests(unittest.TestCase):
             self.assertIn(f"shot('{state}')", script)
         for state in ['07q1-mention-filtered', '07q2-mention-expanded', '07s-mention-page-up', '07t-mention-dismissed', '07u-mention-reopened', '07v-mention-reverse-focus', '07w-mention-focus-restored']:
             self.assertIn(f"shot('{state}')", script)
+        for state in ['07x-mention-caret-away', '07y-mention-caret-return', '07z-mention-selection', '07za-mention-replaced', '07zb-mention-caret-after-insert']:
+            self.assertIn(f"shot('{state}')", script)
         self.assertIn("run('key', 'End', 'Page_Up')", script)
         self.assertIn("'--wait', '--new'", script)
         self.assertIn("home.rglob('*.log')", script)

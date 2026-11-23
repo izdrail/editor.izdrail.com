@@ -206,3 +206,5 @@ F5 also refreshes a loaded file index while an @ query is active, useful after a
 Repeated paths returned by the file index appear only once in suggestions and do not consume the eight-row limit. Filtering a query updates the offered rows and their count.
 
 Escape dismisses file suggestions without changing the draft. Editing the active @ query opens matching suggestions again. Shift+Tab leaves suggestions for Send without inserting a file; returning to the draft restores the active query.
+
+File suggestions appear only at a single caret at the end of the draft. Moving earlier or selecting text hides them, so editing a selection cannot accept a stale file suggestion. After insertion, typing continues after the completed path and its separating space.
