@@ -1691,6 +1691,15 @@ impl EditorData {
                 });
                 return;
             }
+            if self.common.workspace.kind.is_local() {
+                if let Some(target) = crate::file_refs::resolve(root, &path, &line_text, col) {
+                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                        location: EditorLocation { path: target, position: None,
+                            scroll_offset: None, ignore_unconfirmed: false, same_editor_tab: false },
+                    });
+                    return;
+                }
+            }
             // An attribute of a Blade component tag opens the component's
             // `@props` / constructor line (the tag may start on earlier lines).
             if crate::blade_props::supports_path(&path) {

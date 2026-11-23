@@ -1,3 +1,4 @@
+pub mod file_refs;
 pub(crate) mod buffer_transaction;
 pub(crate) mod multibuffer;
 pub mod blade_props;

@@ -142,6 +142,16 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1)
         if core_file.read_text() != '<?php\n\n\n':
             raise RuntimeError('One redo did not delete both empty pairs')
+        jump_source = project / 'jump_source.php'
+        jump_target = project / 'jump_target.php'
+        jump_source.write_text("<?php\nrequire './jump_target.php';\n")
+        jump_target.write_text("<?php // Ctrl-click destination fixture.\n")
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'jump_source.php')
+        run('key', 'Return'); time.sleep(2)
+        shot('10-file-reference-source')
+        run('mousemove', '500', '112', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(2); shot('10a-file-reference-target')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
