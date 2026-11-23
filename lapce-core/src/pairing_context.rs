@@ -11,7 +11,7 @@ pub fn permits_partner(snapshot: &Snapshot, offset: usize) -> bool {
     let current = scope(offset);
     let comment = |scope: Option<&str>| scope.is_some_and(|s| s.starts_with("comment"));
     let string = |scope: Option<&str>| scope.is_some_and(|s| s.starts_with("string"));
-    if comment(current) || (offset == snapshot.len() && comment(previous)) { return false; }
+    if comment(current) || comment(previous) { return false; }
     !(string(previous) && (string(current) || offset == snapshot.len()))
 }
 
@@ -40,6 +40,19 @@ mod tests {
             assert!(!permits_partner(&snapshot, text.find(comment_marker).unwrap() + 1), "{language:?}: comment");
             assert!(permits_partner(&snapshot, 0), "{language:?}: code start");
             assert!(!permits_partner(&snapshot, text.len()+1));
+        }
+    }
+
+    #[test]
+    fn pairing_context_line_comment_end_precedes_unstyled_newline() {
+        for (language, text) in [
+            (crate::language::LapceLanguage::Php, "<?php\n// comment \n$x = 1;\n"),
+            (crate::language::LapceLanguage::Python, "# comment \nx = 1\n"),
+            (crate::language::LapceLanguage::Rust, "// comment \nlet x = 1;\n"),
+        ] {
+            let snapshot = lexilla::highlight(language, &Rope::from(text)).unwrap();
+            let offset = text.find("comment ").unwrap() + "comment ".len();
+            assert!(!permits_partner(&snapshot, offset), "{language:?}: end of line comment");
         }
     }
 
