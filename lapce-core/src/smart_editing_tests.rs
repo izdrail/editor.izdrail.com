@@ -171,3 +171,26 @@ fn separate_enter_presses_remain_separate_undo_steps() {
     buffer.do_undo().unwrap();
     assert_eq!(buffer.to_string(), "{}");
 }
+
+#[test]
+fn independent_pairing_controls_cover_every_pair() {
+    use crate::editor::PairingOptions;
+    for (opening, closing, quote) in [('(', ')', false), ('[', ']', false), ('{', '}', false), ('"', '"', true), ('\'', '\'', true), ('`', '`', true)] {
+        for enabled in [false, true] {
+            let mut buffer = Buffer::new("");
+            let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(0)), None, None);
+            Action::insert_with_pairing_options(&mut cursor, &mut buffer, &opening.to_string(), &|_,_,_| None,
+                PairingOptions { brackets: !quote && enabled, quotes: quote && enabled, skip_closing: false, surround: false });
+            assert_eq!(buffer.to_string(), if enabled {format!("{opening}{closing}")} else {opening.to_string()});
+            assert_eq!(cursor.offset(), 1);
+        }
+        for skip in [false, true] {
+            let mut buffer = Buffer::new(&closing.to_string());
+            let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(0)), None, None);
+            Action::insert_with_pairing_options(&mut cursor, &mut buffer, &closing.to_string(), &|_,_,_| None,
+                PairingOptions { brackets: false, quotes: false, skip_closing: skip, surround: false });
+            assert_eq!(buffer.to_string(), if skip {closing.to_string()} else {format!("{closing}{closing}")});
+            assert_eq!(cursor.offset(), 1);
+        }
+    }
+}

@@ -92,6 +92,20 @@ pub struct EditConf<'a> {
     pub auto_indent: bool,
 }
 
+/// Per-insertion smart pairing policy. Existing callers retain legacy defaults.
+#[derive(Clone, Copy, Debug)]
+pub struct PairingOptions {
+    pub brackets: bool,
+    pub quotes: bool,
+    pub skip_closing: bool,
+    pub surround: bool,
+}
+impl PairingOptions {
+    pub fn legacy(enabled: bool, surround: bool) -> Self {
+        Self { brackets: enabled, quotes: enabled, skip_closing: enabled, surround }
+    }
+}
+
 pub struct Action {}
 
 impl Action {
@@ -115,6 +129,15 @@ impl Action {
         closer_indent:&dyn Fn(&Buffer,char,usize)->Option<String>,
         auto_closing_matching_pairs:bool, auto_surround:bool,
     )->Vec<(Rope,RopeDelta,InvalLines)> {
+        Self::insert_with_pairing_options(cursor, buffer, s, closer_indent,
+            PairingOptions::legacy(auto_closing_matching_pairs, auto_surround))
+    }
+
+    pub fn insert_with_pairing_options(
+        cursor: &mut Cursor, buffer: &mut Buffer, s: &str,
+        closer_indent: &dyn Fn(&Buffer, char, usize) -> Option<String>,
+        options: PairingOptions,
+    ) -> Vec<(Rope, RopeDelta, InvalLines)> {
         let mut deltas = Vec::new();
         if let CursorMode::Insert(selection) = &cursor.mode {
             if s.chars().count() != 1 {
@@ -147,7 +170,7 @@ impl Action {
                     // when text is selected, and [,{,(,'," is inserted
                     // wrap the text with that char and its corresponding closing pair
                     if region.start != region.end
-                        && auto_surround
+                        && options.surround
                         && (matching_pair_type == Some(true) || c == '"' || c == '\'' || c == '`')
                     {
                         edits.push((Selection::region(region.min(), region.min()), c.to_string()));
@@ -163,8 +186,8 @@ impl Action {
                         continue;
                     }
 
-                    if auto_closing_matching_pairs {
-                        if (c == '"' || c == '\'' || c == '`') && cursor_char == Some(c) {
+                    if options.brackets || options.quotes || options.skip_closing {
+                        if options.skip_closing && (c == '"' || c == '\'' || c == '`') && cursor_char == Some(c) {
                             // Skip the closing character
                             let new_offset = buffer.next_grapheme_offset(offset, 1, buffer.len());
 
@@ -173,7 +196,7 @@ impl Action {
                         }
 
                         if matching_pair_type == Some(false) {
-                            if cursor_char == Some(c) {
+                            if options.skip_closing && cursor_char == Some(c) {
                                 // Skip the closing character
                                 let new_offset =
                                     buffer.next_grapheme_offset(offset, 1, buffer.len());
@@ -184,7 +207,7 @@ impl Action {
 
                             let line = buffer.line_of_offset(offset);
                             let line_start = buffer.offset_of_line(line);
-                            if buffer.slice_to_cow(line_start..offset).trim() == "" {
+                            if options.brackets && buffer.slice_to_cow(line_start..offset).trim() == "" {
                                 let opening_character = matching_char(c).unwrap();
                                 if let Some(line_indent) =
                                     closer_indent(buffer, opening_character, offset)
@@ -199,7 +222,8 @@ impl Action {
                             }
                         }
 
-                        if matching_pair_type == Some(true) || c == '"' || c == '\'' || c == '`' {
+                        if (options.brackets && matching_pair_type == Some(true))
+                            || (options.quotes && matches!(c, '"' | '\'' | '`')) {
                             // Create a late edit to insert the closing pair, if allowed.
                             let is_whitespace_or_punct = cursor_char
                                 .map(|c| {

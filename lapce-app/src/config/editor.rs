@@ -2,6 +2,8 @@ use floem::views::editor::text::RenderWhitespace;
 use serde::{Deserialize, Serialize};
 use structdesc::FieldNames;
 
+fn enabled_by_default() -> bool { true }
+
 pub const SCALE_OR_SIZE_LIMIT: f64 = 5.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -118,6 +120,15 @@ pub struct EditorConfig {
         desc = "Whether the editor should enable automatic closing of matching pairs"
     )]
     pub auto_closing_matching_pairs: bool,
+    #[serde(default = "enabled_by_default")]
+    #[field_names(desc = "Smart editing: automatically close brackets (also requires auto-closing-matching-pairs)")]
+    pub auto_close_brackets: bool,
+    #[serde(default = "enabled_by_default")]
+    #[field_names(desc = "Smart editing: automatically close quotes and backticks (also requires auto-closing-matching-pairs)")]
+    pub auto_close_quotes: bool,
+    #[serde(default = "enabled_by_default")]
+    #[field_names(desc = "Smart editing: move over existing closing brackets and quotes (also requires auto-closing-matching-pairs)")]
+    pub skip_existing_closing: bool,
     #[field_names(
         desc = "Whether the editor should automatically surround selected text when typing quotes or brackets"
     )]
@@ -256,6 +267,15 @@ pub struct EditorConfig {
 }
 
 impl EditorConfig {
+    pub fn pairing_options(&self) -> lapce_core::editor::PairingOptions {
+        lapce_core::editor::PairingOptions {
+            brackets: self.auto_closing_matching_pairs && self.auto_close_brackets,
+            quotes: self.auto_closing_matching_pairs && self.auto_close_quotes,
+            skip_closing: self.auto_closing_matching_pairs && self.skip_existing_closing,
+            surround: self.auto_surround,
+        }
+    }
+
     pub fn font_size(&self) -> usize {
         self.font_size.clamp(6, 32)
     }
@@ -311,5 +331,36 @@ impl EditorConfig {
             return 0;
         }
         self.blink_interval.max(200)
+    }
+}
+
+#[cfg(test)]
+mod smart_pairing_settings_tests {
+    use super::*;
+    fn defaults() -> EditorConfig {
+        let value: toml::Value = toml::from_str(include_str!("../../../defaults/settings.toml")).unwrap();
+        value.get("editor").unwrap().clone().try_into().unwrap()
+    }
+    #[test]
+    fn smart_pairing_settings_roundtrip_and_master_switch() {
+        let mut config = defaults();
+        assert!(config.pairing_options().brackets && config.pairing_options().quotes && config.pairing_options().skip_closing);
+        config.auto_close_quotes = false;
+        config.skip_existing_closing = false;
+        let restored: EditorConfig = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert!(restored.pairing_options().brackets);
+        assert!(!restored.pairing_options().quotes && !restored.pairing_options().skip_closing);
+        config.auto_closing_matching_pairs = false;
+        assert!(!config.pairing_options().brackets && !config.pairing_options().quotes && !config.pairing_options().skip_closing);
+        assert!(config.pairing_options().surround);
+    }
+    #[test]
+    fn smart_pairing_settings_old_config_retains_enabled_defaults() {
+        let mut value = toml::Value::try_from(defaults()).unwrap();
+        for name in ["auto-close-brackets", "auto-close-quotes", "skip-existing-closing"] {
+            value.as_table_mut().unwrap().remove(name);
+        }
+        let restored: EditorConfig = value.try_into().unwrap();
+        assert!(restored.auto_close_brackets && restored.auto_close_quotes && restored.skip_existing_closing);
     }
 }

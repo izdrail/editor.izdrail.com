@@ -695,7 +695,7 @@ impl Doc {
         }
         if let Some(binding)=self.projection.get_untracked() {
             let docs=binding.docs.get_untracked();
-            if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert_with_closer_indent(cursor,buffer,s,&|_,opening,display| {
+            if let Some(deltas)=self.edit_projection(cursor,|buffer,cursor|Action::insert_with_pairing_options(cursor,buffer,s,&|_,opening,display| {
                 crate::multibuffer::projection_closer_indent(&binding.projection.borrow(),display,opening,|anchor,opening| {
                     let source=docs.get(&anchor.source)?;
                     if source.buffer_id.0!=anchor.buffer_id || source.rev()!=anchor.revision || !source.loaded() {return None;}
@@ -705,7 +705,7 @@ impl Doc {
                         Some(buffer.indent_on_line(buffer.line_of_offset(opener)))
                     }))
                 })
-            },config.editor.auto_closing_matching_pairs,config.editor.auto_surround)) {return deltas;}
+            },config.editor.pairing_options())) {return deltas;}
         }
         if self.content.with_untracked(|c| c.read_only()) {
             return Vec::new();
@@ -715,15 +715,15 @@ impl Doc {
         let deltas = self.syntax.with_untracked(|syntax| {
             self.buffer
                 .try_update(|buffer| {
-                    Action::insert(
+                    Action::insert_with_pairing_options(
                         cursor,
                         buffer,
                         s,
                         &|buffer, c, offset| {
                             syntax_prev_unmatched(buffer, syntax, c, offset)
+                                .map(|opening| buffer.indent_on_line(buffer.line_of_offset(opening)))
                         },
-                        config.editor.auto_closing_matching_pairs,
-                        config.editor.auto_surround,
+                        config.editor.pairing_options(),
                     )
                 })
                 .unwrap()
