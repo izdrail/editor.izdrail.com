@@ -120,6 +120,28 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')
+        # Core editing acceptance uses a separate disposable source file.
+        # All Return keys below target the file palette, never the composer.
+        core_file = project / 'core_pairs.php'
+        core_original = '<?php\n()\n()\n'
+        core_file.write_text(core_original)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'core_pairs.php')
+        run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+Home', 'Down', 'Right', 'ctrl+alt+Down')
+        shot('09-core-pair-carets')
+        run('key', 'BackSpace'); shot('09a-core-pairs-deleted')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if core_file.read_text() != '<?php\n\n\n':
+            raise RuntimeError('Multi-caret Backspace did not remove both empty pairs')
+        run('key', 'ctrl+z'); shot('09b-core-pairs-undo')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if core_file.read_text() != core_original:
+            raise RuntimeError('One undo did not restore both empty pairs')
+        run('key', 'ctrl+shift+z'); shot('09c-core-pairs-redo')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if core_file.read_text() != '<?php\n\n\n':
+            raise RuntimeError('One redo did not delete both empty pairs')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
