@@ -131,3 +131,43 @@ fn indentation_backspace_obeys_tab_and_space_stops() {
         assert_eq!(buffer.to_string(), expected);
     }
 }
+
+#[test]
+fn smart_enter_multiple_carets_keeps_each_inner_offset_and_one_history_step() {
+    use crate::{indent::IndentStyle, line_ending::LineEnding};
+    for (ending, newline) in [(LineEnding::Lf, "\n"), (LineEnding::CrLf, "\r\n")] {
+        let original = format!("{{}}{newline}[]");
+        let mut buffer = Buffer::new(&original);
+        buffer.set_line_ending(ending);
+        buffer.set_indent_style(IndentStyle::Spaces(2));
+        let mut selection = Selection::caret(1);
+        selection.add_region(SelRegion::caret(3 + newline.len()));
+        let mut cursor = Cursor::new(CursorMode::Insert(selection), None, None);
+        Action::do_edit(&mut cursor, &mut buffer, &EditCommand::InsertNewLine, &mut NoClipboard,
+            &mut Register::default(), EditConf { comment_tokens: &|_| ("", ""), modal: false,
+            smart_tab: true, keep_indent: true, auto_indent: true });
+        let expected = format!("{{{newline}  {newline}}}{newline}[{newline}  {newline}]");
+        assert_eq!(buffer.to_string(), expected);
+        let first = 1 + newline.len() + 2;
+        let second = first + newline.len() + 1 + newline.len() + 1 + newline.len() + 2;
+        assert_eq!(cursor.edit_selection(&buffer).regions().iter().map(|r|r.end).collect::<Vec<_>>(), [first, second]);
+        buffer.do_undo().unwrap();
+        assert_eq!(buffer.to_string(), original);
+        buffer.do_redo().unwrap();
+        assert_eq!(buffer.to_string(), expected);
+    }
+}
+#[test]
+fn separate_enter_presses_remain_separate_undo_steps() {
+    let mut buffer = Buffer::new("{}");
+    let mut cursor = Cursor::new(CursorMode::Insert(Selection::caret(1)), None, None);
+    for _ in 0..2 {
+        Action::do_edit(&mut cursor, &mut buffer, &EditCommand::InsertNewLine, &mut NoClipboard,
+            &mut Register::default(), EditConf { comment_tokens: &|_| ("", ""), modal: false,
+            smart_tab: true, keep_indent: true, auto_indent: true });
+    }
+    buffer.do_undo().unwrap();
+    assert_eq!(buffer.to_string(), "{\n    \n}");
+    buffer.do_undo().unwrap();
+    assert_eq!(buffer.to_string(), "{}");
+}
