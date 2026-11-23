@@ -150,7 +150,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+Home', 'Down', 'Right'); shot('09d-core-enter-before')
         run('key', 'Return'); shot('09e-core-enter-expanded')
         run('key', 'ctrl+s'); time.sleep(1)
-        if enter_file.read_text() != '<?php\n{\n    \n}\n':
+        if enter_file.read_text() != '<?php\n{\n  \n}\n':
             raise RuntimeError('Smart Enter did not expand an empty PHP brace pair')
         run('key', 'ctrl+z'); shot('09f-core-enter-undo')
         run('key', 'ctrl+s'); time.sleep(1)
