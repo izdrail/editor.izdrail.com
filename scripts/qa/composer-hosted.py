@@ -16,6 +16,8 @@ project = out / 'project'
 project.mkdir(exist_ok=True)
 source = '<?php\nnamespace App;\nfinal class UserService { public function name(): string { return "Synthetic"; } }\n'
 (project / 'example.php').write_text(source)
+for index in range(10):
+    (project / f'multi_647_{index:02}.php').write_text('<?php // Synthetic mention navigation fixture.\n')
 config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
 (config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
@@ -95,7 +97,12 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@newly_created_645')
         run('key', 'F5'); time.sleep(3); shot('07l-deleted-file-refreshed')
         run('key', 'Tab'); shot('07m-deleted-file-tab')
-        run('key', 'Escape'); run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
+        run('key', 'Escape'); run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@multi_647_'); shot('07n-mention-multi')
+        run('key', 'Page_Down'); shot('07o-mention-page')
+        run('key', 'End'); shot('07p-mention-end')
+        run('key', 'Home'); shot('07q-mention-home')
+        run('key', 'Tab'); shot('07r-mention-picked')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')

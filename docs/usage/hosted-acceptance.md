@@ -13,3 +13,5 @@ The capture flow also queries for a file absent from the cached index, creates t
 The GUI launch explicitly requests a fresh window and preserves profile startup logs, including early exits. A process exit before the first capture fails acceptance and does not count as visual verification.
 
 After proving new-file insertion, the synthetic file is removed and the same query refreshed again. Review the no-match and subsequent Tab images to verify the deleted cached suggestion is not inserted and Tab safely moves to mode.
+
+Ten synthetic similarly named files exercise the eight-row suggestion cap. Captures show PageDown selecting row six, End selecting row eight, Home returning to row one and Tab inserting that row. The footer must count offered rows, not all ten matching files.

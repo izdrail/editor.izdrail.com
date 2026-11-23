@@ -59,6 +59,9 @@ class LinuxBuildTests(unittest.TestCase):
         self.assertIn("if added.read_text() != added_source:", script)
         self.assertLess(script.index('added.unlink()'), script.index("shot('07l-deleted-file-refreshed')"))
         self.assertIn("shot('07m-deleted-file-tab')", script)
+        self.assertIn('for index in range(10):', script)
+        for state in ['07n-mention-multi', '07o-mention-page', '07p-mention-end', '07q-mention-home', '07r-mention-picked']:
+            self.assertIn(f"shot('{state}')", script)
         self.assertIn("'--wait', '--new'", script)
         self.assertIn("home.rglob('*.log')", script)
         self.assertIn('app.terminate()', script)
