@@ -4867,7 +4867,17 @@ impl EditorData {
         match pointer_event.button.mouse_button() {
             MouseButton::Primary => {
                 self.active().set(true);
-                self.left_click(pointer_event);
+                let definition_click = (cfg!(target_os = "macos") && pointer_event.modifiers.meta())
+                    || (cfg!(not(target_os = "macos")) && pointer_event.modifiers.control());
+                if definition_click {
+                    // A rapid Ctrl-click can carry click count 2/3. Word/line
+                    // selection would move the request to the token boundary.
+                    let mode = self.cursor().with_untracked(|c| c.get_mode());
+                    let (offset, _) = self.editor.offset_of_point(mode, pointer_event.pos);
+                    self.cursor().update(|cursor| cursor.set_offset(offset, false, false));
+                } else {
+                    self.left_click(pointer_event);
+                }
 
                 let y =
                     pointer_event.pos.y - self.editor.viewport.get_untracked().y0;
@@ -4896,20 +4906,14 @@ impl EditorData {
                     }
                 }
 
-                if (cfg!(target_os = "macos") && pointer_event.modifiers.meta())
-                    || (cfg!(not(target_os = "macos"))
-                        && pointer_event.modifiers.control())
-                {
+                if definition_click {
                     let rs = self.find_hint(pointer_event.pos);
                     match rs {
                         FindHintRs::NoMatchBreak
                         | FindHintRs::NoMatchContinue { .. } => {
-                            self.common.lapce_command.send(LapceCommand {
-                                kind: CommandKind::Focus(
-                                    FocusCommand::GotoDefinition,
-                                ),
-                                data: None,
-                            })
+                            // Resolve on the clicked editor, not the globally
+                            // active tab, whose focus update may still be queued.
+                            self.go_to_definition()
                         }
                         FindHintRs::MatchWithoutLocation => {}
                         FindHintRs::Match(location) => {

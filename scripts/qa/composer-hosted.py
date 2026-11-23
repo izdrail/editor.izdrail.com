@@ -170,6 +170,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('10-file-reference-source')
         run('mousemove', '500', '112', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
         time.sleep(2); shot('10a-file-reference-target')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'jump_source.php')
+        run('key', 'Return'); time.sleep(2)
+        run('mousemove', '500', '112', 'click', '1')
+        time.sleep(.08)
+        run('keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(2); shot('10b-file-reference-rapid-click')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')

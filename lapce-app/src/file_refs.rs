@@ -87,3 +87,14 @@ mod tests {
         assert!(resolve(&f.0, Path::new("/etc/passwd"), "'src/main.php'", 2).is_none());
     }
 }
+
+#[cfg(test)]
+mod click_boundary_tests {
+    #[test]
+    fn every_path_character_including_edges_resolves_to_the_same_literal() {
+        let line = "require './jump_target.php';";
+        for col in 9..26 {
+            assert_eq!(super::quoted_path(line, col), Some("./jump_target.php"), "column {col}");
+        }
+    }
+}
