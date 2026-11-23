@@ -766,6 +766,9 @@ fn mention_candidates(query: &str, files: &[String], cap: usize) -> Vec<String> 
     let mut scored: Vec<(i64, &String)> = Vec::new();
     for path in files {
         let Some(score) = mention_candidate_score(query, path) else { continue; };
+        // Duplicate proxy entries must not consume the offered-row budget
+        // or collide in the path-keyed suggestion views. This stays O(cap).
+        if scored.iter().any(|(_, existing)| *existing == path) { continue; }
         let rank = |(value, file): &(i64, &String)| {
             score.cmp(value).then(path.len().cmp(&file.len())).then(path.cmp(file))
         };
@@ -5908,6 +5911,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn duplicate_file_index_entries_do_not_consume_suggestion_slots() {
+        let files = ["aa.php", "aa.php", "ab.php", "ab.php", "ac.php", "ad.php", "aa.php"]
+            .map(str::to_string);
+        assert_eq!(super::mention_candidates("a", &files, 3), ["aa.php", "ab.php", "ac.php"]);
+        assert_eq!(super::mention_candidates("a", &files, 8), ["aa.php", "ab.php", "ac.php", "ad.php"]);
+        assert!(super::mention_candidates("a", &files, 0).is_empty());
+        let reversed = files.into_iter().rev().collect::<Vec<_>>();
+        assert_eq!(super::mention_candidates("a", &reversed, 3), ["aa.php", "ab.php", "ac.php"]);
+    }
     #[test]
     fn mention_candidates_rank_and_cap() {
         let files = vec![

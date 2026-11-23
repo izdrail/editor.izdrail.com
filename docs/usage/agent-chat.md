@@ -202,3 +202,5 @@ A failed file-index request says that suggestions could not load, rather than cl
 With a failed @ query focused, F5 retries the file index without changing the draft. Modified F5 and ordinary composer keys keep their normal behavior. A failure that arrives after the query was removed also resets for the next query.
 
 F5 also refreshes a loaded file index while an @ query is active, useful after adding files. It preserves the query and does not send. An in-flight request is not duplicated.
+
+Repeated paths returned by the file index appear only once in suggestions and do not consume the eight-row limit. Filtering a query updates the offered rows and their count.

@@ -101,6 +101,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Page_Down'); shot('07o-mention-page')
         run('key', 'End'); shot('07p-mention-end')
         run('key', 'Home'); shot('07q-mention-home')
+        run('type', '--clearmodifiers', '09'); shot('07q1-mention-filtered')
+        run('key', 'BackSpace', 'BackSpace'); shot('07q2-mention-expanded')
         run('key', 'Tab'); shot('07r-mention-picked')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
