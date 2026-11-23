@@ -334,6 +334,17 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1); shot('13b-pairing-code-partner')
         if context_file.read_text() != expected_context + '()':
             raise RuntimeError('Current PHP code context did not add a partner')
+        bracket_file = project / 'bracket_highlights.php'
+        bracket_text = '<?php\n{[()]}\n'
+        bracket_file.write_text(bracket_text)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'bracket_highlights.php')
+        run('key', 'Return'); time.sleep(3)
+        run('key', 'ctrl+Home', 'Down', 'Home'); shot('14-bracket-opening-highlight')
+        run('key', 'Right', 'Right'); shot('14a-bracket-inner-highlight')
+        run('key', 'End', 'Left'); shot('14b-bracket-closing-highlight')
+        if bracket_file.read_text() != bracket_text:
+            raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
