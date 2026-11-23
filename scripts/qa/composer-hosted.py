@@ -75,6 +75,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'shift+Return'); run('type', '--clearmodifiers', 'Second unsent line'); shot('07a-newline')
         run('key', 'shift+Tab'); shot('07b-reverse-send-focus')
         run('key', 'Right')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@example'); time.sleep(3); shot('07c-mention')
+        run('key', 'shift+Tab'); shot('07d-mention-blur')
+        run('key', 'Right'); time.sleep(1); shot('07e-mention-return')
+        run('key', 'Tab'); shot('07f-mention-insert')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')

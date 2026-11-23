@@ -2660,6 +2660,10 @@ fn composer_menu_horizontal_target(model_chip: bool, key: &Key, modifiers: floem
 
 /// A loaded empty result is different from an index that has not arrived.
 /// Never imply that a bare unmatched token will attach a workspace file.
+fn mention_suggestions_allowed(draft_focused: bool, chat_active: bool, picker_open: bool) -> bool {
+    draft_focused && chat_active && !picker_open
+}
+
 fn mention_empty_footer(local: bool, active_tail: bool, loaded: bool, has_rows: bool) -> Option<&'static str> {
     if local && active_tail && loaded && !has_rows {
         Some("No matching files for this @ query. Edit the query or add a space to continue.")
@@ -3773,7 +3777,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     create_effect(move |_| {
         let chat_active = focus.get() == Focus::Panel(PanelKind::Chat);
         let picker_open = mode_expanded.get() || model_expanded.get();
-        if (!chat_active || picker_open) && mention_popup.get().is_some() {
+        if !mention_suggestions_allowed(composer_focused.get(), chat_active, picker_open) && mention_popup.get().is_some() {
             mention_popup.set(None);
         }
     });
@@ -3797,8 +3801,12 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         let mention_tx = mention_tx.clone();
         create_effect(move |_| {
             let input = mention_data.input.get();
+            let allowed = mention_suggestions_allowed(
+                composer_focused.get(), focus.get() == Focus::Panel(PanelKind::Chat),
+                mode_expanded.get() || model_expanded.get(),
+            );
             let next = match mention_at_caret(&input, mention_cursor.get()) {
-                Some((query, start)) if mention_tab.workspace.kind.is_local() => {
+                Some((query, start)) if allowed && mention_tab.workspace.kind.is_local() => {
                     match mention_files.get() {
                         Some(files) => {
                             let items = mention_candidates(&query, &files, 8);
@@ -6502,6 +6510,15 @@ mod quiet_conversation_tests {
         }
     }
 
+    #[test]
+    fn mention_suggestions_require_the_actual_draft_not_just_chat_panel_ownership() {
+        for bits in 0..8 {
+            let draft = bits & 1 != 0;
+            let chat = bits & 2 != 0;
+            let picker = bits & 4 != 0;
+            assert_eq!(super::mention_suggestions_allowed(draft, chat, picker), bits == 3);
+        }
+    }
     #[test]
     fn mention_footer_counts_offered_rows_without_claiming_all_workspace_matches() {
         use super::mention_footer as footer;

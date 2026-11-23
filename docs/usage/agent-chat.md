@@ -192,3 +192,5 @@ Open mode/model lists advertise PageUp/PageDown jumps of five enabled choices an
 With the draft focused, the footer explains Enter to send, Shift+Enter for a new line, Tab to mode and Shift+Tab to Send/Stop. Mention feedback and open-list help take priority.
 
 Draft guidance follows the current state: an empty draft asks for a message; a reply in progress offers continued drafting and Shift+Tab to Stop rather than promising another send.
+
+File suggestions belong to the focused draft. Moving to a composer control clears them, and a late file-index response cannot reopen them while focus is elsewhere. Returning to the unchanged draft can show matching files again.
