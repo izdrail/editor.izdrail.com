@@ -277,6 +277,23 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1); shot('12b-pairing-closer-skip-disabled')
         if pairing_file.read_text() != '())':
             raise RuntimeError('Closer skip setting did not disable skipping independently')
+        settings_file.write_text(initial_settings + '\n[editor]\nsmart-enter = false\nsmart-indent = true\n')
+        time.sleep(3)
+        enter_controls = project / 'enter_controls.php'
+        enter_controls.write_text('<?php\n  {}\n')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'enter_controls.php')
+        run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+Home', 'Down', 'End', 'Left', 'Return')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12c-smart-enter-disabled-indent-kept')
+        if enter_controls.read_text() != '<?php\n  {\n  }\n':
+            raise RuntimeError('Disabled Smart Enter should retain indentation without pair expansion')
+        settings_file.write_text(initial_settings + '\n[editor]\nsmart-enter = false\nsmart-indent = false\n')
+        time.sleep(3)
+        run('key', 'ctrl+z'); run('key', 'Return')
+        run('key', 'ctrl+s'); time.sleep(1); shot('12d-smart-indent-disabled')
+        if enter_controls.read_text() != '<?php\n  {\n}\n':
+            raise RuntimeError('Disabled smart indentation should insert a plain newline')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')
