@@ -177,6 +177,27 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(.08)
         run('keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
         time.sleep(2); shot('10b-file-reference-rapid-click')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'jump_source.php')
+        run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+Home', 'Down', 'End')
+        run('type', '--clearmodifiers', ' // unsaved navigation check')
+        shot('10c-file-reference-after-edit-source')
+        run('mousemove', '450', '112', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(2); shot('10d-file-reference-after-edit-target')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'jump_source.php')
+        run('key', 'Return'); time.sleep(2)
+        # First plain click selects this source tab; a second click on the
+        # same point carries a multi-click count while the modifier changes.
+        run('mousemove', '440', '112', 'click', '1')
+        time.sleep(.08)
+        run('keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(2); shot('10e-file-reference-switched-target')
+        if jump_source.read_text() != "<?php\nrequire './jump_target.php';\n":
+            raise RuntimeError('Navigation unexpectedly saved the edited source')
+        if jump_target.read_text() != "<?php // Ctrl-click destination fixture.\n":
+            raise RuntimeError('Navigation changed the destination file')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')

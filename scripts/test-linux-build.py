@@ -71,6 +71,8 @@ class LinuxBuildTests(unittest.TestCase):
         for state in ['09-core-pair-carets', '09a-core-pairs-deleted', '09b-core-pairs-undo', '09c-core-pairs-redo']:
             self.assertIn(f"shot('{state}')", script)
         self.assertIn("'ctrl+Home', 'Down', 'Right', 'ctrl+alt+Down'", script)
+        for state in ['10b-file-reference-rapid-click', '10c-file-reference-after-edit-source', '10d-file-reference-after-edit-target', '10e-file-reference-switched-target']:
+            self.assertIn(f"shot('{state}')", script)
         self.assertIn("if core_file.read_text() != core_original:", script)
         for state in ['09d-core-enter-before', '09e-core-enter-expanded', '09f-core-enter-undo', '09g-core-enter-redo', '10-file-reference-source', '10a-file-reference-target']:
             self.assertIn(f"shot('{state}')", script)
