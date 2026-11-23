@@ -266,13 +266,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1); shot('12-pairing-brackets-enabled')
         if pairing_file.read_text() != '()':
             raise RuntimeError('Bracket pairing did not stay enabled independently')
-        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '"')
+        run('key', 'ctrl+a', 'BackSpace'); run('type', '--clearmodifiers', '"')
         run('key', 'ctrl+s'); time.sleep(1); shot('12a-pairing-quotes-disabled')
         if pairing_file.read_text() != '"':
             raise RuntimeError('Quote pairing setting did not reload or disable insertion')
         settings_file.write_text(initial_settings + '\n[editor]\nauto-close-quotes = true\nauto-close-brackets = true\nskip-existing-closing = false\n')
         time.sleep(3)
-        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '(')
+        run('key', 'ctrl+a', 'BackSpace'); run('type', '--clearmodifiers', '(')
         run('type', '--clearmodifiers', ')')
         run('key', 'ctrl+s'); time.sleep(1); shot('12b-pairing-closer-skip-disabled')
         if pairing_file.read_text() != '())':
