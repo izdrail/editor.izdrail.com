@@ -2673,8 +2673,8 @@ fn mention_footer(selected: usize, count: usize) -> Option<String> {
 }
 
 fn composer_menu_footer(mode_open: bool, model_open: bool) -> Option<&'static str> {
-    if model_open { Some("Models: Up/Down to highlight, Enter/Space to choose. Escape/Tab to draft.") }
-    else if mode_open { Some("Modes: Up/Down to highlight, Enter/Space to choose. Escape/Tab to draft.") }
+    if model_open { Some("Models: Up/Down to highlight, PageUp/PageDown by 5, Home/End to jump. Enter/Space to choose. Escape/Tab to draft.") }
+    else if mode_open { Some("Modes: Up/Down to highlight, PageUp/PageDown by 5, Home/End to jump. Enter/Space to choose. Escape/Tab to draft.") }
     else { None }
 }
 
@@ -6523,6 +6523,8 @@ mod quiet_conversation_tests {
             let text = footer(mode, model).unwrap();
             assert!(text.starts_with(prefix));
             assert!(text.contains("Up/Down to highlight"));
+            assert!(text.contains("PageUp/PageDown by 5"));
+            assert!(text.contains("Home/End to jump"));
             assert!(text.contains("Enter/Space to choose"));
             assert!(text.contains("Escape/Tab to draft"));
             assert!(!text.contains("to open"));

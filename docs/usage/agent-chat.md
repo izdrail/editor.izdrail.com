@@ -186,3 +186,5 @@ The composer outline stays focused while the draft, mode, model, or Send/Stop co
 While a mode or model list is open, the composer keeps its focus outline and the footer explains highlighting, choosing, and returning to the draft without choosing. Closing the list restores the usual focus-specific help.
 
 Composer guidance uses normal text contrast while you are typing, using a composer control, or choosing from a mode/model list. The idle disclaimer stays dim when focus moves elsewhere.
+
+Open mode/model lists advertise PageUp/PageDown jumps of five enabled choices and Home/End jumps to the first/last enabled choice. These keys only change the highlight; Enter/Space chooses.
