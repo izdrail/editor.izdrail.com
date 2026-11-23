@@ -140,3 +140,35 @@ mod tests {
         }
     }
 }
+
+/// Existing language-unaware structural fallback. Prefer the bracket directly
+/// under the caret before looking for an enclosing pair.
+pub fn fallback_bracket_pair(text: &lapce_xi_rope::Rope, offset: usize) -> Option<(usize,usize)> {
+    use crate::word::WordCursor;
+    if offset > text.len() || text.at_or_prev_codepoint_boundary(offset) != Some(offset) { return None; }
+    if let Some(other)=WordCursor::new(text,offset).match_pairs() {
+        return Some((offset.min(other),offset.max(other)));
+    }
+    WordCursor::new(text,offset).find_enclosing_pair()
+}
+
+#[cfg(test)]
+mod bracket_fallback_tests {
+    use super::*;
+    use lapce_xi_rope::Rope;
+    #[test]
+    fn bracket_fallback_covers_on_and_inside_every_structural_pair() {
+        for pair in ["()","[]","{}"] {
+            let text=Rope::from(pair);
+            assert_eq!(fallback_bracket_pair(&text,0),Some((0,1)));
+            assert_eq!(fallback_bracket_pair(&text,1),Some((0,1)));
+        }
+        let text=Rope::from("λ{[()]}\n");
+        for (offset,expected) in [(2,(2,7)),(3,(3,6)),(4,(4,5)),(5,(4,5)),(6,(3,6)),(7,(2,7))] {
+            assert_eq!(fallback_bracket_pair(&text,offset),Some(expected));
+        }
+        assert_eq!(fallback_bracket_pair(&text,1),None);
+        assert_eq!(fallback_bracket_pair(&text,usize::MAX),None);
+        assert_eq!(fallback_bracket_pair(&Rope::from("("),0),None);
+    }
+}

@@ -2139,7 +2139,7 @@ impl Doc {
         let rev = self.rev();
         self.syntax
             .with_untracked(|syntax| {
-                (!syntax.text.is_empty() && syntax.rev == rev)
+                (syntax.layers.is_some() && !syntax.text.is_empty() && syntax.rev == rev)
                     .then(|| syntax.find_enclosing_pair(offset))
             })
             // If syntax.text is empty, either the buffer is empty or we don't have syntax support
@@ -2147,7 +2147,7 @@ impl Doc {
             // Try a language unaware search for enclosing brackets in case it is the latter.
             .unwrap_or_else(|| {
                 self.buffer.with_untracked(|buffer| {
-                    WordCursor::new(buffer.text(), offset).find_enclosing_pair()
+                    lapce_core::pairing_context::fallback_bracket_pair(buffer.text(), offset)
                 })
             })
     }
