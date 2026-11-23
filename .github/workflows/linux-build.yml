@@ -83,11 +83,12 @@ jobs:
         run: bash scripts/build-linux-hosted.sh
 
       - name: Install synthetic GUI capture dependencies
-        run: sudo apt-get install -y -qq xvfb xdotool scrot libgl1-mesa-dri
+        run: sudo apt-get install -y -qq xvfb xdotool scrot libgl1-mesa-dri mesa-vulkan-drivers
 
       - name: Capture composer keyboard states
         env:
           LIBGL_ALWAYS_SOFTWARE: 1
+          WGPU_BACKEND: vulkan
         run: python3 scripts/qa/composer-hosted.py target/release/gravity target/gui-acceptance
 
       - name: Upload GUI screenshots and logs

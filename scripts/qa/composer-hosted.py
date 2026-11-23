@@ -4,12 +4,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 
 binary = str(Path(sys.argv[1]).resolve())
 out = Path(sys.argv[2]).resolve()
 out.mkdir(parents=True, exist_ok=True)
-home = out / 'home'
+home = Path(tempfile.mkdtemp(prefix='gravity-gui-', dir='/tmp'))
 project = out / 'project'
 project.mkdir(exist_ok=True)
 source = '<?php\nnamespace App;\nfinal class UserService { public function name(): string { return "Synthetic"; } }\n'
