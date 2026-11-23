@@ -74,3 +74,9 @@ Source: `lapce-app/src/settings.rs`. All rows below require runtime evidence; so
 | Theme-color search/input/reset | config colour edits / reset_setting | Long values, color preview, keyboard reset, error feedback, both themes |
 
 Known source-audit gaps to reproduce: generic value writes can fail without inline feedback; generic dropdown has no explicit arrow/escape selection handler in its custom overlay; section selection while search hides that section has no clear action/feedback. These are OPEN under CFG-001/002, not ignored or treated as accepted behavior. Existing AI key storage reports a private plaintext file, not encryption. Secure credential redesign remains an explicit later security ticket and must not be advertised as already encrypted.
+
+## Runtime follow-up, 23:39
+
+`45286820403` verifies UI-001 corrected: the shortcut jumps from after the closer to line 2 column 1, returns to the closer without selecting, and Shift-arrow still selects. `45287670861` verifies no-result guidance and filtered section headers. Its narrow light-theme capture exposes excessively cramped settings content with explorer, terminal and AI panels open. Compact settings navigation now moves above content below a 480px settings viewport, preserving section access without spending half the content width on the sidebar. New runtime evidence is required before acceptance. Full Phase 1 remains OPEN.
+
+`45288278519` has passing Rust tests but failed the real keyboard persistence gate: Tab from the settings search did not focus the filtered boolean target, Space did not change the setting. Screenshots 17a/17b show the value unchanged. Keyboard accessibility is NOT ACCEPTED. Fix focus routing before proceeding to new features; do not weaken the assertion or infer a pass from keyboard_navigable declarations.

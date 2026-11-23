@@ -456,6 +456,7 @@ pub fn settings_view(
     });
 
     let available_width = create_rw_signal(1000.0_f64);
+    let compact_navigation = move || available_width.get() < 480.0;
     let content_padding = move || if available_width.get() < 760.0 { 16.0 } else { 32.0 };
     let reflow_anchor = create_rw_signal(None::<String>);
     let content_width = create_rw_signal(0.0_f64);
@@ -479,7 +480,8 @@ pub fn settings_view(
             s.padding_horiz(12.0).padding_vert(4.0)
                 .border(1.0).border_color(floem::peniko::Color::TRANSPARENT)
                 .focus_visible(|s| s.border_color(config.color(LapceColor::EDITOR_FOCUS)))
-                .width_pct(100.0)
+                .apply_if(!compact_navigation(), |s| s.width_pct(100.0))
+                .flex_shrink(0.0)
                 .apply_if(kind == current_kind.get(), |s| {
                     s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
                 })
@@ -503,7 +505,7 @@ pub fn settings_view(
                 |(k, _)| k.clone(),
                 move |(k, pos)| switcher_item(k, Box::new(move || Some(pos)), 0.0),
             )
-            .style(|s| s.flex_col().width_pct(100.0)),
+            .style(move |s| s.width_pct(100.0).apply_if(!compact_navigation(), |s| s.flex_col())),
             stack((
                 switcher_item(
                     "Plugin Settings".to_string(),
@@ -540,13 +542,13 @@ pub fn settings_view(
         container({
             scroll({
                 container(switcher())
-                    .style(|s| s.padding_vert(20.0).width_pct(100.0))
+                    .style(move |s| s.padding_vert(if compact_navigation() { 2.0 } else { 20.0 }).width_pct(100.0))
             })
             .style(|s| s.absolute().size_pct(100.0, 100.0))
         })
         .style(move |s| {
-            s.height_pct(100.0)
-                .width(if available_width.get() < 760.0 { 140.0 } else { 200.0 })
+            s.apply_if(compact_navigation(), |s| s.width_pct(100.0).height(40.0))
+                .apply_if(!compact_navigation(), |s| s.height_pct(100.0).width(if available_width.get() < 760.0 { 140.0 } else { 200.0 }))
                 .flex_shrink(0.0)
                 .border_right(1.0)
                 .border_color(config.get().color(LapceColor::LAPCE_BORDER))
@@ -626,7 +628,7 @@ pub fn settings_view(
         ))
         .style(|s| s.flex_col().size_pct(100.0, 100.0)),
     ))
-    .style(|s| s.absolute().size_pct(100.0, 100.0))
+    .style(move |s| s.absolute().size_pct(100.0, 100.0).apply_if(compact_navigation(), |s| s.flex_col()))
     .on_resize(move |rect| available_width.set(rect.width()))
     .debug_name("Settings")
     .on_cleanup(move || {
