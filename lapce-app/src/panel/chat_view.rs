@@ -2690,6 +2690,10 @@ fn composer_footer_color(active: bool) -> &'static str {
     if active { LapceColor::EDITOR_FOREGROUND } else { LapceColor::EDITOR_DIM }
 }
 
+fn composer_draft_footer(focused: bool) -> Option<&'static str> {
+    focused.then_some("Enter to send. Shift+Enter for a new line. Tab to mode, Shift+Tab to Send/Stop.")
+}
+
 fn composer_footer(action_focused: bool, busy: bool, input: &str) -> &'static str {
     if !action_focused { "AI can make mistakes - review changes." }
     else if busy { "Enter/Space to stop. Left to model. Right/Escape to draft." }
@@ -5568,6 +5572,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 composer_focused.get() && query.is_some(),
                 files.is_some(), has_matches,
             ) { return hint.to_string(); }
+            if let Some(hint) = composer_draft_footer(composer_focused.get()) { return hint.to_string(); }
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
@@ -6505,6 +6510,14 @@ mod quiet_conversation_tests {
         assert!(last.contains("PageUp/PageDown by 5"));
         assert_eq!(footer(usize::MAX, usize::MAX), None);
         assert_eq!(footer(usize::MAX, 8), None);
+    }
+    #[test]
+    fn draft_help_explains_send_newline_and_control_traversal() {
+        assert_eq!(super::composer_draft_footer(false), None);
+        let text = super::composer_draft_footer(true).unwrap();
+        for hint in ["Enter to send", "Shift+Enter for a new line", "Tab to mode", "Shift+Tab to Send/Stop"] {
+            assert!(text.contains(hint));
+        }
     }
     #[test]
     fn footer_guidance_uses_normal_contrast_only_while_composer_is_active() {

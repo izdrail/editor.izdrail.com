@@ -188,3 +188,5 @@ While a mode or model list is open, the composer keeps its focus outline and the
 Composer guidance uses normal text contrast while you are typing, using a composer control, or choosing from a mode/model list. The idle disclaimer stays dim when focus moves elsewhere.
 
 Open mode/model lists advertise PageUp/PageDown jumps of five enabled choices and Home/End jumps to the first/last enabled choice. These keys only change the highlight; Enter/Space chooses.
+
+With the draft focused, the footer explains Enter to send, Shift+Enter for a new line, Tab to mode and Shift+Tab to Send/Stop. Mention feedback and open-list help take priority.
