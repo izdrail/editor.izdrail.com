@@ -223,6 +223,36 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Cross-file coordinate collision incorrectly requested references')
         if lsp_source.read_text() != 'probe()\n# source symbol begins at the same coordinates as target\n':
             raise RuntimeError('LSP navigation changed source bytes')
+        delayed_source = project / 'lsp_delayed.py'
+        delayed_source.write_text('probe()\n# delayed definition response fixture\n')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'lsp_delayed.py')
+        run('key', 'Return'); time.sleep(2)
+        run('mousemove', '355', '95', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        # Wait for provider receipt, then change the document before its
+        # intentionally delayed reply. The old response must not navigate.
+        for _ in range(30):
+            delayed_events = [json.loads(line) for line in lsp_log.read_text().splitlines()]
+            received = any(event['method'] == 'textDocument/definition'
+                and event['params']['textDocument']['uri'].endswith('/lsp_delayed.py')
+                for event in delayed_events)
+            if received:
+                break
+            time.sleep(.05)
+        if not received:
+            raise RuntimeError('Delayed definition fixture never received the click')
+        run('key', 'End'); run('type', '--clearmodifiers', ' # unsaved revision after request')
+        time.sleep(3); shot('11b-lsp-stale-response-after-edit')
+        run('mousemove', '355', '95', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(3); shot('11c-lsp-fresh-response-after-edit')
+        delayed_events = [json.loads(line) for line in lsp_log.read_text().splitlines()]
+        delayed_requests = [event for event in delayed_events
+            if event['method'] == 'textDocument/definition'
+            and event['params']['textDocument']['uri'].endswith('/lsp_delayed.py')]
+        if len(delayed_requests) != 2:
+            raise RuntimeError('Expected both stale and fresh delayed definition requests')
+        if delayed_source.read_text() != 'probe()\n# delayed definition response fixture\n':
+            raise RuntimeError('Navigation unexpectedly saved the revised LSP source')
         if app.poll() is not None:
             raise RuntimeError('Editor exited during capture')
         (out / 'result.txt').write_text('Capture completed; source unchanged; no Send activation. Inspect PNGs before visual acceptance.\n')

@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import sys
+import time
 from urllib.parse import urlparse, unquote
 
 log = Path(sys.argv[1])
@@ -31,6 +32,8 @@ while True:
         send(message['id'], {'capabilities': {'textDocumentSync': 1, 'definitionProvider': True, 'referencesProvider': True}})
     elif method == 'textDocument/definition':
         source = Path(unquote(urlparse(params['textDocument']['uri']).path))
+        if source.name == 'lsp_delayed.py':
+            time.sleep(2)
         send(message['id'], {'uri': source.with_name('lsp_target.py').as_uri(), 'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': 0, 'character': 5}}})
     elif method == 'textDocument/references':
         send(message['id'], [])
