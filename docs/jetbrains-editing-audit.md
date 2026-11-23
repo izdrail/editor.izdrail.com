@@ -65,3 +65,7 @@ Audit baseline: `3b889a8`, 23 November 2026. This is a source audit, not a claim
 ## First Phase 1 change
 
 Per-caret paired Backspace now removes an immediately adjacent empty pair at every caret in one transaction. Explicit selections delete exactly their selected range, and whitespace between delimiters is no longer consumed. No provenance tracking is claimed: adjacent manually typed empty pairs behave the same as automatically inserted ones. Four `lapce-core::smart_editing_tests` exercise the vendored action via the existing workspace, including all six pairs, mixed ranges/carets, Unicode and undo/redo. Hosted acceptance remains required.
+
+## Smart Enter history correction
+
+The expanded native-action matrix caught two independent undo groups for the two halves of an empty-pair Enter expansion. The core now inserts the complete expansion in one rope edit and places each caret on its inner line. Consecutive Enter actions remain separate undo steps. All-pair insertion/skipping/wrapping, nested insertion/paste, indentation stops and structural Enter across tabs/two/four spaces are explicit core gates. Hosted acceptance is required before accepting the correction.

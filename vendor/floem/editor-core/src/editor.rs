@@ -348,8 +348,7 @@ impl Action {
         auto_indent: bool,
     ) -> Vec<(Rope, RopeDelta, InvalLines)> {
         let mut edits = Vec::with_capacity(selection.regions().len());
-        let mut extra_edits = Vec::new();
-        let mut shift = 0i32;
+        let mut caret_tails = Vec::with_capacity(selection.regions().len());
         let line_ending = buffer.line_ending().get_chars();
         for region in selection.regions() {
             let offset = region.max();
@@ -362,7 +361,7 @@ impl Action {
             let second_half_trim = second_half.trim();
 
             // TODO: this could be done with 1 string
-            let new_line_content = {
+            let mut new_line_content = {
                 let indent_storage;
                 let indent = if auto_indent && has_unmatched_pair(&first_half) {
                     indent_storage = format!("{}{}", line_indent, buffer.indent_unit());
@@ -380,23 +379,20 @@ impl Action {
 
             let selection = Selection::region(region.min(), region.max());
 
-            shift -= (region.max() - region.min()) as i32;
-            shift += new_line_content.len() as i32;
-
-            edits.push((selection, new_line_content));
-
+            let mut caret_tail = 0;
             if let Some(c) = first_half.chars().rev().find(|&c| c != ' ') {
                 if let Some(true) = matching_pair_direction(c) {
                     if let Some(c) = matching_char(c) {
                         if second_half_trim.starts_with(c) {
-                            let selection =
-                                Selection::caret((region.max() as i32 + shift) as usize);
-                            let content = format!("{line_ending}{line_indent}",);
-                            extra_edits.push((selection, content));
+                            let content = format!("{line_ending}{line_indent}");
+                            caret_tail = content.len();
+                            new_line_content.push_str(&content);
                         }
                     }
                 }
             }
+            caret_tails.push(caret_tail);
+            edits.push((selection, new_line_content));
         }
 
         let edits = edits
@@ -406,21 +402,16 @@ impl Action {
         let (text, delta, inval_lines) = buffer.edit(&edits, EditType::InsertNewline);
         let mut selection = selection.apply_delta(&delta, true, InsertDrift::Default);
 
-        let mut deltas = vec![(text, delta, inval_lines)];
-
-        if !extra_edits.is_empty() {
-            let edits = extra_edits
-                .iter()
-                .map(|(selection, s)| (selection, s.as_str()))
-                .collect::<Vec<_>>();
-            let (text, delta, inval_lines) = buffer.edit(&edits, EditType::InsertNewline);
-            selection = selection.apply_delta(&delta, false, InsertDrift::Default);
-            deltas.push((text, delta, inval_lines));
+        // The whole structural expansion is one rope edit and undo group.
+        // Move each caret back from the inserted closing line to the inner line.
+        for (region, tail) in selection.regions_mut().iter_mut().zip(caret_tails) {
+            region.start -= tail;
+            region.end -= tail;
         }
 
         cursor.mode = CursorMode::Insert(selection);
 
-        deltas
+        vec![(text, delta, inval_lines)]
     }
 
     pub fn execute_motion_mode(
