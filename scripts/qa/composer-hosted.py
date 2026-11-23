@@ -41,15 +41,16 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             time.sleep(1)
             if app.poll() is not None:
                 raise RuntimeError('Editor exited before GUI capture')
-            found = subprocess.run(['xdotool', 'search', '--class', 'lapce'], env=env, text=True, capture_output=True)
+            found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', 'lapce'], env=env, text=True, capture_output=True)
             if found.returncode == 0 and found.stdout.strip():
                 window = found.stdout.splitlines()[0]
                 break
         if window is None:
             raise RuntimeError('No editor window within 30 seconds')
         run('windowsize', window, '1443', '796')
-        run('windowfocus', window)
+        run('windowmap', '--sync', window)
         time.sleep(5)
+        run('windowfocus', '--sync', window)
         run('key', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', '--delay', '40', 'example.php')
         run('key', 'Return'); time.sleep(2)
