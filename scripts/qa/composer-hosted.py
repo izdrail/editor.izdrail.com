@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Capture synthetic composer states. PNG review is a separate acceptance gate."""
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -35,12 +36,12 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
     app = None
     try:
         time.sleep(2)
-        app = subprocess.Popen([binary, str(project), '--wait'], env=env, stdout=log, stderr=subprocess.STDOUT)
+        app = subprocess.Popen([binary, str(project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
         window = None
         for _ in range(30):
             time.sleep(1)
             if app.poll() is not None:
-                raise RuntimeError('Editor exited before GUI capture')
+                raise RuntimeError(f'Editor exited before GUI capture (status {app.returncode}); see preserved startup logs')
             found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', 'lapce'], env=env, text=True, capture_output=True)
             if found.returncode == 0 and found.stdout.strip():
                 window = found.stdout.splitlines()[0]
@@ -106,3 +107,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
                 app.kill()
         xvfb.terminate()
         xvfb.wait(timeout=5)
+        # Keep diagnostics from inside the isolated profile as well as
+        # the launcher's stdout, especially if graphics startup exits.
+        for item in home.rglob('*.log'):
+            if item.is_file():
+                relative = item.relative_to(home)
+                shutil.copyfile(item, out / ('profile-' + '-'.join(relative.parts)))
