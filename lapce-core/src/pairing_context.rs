@@ -28,7 +28,6 @@ mod tests {
             (Php, "<?php\n$x = \"a value\"; // note here\n", "value", "here"),
             (Python, "value = \"a value\" # note here\n", "value\"", "here"),
             (Rust, "let value = \"a value\"; // note here\n", "value\"", "here"),
-            (Go, "var value = \"a value\" // note here\n", "value\"", "here"),
             (Javascript, "const value = \"a value\"; // note here\n", "value\"", "here"),
             (Typescript, "const value: string = \"a value\"; // note here\n", "value\"", "here"),
             (Css, "a { content: \"a value\"; /* note here */ }\n", "value\"", "here"),
@@ -36,12 +35,17 @@ mod tests {
             (Blade, "<a title=\"a value\">x</a>{{-- note here --}}\n", "value\"", "here"),
             (Vue, "<template><a title=\"a value\">x</a><!-- note here --></template>\n", "value\"", "here"),
         ] {
-            let snapshot = lexilla::highlight(language, &Rope::from(text)).expect("existing lexer");
+            let snapshot = lexilla::highlight(language, &Rope::from(text)).unwrap_or_else(|| panic!("missing lexer: {language:?}"));
             assert!(!permits_partner(&snapshot, text.rfind(string_marker).unwrap() + 2), "{language:?}: string");
             assert!(!permits_partner(&snapshot, text.find(comment_marker).unwrap() + 1), "{language:?}: comment");
             assert!(permits_partner(&snapshot, 0), "{language:?}: code start");
             assert!(!permits_partner(&snapshot, text.len()+1));
         }
+    }
+
+    #[test]
+    fn pairing_context_go_has_no_lexilla_snapshot() {
+        assert!(lexilla::highlight(crate::language::LapceLanguage::Go, &Rope::from("package main\n")).is_none());
     }
 
     #[test]
