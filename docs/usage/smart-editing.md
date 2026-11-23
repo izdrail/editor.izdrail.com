@@ -30,3 +30,5 @@ The verified snapshot cases cover PHP, Python, Rust, JavaScript, TypeScript, CSS
 Bracket highlighting now reaches the existing structural fallback when the current syntax state has no tree layers. The fallback checks a bracket directly under the caret before its enclosing pair, so opening brackets are included. This fallback is language-unaware and does not claim string/comment filtering or unmatched-bracket feedback.
 
 Structural matching also checks the character immediately before the caret, including after a closing bracket at end of file. A bracket under the caret takes precedence over the previous character for touching pairs such as `()[]`.
+
+The existing Match Pairs command also accepts a bracket immediately before the caret in the structural fallback. It does not jump from arbitrary code to an enclosing bracket. Existing configurable shortcuts are unchanged.

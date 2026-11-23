@@ -182,3 +182,30 @@ mod bracket_fallback_tests {
         assert_eq!(fallback_bracket_pair(&Rope::from("λ()"),4),Some((2,3)));
     }
 }
+
+/// Match a bracket under the caret, or immediately before it. No enclosing
+/// jump from arbitrary code, since that would silently change command scope.
+pub fn fallback_matching_offset(text: &lapce_xi_rope::Rope, offset: usize) -> Option<usize> {
+    use crate::word::WordCursor;
+    if offset > text.len() || text.at_or_prev_codepoint_boundary(offset) != Some(offset) { return None; }
+    WordCursor::new(text,offset).match_pairs().or_else(|| {
+        let previous=offset.checked_sub(1).and_then(|at|text.at_or_prev_codepoint_boundary(at))?;
+        WordCursor::new(text,previous).match_pairs()
+    })
+}
+
+#[cfg(test)]
+mod matching_offset_tests {
+    use super::*;
+    use lapce_xi_rope::Rope;
+    #[test]
+    fn matching_offset_under_and_adjacent_brackets_has_stable_precedence() {
+        let text=Rope::from("λ{()} x");
+        for (offset, expected) in [(2,Some(5)),(3,Some(4)),(4,Some(3)),(5,Some(2)),(6,Some(2)),(7,None),(1,None),(999,None)] {
+            assert_eq!(fallback_matching_offset(&text,offset),expected,"at {offset}");
+        }
+        assert_eq!(fallback_matching_offset(&Rope::from("()"),2),Some(0));
+        assert_eq!(fallback_matching_offset(&Rope::from("()[]"),2),Some(3));
+        assert_eq!(fallback_matching_offset(&Rope::from("("),1),None);
+    }
+}

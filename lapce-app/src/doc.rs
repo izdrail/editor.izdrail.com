@@ -2271,13 +2271,10 @@ impl Document for Doc {
 
     fn find_matching_pair(&self, offset: usize) -> usize {
         self.syntax().with_untracked(|syntax| {
-            if syntax.layers.is_some() {
+            if syntax.layers.is_some() && syntax.rev == self.rev() {
                 syntax.find_matching_pair(offset).unwrap_or(offset)
             } else {
-                let text = self.text();
-                WordCursor::new(&text, offset)
-                    .match_pairs()
-                    .unwrap_or(offset)
+                lapce_core::pairing_context::fallback_matching_offset(&self.text(), offset).unwrap_or(offset)
             }
         })
     }
