@@ -5571,7 +5571,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             composer_footer(action_focused.get(), stop_busy.get(), &input_signal.get()).to_string()
         })
         .style(move |s| {
-            s.font_size(11.0).min_height(24.0)
+            s.font_size(11.0).min_height(48.0)
                 .max_width_full().min_width(0.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)
                 .align_self(Some(floem::style::AlignItems::Center))
