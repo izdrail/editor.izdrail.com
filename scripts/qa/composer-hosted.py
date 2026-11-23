@@ -362,6 +362,19 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(3); shot('16f-settings-light-narrow')
         run('windowsize', window, '1443', '796'); time.sleep(2)
         shot('16g-settings-light-wide')
+        run('type', '--clearmodifiers', 'auto close quotes')
+        shot('17-settings-toggle-filtered')
+        run('key', 'Tab'); shot('17a-settings-toggle-keyboard-focus')
+        run('key', 'space'); time.sleep(2); shot('17b-settings-toggle-keyboard-off')
+        if 'auto-close-quotes = false' not in settings_file.read_text():
+            raise RuntimeError('Keyboard settings toggle did not persist false')
+        run('key', 'shift+Tab', 'ctrl+a'); run('type', '--clearmodifiers', 'keymap preset')
+        shot('17c-settings-dropdown-filtered')
+        run('key', 'Tab', 'space'); shot('17d-settings-dropdown-keyboard-open')
+        run('key', 'Down'); shot('17e-settings-dropdown-keyboard-moved')
+        run('key', 'Escape'); shot('17f-settings-dropdown-keyboard-cancel')
+
+
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

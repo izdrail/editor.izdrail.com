@@ -4,7 +4,7 @@ use floem::{
     IntoView, View,
     action::{TimerToken, add_overlay, exec_after, remove_overlay},
     event::EventListener,
-    keyboard::Modifiers,
+    keyboard::{Key, Modifiers, NamedKey},
     peniko::kurbo::{Point, Rect, Size},
     reactive::{
         Memo, ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith,
@@ -477,6 +477,8 @@ pub fn settings_view(
         .style(move |s| {
             let config = config.get();
             s.padding_horiz(12.0).padding_vert(4.0)
+                .border(1.0).border_color(floem::peniko::Color::TRANSPARENT)
+                .focus_visible(|s| s.border_color(config.color(LapceColor::EDITOR_FOCUS)))
                 .width_pct(100.0)
                 .apply_if(kind == current_kind.get(), |s| {
                     s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
@@ -855,13 +857,15 @@ fn settings_item_view(
                     ))
                     .style(|s| s.items_center()),
                 )
+                .keyboard_navigable()
                 .on_click_stop(move |_| {
                     checked.update(|checked| {
                         *checked = !*checked;
                     });
                 })
-                .style(|s| {
-                    s.absolute()
+                .style(move |s| {
+                    s.absolute().border(1.0).border_color(floem::peniko::Color::TRANSPARENT)
+                        .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
                         .cursor(CursorStyle::Pointer)
                         .size_pct(100.0, 100.0)
                         .items_start()
@@ -1333,6 +1337,7 @@ fn dropdown_view(
     let overlay_id = create_rw_signal(None);
     let dropdown_input_focus = create_rw_signal(false);
     let dropdown_scroll_focus = create_rw_signal(true);
+    let input_id = create_rw_signal(None::<floem::ViewId>);
 
     {
         let item = item.to_owned();
@@ -1353,6 +1358,7 @@ fn dropdown_view(
                         size,
                         window_size,
                         config,
+                        input_id,
                     )
                 });
                 overlay_id.set(Some(id));
@@ -1363,7 +1369,7 @@ fn dropdown_view(
         });
     }
 
-    stack((
+    let input = stack((
         label(move || current_value.get()).style(move |s| {
             s.text_ellipsis()
                 .width_pct(100.0)
@@ -1407,7 +1413,8 @@ fn dropdown_view(
             .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             .border(1.0)
             .border_radius(6.0)
-            .width(250.0)
+            .width(250.0).max_width_pct(100.0)
+            .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
             .line_height(1.8)
     })
     .keyboard_navigable()
@@ -1424,7 +1431,28 @@ fn dropdown_view(
         if let Some(id) = overlay_id.get_untracked() {
             remove_overlay(id);
         }
-    })
+    });
+    input_id.set(Some(input.id()));
+    input
+}
+
+fn dropdown_next_index(index: usize, len: usize, backwards: bool) -> usize {
+    if len == 0 { return 0; }
+    if backwards { index.min(len - 1).saturating_sub(1) } else { index.saturating_add(1).min(len - 1) }
+}
+
+#[cfg(test)]
+mod settings_dropdown_tests {
+    use super::dropdown_next_index;
+    #[test] fn keyboard_selection_is_bounded_without_underflow_or_overflow() {
+        for len in [0,1,4] {
+            for index in [0,1,3,usize::MAX] {
+                for backwards in [true,false] { assert!(dropdown_next_index(index,len,backwards) < len.max(1)); }
+            }
+        }
+        assert_eq!(dropdown_next_index(2,4,true),1);
+        assert_eq!(dropdown_next_index(2,4,false),3);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1439,12 +1467,14 @@ fn dropdown_scroll(
     input_size: RwSignal<Size>,
     window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
+    input_id: RwSignal<Option<floem::ViewId>>,
 ) -> impl View + use<> {
     dropdown_scroll_focus.set(true);
+    let selected = create_rw_signal(dropdown.active_index.min(dropdown.items.len().saturating_sub(1)));
 
     let kind = item.kind.clone();
     let field = item.field.clone();
-    let view_fn = move |item_string: String| {
+    let view_fn = move |(index, item_string): (usize, String)| {
         let kind = kind.clone();
         let field = field.clone();
         let local_item_string = item_string.clone();
@@ -1458,9 +1488,12 @@ fn dropdown_scroll(
                     LapceConfig::update_file(&kind, &field, value);
                 }
                 expanded.set(false);
+                if let Some(id) = input_id.get_untracked() { id.request_focus(); }
             })
             .style(move |s| {
-                s.text_ellipsis().padding_horiz(10.0).hover(|s| {
+                s.text_ellipsis().padding_horiz(10.0).padding_vert(3.0)
+                    .apply_if(selected.get() == index, |s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
+                    .hover(|s| {
                     s.cursor(CursorStyle::Pointer).background(
                         config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
                     )
@@ -1468,12 +1501,15 @@ fn dropdown_scroll(
             })
     };
 
-    let items = dropdown.items.clone();
+    let items: Vec<_> = dropdown.items.iter().cloned().enumerate().collect();
+    let keyboard_items = dropdown.items.clone();
+    let keyboard_kind = item.kind.clone();
+    let keyboard_field = item.field.clone();
 
     let scroll_size = create_rw_signal(Size::ZERO);
 
     scroll({
-        dyn_stack(move || items.clone(), |item| item.to_string(), view_fn)
+        dyn_stack(move || items.clone(), |(index,_)| *index, view_fn)
             .style(|s| s.flex_col().width_pct(100.0).cursor(CursorStyle::Pointer))
     })
     .style(move |s| {
@@ -1483,6 +1519,29 @@ fn dropdown_scroll(
     })
     .keyboard_navigable()
     .request_focus(|| {})
+    .on_event(EventListener::KeyDown, move |event| {
+        use floem::event::{Event, EventPropagation};
+        let Event::KeyDown(event) = event else { return EventPropagation::Continue; };
+        match &event.key.logical_key {
+            Key::Named(NamedKey::ArrowDown) => selected.update(|index| *index = dropdown_next_index(*index,keyboard_items.len(),false)),
+            Key::Named(NamedKey::ArrowUp) => selected.update(|index| *index = dropdown_next_index(*index,keyboard_items.len(),true)),
+            Key::Named(NamedKey::Home) => selected.set(0),
+            Key::Named(NamedKey::End) => selected.set(keyboard_items.len().saturating_sub(1)),
+            Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                if let Some(value) = keyboard_items.get(selected.get_untracked()) {
+                    if LapceConfig::update_file(&keyboard_kind,&keyboard_field,toml_edit::Value::from(value.as_str())).is_some() { current_value.set(value.clone()); }
+                }
+                expanded.set(false);
+                if let Some(id) = input_id.get_untracked() { id.request_focus(); }
+            }
+            Key::Named(NamedKey::Escape) => {
+                expanded.set(false);
+                if let Some(id) = input_id.get_untracked() { id.request_focus(); }
+            }
+            _ => return EventPropagation::Continue,
+        }
+        EventPropagation::Stop
+    })
     .on_event_stop(EventListener::FocusGained, move |_| {
         dropdown_scroll_focus.set(true);
     })
@@ -1704,7 +1763,7 @@ fn ai_model_download_view(
                 })();
                 if let Err(e)=run {let _=tx.send(format!("Error: {e}"));}
             });
-        }).disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
+        }).keyboard_navigable().disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
         label(|| "Select local model".to_string()).on_click_stop(move |_| {
             if busy.get_untracked() { return; }
             let root = lapce_core::directory::Directory::data_local_directory().map(|p| p.join("ai-models"));
@@ -1716,12 +1775,12 @@ fn ai_model_download_view(
                 return;
             }
             state.set("Local model selection saved. Backend and remote model are unchanged.".into());
-        }).disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
+        }).keyboard_navigable().disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
         label(||"Cancel download".to_string()).on_click_stop(move |_| {
             if !busy.get_untracked() { return; }
             if let Some(c)=cancel_child.lock().unwrap().as_mut() {let _=c.kill();}
             let _=cancel_tx.send("Cancelled".to_string());
-        }).disabled(move || !busy.get()).style(move |s| ai_button_style(s, config)),
+        }).keyboard_navigable().disabled(move || !busy.get()).style(move |s| ai_button_style(s, config)),
         ))
         .style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
     )).style(move |s|s.flex_col().flex_shrink(0.0).gap(8.0).padding_bottom(18.0).font_size(config.get().ui.font_size() as f32))
@@ -1737,6 +1796,8 @@ fn ai_button_style(
         .border_radius(6.0)
         .border_color(config.get().color(LapceColor::LAPCE_BORDER))
         .cursor(CursorStyle::Pointer)
+        .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
+        .disabled(|s| s.cursor(CursorStyle::Default).color(config.get().color(LapceColor::LAPCE_ICON_INACTIVE)))
         .hover(|s| {
             s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND))
         })
@@ -1998,7 +2059,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     Ok(()) => { credentials_version.update(|v| *v += 1); key.set(String::new()); state.set("Saved key removed; environment/build fallback is unchanged".into()); }
                     Err(message) => state.set(message),
                 }
-            }).style(move |s| ai_button_style(s, config)),
+            }).keyboard_navigable().disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
             label(move || if busy.get() { "Testing..." } else { "Test connection" }.to_string()).on_click_stop(move |_| {
                 if busy.get_untracked() { return; }
                 if key.with_untracked(|value| !value.is_empty()) { state.set("Save the new key before testing".into()); return; }
@@ -2011,7 +2072,7 @@ fn llm_connection_view(common: Rc<CommonData>) -> impl View {
                     let message = crate::chat::test_connection(&endpoint, &model);
                     let _ = tx.send((endpoint, model, version, message));
                 });
-            }).style(move |s| ai_button_style(s, config)),
+            }).keyboard_navigable().disabled(move || busy.get()).style(move |s| ai_button_style(s, config)),
         )).style(|s| s.flex_row().flex_wrap(floem::style::FlexWrap::Wrap).gap(8.0)),
         label(move || state.get()).style(|s| s.max_width_pct(100.0).flex_shrink(0.0)
             .text_overflow(floem::style::TextOverflow::Wrap)),

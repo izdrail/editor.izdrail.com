@@ -36,6 +36,7 @@ Each issue needs an ID, severity/priority, reproducible workflow, observed resul
 
 | Issue | Severity / priority | Evidence and disposition |
 | --- | --- | --- |
+| UI-008 | Medium / P0 | Source audit: generic boolean setting targets and several existing AI/model actions were omitted from keyboard traversal, and shared action styling lacked a visible focus state. Fix in progress: use existing framework keyboard activation and focus treatment, preserve handlers, and verify a real settings toggle persists through keyboard input. No model download or remote inference is started for acceptance. |
 | UI-007 | Medium / P0 | Source audit: settings search retained every section header even when no setting matched, leaving an unexplained list of empty headings. Fix in progress: retain only sections with matches, searchable section labels, explicit zero-results state; actual dark/light/narrow runtime acceptance pending. |
 | UI-001 | Medium / P0 | Run `45283575269`, `14d-bracket-jump-from-adjacent.png`: intended Ctrl+Shift+backslash action leaves six characters selected, not the asserted jump to opening brace. Unit tests pass, but this runtime workflow is NOT ACCEPTED. Inspect preset/input mapping and retry via the existing command palette before deciding whether implementation or shortcut is wrong. |
 | UI-002 | Medium / P0 | Earlier Ctrl-click rapid-click/focus dispatch hazards and cross-file equal-coordinate LSP self-detection were fixed. Hosted workflow captures verify exact paths, edited source and deterministic LSP routing; the user's exact failing project/provider remains unverified. Do not close every Ctrl-click scenario from synthetic evidence. |
@@ -54,3 +55,22 @@ Each issue needs an ID, severity/priority, reproducible workflow, observed resul
 - `45275627813` and `45279064490`: structural matching highlights on/after brackets.
 
 These references do not cover all controls on their screenshots. Add direct source/destination evidence and issue details as each surface is exercised. No surface reaches complete acceptance until its visible-control inventory and required states are checked, and no known broken interaction is ignored or relabelled PASS.
+
+## Settings visible-control inventory, first pass
+
+Source: `lapce-app/src/settings.rs`. All rows below require runtime evidence; source routes are recorded to avoid overlooking controls, not to mark them PASS.
+
+| Control group | Handler/data flow | Outstanding runtime coverage |
+| --- | --- | --- |
+| Section sidebar | `settings_section` -> measured section scroll target | Pointer and keyboard activation, selected state, all sections, narrow and filtered navigation |
+| Search | local editor buffer -> filtered row list | Match/no-match/reset, section title, plugin section, stale scroll offset, search focus and resize |
+| Generic text/numeric | 500ms debounce -> `LapceConfig::update_file` | Validation, failed write, dirty draft/reload, workspace override notice, restart persistence |
+| Generic boolean | checked signal -> `update_file` | Keyboard/pointer, focus visibility, persistence, disabled/error semantics |
+| Generic dropdown | overlay -> `update_file` | Open/close, selection, keyboard arrows/Enter/Escape, edge placement, focus return, resize, failed writes |
+| AI advanced/restore | toggle legacy visibility / shared-connection false | Preserve saved routing, accessible focus, feedback and restart |
+| AI Local/Remote pending/apply | buffered fields -> apply_shared_ai | No opening-time mutation, layout, key masking, focus, failed save, explicit apply disclosure |
+| AI remove key/test | credential store / existing test worker | Permission/state/error/focus, busy disabling; no remote test without authorized scope |
+| Local model download/select/cancel | explicit worker / model config / child cancel | Availability, keyboard, disabled/busy, no accidental network download during ordinary UI traversal |
+| Theme-color search/input/reset | config colour edits / reset_setting | Long values, color preview, keyboard reset, error feedback, both themes |
+
+Known source-audit gaps to reproduce: generic value writes can fail without inline feedback; generic dropdown has no explicit arrow/escape selection handler in its custom overlay; section selection while search hides that section has no clear action/feedback. These are OPEN under CFG-001/002, not ignored or treated as accepted behavior. Existing AI key storage reports a private plaintext file, not encryption. Secure credential redesign remains an explicit later security ticket and must not be advertised as already encrypted.
