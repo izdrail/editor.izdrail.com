@@ -97,6 +97,37 @@ mod tests {
     }
 
     #[test]
+    fn pairing_context_all_openers_use_real_language_context_and_history() {
+        use crate::{buffer::Buffer, cursor::{Cursor,CursorMode}, editor::{Action,PairingOptions}, selection::Selection};
+        use crate::language::LapceLanguage::*;
+        for (language,text) in [
+            (Php,"<?php\n// note here\n$x = \"a value\";\n\n"),
+            (Python,"# note here\nx = \"a value\"\n\n"),
+            (Rust,"// note here\nlet x = \"a value\";\n\n"),
+            (Javascript,"// note here\nlet x = \"a value\";\n\n"),
+            (Typescript,"// note here\nlet x: string = \"a value\";\n\n"),
+            (Css,"/* note here */\na {content: \"a value\";}\n\n"),
+            (Html,"<!-- note here -->\n<a title=\"a value\">x</a>\n\n"),
+            (Blade,"{{-- note here --}}\n<a title=\"a value\">x</a>\n\n"),
+            (Vue,"<!-- note here -->\n<template><a title=\"a value\">x</a></template>\n\n"),
+        ] {
+            let snapshot=lexilla::highlight(language,&Rope::from(text)).unwrap();
+            for offset in [text.find("here").unwrap()+1,text.find("a value").unwrap()+2] {
+                for opener in ['(', '[', '{', '\"', '\'', '`'] {
+                    let mut buffer=Buffer::new(text);
+                    let mut cursor=Cursor::new(CursorMode::Insert(Selection::caret(offset)),None,None);
+                    Action::insert_with_partner_filter(&mut cursor,&mut buffer,&opener.to_string(),&|_,_,_|None,
+                        PairingOptions::legacy(true,true),&|offset|permits_partner(&snapshot,offset));
+                    let mut expected=text.to_string();expected.insert(offset,opener);
+                    assert_eq!(buffer.to_string(),expected,"{language:?} {opener} at {offset}");
+                    buffer.do_undo().unwrap();assert_eq!(buffer.to_string(),text);
+                    buffer.do_redo().unwrap();assert_eq!(buffer.to_string(),expected);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn pairing_context_go_has_no_lexilla_snapshot() {
         assert!(lexilla::highlight(crate::language::LapceLanguage::Go, &Rope::from("package main\n")).is_none());
     }
