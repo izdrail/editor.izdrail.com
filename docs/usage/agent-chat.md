@@ -198,3 +198,5 @@ File suggestions belong to the focused draft. Moving to a composer control clear
 While the workspace file index is loading, the focused @ query says that no file has been attached yet. Without an open local folder it asks for one instead. After the index arrives, a no-match message distinguishes a query from an inserted file reference.
 
 A failed file-index request says that suggestions could not load, rather than claiming loading is still in progress or that no files match. Remove the active @ query and type it again to retry. Typing more characters in the same failed query does not keep retrying.
+
+With a failed @ query focused, F5 retries the file index without changing the draft. Modified F5 and ordinary composer keys keep their normal behavior. A failure that arrives after the query was removed also resets for the next query.

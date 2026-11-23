@@ -2335,6 +2335,10 @@ fn composer_mention_accepts(key: &Key, modifiers: floem::keyboard::Modifiers) ->
         && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Tab))
 }
 
+fn mention_index_retry_key(key: &Key, modifiers: floem::keyboard::Modifiers, failed: bool) -> bool {
+    failed && modifiers.is_empty() && *key == Key::Named(NamedKey::F5)
+}
+
 fn composer_enter_sends(key: &Key, modifiers: floem::keyboard::Modifiers) -> bool {
     *key == Key::Named(NamedKey::Enter) && modifiers.is_empty()
 }
@@ -2667,7 +2671,7 @@ fn mention_suggestions_allowed(draft_focused: bool, chat_active: bool, picker_op
 fn mention_index_footer(local: bool, active_tail: bool, has_root: bool, loaded: bool, failed: bool) -> Option<&'static str> {
     if !local || !active_tail { None }
     else if !has_root { Some("Open a local folder to mention workspace files. This @ query has not attached a file.") }
-    else if failed { Some("File suggestions could not load. Remove this @ query, then type it again to retry.") }
+    else if failed { Some("File suggestions could not load. F5 to retry, or remove this @ query and type it again.") }
     else if !loaded { Some("Loading workspace files for this @ query. No file has been attached yet.") }
     else { None }
 }
@@ -3816,7 +3820,8 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             let query = mention_at_caret(&input, mention_cursor.get());
             // A failed request retries only after leaving the token, never
             // in a reactive loop or once per keystroke in the same query.
-            if query.is_none() && mention_failed.get_untracked() {
+            let failed = mention_failed.get();
+            if query.is_none() && failed {
                 mention_failed.set(false);
                 mention_requested.set(false);
             }
@@ -3884,10 +3889,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     // while the mention popup is open, arrows/Enter/Tab/Escape are
     // consumed here and everything else falls to the default keymap.
     let keyboard_send_tab = tab.clone();
+    let keyboard_mention_requested = mention_requested.clone();
     let composer = text_editor_keys(
         data.input.get_untracked(),
         move |editor_sig, keypress, mods| {
             if let KeyInput::Keyboard(key, _) = &keypress.key {
+                if mention_index_retry_key(key, mods, mention_failed.get_untracked()) {
+                    let editor = editor_sig.get_untracked();
+                    if mention_at_caret(&editor.doc().text().to_string(), mention_caret(&editor)).is_some() {
+                        keyboard_mention_requested.set(false);
+                        mention_failed.set(false);
+                        return CommandExecuted::Yes;
+                    }
+                }
                 if let Some(prompt) = crate::agent_scope_ui::starter_shortcut(key, mods) {
                     if keyboard_send_tab.chat.turns.get_untracked().is_empty() {
                         if !keyboard_send_tab.chat.busy.get_untracked() {
@@ -6551,11 +6565,27 @@ mod quiet_conversation_tests {
         }
     }
     #[test]
+    fn mention_retry_requires_plain_f5_and_a_failed_request() {
+        use floem::keyboard::{Key, NamedKey, Modifiers};
+        for failed in [false, true] {
+            for bits in 0..16 {
+                let mut modifiers = Modifiers::empty();
+                for (bit, value) in [(1, Modifiers::SHIFT), (2, Modifiers::CONTROL), (4, Modifiers::ALT), (8, Modifiers::META)] {
+                    if bits & bit != 0 { modifiers |= value; }
+                }
+                for named in [NamedKey::F5, NamedKey::Enter, NamedKey::Tab, NamedKey::Escape] {
+                    let expected = failed && bits == 0 && named == NamedKey::F5;
+                    assert_eq!(super::mention_index_retry_key(&Key::Named(named), modifiers, failed), expected);
+                }
+            }
+        }
+    }
+    #[test]
     fn mention_index_failure_is_not_loading_or_a_no_match_result() {
         use super::mention_index_footer as feedback;
         let text = feedback(true, true, true, false, true).unwrap();
         assert!(text.contains("could not load"));
-        assert!(text.contains("type it again to retry"));
+        assert!(text.contains("F5 to retry"));
         assert!(!text.contains("Loading"));
         assert!(!text.contains("No matching"));
         assert_eq!(feedback(true, false, true, false, true), None);
