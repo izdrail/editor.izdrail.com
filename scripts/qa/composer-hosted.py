@@ -104,6 +104,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('type', '--clearmodifiers', '09'); shot('07q1-mention-filtered')
         run('key', 'BackSpace', 'BackSpace'); shot('07q2-mention-expanded')
         run('key', 'Tab'); shot('07r-mention-picked')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@multi_647_')
+        run('key', 'End', 'Page_Up'); shot('07s-mention-page-up')
+        run('key', 'Escape'); shot('07t-mention-dismissed')
+        run('type', '--clearmodifiers', '09'); shot('07u-mention-reopened')
+        run('key', 'shift+Tab'); shot('07v-mention-reverse-focus')
+        run('key', 'Right'); shot('07w-mention-focus-restored')
+        run('key', 'Escape')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:

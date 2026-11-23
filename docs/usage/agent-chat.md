@@ -204,3 +204,5 @@ With a failed @ query focused, F5 retries the file index without changing the dr
 F5 also refreshes a loaded file index while an @ query is active, useful after adding files. It preserves the query and does not send. An in-flight request is not duplicated.
 
 Repeated paths returned by the file index appear only once in suggestions and do not consume the eight-row limit. Filtering a query updates the offered rows and their count.
+
+Escape dismisses file suggestions without changing the draft. Editing the active @ query opens matching suggestions again. Shift+Tab leaves suggestions for Send without inserting a file; returning to the draft restores the active query.

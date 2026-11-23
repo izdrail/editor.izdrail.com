@@ -62,6 +62,9 @@ class LinuxBuildTests(unittest.TestCase):
         self.assertIn('for index in range(10):', script)
         for state in ['07n-mention-multi', '07o-mention-page', '07p-mention-end', '07q-mention-home', '07r-mention-picked']:
             self.assertIn(f"shot('{state}')", script)
+        for state in ['07q1-mention-filtered', '07q2-mention-expanded', '07s-mention-page-up', '07t-mention-dismissed', '07u-mention-reopened', '07v-mention-reverse-focus', '07w-mention-focus-restored']:
+            self.assertIn(f"shot('{state}')", script)
+        self.assertIn("run('key', 'End', 'Page_Up')", script)
         self.assertIn("'--wait', '--new'", script)
         self.assertIn("home.rglob('*.log')", script)
         self.assertIn('app.terminate()', script)
