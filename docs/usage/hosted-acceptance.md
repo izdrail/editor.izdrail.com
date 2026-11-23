@@ -7,3 +7,5 @@ Test and release jobs have separate caches and disks. Tests disable debug symbol
 The release artifact includes Gravity and its proxy, with version checks and SHA-256 checksums. It is a downloadable build, not a deployment. No host access, self-hosted runner or tag is needed. GUI acceptance must still be inspected separately before a UI change is called accepted.
 
 The hosted release job also launches the built editor under Xvfb with a fresh synthetic project and local-only settings. It captures the initial panel, draft, mode/model controls and lists, Send focus without activation, focus return and outside focus. Screenshots and logs are downloadable as composer-gui-acceptance. A successful capture is not visual acceptance: the images must be opened and inspected.
+
+The capture flow also queries for a file absent from the cached index, creates that synthetic file, presses F5 and captures the refreshed result and Tab insertion. Review all three images to verify discovery of new files, not only a refresh of existing results. Both synthetic source files must remain unchanged; Send is never activated.

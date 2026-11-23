@@ -53,6 +53,10 @@ class LinuxBuildTests(unittest.TestCase):
         self.assertIn('Inspect PNGs before visual acceptance', script)
         self.assertIn('source unchanged', script)
         self.assertNotIn("run('key', 'Return')", script[script.index("shot('00-initial')"):])
+        self.assertLess(script.index("shot('07i-before-new-file')"), script.index('added.write_text(added_source)'))
+        self.assertLess(script.index('added.write_text(added_source)'), script.index("shot('07j-new-file-refreshed')"))
+        self.assertIn("shot('07k-new-file-inserted')", script)
+        self.assertIn("if added.read_text() != added_source:", script)
         self.assertIn('app.terminate()', script)
         self.assertIn('xvfb.terminate()', script)
 

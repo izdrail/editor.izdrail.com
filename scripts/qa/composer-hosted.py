@@ -82,7 +82,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('07f-mention-insert')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@no_such_synthetic_file_641'); shot('07g-mention-empty')
         run('key', 'shift+Tab'); shot('07h-empty-blur')
-        run('key', 'Right'); run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
+        run('key', 'Right'); run('key', 'ctrl+a'); run('type', '--clearmodifiers', '@newly_created_645'); shot('07i-before-new-file')
+        added = project / 'newly_created_645.php'
+        added_source = '<?php // Synthetic file created after the first index.\n'
+        added.write_text(added_source)
+        run('key', 'F5'); time.sleep(3); shot('07j-new-file-refreshed')
+        run('key', 'Tab'); shot('07k-new-file-inserted')
+        if added.read_text() != added_source:
+            raise RuntimeError('New synthetic file changed')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')
