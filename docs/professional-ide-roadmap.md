@@ -30,6 +30,22 @@ Search joins the backlog without weakening the critical strict phase order. Comp
 | SRCH-006 | Measure cold indexing separately; cached filename <20ms, symbol <50ms, indexed text/UI <100ms and typical small-file update <50ms are targets, not claims. Small/medium/large/thousands/large-file/frequent-edit fixtures, memory/concurrency/cancel/persistence/unsaved/delete tests. Report before/after measurements and misses. |
 | SRCH-007 | Keyboard-first runtime UI acceptance of all dialogs/scopes/filters/previews/empty-error-loading states, focus and dark/light/responsive layouts. Report architecture decisions, changed files, real tests, measurements, limits and deployment requirements. No deploy. |
 
+## Folding initiative update, 23:27
+
+Folding UI defects join the existing Phase 1 audit. After that hard gate, audit/design/benchmark work can accompany Phase 2 completion and search, with completion acceptance first. Larger folding-engine changes wait for the architecture assessment and do not bypass the strict sequence.
+
+Initial source assessment: this is native Rust, so use existing Rust crates directly, not WASM or another service. `lapce-core` already depends on Tree-sitter 0.22.6 and has parser/edit machinery. However, the active Lexilla path publishes Scintilla fold levels with an indentation fallback (`syntax/mod.rs`), not a structural Tree-sitter folding query engine. `lapce-core/src/folding.rs` owns line-based ranges/projection/state; `doc.rs` publishes accepted-revision ranges and maps edits. Fold state is document-shared and reconciles by header line, which does not meet requested stable structural identities or per-view state. Existing gutter, fold/unfold/all commands and shortcuts must be reused. Tree-sitter source presence does not mean active grammars or folding queries are available for every language.
+
+| Tickets | Folding work and evidence gate |
+| --- | --- |
+| FOLD-001 | Deep architecture/grammar/licence audit and design before large changes: parsing, range generation/validation, state and UI boundaries. Study maintained open-source patterns without copying blindly. |
+| FOLD-002 | Unified validated zero-based ranges with stable identity, positions, type, parent/children, provider, placeholder and language metadata. Tree-sitter primary; LSP/markers/indent/manual precedence and deduplication. Treat provider ranges as untrusted. |
+| FOLD-003 | Validate separate per-language queries against actual grammars for PHP, JS/TS/JSX/TSX, Rust, Python, Go, HTML/CSS/JSON/YAML. No invented node names or brace-only primary engine. |
+| FOLD-004 | Reuse InputEdit/incremental parser infrastructure with affected-range updates, stale cancellation, worker processing and delta publication. Stable reconciliation by syntax/context/fingerprint/parent/previous identity, not line alone. Paste/delete/rapid edit/undo/redo/multi-doc cases. |
+| FOLD-005 | Independent view state plus safe per-file persistence, restart recovery, dead-range cleanup and edit expansion. Nested/parent/depth/recursive/others/toggle-all commands, meaningful bounded placeholders and existing shortcut conflict tests. |
+| FOLD-006 | Gutter/hover/targets/position/focus/theme/no-layout-shift acceptance; dedicated persisted folding settings/defaults/per-language overrides only after settings architecture gate. No buffer corruption or copy/paste interference. |
+| FOLD-007 | Measure targets: toggle/cache <5ms, incremental/restore <20ms, 1000-line parse <50ms, gutter <16ms. CPU/memory, malformed/large/deep/rapid fixtures, real provider tests and full editor regressions. These are targets, not achieved claims. |
+
 ## Architecture audit and evidence
 
 Gravity is a native Rust application built on Lapce and vendored Floem, not a Monaco/CodeMirror web application. `lapce-app` owns editor and panel state, `lapce-core` owns language/syntax support, `lapce-proxy` owns processes and services, `lapce-rpc` defines their protocol, and `lapce-ai` supplies existing AI support. Extend those boundaries rather than adding a parallel editor, parser, LSP client or service framework.
