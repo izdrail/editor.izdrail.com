@@ -1265,7 +1265,7 @@ mod pairing_context_projection_tests {
         let snapshot = lapce_core::lexilla::highlight(LapceLanguage::Rust,&Rope::from(text)).unwrap();
         let display = projection.excerpts[0].display_range.start;
         let comment = display + "// comment ".len();
-        let code = projection.excerpts[0].display_range.end;
+        let code = projection.excerpts[0].display_range.end - 1;
         let mut selection = Selection::caret(comment);
         selection.add_region(SelRegion::caret(code));
         let mut cursor = Cursor::new(CursorMode::Insert(selection),None,None);
@@ -1278,8 +1278,8 @@ mod pairing_context_projection_tests {
         let delta=compose_projection_deltas(&projection,&deltas.iter().map(|(_,d,_)|d.clone()).collect::<Vec<_>>()).unwrap();
         let plan=projection.plan(&sources,&display_edits_from_delta(&projection.text,&delta).unwrap()).unwrap();
         let mut expected=text.to_string();
-        for edit in plan.iter().rev() {expected.replace_range(edit.range.clone(),&edit.replacement);}
-        assert_eq!(expected,text.replace("// comment ","// comment (")+"()");
+        for edit in &plan {expected.replace_range(edit.range.clone(),&edit.replacement);}
+        assert_eq!(expected,text.replace("// comment ","// comment (").replace("let x = 1;\n\n", "let x = 1;\n()\n"));
         assert!(expected.starts_with("unshown prefix\n"));
     }
 }
