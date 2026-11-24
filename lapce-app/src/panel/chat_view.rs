@@ -2559,9 +2559,8 @@ fn composer_dropdown_overlay<V: View + 'static>(
     .keyboard_navigable()
     .on_event_stop(EventListener::FocusGained, move |_| focused.set(true))
     .on_event_stop(EventListener::FocusLost, move |_| {
-        if focused.get_untracked() && expanded.get_untracked() {
-            expanded.set(false);
-        }
+        // Overlay focus can be reassigned by the workbench during mounting.
+        // Escape, Tab, trigger toggle and choosing a row dismiss explicitly.
         focused.set(false);
     })
     .on_event_stop(EventListener::PointerMove, |_| {})
