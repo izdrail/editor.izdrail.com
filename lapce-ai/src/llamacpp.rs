@@ -1,7 +1,7 @@
 //! Optional local llama.cpp backend. No downloads, no implicit GPU offload.
 use anyhow::{Result, anyhow, ensure};
 use llama_cpp_2::{context::params::LlamaContextParams, llama_backend::LlamaBackend,
-    llama_batch::LlamaBatch, model::{LlamaModel, params::LlamaModelParams}, sampling::LlamaSampler};
+    llama_batch::LlamaBatch, model::{LlamaModel, LlamaChatMessage, params::LlamaModelParams}, sampling::LlamaSampler};
 use std::{num::NonZeroU32, path::Path, sync::OnceLock, time::Instant};
 use crate::{Completion, Provider, Request};
 
@@ -35,29 +35,43 @@ impl LlamaCppProvider {
 impl Provider for LlamaCppProvider {
     fn complete(&mut self, request: &Request, cancelled: &dyn Fn() -> bool) -> Result<Completion> {
         ensure!(request.remote.is_none(), "llama.cpp is a local-only provider");
-        ensure!(request.messages.is_none(), "llama.cpp chat templates are not implemented; use Candle or Ollama chat");
-        ensure!((1..=128).contains(&request.max_tokens), "FIM output limit must be 1..128");
-        ensure!((1..=2048).contains(&request.prefix_tokens) && request.suffix_tokens <= 1024, "Invalid FIM token budget");
+        let chat = request.messages.is_some();
+        ensure!((1..=if chat {512} else {128}).contains(&request.max_tokens), "Invalid output token limit");
         ensure!(!cancelled(), "Cancelled");
         let vocab = self.model.vocab();
-        // Require each FIM marker to be an actual special token, rather than
-        // treating a generic chat model's ordinary marker text as FIM support.
-        let marker = |s: &str| -> Result<_> {
-            let special = vocab.tokenize(s.as_bytes(), false, true);
-            let ordinary = vocab.tokenize(s.as_bytes(), false, false);
-            ensure!(special.len() == 1 && special != ordinary, "Model lacks required FIM special tokens");
-            Ok(special[0])
+        let mut fim_stops = Vec::new();
+        let prompt = if let Some(messages) = &request.messages {
+            ensure!(!messages.is_empty(), "Empty conversation");
+            let messages = messages.iter().map(|message| {
+                ensure!(["system", "user", "assistant"].contains(&message.role.as_str()), "Invalid chat role");
+                // Match the existing engine's reserved-marker escaping.
+                Ok(LlamaChatMessage::new(message.role.clone(), message.content.replace("<|", "< | "))?)
+            }).collect::<Result<Vec<_>>>()?;
+            let template = self.model.chat_template(None)?;
+            let formatted = self.model.apply_chat_template(&template, &messages, true)?;
+            vocab.tokenize(formatted.as_bytes(), true, true)
+        } else {
+            ensure!((1..=2048).contains(&request.prefix_tokens) && request.suffix_tokens <= 1024, "Invalid FIM token budget");
+            let marker = |s: &str| -> Result<_> {
+                let special = vocab.tokenize(s.as_bytes(), false, true);
+                let ordinary = vocab.tokenize(s.as_bytes(), false, false);
+                ensure!(special.len() == 1 && special != ordinary, "Model lacks required FIM special tokens");
+                Ok(special[0])
+            };
+            let prefix_marker = marker("<|fim_prefix|>")?;
+            let suffix_marker = marker("<|fim_suffix|>")?;
+            let middle_marker = marker("<|fim_middle|>")?;
+            fim_stops.extend([prefix_marker, suffix_marker, middle_marker]);
+            let prefix = vocab.tokenize(request.prefix.as_bytes(), false, false);
+            let suffix = vocab.tokenize(request.suffix.as_bytes(), false, false);
+            let mut prompt = vec![prefix_marker];
+            prompt.extend_from_slice(&prefix[prefix.len().saturating_sub(request.prefix_tokens)..]);
+            prompt.push(suffix_marker);
+            prompt.extend_from_slice(&suffix[..suffix.len().min(request.suffix_tokens)]);
+            prompt.push(middle_marker);
+            prompt
         };
-        let prefix_marker = marker("<|fim_prefix|>")?;
-        let suffix_marker = marker("<|fim_suffix|>")?;
-        let middle_marker = marker("<|fim_middle|>")?;
-        let prefix = vocab.tokenize(request.prefix.as_bytes(), false, false);
-        let suffix = vocab.tokenize(request.suffix.as_bytes(), false, false);
-        let mut prompt = vec![prefix_marker];
-        prompt.extend_from_slice(&prefix[prefix.len().saturating_sub(request.prefix_tokens)..]);
-        prompt.push(suffix_marker);
-        prompt.extend_from_slice(&suffix[..suffix.len().min(request.suffix_tokens)]);
-        prompt.push(middle_marker);
+        ensure!(!prompt.is_empty(), "Empty tokenized prompt");
         ensure!(!cancelled(), "Cancelled");
         let mut context = self.model.new_context(backend()?, LlamaContextParams::default()
             .with_n_ctx(NonZeroU32::new(4096)).with_n_batch(512).with_n_ubatch(512))?;
@@ -79,7 +93,7 @@ impl Provider for LlamaCppProvider {
         for _ in 0..request.max_tokens {
             ensure!(!cancelled(), "Cancelled");
             let token = sampler.sample(&context, batch.n_tokens() - 1);
-            if vocab.is_eog(token) || [prefix_marker, suffix_marker, middle_marker].contains(&token) { break; }
+            if vocab.is_eog(token) || fim_stops.contains(&token) { break; }
             sampler.accept(token);
             generated.push(token);
             if generated.len() == request.max_tokens { break; }
@@ -89,7 +103,7 @@ impl Provider for LlamaCppProvider {
         }
         let text = String::from_utf8(vocab.detokenize(&generated, true, false))?;
         let generation_ms = start.elapsed().as_millis();
-        Ok(Completion { text: crate::ollama::clean(&text, &request.suffix), tokens: generated.len(),
+        Ok(Completion { text: if chat { text } else { crate::ollama::clean(&text, &request.suffix) }, tokens: generated.len(),
             prompt_tokens: prompt.len(), load_ms: self.load_ms, generation_ms, prefill_ms,
             decode_ms: generation_ms.saturating_sub(prefill_ms), cancelled: false })
     }

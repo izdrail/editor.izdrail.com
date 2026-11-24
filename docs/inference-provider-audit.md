@@ -65,3 +65,10 @@ a dedicated standard hosted CPU feature check owns the complete build/test.
 No model/backend/CUDA success claim is made from this candidate.
 Sources inspected: https://crates.io/api/v1/crates/llama-cpp-2/0.1.161/download
 and https://github.com/utilityai/llama-cpp-rs .
+
+llama.cpp chat follow-through: use the exact model's embedded template through
+the binding's chat_template/apply_chat_template API, validate roles, escape
+reserved message markers as in the existing engine, tokenize rendered template,
+and preserve raw chat output. Unsupported templates return an error. Registry
+advertises the compiled experimental backend with explicit pending-acceptance
+limits, not unproven architecture/CUDA claims.

@@ -17,8 +17,8 @@ pub struct Capabilities {
 
 /// Only backends implemented in this build are advertised. A remote server's
 /// model support must be discovered there, never inferred from this registry.
-pub fn available() -> [Capabilities; 2] {
-    [Capabilities {
+pub fn available() -> Vec<Capabilities> {
+    let mut providers = vec![Capabilities {
         backend: "candle", execution: "local", architectures: &["qwen2"],
         fim: true, chat: true, cuda_compiled: cfg!(feature = "candle-cuda"),
         cancellation: "cooperative between decode steps; load is not interruptible",
@@ -39,7 +39,21 @@ pub fn available() -> [Capabilities; 2] {
             "raw FIM requires a Qwen-compatible FIM model",
             "tokens are returned as one completion, not incremental worker events",
         ],
-    }]
+    }];
+    #[cfg(feature = "llama-cpp")]
+    providers.push(Capabilities {
+        backend: "llama.cpp", execution: "explicit_local", architectures: &[],
+        fim: true, chat: true, cuda_compiled: cfg!(feature = "llama-cpp-cuda"),
+        cancellation: "cooperative between prefill batches and decode steps; load is not interruptible",
+        sampling: "greedy", implicit_downloads: false,
+        limitations: &[
+            "experimental: native build and exact-model inference acceptance pending",
+            "FIM requires special tokens; chat requires supported embedded template",
+            "GPU layer and CPU expert settings request placement, not proof of CUDA inference",
+            "tokens returned as one completion, not incremental worker events",
+        ],
+    });
+    providers
 }
 
 #[cfg(test)]
@@ -48,7 +62,7 @@ mod tests {
     #[test]
     fn capabilities_do_not_claim_unimplemented_gpu_or_moe_support() {
         let providers = available();
-        assert_eq!(providers.len(), 2);
+        assert_eq!(providers.len(), if cfg!(feature = "llama-cpp") {3} else {2});
         assert_eq!(providers[0].architectures, &["qwen2"]);
         assert_eq!(providers[1].execution, "explicit_remote");
         assert_eq!(providers[0].cuda_compiled, cfg!(feature = "candle-cuda"));
