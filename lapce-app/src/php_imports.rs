@@ -124,9 +124,25 @@ fn push_use(h: &mut Header, spec: &str, line_start: usize) {
 }
 
 
+/// Navigate only code in the current PHP lexer snapshot, never multiline
+/// strings, heredocs, comments or the HTML region of a mixed template.
+pub fn definition_at(root: &Path, source: &str, offset: usize) -> Option<(PathBuf, usize)> {
+    if source.len() > 1024 * 1024 || offset > source.len() || !source.is_char_boundary(offset) {
+        return None;
+    }
+    let snapshot = lapce_core::lexilla::highlight(
+        lapce_core::language::LapceLanguage::Php, &lapce_xi_rope::Rope::from(source),
+    )?;
+    let style = *snapshot.styles().get(offset)?;
+    if matches!(snapshot.scope(style), Some("comment" | "string")) { return None; }
+    let start = source[..offset].rfind('\n').map_or(0, |i| i + 1);
+    let end = source[offset..].find('\n').map_or(source.len(), |i| offset + i);
+    definition(root, source, &source[start..end], offset - start)
+}
+
 /// Resolve an explicit class reference without executing PHP or guessing a basename.
 /// Dynamic variables, methods, comments and quoted strings are left to the LSP.
-pub fn definition(root: &Path, text: &str, line: &str, col: usize) -> Option<(PathBuf, usize)> {
+fn definition(root: &Path, text: &str, line: &str, col: usize) -> Option<(PathBuf, usize)> {
     if text.len() > 1024 * 1024 || col > line.len() || !line.is_char_boundary(col) {
         return None;
     }
@@ -547,6 +563,17 @@ mod definition_tests {
         ] {
             assert!(definition(d.path(), text, line, at).is_some(), "{line}");
         }
+    }
+    #[test]
+    fn definition_at_excludes_multiline_noncode() {
+        let d = fixture();
+        for body in ["/*\nPost::query();\n*/", "$x = 'first\nPost::query();\n';", "$x = <<<TXT\nPost::query();\nTXT;"] {
+            let text = format!("<?php\nuse App\\Models\\Post;\n{body}");
+            let offset = text.rfind("Post::").unwrap() + 2;
+            assert_eq!(definition_at(d.path(), &text, offset), None, "{body}");
+        }
+        let text = "<?php\nuse App\\Models\\Post;\nPost::query();";
+        assert!(definition_at(d.path(), text, text.rfind("Post::").unwrap()+2).is_some());
     }
     #[test]
     fn definition_does_not_guess_dynamic_methods_strings_or_missing_imports() {

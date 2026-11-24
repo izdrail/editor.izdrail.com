@@ -2083,7 +2083,7 @@ impl EditorData {
             // Explicit PHP imports/namespace mapping also work without a PHP LSP.
             if crate::project_completion::php_completion_path(&path) {
                 let source = doc.buffer.with_untracked(|buffer| buffer.to_string());
-                if let Some((target, line)) = crate::php_imports::definition(root, &source, &line_text, col) {
+                if let Some((target, line)) = crate::php_imports::definition_at(root, &source, offset) {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation { path: target, position: Some(EditorPosition::Line(line)),
                             scroll_offset: None, ignore_unconfirmed: true, same_editor_tab: false },
