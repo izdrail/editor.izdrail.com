@@ -230,6 +230,23 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-middleware-parameter | Parameterized middleware method, explicitly implement the access check |
 | lv-middleware-alias | Laravel 11/12 bootstrap/app.php middleware alias chain |
 | lv-middleware-response-header | Response header modification inside middleware handle |
+| lv-job-unique | Unique queued job, requires a shared lock-capable cache across workers |
+| lv-job-batchable | Inside a queued job class, adds Batchable trait and cancellation check |
+| lv-job-retry | Queued job attempts and backoff seconds |
+| lv-job-failed | Job failure hook, receives an optional exception |
+| lv-job-middleware | Queue middleware with explicit overlap lock key |
+| lv-queue-chain | Dispatch jobs sequentially after successful completion |
+| lv-queue-batch | Batch dispatch, jobs must use Batchable and batching storage must be configured |
+| lv-queue-after-response | After-response dispatch, still uses current process, reserve for short work |
+| lv-listener-queued | Queued listener with typed event |
+| lv-event-subscriber | Subscriber mapping, register or discover according to application configuration |
+| lv-event-dispatch | Dispatch an event using the Dispatchable trait |
+| lv-event-broadcast | Queued private-channel broadcast, configure channel authorization and queue |
+| lv-gate-define | Gate example, adapt owner-key and authorization rules explicitly |
+| lv-gate-authorize | Authorize through a gate or model policy, throws on denial |
+| lv-hash-password | Hash a password using the configured hashing driver |
+| lv-notification-queued | Queued mail notification, requires mail and queue configuration |
+| lv-notification-database | Database notification method, add database to via and create notification table |
 
 ## livewire
 

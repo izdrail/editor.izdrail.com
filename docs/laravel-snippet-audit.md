@@ -30,3 +30,12 @@ context, version-specific registration and safety-sensitive choices.
 Sources checked: https://laravel.com/docs/12.x/queries ,
 https://laravel.com/docs/12.x/migrations , https://laravel.com/docs/12.x/database ,
 https://laravel.com/docs/12.x/middleware .
+
+Queue/event/auth/notification slice:17 entries (Laravel105), including unique
+and batchable jobs, retries/failure hooks/middleware, chains/batches, queued
+listeners/subscribers/broadcasts, gates/password hashing and queued/database
+notifications. Descriptions state required queue/cache/channel/schema setup.
+This remains partial F/H/I/J coverage, not full A-J acceptance.
+Sources: https://laravel.com/docs/12.x/queues ,
+https://laravel.com/docs/12.x/events , https://laravel.com/docs/12.x/authorization ,
+https://laravel.com/docs/12.x/notifications .

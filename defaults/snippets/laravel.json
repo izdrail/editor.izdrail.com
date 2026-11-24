@@ -1017,5 +1017,254 @@
       "return \\$response;"
     ],
     "description": "Response header modification inside middleware handle"
+  },
+  "Unique queued job class": {
+    "prefix": "lv-job-unique",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Jobs;",
+      "",
+      "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldQueue;",
+      "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldBeUnique;",
+      "use Illuminate\\\\Foundation\\\\Queue\\\\Queueable;",
+      "",
+      "class ${1:ProcessRecord} implements ShouldQueue, ShouldBeUnique",
+      "{",
+      "\tuse Queueable;",
+      "",
+      "\tpublic function __construct(public string \\$recordId) {}",
+      "",
+      "\tpublic function uniqueId(): string",
+      "\t{",
+      "\t\treturn \\$this->recordId;",
+      "\t}",
+      "",
+      "\tpublic function handle(): void",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Unique queued job, requires a shared lock-capable cache across workers"
+  },
+  "Batchable job methods": {
+    "prefix": "lv-job-batchable",
+    "body": [
+      "use \\\\Illuminate\\\\Bus\\\\Batchable;",
+      "",
+      "public function handle(): void",
+      "{",
+      "\tif (\\$this->batch()?->cancelled()) {",
+      "\t\treturn;",
+      "\t}",
+      "",
+      "\t$0",
+      "}"
+    ],
+    "description": "Inside a queued job class, adds Batchable trait and cancellation check"
+  },
+  "Job retry configuration": {
+    "prefix": "lv-job-retry",
+    "body": [
+      "public int \\$tries = ${1:3};",
+      "",
+      "public function backoff(): array",
+      "{",
+      "\treturn [${2:10, 30, 60}];",
+      "}"
+    ],
+    "description": "Queued job attempts and backoff seconds"
+  },
+  "Job failure hook": {
+    "prefix": "lv-job-failed",
+    "body": [
+      "public function failed(?\\\\Throwable \\$exception): void",
+      "{",
+      "\t$0",
+      "}"
+    ],
+    "description": "Job failure hook, receives an optional exception"
+  },
+  "Job middleware method": {
+    "prefix": "lv-job-middleware",
+    "body": [
+      "public function middleware(): array",
+      "{",
+      "\treturn [",
+      "\t\tnew \\\\Illuminate\\\\Queue\\\\Middleware\\\\WithoutOverlapping('${1:resource-key}'),",
+      "\t];",
+      "}"
+    ],
+    "description": "Queue middleware with explicit overlap lock key"
+  },
+  "Dispatch job chain": {
+    "prefix": "lv-queue-chain",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Bus::chain([",
+      "\tnew \\\\App\\\\Jobs\\\\${1:FirstJob}(),",
+      "\tnew \\\\App\\\\Jobs\\\\${2:SecondJob}(),",
+      "])->dispatch();"
+    ],
+    "description": "Dispatch jobs sequentially after successful completion"
+  },
+  "Dispatch job batch": {
+    "prefix": "lv-queue-batch",
+    "body": [
+      "\\$batch = \\\\Illuminate\\\\Support\\\\Facades\\\\Bus::batch([",
+      "\tnew \\\\App\\\\Jobs\\\\${1:ProcessRecord}(${2:'record-id'}),",
+      "])->name('${3:Process records}')->dispatch();"
+    ],
+    "description": "Batch dispatch, jobs must use Batchable and batching storage must be configured"
+  },
+  "Dispatch job after response": {
+    "prefix": "lv-queue-after-response",
+    "body": [
+      "\\\\App\\\\Jobs\\\\${1:ProcessRecord}::dispatch(${2:'record-id'})->afterResponse();"
+    ],
+    "description": "After-response dispatch, still uses current process, reserve for short work"
+  },
+  "Queued event listener class": {
+    "prefix": "lv-listener-queued",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Listeners;",
+      "",
+      "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldQueue;",
+      "use Illuminate\\\\Queue\\\\InteractsWithQueue;",
+      "",
+      "class ${1:HandleOrderPlaced} implements ShouldQueue",
+      "{",
+      "\tuse InteractsWithQueue;",
+      "",
+      "\tpublic function handle(\\\\App\\\\Events\\\\${2:OrderPlaced} \\$event): void",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Queued listener with typed event"
+  },
+  "Event subscriber class": {
+    "prefix": "lv-event-subscriber",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Listeners;",
+      "",
+      "use Illuminate\\\\Events\\\\Dispatcher;",
+      "",
+      "class ${1:OrderSubscriber}",
+      "{",
+      "\tpublic function handleOrder(\\\\App\\\\Events\\\\${2:OrderPlaced} \\$event): void",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "",
+      "\tpublic function subscribe(Dispatcher \\$events): array",
+      "\t{",
+      "\t\treturn [\\\\App\\\\Events\\\\${2:OrderPlaced}::class => 'handleOrder'];",
+      "\t}",
+      "}"
+    ],
+    "description": "Subscriber mapping, register or discover according to application configuration"
+  },
+  "Dispatch event": {
+    "prefix": "lv-event-dispatch",
+    "body": [
+      "\\\\App\\\\Events\\\\${1:OrderPlaced}::dispatch(${2:\\$order});"
+    ],
+    "description": "Dispatch an event using the Dispatchable trait"
+  },
+  "Broadcast event class": {
+    "prefix": "lv-event-broadcast",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Events;",
+      "",
+      "use Illuminate\\\\Broadcasting\\\\PrivateChannel;",
+      "use Illuminate\\\\Contracts\\\\Broadcasting\\\\ShouldBroadcast;",
+      "use Illuminate\\\\Foundation\\\\Events\\\\Dispatchable;",
+      "use Illuminate\\\\Queue\\\\SerializesModels;",
+      "",
+      "class ${1:OrderUpdated} implements ShouldBroadcast",
+      "{",
+      "\tuse Dispatchable, SerializesModels;",
+      "",
+      "\tpublic function __construct(public string \\$orderId) {}",
+      "",
+      "\tpublic function broadcastOn(): array",
+      "\t{",
+      "\t\treturn [new PrivateChannel('orders.'.\\$this->orderId)];",
+      "\t}",
+      "}"
+    ],
+    "description": "Queued private-channel broadcast, configure channel authorization and queue"
+  },
+  "Define authorization gate": {
+    "prefix": "lv-gate-define",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Gate::define('${1:update-post}', function (\\\\App\\\\Models\\\\User \\$user, \\\\App\\\\Models\\\\Post \\$post): bool {",
+      "\treturn \\$user->id === \\$post->user_id;",
+      "});"
+    ],
+    "description": "Gate example, adapt owner-key and authorization rules explicitly"
+  },
+  "Authorize action": {
+    "prefix": "lv-gate-authorize",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Gate::authorize('${1:update}', \\$${2:post});"
+    ],
+    "description": "Authorize through a gate or model policy, throws on denial"
+  },
+  "Password hashing": {
+    "prefix": "lv-hash-password",
+    "body": [
+      "\\$hash = \\\\Illuminate\\\\Support\\\\Facades\\\\Hash::make(\\$${1:password});"
+    ],
+    "description": "Hash a password using the configured hashing driver"
+  },
+  "Queued notification class": {
+    "prefix": "lv-notification-queued",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Notifications;",
+      "",
+      "use Illuminate\\\\Bus\\\\Queueable;",
+      "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldQueue;",
+      "use Illuminate\\\\Notifications\\\\Notification;",
+      "use Illuminate\\\\Notifications\\\\Messages\\\\MailMessage;",
+      "",
+      "class ${1:RecordReady} extends Notification implements ShouldQueue",
+      "{",
+      "\tuse Queueable;",
+      "",
+      "\tpublic function via(object \\$notifiable): array",
+      "\t{",
+      "\t\treturn ['mail'];",
+      "\t}",
+      "",
+      "\tpublic function toMail(object \\$notifiable): MailMessage",
+      "\t{",
+      "\t\treturn (new MailMessage)->line('${2:Your record is ready.}');",
+      "\t}",
+      "}"
+    ],
+    "description": "Queued mail notification, requires mail and queue configuration"
+  },
+  "Database notification payload": {
+    "prefix": "lv-notification-database",
+    "body": [
+      "public function toDatabase(object \\$notifiable): array",
+      "{",
+      "\treturn [",
+      "\t\t'${1:message}' => '${2:Notification message}',",
+      "\t];",
+      "}"
+    ],
+    "description": "Database notification method, add database to via and create notification table"
   }
 }

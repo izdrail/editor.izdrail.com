@@ -335,6 +335,19 @@ mod tests {
     }
 
     #[test]
+    fn laravel_queue_auth_event_templates_preserve_php() {
+        let text = |prefix: &str| {
+            let s = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text("lv-job-unique").contains("return $this->recordId;"));
+        assert!(text("lv-listener-queued").contains("\\App\\Events\\OrderPlaced $event"));
+        assert!(text("lv-event-dispatch").contains("::dispatch($order)"));
+        assert!(text("lv-gate-authorize").contains("'update', $post"));
+        assert!(text("lv-notification-queued").contains("extends Notification implements ShouldQueue"));
+    }
+
+    #[test]
     fn laravel_pack_prefixes_are_unique_and_bodies_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().laravel {
