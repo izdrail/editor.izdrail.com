@@ -398,6 +398,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('20-settings-dropdown-accepted')
         if 'keymap-preset = "vscode"' not in settings_file.read_text():
             raise RuntimeError('Dropdown keyboard acceptance did not persist vscode')
+        run('mousemove', '650', '99', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'editor: font size')
+        time.sleep(1); shot('21-settings-numeric-before')
+        run('mousemove', '600', '270', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'invalid-number')
+        time.sleep(1); shot('21a-settings-numeric-invalid')
+
 
 
 

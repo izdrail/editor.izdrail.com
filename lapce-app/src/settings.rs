@@ -688,6 +688,7 @@ fn settings_item_view(
         empty().into_any()
     };
     let timer = create_rw_signal(TimerToken::INVALID);
+    let validation_message = create_rw_signal(String::new());
 
     let editor_value = match &item.value {
         SettingsValue::Float(n) => Some(n.to_string()),
@@ -739,7 +740,7 @@ fn settings_item_view(
                             let value = value.trim();
                             let value = match &item_value {
                                 SettingsValue::Float(_) => {
-                                    value.parse::<f64>().ok().and_then(|v| {
+                                    value.parse::<f64>().ok().filter(|v| v.is_finite()).and_then(|v| {
                                         serde::Serialize::serialize(
                                             &v,
                                             toml_edit::ser::ValueSerializer::new(),
@@ -763,8 +764,17 @@ fn settings_item_view(
                                 .ok(),
                             };
 
-                            if let Some(value) = value {
-                                LapceConfig::update_file(&kind, &field, value);
+                            match value {
+                                Some(value) => {
+                                    validation_message.set(if LapceConfig::update_file(&kind, &field, value).is_some() {
+                                        String::new()
+                                    } else { "Could not save setting. Check file permissions and try again.".into() });
+                                }
+                                None => validation_message.set(match item_value {
+                                    SettingsValue::Integer(_) => "Enter a valid whole number. Previous value is unchanged.".into(),
+                                    SettingsValue::Float(_) => "Enter a valid finite number. Previous value is unchanged.".into(),
+                                    _ => "Invalid value. Previous value is unchanged.".into(),
+                                }),
                             }
                         });
                     timer.set(token);
@@ -882,6 +892,12 @@ fn settings_item_view(
             },
         )),
         view().style(move |s| s.apply_if(!item.header, |s| s.margin_top(6.0))),
+        label(move || validation_message.get()).style(move |s| {
+            s.font_size(config.get().ui.font_size() as f32).max_width_pct(100.0)
+                .text_overflow(floem::style::TextOverflow::Wrap)
+                .color(config.get().color(LapceColor::LAPCE_ERROR))
+                .apply_if(validation_message.get().is_empty(), |s| s.hide())
+        }),
         connection_panel,
     ))
     .on_resize(move |rect| {
