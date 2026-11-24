@@ -23,7 +23,7 @@ This is a checkpoint, not a completion report or backend recommendation.
 | Benchmark collection | PASS, fixture tests | POSIX sh/Python, hash guard, same-model driver, comparison guard |
 | Benchmarks, 3+ identical runs | BLOCKED | no target-machine runs recorded |
 | TTFT/incremental worker streaming | NOT IMPLEMENTED | current worker returns one completion, metrics stay null |
-| Configurable common sampling profiles | NOT IMPLEMENTED | existing per-backend defaults retained, no silent changes |
+| Configurable sampling profiles | PARTIAL | Candle FIM/chat temperature/top-k/top-p/seed implemented and tested; cross-provider parity and penalties/min-p still open |
 | Download resume/cancellation/resource improvements | OPEN | curated checksums preserved; wider model management still under review |
 | Production backend recommendation | BLOCKED | no valid comparative measurements, Candle retained |
 

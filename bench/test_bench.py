@@ -67,6 +67,23 @@ class BenchTests(unittest.TestCase):
             env['MODEL'] = str(other)
             self.assertNotEqual(subprocess.run(command, env=env, capture_output=True, timeout=10).returncode, 0)
 
+    def test_worker_deadline_covers_partial_line_and_blocked_write(self):
+        import time
+        driver = module('worker')
+        for program, request in [
+            ('import sys,time;sys.stdout.write("{\\"text\\":");sys.stdout.flush();time.sleep(10)', {}),
+            ('import time;time.sleep(10)', {'prefix': 'x' * 1_000_000}),
+        ]:
+            process = subprocess.Popen([sys.executable, '-c', program], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+            started = time.monotonic()
+            try:
+                with self.assertRaises(TimeoutError):
+                    driver.exchange(process, request, .15)
+                self.assertLess(time.monotonic() - started, 2)
+            finally:
+                process.kill(); process.wait()
+                process.stdin.close(); process.stdout.close()
+
     def test_aggregate_excludes_failed_metrics_and_rejects_mixed_config(self):
         collector = module('collect')
         with tempfile.TemporaryDirectory() as d:

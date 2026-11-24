@@ -4,11 +4,57 @@ import argparse
 import json
 import os
 from pathlib import Path
-import select
+import selectors
 import signal
 import subprocess
 import sys
 import time
+
+
+MAX_LINE = 8 * 1024 * 1024
+
+
+def exchange(process, request, timeout):
+    """One bounded line, with a single deadline covering writes and partial reads."""
+    payload = (json.dumps(request) + '\n').encode()
+    if len(payload) > MAX_LINE:
+        raise ValueError('worker request exceeds 8 MiB limit')
+    deadline = time.monotonic() + timeout
+    response = bytearray()
+    sent = 0
+    os.set_blocking(process.stdin.fileno(), False)
+    os.set_blocking(process.stdout.fileno(), False)
+    with selectors.DefaultSelector() as selector:
+        selector.register(process.stdin, selectors.EVENT_WRITE)
+        selector.register(process.stdout, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('worker request/response deadline exceeded')
+            for key, _ in selector.select(remaining):
+                if key.fileobj is process.stdin:
+                    try:
+                        count = os.write(process.stdin.fileno(), payload[sent:sent + 65536])
+                    except BlockingIOError:
+                        continue
+                    sent += count
+                    if sent == len(payload):
+                        selector.unregister(process.stdin)
+                else:
+                    try:
+                        chunk = os.read(process.stdout.fileno(), 65536)
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        raise RuntimeError('worker exited before complete response')
+                    response.extend(chunk)
+                    if len(response) > MAX_LINE:
+                        raise ValueError('worker response exceeds 8 MiB limit')
+                    if b'\n' in response:
+                        line, remainder = response.split(b'\n', 1)
+                        if sent != len(payload) or remainder:
+                            raise RuntimeError('unexpected extra worker output')
+                        return json.loads(line)
 
 
 def main():
@@ -31,19 +77,12 @@ def main():
     command = [args.worker, '--ai-worker']
     records = []
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr,
-                               text=True, bufsize=1, start_new_session=True)
+                               bufsize=0, start_new_session=True)
     try:
         for i in range(args.repeat):
             request['request_id'] = i + 1
             started = time.monotonic()
-            process.stdin.write(json.dumps(request) + '\n')
-            process.stdin.flush()
-            if not select.select([process.stdout], [], [], args.timeout)[0]:
-                raise TimeoutError('worker response deadline exceeded')
-            line = process.stdout.readline()
-            if not line:
-                raise RuntimeError('worker exited before completion')
-            result = json.loads(line)
+            result = exchange(process, request, args.timeout)
             if not isinstance(result, dict) or not isinstance(result.get('text'), str) or 'tokens' not in result:
                 raise RuntimeError('worker returned an error or malformed completion')
             if result.get('cancelled'):

@@ -119,3 +119,8 @@ to Candle. Missing profiles keep greedy defaults. Unknown keys and invalid
 values fail, and greedy temperature0 rejects top-k/top-p rather than ignoring
 them. Record profile JSON in CONFIG for comparisons. These settings do not
 establish sampling parity with another backend.
+
+The local worker driver bounds requests/responses to8MiB. Its deadline covers
+blocked pipe writes and incomplete response lines, not only the first output
+byte. A deadline or malformed output fails the run and terminates the process
+group. Fixture tests cover non-reading and partial-line workers.
