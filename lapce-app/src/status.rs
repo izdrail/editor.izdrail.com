@@ -526,11 +526,18 @@ fn status_text<S: std::fmt::Display + 'static>(
         }
         if !active && previous == Some(true) && return_focus.get_untracked() {
             return_focus.set(false);
-            id.request_focus();
+            // The root key handler requests workbench focus after Escape.
+            // Restore after that dispatch, rather than racing its queued focus.
+            floem::action::exec_after(std::time::Duration::from_millis(1), move |_| {
+                if palette_status.get_untracked() == crate::palette::PaletteStatus::Inactive {
+                    id.request_focus();
+                }
+            });
         }
         active
     });
     view.keyboard_navigable()
+    .on_event_cont(EventListener::PointerDown, move |_| return_focus.set(true))
     .on_event_stop(EventListener::FocusGained, move |_| keyboard_focus.set(Some(id)))
     .on_event_stop(EventListener::FocusLost, move |_| {
         if keyboard_focus.get_untracked() == Some(id) {
