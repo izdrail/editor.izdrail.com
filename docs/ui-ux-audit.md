@@ -144,3 +144,5 @@ UI-020 follow-up uses the same post-click activation boundary for panel headers,
 `45343379570` verifies UI-019: visible group/match focus, Space collapse/reopen without query edits, and Enter opens the actual matched file. Shared header keyboard collapse is also observed. d375c65 reply-policy tests pass; transport-level races remain open.
 
 UI-021, medium/P0: search matches jumped to first nonblank instead of the matched column, and truncated long-line previews retained offsets from the original line, hiding or misplacing highlights. Preserve original UTF-16 column separately from preview-relative byte offsets. Add Unicode/long-line regression gates and inspect exact destination in runtime capture.
+
+`45346172016` stopped at the new Unicode test: expected column was miscounted as 5; é + surrogate-pair emoji + space is 4 UTF-16 units. Correct the test expectation, retain the passing long-line offsets test, and add runtime unique long-line preview/keyboard-destination captures. This failed run is not acceptance.

@@ -2436,7 +2436,7 @@ mod search_preview_tests {
         let line = "é😀 target";
         let start = line.find("target").unwrap();
         let result = search_match_preview(3, line, start, line.len());
-        assert_eq!(result.column, 5);
+        assert_eq!(result.column, 4);
         assert_eq!(&result.line_content[result.start..result.end], "target");
         assert_eq!(result.line, 3);
     }

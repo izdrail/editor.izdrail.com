@@ -470,6 +470,14 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('33-open-editors-header-collapsed')
         run('key', 'space'); shot('33a-open-editors-header-keyboard-expanded')
         run('key', 'space'); shot('33b-open-editors-header-keyboard-collapsed')
+        (project / 'search_long.php').write_text('<?php // ' + 'é' * 160 + ' UNIQUE_LONG_MATCH ' + 'z' * 160 + '\n')
+        run('mousemove', '650', '499', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'UNIQUE_LONG_MATCH')
+        time.sleep(2); shot('34-search-long-preview')
+        run('key', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab')
+        shot('34a-search-long-keyboard-focus')
+        run('key', 'Return'); time.sleep(2); shot('34b-search-long-column-destination')
+
 
 
 
