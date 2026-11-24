@@ -84,13 +84,14 @@ fn problem_section(
         .style(|s| s.absolute().size_pct(100.0, 100.0)),
         label(move || problem_empty_message(severity))
             .style(move |s| {
-                s.width_pct(100.0).min_width(0.0).padding(12.0)
+                s.width_pct(100.0).max_width_pct(100.0).min_width(0.0).padding(12.0)
+                    .text_overflow(floem::style::TextOverflow::Wrap)
                     .color(config.get().color(LapceColor::PANEL_FOREGROUND))
                     .apply_if(has_diagnostics.get(), |s| s.hide())
                     .selectable(false)
             }),
-    )).style(|s| s.size_pct(100.0, 100.0)))
-    .style(|s| s.size_pct(100.0, 100.0))
+    )).style(|s| s.absolute().size_pct(100.0, 100.0).min_width(0.0)))
+    .style(|s| s.size_pct(100.0, 100.0).min_width(0.0))
 }
 
 fn problem_empty_message(severity: DiagnosticSeverity) -> &'static str {
