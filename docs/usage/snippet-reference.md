@@ -198,6 +198,21 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-relation-morphto | morphTo relation method with fully qualified return type |
 | lv-relation-morphtomany | morphToMany relation method with fully qualified return type |
 | lv-relation-latest-of-many | One-of-many relation using sortable primary key |
+| lv-response-json | JSON response in a controller or route |
+| lv-response-redirect | Redirect to a named route with a flash message |
+| lv-response-download | Download an existing local file, authorize access first |
+| lv-response-file | Inline local file response, authorize access first |
+| lv-response-stream-download | Streaming download response callback |
+| lv-response-stream-json | Stream a JSON collection, review model serialization and authorization |
+| lv-http-get | HTTP GET with explicit timeout and HTTP error propagation |
+| lv-http-post | HTTP POST, no automatic retry of non-idempotent requests |
+| lv-upload-store | Validate and store upload on an explicit disk, private local by default |
+| lv-validation-nested-array | Validate each item of a nested array |
+| lv-validation-messages | Inline validation with explicit custom error message |
+| lv-form-request-authorize | FormRequest authorization method, choose the matching policy ability/model |
+| lv-form-request-class | Complete FormRequest class, policy authorization must be configured |
+| lv-form-request-after | FormRequest after-validation hook, replace the explicit condition |
+| lv-validation-rule-class | Modern ValidationRule object, replace the explicit validation condition |
 
 ## livewire
 

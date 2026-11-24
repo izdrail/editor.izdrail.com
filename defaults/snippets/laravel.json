@@ -654,5 +654,178 @@
       "}"
     ],
     "description": "One-of-many relation using sortable primary key"
+  },
+  "JSON response": {
+    "prefix": "lv-response-json",
+    "body": [
+      "return response()->json([",
+      "\t'${1:data}' => \\$${2:data},",
+      "], ${3:200});"
+    ],
+    "description": "JSON response in a controller or route"
+  },
+  "Redirect response": {
+    "prefix": "lv-response-redirect",
+    "body": [
+      "return to_route('${1:posts.index}')->with('${2:status}', '${3:Saved}');"
+    ],
+    "description": "Redirect to a named route with a flash message"
+  },
+  "Download response": {
+    "prefix": "lv-response-download",
+    "body": [
+      "return response()->download(storage_path('app/${1:private/report.pdf}'), '${2:report.pdf}');"
+    ],
+    "description": "Download an existing local file, authorize access first"
+  },
+  "File response": {
+    "prefix": "lv-response-file",
+    "body": [
+      "return response()->file(storage_path('app/${1:private/report.pdf}'));"
+    ],
+    "description": "Inline local file response, authorize access first"
+  },
+  "Streaming download": {
+    "prefix": "lv-response-stream-download",
+    "body": [
+      "return response()->streamDownload(function (): void {",
+      "\techo ${1:'contents'};",
+      "}, '${2:report.txt}');"
+    ],
+    "description": "Streaming download response callback"
+  },
+  "Streaming JSON response": {
+    "prefix": "lv-response-stream-json",
+    "body": [
+      "return response()->streamJson([",
+      "\t'${1:users}' => \\\\App\\\\Models\\\\User::cursor(),",
+      "]);"
+    ],
+    "description": "Stream a JSON collection, review model serialization and authorization"
+  },
+  "HTTP client GET": {
+    "prefix": "lv-http-get",
+    "body": [
+      "\\$response = \\\\Illuminate\\\\Support\\\\Facades\\\\Http::timeout(${1:10})",
+      "\t->get('${2:https://example.com/api}', [${3:}])",
+      "\t->throw();",
+      "\\$data = \\$response->json();"
+    ],
+    "description": "HTTP GET with explicit timeout and HTTP error propagation"
+  },
+  "HTTP client POST": {
+    "prefix": "lv-http-post",
+    "body": [
+      "\\$response = \\\\Illuminate\\\\Support\\\\Facades\\\\Http::timeout(${1:10})",
+      "\t->post('${2:https://example.com/api}', [",
+      "\t\t'${3:name}' => ${4:'value'},",
+      "\t])->throw();"
+    ],
+    "description": "HTTP POST, no automatic retry of non-idempotent requests"
+  },
+  "Store validated upload": {
+    "prefix": "lv-upload-store",
+    "body": [
+      "\\$validated = \\$request->validate([",
+      "\t'${1:document}' => ['required', 'file', 'mimes:${2:pdf}', 'max:${3:10240}'],",
+      "]);",
+      "\\$path = \\$request->file('${1:document}')->store('${4:documents}', '${5:local}');"
+    ],
+    "description": "Validate and store upload on an explicit disk, private local by default"
+  },
+  "Nested array validation": {
+    "prefix": "lv-validation-nested-array",
+    "body": [
+      "\\$validated = \\$request->validate([",
+      "\t'${1:items}' => ['required', 'array'],",
+      "\t'${1:items}.*.${2:name}' => ['required', 'string', 'max:255'],",
+      "]);"
+    ],
+    "description": "Validate each item of a nested array"
+  },
+  "Validation custom messages": {
+    "prefix": "lv-validation-messages",
+    "body": [
+      "\\$validated = \\$request->validate([",
+      "\t'${1:email}' => ['required', 'email'],",
+      "], [",
+      "\t'${1:email}.required' => '${2:An email address is required.}',",
+      "]);"
+    ],
+    "description": "Inline validation with explicit custom error message"
+  },
+  "Form Request authorization": {
+    "prefix": "lv-form-request-authorize",
+    "body": [
+      "public function authorize(): bool",
+      "{",
+      "\treturn \\$this->user()?->can('${1:create}', ${2:Post}::class) ?? false;",
+      "}"
+    ],
+    "description": "FormRequest authorization method, choose the matching policy ability/model"
+  },
+  "Form Request class": {
+    "prefix": "lv-form-request-class",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Requests;",
+      "",
+      "use Illuminate\\\\Foundation\\\\Http\\\\FormRequest;",
+      "",
+      "class ${1:StorePostRequest} extends FormRequest",
+      "{",
+      "\tpublic function authorize(): bool",
+      "\t{",
+      "\t\treturn \\$this->user()?->can('${2:create}', \\\\App\\\\Models\\\\${3:Post}::class) ?? false;",
+      "\t}",
+      "",
+      "\tpublic function rules(): array",
+      "\t{",
+      "\t\treturn [",
+      "\t\t\t'${4:title}' => ['required', 'string', 'max:255'],",
+      "\t\t];",
+      "\t}",
+      "}"
+    ],
+    "description": "Complete FormRequest class, policy authorization must be configured"
+  },
+  "Form Request after validation": {
+    "prefix": "lv-form-request-after",
+    "body": [
+      "public function after(): array",
+      "{",
+      "\treturn [",
+      "\t\tfunction (\\\\Illuminate\\\\Validation\\\\Validator \\$validator): void {",
+      "\t\t\tif (${1:false}) {",
+      "\t\t\t\t\\$validator->errors()->add('${2:field}', '${3:Invalid value.}');",
+      "\t\t\t}",
+      "\t\t},",
+      "\t];",
+      "}"
+    ],
+    "description": "FormRequest after-validation hook, replace the explicit condition"
+  },
+  "Custom validation rule class": {
+    "prefix": "lv-validation-rule-class",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Rules;",
+      "",
+      "use Closure;",
+      "use Illuminate\\\\Contracts\\\\Validation\\\\ValidationRule;",
+      "",
+      "class ${1:ValidValue} implements ValidationRule",
+      "{",
+      "\tpublic function validate(string \\$attribute, mixed \\$value, Closure \\$fail): void",
+      "\t{",
+      "\t\tif (${2:false}) {",
+      "\t\t\t\\$fail('${3:The :attribute is invalid.}');",
+      "\t\t}",
+      "\t}",
+      "}"
+    ],
+    "description": "Modern ValidationRule object, replace the explicit validation condition"
   }
 }

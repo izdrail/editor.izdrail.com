@@ -11,3 +11,13 @@ Runtime Tab check found full-file templates duplicating an active PHP open tag. 
 Routing/relations slice: Laravel grows from41 to56 entries. Added named/prefixed/subdomain/fallback/redirect/constrained/invokable/bound routes and typed through/polymorphic/one-of-many relations. Existing five relation snippets now carry fully qualified return types. New route snippets use a fully qualified Route facade; related model/controller classes remain editable placeholders. This is partial A/C coverage, not A-J completion.
 
 API references checked: https://laravel.com/docs/12.x/routing and https://laravel.com/docs/12.x/eloquent-relationships .
+
+HTTP/validation slice:15 more entries (Laravel71 total): JSON/redirect/file/
+download/stream responses, explicit-timeout HTTP calls, validated private upload,
+nested-array/custom-message validation, full FormRequest and ValidationRule
+classes, authorization and after-validation methods. Policy/model/conditions
+remain explicit placeholders, not silently permissive authorization defaults.
+No automatic retry on non-idempotent POST. Added expansion checks for namespaces,
+PHP variables and placeholder defaults. Full A-J coverage remains open.
+Sources: https://laravel.com/docs/12.x/validation ,
+https://laravel.com/docs/12.x/responses , https://laravel.com/docs/12.x/http-client .

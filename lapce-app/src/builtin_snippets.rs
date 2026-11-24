@@ -309,6 +309,19 @@ mod tests {
     }
 
     #[test]
+    fn laravel_http_validation_templates_preserve_php_variables() {
+        let text = |prefix: &str| {
+            let s = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text("lv-response-json").contains("'data' => $data"));
+        assert!(text("lv-http-get").contains("$response->json()"));
+        assert!(text("lv-form-request-class").contains("\\App\\Models\\Post::class"));
+        assert!(text("lv-validation-rule-class").contains("Closure $fail"));
+        assert!(text("lv-form-request-after").contains("$validator->errors()->add"));
+    }
+
+    #[test]
     fn laravel_pack_prefixes_are_unique_and_bodies_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().laravel {
