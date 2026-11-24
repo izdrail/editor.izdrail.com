@@ -202,6 +202,19 @@ impl OllamaProvider {
         Self { remote, agent }
     }
 }
+/// Keep the reusable HTTP agent alive across sequential worker requests.
+/// Changing any serving parameter replaces it, so endpoint/model/timeouts
+/// from an earlier request cannot leak into a new provider selection.
+pub(crate) fn cached_provider(
+    slot: &mut Option<OllamaProvider>,
+    remote: RemoteFim,
+) -> &mut OllamaProvider {
+    if slot.as_ref().is_none_or(|provider| provider.remote != remote) {
+        *slot = Some(OllamaProvider::new(remote));
+    }
+    slot.as_mut().unwrap()
+}
+
 impl Provider for OllamaProvider {
     fn complete(
         &mut self,
@@ -300,6 +313,21 @@ pub fn clean(text: &str, suffix: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_provider_tracks_all_serving_parameters() {
+        let base = RemoteFim { endpoint: "http://localhost:11434".into(), model: "first".into(), timeout_ms: 2000 };
+        let mut slot = None;
+        assert_eq!(cached_provider(&mut slot, base.clone()).remote, base);
+        assert_eq!(cached_provider(&mut slot, base.clone()).remote, base);
+        for changed in [
+            RemoteFim { endpoint: "http://localhost:11435".into(), ..base.clone() },
+            RemoteFim { model: "second".into(), ..base.clone() },
+            RemoteFim { timeout_ms: 3000, ..base.clone() },
+        ] {
+            assert_eq!(cached_provider(&mut slot, changed.clone()).remote, changed);
+        }
+    }
 
     #[test]
     fn bounded_stream_preserves_unicode_and_rejects_bad_or_partial_responses() {

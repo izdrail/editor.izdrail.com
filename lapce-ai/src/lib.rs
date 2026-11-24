@@ -451,11 +451,12 @@ pub fn run() -> i32 {
             }
         });
         let mut provider: Option<(PathBuf, PathBuf, CandleProvider)> = None;
+        let mut remote_provider: Option<ollama::OllamaProvider> = None;
         for request in rx {
             if let Some(remote) = request.remote.clone() {
                 // Network lane: no local model files are touched. A remote
                 // failure exits the worker like a local one; the dispatcher
-                // respawns it cheaply because nothing is cached here.
+                // respawns it. Identical configurations reuse the HTTP pool.
                 let id = request.request_id;
                 let cancelled = {
                     let cancel_for = cancel_for.clone();
@@ -465,7 +466,7 @@ pub fn run() -> i32 {
                     }
                 };
                 let start = Instant::now();
-                let output = match ollama::OllamaProvider::new(remote)
+                let output = match ollama::cached_provider(&mut remote_provider, remote)
                     .complete(&request, &cancelled)
                 {
                     Ok(output) => output,
