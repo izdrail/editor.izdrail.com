@@ -30,6 +30,19 @@ while True:
         stream.write(json.dumps({'method': method, 'params': params}) + '\n')
     if method == 'initialize':
         send(message['id'], {'capabilities': {'textDocumentSync': 1, 'definitionProvider': True, 'referencesProvider': True}})
+    elif method in ('textDocument/didOpen', 'textDocument/didChange'):
+        document = params['textDocument']
+        if Path(unquote(urlparse(document['uri']).path)).name == 'diagnostics.py':
+            text = document.get('text', '') if method.endswith('didOpen') else params['contentChanges'][-1]['text']
+            diagnostics = []
+            for token, severity in [('ERROR', 1), ('WARN', 2)]:
+                for line, content in enumerate(text.splitlines()):
+                    if token in content:
+                        column = content.index(token)
+                        diagnostics.append({'range': {'start': {'line': line, 'character': column}, 'end': {'line': line, 'character': column + len(token)}}, 'severity': severity, 'source': 'local-ui-fixture', 'message': 'Synthetic ' + token.lower() + ' for UI acceptance'})
+            body = json.dumps({'jsonrpc': '2.0', 'method': 'textDocument/publishDiagnostics', 'params': {'uri': document['uri'], 'version': document.get('version', 0), 'diagnostics': diagnostics}}).encode()
+            sys.stdout.buffer.write(b'Content-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
+            sys.stdout.buffer.flush()
     elif method == 'textDocument/definition':
         source = Path(unquote(urlparse(params['textDocument']['uri']).path))
         if source.name == 'lsp_delayed.py':

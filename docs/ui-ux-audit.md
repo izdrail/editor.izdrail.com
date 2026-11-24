@@ -176,3 +176,5 @@ UI-025, medium/P0: branch status was pointer-only and used custom pointer tracki
 `45381445187` verifies UI-025: keyboard branch focus, real SCM references palette with main/origin-main and Escape returns branch focus. No reference selected. Full test/release/upload gates pass.
 
 UI-026, medium/P0: empty Errors/Warnings sections were blank, with no indication that diagnostics depend on language-service reports. Show severity-specific reported-state guidance only while that section has no diagnostics, tracking diagnostic publication changes. Do not claim a completed clean-code check. Unit wording check and actual hosted empty-state capture required; nonempty/clear transition remains open.
+
+UI-026 acceptance extension: deterministic local stdio LSP fixture now publishes one synthetic error and warning for diagnostics.py, then clears them on text change. Framing/publish/clear smoke test passes locally. Add actual populated and cleared panel captures to verify empty guidance reacts to live RPC notifications. This is UI/RPC fixture coverage, not evidence of a real language provider or a completed code check.

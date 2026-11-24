@@ -495,6 +495,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); time.sleep(1); shot('38a-status-branch-palette')
         run('key', 'Escape'); time.sleep(1); shot('38b-status-branch-focus-restored')
         run('key', 'Tab', 'Return'); time.sleep(1); shot('39-problems-empty-guidance')
+        (project / 'diagnostics.py').write_text('# ERROR synthetic error\n# WARN synthetic warning\n')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'diagnostics.py'); run('key', 'Return')
+        time.sleep(3); shot('40-problems-published')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '# cleared synthetic diagnostics')
+        time.sleep(3); shot('40a-problems-cleared')
+
 
 
 
