@@ -243,6 +243,24 @@ pub fn snippet_items(
     out
 }
 
+/// Full-file PHP templates must not duplicate an already active open tag.
+/// Only the exact leading tag is removed; namespace/import decisions remain
+/// visible to the user rather than silently rewriting their source.
+pub fn php_snippet_open_tag(items: &mut [CompletionItem], active_php: bool) {
+    if !active_php { return; }
+    let strip = |text: &str| text.strip_prefix("<?php\n\n")
+        .or_else(|| text.strip_prefix("<?php\n")).map(str::to_string);
+    for item in items {
+        if item.kind != Some(CompletionItemKind::SNIPPET) { continue; }
+        if let Some(text) = item.insert_text.as_mut() {
+            if let Some(body) = strip(text) { *text = body; }
+        }
+        if let Some(CompletionTextEdit::Edit(edit)) = item.text_edit.as_mut() {
+            if let Some(body) = strip(&edit.new_text) { edit.new_text = body; }
+        }
+    }
+}
+
 /// Leading whitespace of a line.
 pub fn leading_indent(line: &str) -> &str {
     let end = line
@@ -256,6 +274,22 @@ pub fn leading_indent(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn php_template_does_not_duplicate_active_open_tag() {
+        let mut items = vec![CompletionItem {
+            kind: Some(CompletionItemKind::SNIPPET),
+            insert_text: Some("<?php\n\nnamespace App;\n".into()),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(Range::default(), "<?php\n\nnamespace App;\n".into()))),
+            ..Default::default()
+        }];
+        php_snippet_open_tag(&mut items, false);
+        assert!(items[0].insert_text.as_ref().unwrap().starts_with("<?php"));
+        php_snippet_open_tag(&mut items, true);
+        assert_eq!(items[0].insert_text.as_deref(),Some("namespace App;\n"));
+        let Some(CompletionTextEdit::Edit(edit)) = &items[0].text_edit else { panic!() };
+        assert_eq!(edit.new_text,"namespace App;\n");
+    }
 
     #[test]
     fn words_ranked_by_frequency_and_filtered() {

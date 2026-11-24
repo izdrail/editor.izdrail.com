@@ -3387,7 +3387,14 @@ impl EditorData {
                             snippet_lang.unwrap_or(lang),
                             &project,
                         ));
-                        snippet_items(&all, &indent, range)
+                        let mut items = snippet_items(&all, &indent, range);
+                        if lang == "php" && !is_blade {
+                            // The accepted lexer identifies a PHP-only buffer;
+                            // a snippet inside it does not need another open tag.
+                            crate::completion_sources::php_snippet_open_tag(&mut items,
+                                lapce_core::lexilla::is_pure_php(&before_cursor));
+                        }
+                        items
                     }
                     None => Vec::new(),
                 };
