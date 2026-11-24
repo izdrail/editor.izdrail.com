@@ -434,6 +434,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape')
         for index in range(6):
             run('key', 'Tab'); shot(f'24b-toolbar-traversal-{index}')
+        run('key', 'shift+Tab'); shot('25-workspace-dropdown-focus')
+        run('key', 'space'); shot('25a-workspace-dropdown-open')
+        run('key', 'Escape')
+        # Native menu dismissal resets focus. Start from the observed first
+        # toolbar target, not from an assumed retained menu-trigger focus.
+        run('key', 'Tab', 'Tab'); shot('25b-remote-menu-focus')
+        run('key', 'space'); shot('25c-remote-menu-open')
+        run('key', 'Escape')
+
 
 
 
