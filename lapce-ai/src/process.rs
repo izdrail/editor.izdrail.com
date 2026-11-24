@@ -218,11 +218,23 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
     fn script(name: &str, body: &str) -> PathBuf {
+        use std::io::Write;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = std::env::temp_dir()
-            .join(format!("lapce-ai-{name}-{}.sh", std::process::id()));
-        std::fs::write(&path, body).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .join(format!("lapce-ai-{name}-{}-{sequence}.sh", std::process::id()));
+        let staging = path.with_extension("writing");
+        // Close the writable descriptor before publishing an executable path.
+        // This also keeps concurrently running fixture instances independent.
+        {
+            let mut file = std::fs::OpenOptions::new().write(true).create_new(true)
+                .open(&staging).unwrap();
+            file.write_all(body.as_bytes()).unwrap();
+            file.sync_all().unwrap();
+        }
+        std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o700))
             .unwrap();
+        std::fs::rename(&staging, &path).unwrap();
         path
     }
     fn request() -> Request {

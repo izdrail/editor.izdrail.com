@@ -72,3 +72,10 @@ reserved message markers as in the existing engine, tokenize rendered template,
 and preserve raw chat output. Unsupported templates return an error. Registry
 advertises the compiled experimental backend with explicit pending-acceptance
 limits, not unproven architecture/CUDA claims.
+
+Hosted optional llama.cpp CPU build and crate tests passed for a84257f and
+9126e34, including embedded chat-template code. This is compilation, not
+exact-model inference. The9126 full-workspace run separately hit ETXTBSY while
+launching a temporary shell test fixture. Fixture publication now uses unique
+paths and a fully closed/synced staging file before atomic rename. No timeout
+threshold or production behavior changed.
