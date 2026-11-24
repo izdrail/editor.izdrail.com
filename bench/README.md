@@ -140,3 +140,11 @@ if unavailable, never silently falls back. Auto currently only probes device0
 and falls back on initialization failure. VRAM/context-aware auto placement is
 not implemented, so use cpu or a verified explicit device for now. Neither
 selection nor initialization establishes that an inference ran on the GPU.
+
+Build isolation: build.sh now writes to target/bench-builds/BACKEND-DEVICE,
+not a shared release directory. Set BENCH_BUILD_ROOT to move that parent.
+CARGO_TARGET_DIR is set by the helper deliberately. Use the exact Worker path
+printed by each invocation; older target/release examples are not helper output.
+This prevents a later CPU build replacing the CUDA binary before comparison.
+For Mistral, separately build the editor bridge and set LAPCE_AI_MISTRAL_WORKER
+to the isolated Mistral worker path, with LAPCE_AI_BACKEND=mistral-rs.

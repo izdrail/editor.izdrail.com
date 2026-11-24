@@ -84,6 +84,30 @@ class BenchTests(unittest.TestCase):
                 process.kill(); process.wait()
                 process.stdin.close(); process.stdout.close()
 
+    def test_build_helper_isolates_backend_and_device_artifacts(self):
+        with tempfile.TemporaryDirectory() as d:
+            bin_dir = Path(d, 'bin'); bin_dir.mkdir()
+            cargo = bin_dir / 'cargo'
+            cargo.write_text('''#!/bin/sh
+set -eu
+if [ "$1" = --version ]; then echo fixture-cargo; exit; fi
+name=lapce-ai
+case "$*" in *mistral-worker*) name=lapce-mistral-worker ;; esac
+mkdir -p "$CARGO_TARGET_DIR/release"
+printf '%s\\n' '#!/bin/sh' > "$CARGO_TARGET_DIR/release/$name"
+chmod +x "$CARGO_TARGET_DIR/release/$name"
+''')
+            cargo.chmod(0o700)
+            for tool in ['nvcc', 'nvidia-smi']:
+                path = bin_dir / tool; path.write_text('#!/bin/sh\nexit 0\n'); path.chmod(0o700)
+            env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'], BENCH_BUILD_ROOT=str(Path(d, 'builds')), CARGO_TARGET_DIR=str(Path(d, 'ignored')))
+            for backend in ['candle', 'llamacpp', 'mistralrs']:
+                for device in ['cpu', 'cuda']:
+                    result = subprocess.run(['sh', str(ROOT/'build.sh'), backend, device], env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(str(Path(d, 'builds', backend + '-' + device, 'release')), result.stdout)
+            self.assertEqual(len(list(Path(d, 'builds').glob('*/release/*'))), 6)
+
     def test_aggregate_excludes_failed_metrics_and_rejects_mixed_config(self):
         collector = module('collect')
         with tempfile.TemporaryDirectory() as d:
