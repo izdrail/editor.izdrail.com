@@ -80,6 +80,8 @@ pub(crate) struct WindowHandle {
     pub(crate) last_pointer_down: Option<(u8, Point, Instant)>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub(crate) context_menu: RwSignal<Option<(Menu, Point, bool)>>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    context_menu_return_focus: RwSignal<Option<ViewId>>,
     dropper_file: Option<PathBuf>,
 }
 
@@ -107,6 +109,8 @@ impl WindowHandle {
 
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         let context_menu = scope.create_rw_signal(None);
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let context_menu_return_focus = scope.create_rw_signal(None);
 
         #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
         let view = with_scope(scope, move || {
@@ -123,7 +127,7 @@ impl WindowHandle {
                 main_view_id,
                 stack((
                     container(main_view).style(|s| s.size(100.pct(), 100.pct())),
-                    context_menu_view(scope, context_menu, size),
+                    context_menu_view(scope, context_menu, size, context_menu_return_focus),
                 ))
                 .style(|s| s.size(100.pct(), 100.pct()))
                 .into_any(),
@@ -191,6 +195,8 @@ impl WindowHandle {
             window_position: Point::ZERO,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             context_menu,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            context_menu_return_focus,
             last_pointer_down: None,
             dropper_file: None,
         };
@@ -1047,7 +1053,10 @@ impl WindowHandle {
                             self.show_context_menu(platform_menu, pos);
                         }
                         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                        self.show_context_menu(menu, pos);
+                        {
+                            self.context_menu_return_focus.set(cx.app_state.focus);
+                            self.show_context_menu(menu, pos);
+                        }
                     }
                     UpdateMessage::WindowMenu { menu } => {
                         // let platform_menu = menu.platform_menu();
@@ -1346,6 +1355,7 @@ fn context_menu_view(
     cx: Scope,
     context_menu: RwSignal<Option<(Menu, Point, bool)>>,
     window_size: RwSignal<Size>,
+    return_focus: RwSignal<Option<ViewId>>,
 ) -> impl IntoView {
     use floem_reactive::{create_effect, create_rw_signal};
     use peniko::Color;
@@ -1567,6 +1577,9 @@ fn context_menu_view(
         if let Event::KeyDown(event) = event {
             if event.key.logical_key == Key::Named(NamedKey::Escape) {
                 context_menu.set(None);
+                if let Some(target) = return_focus.get_untracked() {
+                    target.request_focus();
+                }
             }
         }
     })

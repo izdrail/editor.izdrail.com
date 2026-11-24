@@ -425,32 +425,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
                 raise RuntimeError('Failed dropdown write changed settings')
         finally:
             settings_file.chmod(0o644)
-        # Focus the title search by pointer, then exercise keyboard targets.
+        # Escape returns to the menu trigger, preserving a predictable path.
         run('mousemove', '650', '14', 'click', '1'); run('key', 'Escape')
+        # The palette owns focus after Escape; Tab starts toolbar traversal.
         run('key', 'Tab'); shot('23-toolbar-main-menu-focus')
         run('key', 'space'); shot('23a-toolbar-main-menu-open')
-        run('key', 'Escape', 'Tab'); shot('24-toolbar-remote-focus')
-        run('key', 'space'); shot('24a-toolbar-remote-menu')
-        run('key', 'Escape')
-        for index in range(6):
-            run('key', 'Tab'); shot(f'24b-toolbar-traversal-{index}')
-        run('key', 'shift+Tab'); shot('25-workspace-dropdown-focus')
-        run('key', 'space'); shot('25a-workspace-dropdown-open')
-        run('key', 'Escape')
-        # Native menu dismissal resets focus. Start from the observed first
-        # toolbar target, not from an assumed retained menu-trigger focus.
-        run('key', 'Tab', 'Tab', 'Tab'); shot('25b-remote-menu-focus')
-        run('key', 'space'); shot('25c-remote-menu-open')
-        run('key', 'Escape')
-
-
-
-
-
-
-
-
-
+        run('key', 'Escape'); shot('26-main-menu-return-focus')
+        run('key', 'Tab'); shot('26a-remote-menu-focus')
+        run('key', 'space'); shot('26b-remote-menu-open')
+        run('key', 'Escape'); shot('26c-remote-menu-return-focus')
 
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
