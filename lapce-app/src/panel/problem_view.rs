@@ -436,7 +436,7 @@ fn related_view(
         s.width_pct(100.0)
             .min_width(0.0)
             .items_start()
-            .color(config.get().color(LapceColor::EDITOR_DIM))
+            .color(config.get().color(LapceColor::PANEL_FOREGROUND))
             .apply_if(is_empty, |s| s.hide())
     })
 }

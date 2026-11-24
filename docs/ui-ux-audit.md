@@ -188,3 +188,5 @@ UI-027, medium/P0: Problems file-group, diagnostic and related-location rows wer
 `45394796677` verifies UI-027 for file-group collapse/reopen, native warning-row focus and Enter destination line 2 column 3. No source edit from activation. Related-row acceptance remains pending.
 
 UI-028, medium/P0: related diagnostic rows reused one constant list key and displayed zero-based positions. Use URI/range/message identity and display one-based positions, preserving zero-based LSP jump coordinates. Add two related locations in the local fixture, native Tab between them and Enter the second target at line 3 column 5. Runtime list identity and destination acceptance required.
+
+`45400010169` verifies UI-028 navigation: two distinct related rows show [1, 1] and [3, 5]; native Tab reaches the second row and Enter opens related_target.py at line 3 column 5. Actual labels are too dim against the panel. UI-029, medium/P0: use normal panel foreground for actionable related text, keeping the decorative link icon dim. Recapture the same actual workflow before contrast acceptance.
