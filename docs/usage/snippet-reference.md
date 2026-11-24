@@ -213,6 +213,23 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-form-request-class | Complete FormRequest class, policy authorization must be configured |
 | lv-form-request-after | FormRequest after-validation hook, replace the explicit condition |
 | lv-validation-rule-class | Modern ValidationRule object, replace the explicit validation condition |
+| lv-db-transaction | Atomic database work, do not put non-idempotent external calls inside retried transactions |
+| lv-db-select | Parameterized value binding; table/column placeholders must be trusted identifiers |
+| lv-query-select | Query Builder with a bound where value |
+| lv-query-chunk-by-id | Stable primary-key chunking, do not change the chunk key while iterating |
+| lv-query-lazy-by-id | Lazy ID-ordered iteration |
+| lv-query-paginate | Ordered Eloquent pagination |
+| lv-query-upsert | Upsert rows, unique-key columns require matching database constraints |
+| lv-db-insert | Bulk insert without Eloquent model events |
+| lv-db-connection | Query an explicitly named configured connection |
+| lv-migration-modify | Reversible add-column migration |
+| lv-migration-foreign-id | Foreign key in a Blueprint callback, choose delete/update behavior explicitly |
+| lv-migration-index-composite | Named composite index in a Blueprint callback |
+| lv-migration-index-unique | Named unique constraint in a Blueprint callback |
+| lv-middleware-terminable | Terminable middleware, fast termination depends on the server runtime |
+| lv-middleware-parameter | Parameterized middleware method, explicitly implement the access check |
+| lv-middleware-alias | Laravel 11/12 bootstrap/app.php middleware alias chain |
+| lv-middleware-response-header | Response header modification inside middleware handle |
 
 ## livewire
 

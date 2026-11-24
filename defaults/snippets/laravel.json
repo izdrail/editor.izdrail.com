@@ -827,5 +827,195 @@
       "}"
     ],
     "description": "Modern ValidationRule object, replace the explicit validation condition"
+  },
+  "Database transaction": {
+    "prefix": "lv-db-transaction",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\DB::transaction(function () {",
+      "\t$0",
+      "});"
+    ],
+    "description": "Atomic database work, do not put non-idempotent external calls inside retried transactions"
+  },
+  "Parameterized raw query": {
+    "prefix": "lv-db-select",
+    "body": [
+      "\\$rows = \\\\Illuminate\\\\Support\\\\Facades\\\\DB::select(",
+      "\t'SELECT * FROM ${1:users} WHERE ${2:id} = ?',",
+      "\t[\\$${3:id}],",
+      ");"
+    ],
+    "description": "Parameterized value binding; table/column placeholders must be trusted identifiers"
+  },
+  "Query builder select": {
+    "prefix": "lv-query-select",
+    "body": [
+      "\\$rows = \\\\Illuminate\\\\Support\\\\Facades\\\\DB::table('${1:users}')",
+      "\t->where('${2:active}', ${3:true})",
+      "\t->get();"
+    ],
+    "description": "Query Builder with a bound where value"
+  },
+  "Chunk records by ID": {
+    "prefix": "lv-query-chunk-by-id",
+    "body": [
+      "\\\\App\\\\Models\\\\${1:User}::query()->chunkById(${2:100}, function (\\$models): void {",
+      "\tforeach (\\$models as \\$model) {",
+      "\t\t$0",
+      "\t}",
+      "});"
+    ],
+    "description": "Stable primary-key chunking, do not change the chunk key while iterating"
+  },
+  "Lazy records by ID": {
+    "prefix": "lv-query-lazy-by-id",
+    "body": [
+      "foreach (\\\\App\\\\Models\\\\${1:User}::query()->lazyById(${2:1000}) as \\$model) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Lazy ID-ordered iteration"
+  },
+  "Paginated model query": {
+    "prefix": "lv-query-paginate",
+    "body": [
+      "\\$models = \\\\App\\\\Models\\\\${1:User}::query()",
+      "\t->orderBy('${2:id}')",
+      "\t->paginate(${3:15});"
+    ],
+    "description": "Ordered Eloquent pagination"
+  },
+  "Model upsert": {
+    "prefix": "lv-query-upsert",
+    "body": [
+      "\\\\App\\\\Models\\\\${1:User}::upsert(",
+      "\t[${2:}],",
+      "\t['${3:email}'],",
+      "\t['${4:name}'],",
+      ");"
+    ],
+    "description": "Upsert rows, unique-key columns require matching database constraints"
+  },
+  "Bulk database insert": {
+    "prefix": "lv-db-insert",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\DB::table('${1:users}')->insert([",
+      "\t['${2:name}' => '${3:Example}'],",
+      "]);"
+    ],
+    "description": "Bulk insert without Eloquent model events"
+  },
+  "Database connection query": {
+    "prefix": "lv-db-connection",
+    "body": [
+      "\\$rows = \\\\Illuminate\\\\Support\\\\Facades\\\\DB::connection('${1:sqlite}')",
+      "\t->table('${2:users}')->get();"
+    ],
+    "description": "Query an explicitly named configured connection"
+  },
+  "Migration modify table": {
+    "prefix": "lv-migration-modify",
+    "body": [
+      "use Illuminate\\\\Database\\\\Migrations\\\\Migration;",
+      "use Illuminate\\\\Database\\\\Schema\\\\Blueprint;",
+      "use Illuminate\\\\Support\\\\Facades\\\\Schema;",
+      "",
+      "return new class extends Migration",
+      "{",
+      "\tpublic function up(): void",
+      "\t{",
+      "\t\tSchema::table('${1:users}', function (Blueprint \\$table): void {",
+      "\t\t\t\\$table->string('${2:nickname}')->nullable();",
+      "\t\t});",
+      "\t}",
+      "",
+      "\tpublic function down(): void",
+      "\t{",
+      "\t\tSchema::table('${1:users}', function (Blueprint \\$table): void {",
+      "\t\t\t\\$table->dropColumn('${2:nickname}');",
+      "\t\t});",
+      "\t}",
+      "};"
+    ],
+    "description": "Reversible add-column migration"
+  },
+  "Migration constrained foreign key": {
+    "prefix": "lv-migration-foreign-id",
+    "body": [
+      "\\$table->foreignId('${1:user_id}')->constrained('${2:users}');"
+    ],
+    "description": "Foreign key in a Blueprint callback, choose delete/update behavior explicitly"
+  },
+  "Migration composite index": {
+    "prefix": "lv-migration-index-composite",
+    "body": [
+      "\\$table->index(['${1:account_id}', '${2:created_at}'], '${3:account_created_index}');"
+    ],
+    "description": "Named composite index in a Blueprint callback"
+  },
+  "Migration unique index": {
+    "prefix": "lv-migration-index-unique",
+    "body": [
+      "\\$table->unique(['${1:email}'], '${2:users_email_unique}');"
+    ],
+    "description": "Named unique constraint in a Blueprint callback"
+  },
+  "Terminable middleware class": {
+    "prefix": "lv-middleware-terminable",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Middleware;",
+      "",
+      "use Closure;",
+      "use Illuminate\\\\Http\\\\Request;",
+      "use Symfony\\\\Component\\\\HttpFoundation\\\\Response;",
+      "",
+      "class ${1:AfterResponse}",
+      "{",
+      "\tpublic function handle(Request \\$request, Closure \\$next): Response",
+      "\t{",
+      "\t\treturn \\$next(\\$request);",
+      "\t}",
+      "",
+      "\tpublic function terminate(Request \\$request, Response \\$response): void",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Terminable middleware, fast termination depends on the server runtime"
+  },
+  "Middleware with parameter": {
+    "prefix": "lv-middleware-parameter",
+    "body": [
+      "public function handle(\\\\Illuminate\\\\Http\\\\Request \\$request, \\\\Closure \\$next, string \\$${1:role}): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "{",
+      "\t$0",
+      "\treturn \\$next(\\$request);",
+      "}"
+    ],
+    "description": "Parameterized middleware method, explicitly implement the access check"
+  },
+  "Middleware alias registration": {
+    "prefix": "lv-middleware-alias",
+    "body": [
+      "->withMiddleware(function (\\\\Illuminate\\\\Foundation\\\\Configuration\\\\Middleware \\$middleware): void {",
+      "\t\\$middleware->alias([",
+      "\t\t'${1:custom}' => \\\\App\\\\Http\\\\Middleware\\\\${2:CustomMiddleware}::class,",
+      "\t]);",
+      "})"
+    ],
+    "description": "Laravel 11/12 bootstrap/app.php middleware alias chain"
+  },
+  "Modify middleware response": {
+    "prefix": "lv-middleware-response-header",
+    "body": [
+      "\\$response = \\$next(\\$request);",
+      "\\$response->headers->set('${1:X-Custom}', '${2:value}');",
+      "",
+      "return \\$response;"
+    ],
+    "description": "Response header modification inside middleware handle"
   }
 }

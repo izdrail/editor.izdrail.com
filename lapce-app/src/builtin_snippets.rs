@@ -322,6 +322,19 @@ mod tests {
     }
 
     #[test]
+    fn laravel_database_and_middleware_templates_keep_parameters() {
+        let text = |prefix: &str| {
+            let s = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text("lv-db-select").contains("[$id]"));
+        assert!(text("lv-query-chunk-by-id").contains("\\App\\Models\\User::query()"));
+        assert!(text("lv-middleware-parameter").contains("string $role"));
+        assert!(text("lv-middleware-terminable").contains("terminate(Request $request, Response $response): void"));
+        assert!(text("lv-migration-modify").contains("$table->dropColumn('nickname')"));
+    }
+
+    #[test]
     fn laravel_pack_prefixes_are_unique_and_bodies_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().laravel {

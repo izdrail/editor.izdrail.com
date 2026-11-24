@@ -21,3 +21,12 @@ No automatic retry on non-idempotent POST. Added expansion checks for namespaces
 PHP variables and placeholder defaults. Full A-J coverage remains open.
 Sources: https://laravel.com/docs/12.x/validation ,
 https://laravel.com/docs/12.x/responses , https://laravel.com/docs/12.x/http-client .
+
+Database/middleware slice:17 entries (Laravel88), covering transactions, bound
+raw queries, chunk/lazy/pagination, upsert/insert/connections, reversible modify
+migration, foreign/unique/composite constraints, terminable/parameter middleware,
+bootstrap alias registration and response modification. Descriptions identify
+context, version-specific registration and safety-sensitive choices.
+Sources checked: https://laravel.com/docs/12.x/queries ,
+https://laravel.com/docs/12.x/migrations , https://laravel.com/docs/12.x/database ,
+https://laravel.com/docs/12.x/middleware .
