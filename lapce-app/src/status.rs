@@ -235,11 +235,23 @@ pub fn status(
                         },
                     ),
                 ))
+                .keyboard_navigable()
+                .on_event(EventListener::KeyDown, |event| {
+                    if let Event::KeyDown(key) = event {
+                        if matches!(key.key.logical_key, floem::keyboard::Key::Named(
+                            floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+                        )) {
+                            return EventPropagation::Stop;
+                        }
+                    }
+                    EventPropagation::Continue
+                })
                 .on_click_stop(move |_| {
                     panel.show_panel(&PanelKind::Problem);
                 })
                 .style(move |s| {
                     s.height_pct(100.0)
+                        .focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
                         .padding_horiz(10.0)
                         .items_center()
                         .hover(|s| {

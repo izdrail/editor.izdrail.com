@@ -162,3 +162,7 @@ UI-023, medium/P0: cursor/line-ending/language status actions were pointer-only.
 `45361313625` opens the real line-ending palette, but Escape/Tab then indents the source instead of moving to Language. UI-023 keyboard flow is NOT accepted. Register status focus for form traversal and restore the invoking status control after its palette closes; keep both settings unchanged.
 
 `45364855777` still loses status focus to the root Escape key handler, so no keyboard acceptance. Remember the pointer invocation directly and defer restoring focus until after key dispatch, guarding that the palette remains closed. Retry the same workflow.
+
+`45369985403` verifies UI-023: Escape from line-ending palette restores LF control; Tab reaches PHP and Enter opens the real language palette. Source remains visually unedited. Extend cursor-action coverage via Shift-Tab twice and Enter to Go to Line.
+
+UI-024, medium/P0: diagnostic status target omitted from keyboard traversal. Add focus styling and native activation, preventing activation from also editing the code behind it. Its actual keyboard destination remains a runtime gate.

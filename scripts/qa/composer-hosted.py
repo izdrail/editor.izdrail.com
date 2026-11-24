@@ -484,6 +484,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('35a-status-language-keyboard-focus')
         run('key', 'Return'); time.sleep(1); shot('35b-status-language-palette')
         run('key', 'Escape')
+        time.sleep(1); run('key', 'shift+Tab', 'shift+Tab')
+        shot('36-status-cursor-keyboard-focus')
+        run('key', 'Return'); time.sleep(1); shot('36a-status-goto-line-palette')
+        run('key', 'Escape'); time.sleep(1)
+
 
 
 
