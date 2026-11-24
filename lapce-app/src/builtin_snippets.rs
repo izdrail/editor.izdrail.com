@@ -415,10 +415,10 @@ mod tests {
     fn alpine_and_extra_livewire_attributes_are_offered_in_blade() {
         let blade = &packs().blade;
         for want in [
-            "x-data", "x-init", "x-show", "x-on", "x-bind", "x-model", "x-text", "x-html",
-            "x-ref", "x-cloak", "x-transition", "x-for", "x-if", "x-effect", "x-teleport",
-            "x-ignore", "x-id", "x-modelable", "wire-init", "wire-ignore", "wire-stream",
-            "wire-target", "wire-transition",
+            "lv-blade-x-data", "lv-blade-x-init", "lv-blade-x-show", "lv-blade-x-on", "lv-blade-x-bind", "lv-blade-x-model", "lv-blade-x-text", "lv-blade-x-html",
+            "lv-blade-x-ref", "lv-blade-x-cloak", "lv-blade-x-transition", "lv-blade-x-for", "lv-blade-x-if", "lv-blade-x-effect", "lv-blade-x-teleport",
+            "lv-blade-x-ignore", "lv-blade-x-id", "lv-blade-x-modelable", "lv-blade-wire-init", "lv-blade-wire-ignore", "lv-blade-wire-stream",
+            "lv-blade-wire-target", "lv-blade-wire-transition",
         ] {
             assert!(blade.iter().any(|s| s.prefix.iter().any(|p| p == want)), "{want}");
         }
@@ -427,9 +427,9 @@ mod tests {
             Parsed::from_str(&s.body).unwrap().text()
         };
         // x-on is used instead of the Blade-clashing `@click` shorthand.
-        assert_eq!(body("x-on"), "x-on:click=\"handler\"");
-        assert!(body("x-for").contains("x-for=\"item in items\""));
-        assert!(body("x-data").contains("{ open: false }"));
+        assert_eq!(body("lv-blade-x-on"), "x-on:click=\"handler\"");
+        assert!(body("lv-blade-x-for").contains("x-for=\"item in items\""));
+        assert!(body("lv-blade-x-data").contains("{ open: false }"));
     }
 
     #[test]

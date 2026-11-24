@@ -1,21 +1,21 @@
 {
   "laravel": {
     "Route get": {
-      "prefix": "lv-route-get",
+      "prefix": "route-get",
       "body": [
         "Route::get('${1:/path}', [${2:Controller}::class, '${3:index}'])->name('${4:name}');"
       ],
       "description": "Laravel route to a controller method"
     },
     "Route resource": {
-      "prefix": "lv-route-resource",
+      "prefix": "route-resource",
       "body": [
         "Route::resource('${1:photos}', ${2:PhotoController}::class);"
       ],
       "description": "Laravel resource routes"
     },
     "Route group": {
-      "prefix": "lv-route-group",
+      "prefix": "route-group",
       "body": [
         "Route::middleware(['${1:auth}'])->prefix('${2:admin}')->group(function () {",
         "\t$0",
@@ -373,14 +373,14 @@
       "description": "Pest test"
     },
     "Route api resource": {
-      "prefix": "lv-route-api",
+      "prefix": "route-api",
       "body": [
         "Route::apiResource('${1:posts}', ${2:PostController}::class);"
       ],
       "description": "apiResource routes"
     },
     "Route middleware group": {
-      "prefix": "lv-route-middleware",
+      "prefix": "route-middleware",
       "body": [
         "Route::middleware(['${1:auth}'])->group(function () {",
         "\t$0",
@@ -396,35 +396,35 @@
       "description": "dd()"
     },
     "Route post": {
-      "prefix": "lv-route-post",
+      "prefix": "route-post",
       "body": [
         "Route::post('${1:/path}', [${2:Controller}::class, '${3:store}'])->name('${4:name}');"
       ],
       "description": "Laravel POST route to a controller method"
     },
     "Route put": {
-      "prefix": "lv-route-put",
+      "prefix": "route-put",
       "body": [
         "Route::put('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
       ],
       "description": "Laravel PUT route to a controller method"
     },
     "Route patch": {
-      "prefix": "lv-route-patch",
+      "prefix": "route-patch",
       "body": [
         "Route::patch('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
       ],
       "description": "Laravel PATCH route to a controller method"
     },
     "Route delete": {
-      "prefix": "lv-route-delete",
+      "prefix": "route-delete",
       "body": [
         "Route::delete('${1:/path}', [${2:Controller}::class, '${3:destroy}'])->name('${4:name}');"
       ],
       "description": "Laravel DELETE route to a controller method"
     },
     "Route view": {
-      "prefix": "lv-route-view",
+      "prefix": "route-view",
       "body": [
         "Route::view('${1:/path}', '${2:view}')->name('${3:name}');"
       ],
@@ -528,7 +528,7 @@
   },
   "livewire": {
     "lw-component": {
-      "prefix": "lv-livewire-component",
+      "prefix": "lw-component",
       "body": [
         "<?php",
         "",
@@ -554,7 +554,7 @@
       "description": "Livewire 3 component class"
     },
     "lw-rule": {
-      "prefix": "lv-livewire-rule",
+      "prefix": "lw-rule",
       "body": [
         "#[Rule('${1:required|min:3}')]",
         "public \\$${2:name} = '';"
@@ -562,7 +562,7 @@
       "description": "Livewire 3 #[Rule] property"
     },
     "lw-on": {
-      "prefix": "lv-livewire-on",
+      "prefix": "lw-on",
       "body": [
         "#[On('${1:event}')]",
         "public function ${2:handle}()",
@@ -573,7 +573,7 @@
       "description": "Livewire 3 #[On] listener"
     },
     "lw-computed": {
-      "prefix": "lv-livewire-computed",
+      "prefix": "lw-computed",
       "body": [
         "#[Computed]",
         "public function ${1:items}()",
@@ -584,28 +584,28 @@
       "description": "Livewire 3 #[Computed] property"
     },
     "lw-dispatch": {
-      "prefix": "lv-livewire-dispatch",
+      "prefix": "lw-dispatch",
       "body": [
         "\\$this->dispatch('${1:event}'${2:, ${3:key}: ${4:\\$value}});"
       ],
       "description": "Livewire 3 dispatch event"
     },
     "lw-validate": {
-      "prefix": "lv-livewire-validate",
+      "prefix": "lw-validate",
       "body": [
         "\\$this->validate();"
       ],
       "description": "Livewire validate"
     },
     "lw-redirect": {
-      "prefix": "lv-livewire-redirect",
+      "prefix": "lw-redirect",
       "body": [
         "return \\$this->redirect('${1:/}', navigate: true);"
       ],
       "description": "Livewire redirect"
     },
     "lw-mount": {
-      "prefix": "lv-livewire-mount",
+      "prefix": "lw-mount",
       "body": [
         "public function mount(${1:\\$param})",
         "{",
@@ -615,21 +615,21 @@
       "description": "Livewire mount"
     },
     "lw-reset": {
-      "prefix": "lv-livewire-reset",
+      "prefix": "lw-reset",
       "body": [
         "\\$this->reset('${1:property}');"
       ],
       "description": "Livewire reset property"
     },
     "lw-pagination": {
-      "prefix": "lv-livewire-pagination",
+      "prefix": "lw-pagination",
       "body": [
         "use WithPagination;"
       ],
       "description": "Livewire pagination trait"
     },
     "lw-render": {
-      "prefix": "lv-livewire-render",
+      "prefix": "lw-render",
       "body": [
         "public function render()",
         "{",
@@ -639,7 +639,7 @@
       "description": "Livewire render method"
     },
     "lw-form": {
-      "prefix": "lv-livewire-form",
+      "prefix": "lw-form",
       "body": [
         "<?php",
         "",
@@ -658,7 +658,7 @@
       "description": "Livewire form object class"
     },
     "lw-url": {
-      "prefix": "lv-livewire-url",
+      "prefix": "lw-url",
       "body": [
         "#[Url]",
         "public \\$${1:search} = '';"
@@ -666,7 +666,7 @@
       "description": "Property persisted in the URL query string"
     },
     "lw-locked": {
-      "prefix": "lv-livewire-locked",
+      "prefix": "lw-locked",
       "body": [
         "#[Locked]",
         "public \\$${1:id};"
@@ -674,7 +674,7 @@
       "description": "Property the front end cannot change"
     },
     "lw-modelable": {
-      "prefix": "lv-livewire-modelable",
+      "prefix": "lw-modelable",
       "body": [
         "#[Modelable]",
         "public \\$${1:value} = '';"
@@ -682,7 +682,7 @@
       "description": "Child property bindable from a parent with wire:model"
     },
     "lw-session": {
-      "prefix": "lv-livewire-session",
+      "prefix": "lw-session",
       "body": [
         "#[Session]",
         "public \\$${1:token} = '';"
@@ -690,7 +690,7 @@
       "description": "Property persisted in the session"
     },
     "lw-test": {
-      "prefix": "lv-livewire-test",
+      "prefix": "lw-test",
       "body": [
         "Livewire::test(${1:Post}::class)",
         "\t->set('${2:title}', '${3:value}')",
@@ -702,7 +702,7 @@
   },
   "blade": {
     "if": {
-      "prefix": "lv-blade-if",
+      "prefix": "if",
       "body": [
         "@if (${1:condition})",
         "\t$0",
@@ -711,7 +711,7 @@
       "description": "Blade @if"
     },
     "ifelse": {
-      "prefix": "lv-blade-ifelse",
+      "prefix": "ifelse",
       "body": [
         "@if (${1:condition})",
         "\t$2",
@@ -722,7 +722,7 @@
       "description": "Blade @if / @else"
     },
     "elseif": {
-      "prefix": "lv-blade-elseif",
+      "prefix": "elseif",
       "body": [
         "@elseif (${1:condition})",
         "\t$0"
@@ -730,7 +730,7 @@
       "description": "Blade @elseif"
     },
     "unless": {
-      "prefix": "lv-blade-unless",
+      "prefix": "unless",
       "body": [
         "@unless (${1:condition})",
         "\t$0",
@@ -739,7 +739,7 @@
       "description": "Blade @unless"
     },
     "isset": {
-      "prefix": "lv-blade-isset",
+      "prefix": "isset",
       "body": [
         "@isset(${1:\\$var})",
         "\t$0",
@@ -748,7 +748,7 @@
       "description": "Blade @isset"
     },
     "empty": {
-      "prefix": "lv-blade-empty",
+      "prefix": "empty",
       "body": [
         "@empty(${1:\\$var})",
         "\t$0",
@@ -757,7 +757,7 @@
       "description": "Blade @empty"
     },
     "foreach": {
-      "prefix": "lv-blade-foreach",
+      "prefix": "foreach",
       "body": [
         "@foreach (${1:\\$items} as ${2:\\$item})",
         "\t$0",
@@ -766,7 +766,7 @@
       "description": "Blade @foreach"
     },
     "forelse": {
-      "prefix": "lv-blade-forelse",
+      "prefix": "forelse",
       "body": [
         "@forelse (${1:\\$items} as ${2:\\$item})",
         "\t$3",
@@ -777,7 +777,7 @@
       "description": "Blade @forelse with empty case"
     },
     "for": {
-      "prefix": "lv-blade-for",
+      "prefix": "for",
       "body": [
         "@for (${1:\\$i = 0}; ${2:\\$i < 10}; ${3:\\$i++})",
         "\t$0",
@@ -786,7 +786,7 @@
       "description": "Blade @for"
     },
     "while": {
-      "prefix": "lv-blade-while",
+      "prefix": "while",
       "body": [
         "@while (${1:condition})",
         "\t$0",
@@ -795,7 +795,7 @@
       "description": "Blade @while"
     },
     "switch": {
-      "prefix": "lv-blade-switch",
+      "prefix": "switch",
       "body": [
         "@switch(${1:\\$value})",
         "\t@case(${2:1})",
@@ -808,7 +808,7 @@
       "description": "Blade @switch"
     },
     "auth": {
-      "prefix": "lv-blade-auth",
+      "prefix": "auth",
       "body": [
         "@auth",
         "\t$0",
@@ -817,7 +817,7 @@
       "description": "Blade @auth"
     },
     "guest": {
-      "prefix": "lv-blade-guest",
+      "prefix": "guest",
       "body": [
         "@guest",
         "\t$0",
@@ -826,7 +826,7 @@
       "description": "Blade @guest"
     },
     "can": {
-      "prefix": "lv-blade-can",
+      "prefix": "can",
       "body": [
         "@can('${1:update}', ${2:\\$post})",
         "\t$0",
@@ -835,7 +835,7 @@
       "description": "Blade @can"
     },
     "env": {
-      "prefix": "lv-blade-env",
+      "prefix": "env",
       "body": [
         "@env('${1:local}')",
         "\t$0",
@@ -844,7 +844,7 @@
       "description": "Blade @env"
     },
     "production": {
-      "prefix": "lv-blade-production",
+      "prefix": "production",
       "body": [
         "@production",
         "\t$0",
@@ -853,7 +853,7 @@
       "description": "Blade @production"
     },
     "php": {
-      "prefix": "lv-blade-php",
+      "prefix": "php",
       "body": [
         "@php",
         "\t$0",
@@ -862,7 +862,7 @@
       "description": "Blade @php block"
     },
     "once": {
-      "prefix": "lv-blade-once",
+      "prefix": "once",
       "body": [
         "@once",
         "\t$0",
@@ -871,14 +871,14 @@
       "description": "Blade @once"
     },
     "extends": {
-      "prefix": "lv-blade-extends",
+      "prefix": "extends",
       "body": [
         "@extends('${1:layouts.app}')"
       ],
       "description": "Blade @extends"
     },
     "section": {
-      "prefix": "lv-blade-section",
+      "prefix": "section",
       "body": [
         "@section('${1:content}')",
         "\t$0",
@@ -887,35 +887,35 @@
       "description": "Blade @section"
     },
     "yield": {
-      "prefix": "lv-blade-yield",
+      "prefix": "yield",
       "body": [
         "@yield('${1:content}')"
       ],
       "description": "Blade @yield"
     },
     "include": {
-      "prefix": "lv-blade-include",
+      "prefix": "include",
       "body": [
         "@include('${1:partials.name}')"
       ],
       "description": "Blade @include"
     },
     "includeif": {
-      "prefix": "lv-blade-includeif",
+      "prefix": "includeif",
       "body": [
         "@includeIf('${1:partials.name}')"
       ],
       "description": "Blade @includeIf"
     },
     "includewhen": {
-      "prefix": "lv-blade-includewhen",
+      "prefix": "includewhen",
       "body": [
         "@includeWhen(${1:condition}, '${2:partials.name}')"
       ],
       "description": "Blade @includeWhen"
     },
     "push": {
-      "prefix": "lv-blade-push",
+      "prefix": "push",
       "body": [
         "@push('${1:scripts}')",
         "\t$0",
@@ -924,21 +924,21 @@
       "description": "Blade @push"
     },
     "stack": {
-      "prefix": "lv-blade-stack",
+      "prefix": "stack",
       "body": [
         "@stack('${1:scripts}')"
       ],
       "description": "Blade @stack"
     },
     "props": {
-      "prefix": "lv-blade-props",
+      "prefix": "props",
       "body": [
         "@props(['${1:type}' => '${2:info}'])"
       ],
       "description": "Blade component @props"
     },
     "component": {
-      "prefix": "lv-blade-component",
+      "prefix": "component",
       "body": [
         "@component('${1:components.alert}')",
         "\t$0",
@@ -947,7 +947,7 @@
       "description": "Blade @component"
     },
     "slot": {
-      "prefix": "lv-blade-slot",
+      "prefix": "slot",
       "body": [
         "@slot('${1:title}')",
         "\t$0",
@@ -956,21 +956,21 @@
       "description": "Blade @slot"
     },
     "csrf": {
-      "prefix": "lv-blade-csrf",
+      "prefix": "csrf",
       "body": [
         "@csrf"
       ],
       "description": "CSRF token field"
     },
     "method": {
-      "prefix": "lv-blade-method",
+      "prefix": "method",
       "body": [
         "@method('${1:PUT}')"
       ],
       "description": "Method spoofing field"
     },
     "error": {
-      "prefix": "lv-blade-error",
+      "prefix": "error",
       "body": [
         "@error('${1:field}')",
         "\t<span class=\"error\">{{ \\$message }}</span>",
@@ -979,7 +979,7 @@
       "description": "Validation error for a field"
     },
     "class": {
-      "prefix": "lv-blade-class",
+      "prefix": "class",
       "body": [
         "@class([",
         "\t'${1:p-4}',",
@@ -989,56 +989,56 @@
       "description": "Conditional classes"
     },
     "json": {
-      "prefix": "lv-blade-json",
+      "prefix": "json",
       "body": [
         "@json(${1:\\$data})"
       ],
       "description": "Blade @json"
     },
     "vite": {
-      "prefix": "lv-blade-vite",
+      "prefix": "vite",
       "body": [
         "@vite(['resources/css/app.css', 'resources/js/app.js'])"
       ],
       "description": "Vite assets"
     },
     "lang": {
-      "prefix": "lv-blade-lang",
+      "prefix": "lang",
       "body": [
         "@lang('${1:messages.key}')"
       ],
       "description": "Translation"
     },
     "echo": {
-      "prefix": "lv-blade-echo",
+      "prefix": "echo",
       "body": [
         "{{ ${1:\\$var} }}"
       ],
       "description": "Escaped output"
     },
     "raw": {
-      "prefix": "lv-blade-raw",
+      "prefix": "raw",
       "body": [
         "{!! ${1:\\$html} !!}"
       ],
       "description": "Unescaped output"
     },
     "comment": {
-      "prefix": "lv-blade-comment",
+      "prefix": "comment",
       "body": [
         "{{-- ${1:comment} --}}"
       ],
       "description": "Blade comment"
     },
     "xcomponent": {
-      "prefix": "lv-blade-xcomponent",
+      "prefix": "xcomponent",
       "body": [
         "<x-${1:name}${2: attr=\"value\"} />"
       ],
       "description": "Blade component tag"
     },
     "xslot": {
-      "prefix": "lv-blade-x-slot",
+      "prefix": "x-slot",
       "body": [
         "<x-slot:${1:name}>",
         "\t$0",
@@ -1047,21 +1047,21 @@
       "description": "Named component slot"
     },
     "livewire": {
-      "prefix": "lv-blade-livewire",
+      "prefix": "livewire",
       "body": [
         "<livewire:${1:component-name} />"
       ],
       "description": "Livewire component tag"
     },
     "atlivewire": {
-      "prefix": "lv-blade-atlivewire",
+      "prefix": "atlivewire",
       "body": [
         "@livewire('${1:component-name}')"
       ],
       "description": "Livewire @livewire directive"
     },
     "livewire-styles": {
-      "prefix": "lv-blade-livewire-assets",
+      "prefix": "livewire-assets",
       "body": [
         "@livewireStyles",
         "$0",
@@ -1070,49 +1070,49 @@
       "description": "Livewire styles and scripts"
     },
     "wire-click": {
-      "prefix": "lv-blade-wire-click",
+      "prefix": "wire-click",
       "body": [
         "wire:click=\"${1:method}\""
       ],
       "description": "Livewire click action"
     },
     "wire-model": {
-      "prefix": "lv-blade-wire-model",
+      "prefix": "wire-model",
       "body": [
         "wire:model=\"${1:property}\""
       ],
       "description": "Livewire model binding"
     },
     "wire-model-live": {
-      "prefix": "lv-blade-wire-model-live",
+      "prefix": "wire-model-live",
       "body": [
         "wire:model.live=\"${1:property}\""
       ],
       "description": "Livewire live model binding (v3)"
     },
     "wire-model-blur": {
-      "prefix": "lv-blade-wire-model-blur",
+      "prefix": "wire-model-blur",
       "body": [
         "wire:model.blur=\"${1:property}\""
       ],
       "description": "Livewire blur model binding (v3)"
     },
     "wire-submit": {
-      "prefix": "lv-blade-wire-submit",
+      "prefix": "wire-submit",
       "body": [
         "wire:submit=\"${1:save}\""
       ],
       "description": "Livewire form submit (v3)"
     },
     "wire-submit-prevent": {
-      "prefix": "lv-blade-wire-submit-prevent",
+      "prefix": "wire-submit-prevent",
       "body": [
         "wire:submit.prevent=\"${1:save}\""
       ],
       "description": "Livewire form submit (v2)"
     },
     "wire-loading": {
-      "prefix": "lv-blade-wire-loading",
+      "prefix": "wire-loading",
       "body": [
         "<div wire:loading${1: wire:target=\"${2:method}\"}>",
         "\t$0",
@@ -1121,28 +1121,28 @@
       "description": "Livewire loading state"
     },
     "wire-key": {
-      "prefix": "lv-blade-wire-key",
+      "prefix": "wire-key",
       "body": [
         "wire:key=\"${1:item-\\$id}\""
       ],
       "description": "Livewire key for loops"
     },
     "wire-poll": {
-      "prefix": "lv-blade-wire-poll",
+      "prefix": "wire-poll",
       "body": [
         "wire:poll.${1:5s}"
       ],
       "description": "Livewire polling"
     },
     "entangle": {
-      "prefix": "lv-blade-entangle",
+      "prefix": "entangle",
       "body": [
         "@entangle('${1:property}')"
       ],
       "description": "Livewire/Alpine entangle"
     },
     "pushonce": {
-      "prefix": "lv-blade-pushonce",
+      "prefix": "pushonce",
       "body": [
         "@pushOnce('${1:scripts}')",
         "\t$0",
@@ -1151,7 +1151,7 @@
       "description": "Blade @pushOnce"
     },
     "prepend": {
-      "prefix": "lv-blade-prepend",
+      "prefix": "prepend",
       "body": [
         "@prepend('${1:scripts}')",
         "\t$0",
@@ -1160,7 +1160,7 @@
       "description": "Blade @prepend"
     },
     "session": {
-      "prefix": "lv-blade-session",
+      "prefix": "session",
       "body": [
         "@session('${1:status}')",
         "\t<div>{{ \\$value }}</div>",
@@ -1169,42 +1169,42 @@
       "description": "Blade @session"
     },
     "checked": {
-      "prefix": "lv-blade-checked",
+      "prefix": "checked",
       "body": [
         "@checked(${1:\\$condition})"
       ],
       "description": "Blade @checked"
     },
     "selected": {
-      "prefix": "lv-blade-selected",
+      "prefix": "selected",
       "body": [
         "@selected(${1:\\$condition})"
       ],
       "description": "Blade @selected"
     },
     "disabled": {
-      "prefix": "lv-blade-disabled",
+      "prefix": "disabled",
       "body": [
         "@disabled(${1:\\$condition})"
       ],
       "description": "Blade @disabled"
     },
     "required": {
-      "prefix": "lv-blade-required",
+      "prefix": "required",
       "body": [
         "@required(${1:\\$condition})"
       ],
       "description": "Blade @required"
     },
     "readonly": {
-      "prefix": "lv-blade-readonly",
+      "prefix": "readonly",
       "body": [
         "@readonly(${1:\\$condition})"
       ],
       "description": "Blade @readonly"
     },
     "style": {
-      "prefix": "lv-blade-style",
+      "prefix": "style",
       "body": [
         "@style([",
         "\t'${1:color: red}' => ${2:\\$active},",
@@ -1213,14 +1213,14 @@
       "description": "Conditional inline styles"
     },
     "aware": {
-      "prefix": "lv-blade-aware",
+      "prefix": "aware",
       "body": [
         "@aware(['${1:color}' => '${2:gray}'])"
       ],
       "description": "Blade @aware"
     },
     "fragment": {
-      "prefix": "lv-blade-fragment",
+      "prefix": "fragment",
       "body": [
         "@fragment('${1:name}')",
         "\t$0",
@@ -1229,7 +1229,7 @@
       "description": "Blade @fragment"
     },
     "hasSection": {
-      "prefix": "lv-blade-hassection",
+      "prefix": "hassection",
       "body": [
         "@hasSection('${1:title}')",
         "\t$0",
@@ -1238,7 +1238,7 @@
       "description": "Blade @hasSection"
     },
     "sectionMissing": {
-      "prefix": "lv-blade-sectionmissing",
+      "prefix": "sectionmissing",
       "body": [
         "@sectionMissing('${1:title}')",
         "\t$0",
@@ -1247,7 +1247,7 @@
       "description": "Blade @sectionMissing"
     },
     "verbatim": {
-      "prefix": "lv-blade-verbatim",
+      "prefix": "verbatim",
       "body": [
         "@verbatim",
         "\t$0",
@@ -1256,168 +1256,168 @@
       "description": "Blade @verbatim"
     },
     "csp": {
-      "prefix": "lv-blade-nonce",
+      "prefix": "nonce",
       "body": [
         "nonce=\"{{ Vite::cspNonce() }}\""
       ],
       "description": "Vite CSP nonce attribute"
     },
     "pagination": {
-      "prefix": "lv-blade-links",
+      "prefix": "links",
       "body": [
         "{{ ${1:\\$items}->links() }}"
       ],
       "description": "Pagination links"
     },
     "wire-navigate": {
-      "prefix": "lv-blade-wire-navigate",
+      "prefix": "wire-navigate",
       "body": [
         "wire:navigate href=\"${1:/path}\""
       ],
       "description": "Livewire SPA-style navigation link"
     },
     "wire-confirm": {
-      "prefix": "lv-blade-wire-confirm",
+      "prefix": "wire-confirm",
       "body": [
         "wire:confirm=\"${1:Are you sure?}\""
       ],
       "description": "Confirm before running a Livewire action"
     },
     "wire-dirty": {
-      "prefix": "lv-blade-wire-dirty",
+      "prefix": "wire-dirty",
       "body": [
         "wire:dirty"
       ],
       "description": "Show only when input state diverges from the server"
     },
     "wire-offline": {
-      "prefix": "lv-blade-wire-offline",
+      "prefix": "wire-offline",
       "body": [
         "wire:offline"
       ],
       "description": "Show only when the user is offline"
     },
     "wire-cloak": {
-      "prefix": "lv-blade-wire-cloak",
+      "prefix": "wire-cloak",
       "body": [
         "wire:cloak"
       ],
       "description": "Hide until Livewire initializes"
     },
     "wire-init": {
-      "prefix": "lv-blade-wire-init",
+      "prefix": "wire-init",
       "body": [
         "wire:init=\"${1:method}\""
       ],
       "description": "Livewire: run an action when the element loads"
     },
     "wire-ignore": {
-      "prefix": "lv-blade-wire-ignore",
+      "prefix": "wire-ignore",
       "body": [
         "wire:ignore${1:.self}"
       ],
       "description": "Livewire: skip DOM diffing for this element"
     },
     "wire-stream": {
-      "prefix": "lv-blade-wire-stream",
+      "prefix": "wire-stream",
       "body": [
         "wire:stream=\"${1:name}\""
       ],
       "description": "Livewire: streamed response target"
     },
     "wire-target": {
-      "prefix": "lv-blade-wire-target",
+      "prefix": "wire-target",
       "body": [
         "wire:target=\"${1:method}\""
       ],
       "description": "Livewire: scope loading/offline states to an action"
     },
     "wire-transition": {
-      "prefix": "lv-blade-wire-transition",
+      "prefix": "wire-transition",
       "body": [
         "wire:transition${1:.opacity}"
       ],
       "description": "Livewire: transition when the element is added or removed"
     },
     "x-data": {
-      "prefix": "lv-blade-x-data",
+      "prefix": "x-data",
       "body": [
         "x-data=\"{ ${1:open}: ${2:false} }\""
       ],
       "description": "Alpine: component state"
     },
     "x-init": {
-      "prefix": "lv-blade-x-init",
+      "prefix": "x-init",
       "body": [
         "x-init=\"${1:expression}\""
       ],
       "description": "Alpine: run when the component initialises"
     },
     "x-show": {
-      "prefix": "lv-blade-x-show",
+      "prefix": "x-show",
       "body": [
         "x-show=\"${1:open}\""
       ],
       "description": "Alpine: toggle visibility"
     },
     "x-on": {
-      "prefix": "lv-blade-x-on",
+      "prefix": "x-on",
       "body": [
         "x-on:${1:click}=\"${2:handler}\""
       ],
       "description": "Alpine: event listener (x-on avoids the Blade @ clash)"
     },
     "x-bind": {
-      "prefix": "lv-blade-x-bind",
+      "prefix": "x-bind",
       "body": [
         "x-bind:${1:class}=\"${2:expression}\""
       ],
       "description": "Alpine: bind an attribute"
     },
     "x-model": {
-      "prefix": "lv-blade-x-model",
+      "prefix": "x-model",
       "body": [
         "x-model${1:.debounce}=\"${2:property}\""
       ],
       "description": "Alpine: two-way binding"
     },
     "x-text": {
-      "prefix": "lv-blade-x-text",
+      "prefix": "x-text",
       "body": [
         "x-text=\"${1:expression}\""
       ],
       "description": "Alpine: set text content"
     },
     "x-html": {
-      "prefix": "lv-blade-x-html",
+      "prefix": "x-html",
       "body": [
         "x-html=\"${1:expression}\""
       ],
       "description": "Alpine: set inner HTML (trusted content only)"
     },
     "x-ref": {
-      "prefix": "lv-blade-x-ref",
+      "prefix": "x-ref",
       "body": [
         "x-ref=\"${1:name}\""
       ],
       "description": "Alpine: element reference ($refs)"
     },
     "x-cloak": {
-      "prefix": "lv-blade-x-cloak",
+      "prefix": "x-cloak",
       "body": [
         "x-cloak"
       ],
       "description": "Alpine: hide until Alpine has initialised (needs [x-cloak]{display:none})"
     },
     "x-transition": {
-      "prefix": "lv-blade-x-transition",
+      "prefix": "x-transition",
       "body": [
         "x-transition${1:.opacity}"
       ],
       "description": "Alpine: transition for x-show"
     },
     "x-for": {
-      "prefix": "lv-blade-x-for",
+      "prefix": "x-for",
       "body": [
         "<template x-for=\"${1:item} in ${2:items}\" :key=\"${3:item.id}\">",
         "\t$0",
@@ -1426,7 +1426,7 @@
       "description": "Alpine: loop"
     },
     "x-if": {
-      "prefix": "lv-blade-x-if",
+      "prefix": "x-if",
       "body": [
         "<template x-if=\"${1:condition}\">",
         "\t$0",
@@ -1435,14 +1435,14 @@
       "description": "Alpine: conditional render"
     },
     "x-effect": {
-      "prefix": "lv-blade-x-effect",
+      "prefix": "x-effect",
       "body": [
         "x-effect=\"${1:expression}\""
       ],
       "description": "Alpine: re-run when dependencies change"
     },
     "x-teleport": {
-      "prefix": "lv-blade-x-teleport",
+      "prefix": "x-teleport",
       "body": [
         "<template x-teleport=\"${1:body}\">",
         "\t$0",
@@ -1451,42 +1451,42 @@
       "description": "Alpine: move markup elsewhere in the DOM"
     },
     "x-ignore": {
-      "prefix": "lv-blade-x-ignore",
+      "prefix": "x-ignore",
       "body": [
         "x-ignore"
       ],
       "description": "Alpine: do not initialise this subtree"
     },
     "x-id": {
-      "prefix": "lv-blade-x-id",
+      "prefix": "x-id",
       "body": [
         "x-id=\"['${1:name}']\""
       ],
       "description": "Alpine: scoped ids ($id)"
     },
     "x-modelable": {
-      "prefix": "lv-blade-x-modelable",
+      "prefix": "x-modelable",
       "body": [
         "x-modelable=\"${1:property}\""
       ],
       "description": "Alpine: expose a property to x-model on the parent"
     },
     "dd": {
-      "prefix": "lv-blade-dd",
+      "prefix": "dd",
       "body": [
         "@dd(${1:\\$value})"
       ],
       "description": "Blade: dump and die"
     },
     "dump": {
-      "prefix": "lv-blade-dump",
+      "prefix": "dump",
       "body": [
         "@dump(${1:\\$value})"
       ],
       "description": "Blade: dump without stopping"
     },
     "canany": {
-      "prefix": "lv-blade-canany",
+      "prefix": "canany",
       "body": [
         "@canany(['${1:edit}', '${2:delete}'], ${3:\\$post})",
         "\t$0",
@@ -1495,7 +1495,7 @@
       "description": "Blade: any of these abilities"
     },
     "cannot": {
-      "prefix": "lv-blade-cannot",
+      "prefix": "cannot",
       "body": [
         "@cannot('${1:edit}', ${2:\\$post})",
         "\t$0",
@@ -1504,35 +1504,35 @@
       "description": "Blade: missing ability"
     },
     "each": {
-      "prefix": "lv-blade-each",
+      "prefix": "each",
       "body": [
         "@each('${1:view.name}', ${2:\\$items}, '${3:item}')"
       ],
       "description": "Blade: render a view per item"
     },
     "includefirst": {
-      "prefix": "lv-blade-includefirst",
+      "prefix": "includefirst",
       "body": [
         "@includeFirst(['${1:custom.view}', '${2:default.view}'])"
       ],
       "description": "Blade: first view that exists"
     },
     "inject": {
-      "prefix": "lv-blade-inject",
+      "prefix": "inject",
       "body": [
         "@inject('${1:name}', '${2:App\\\\Services\\\\${3:Service}}')"
       ],
       "description": "Blade: resolve a service"
     },
     "use": {
-      "prefix": "lv-blade-use",
+      "prefix": "use",
       "body": [
         "@use('${1:App\\\\Models\\\\${2:Model}}')"
       ],
       "description": "Blade: import a class"
     },
     "pushif": {
-      "prefix": "lv-blade-pushif",
+      "prefix": "pushif",
       "body": [
         "@pushIf(${1:\\$condition}, '${2:stack}')",
         "\t$0",
@@ -1541,7 +1541,7 @@
       "description": "Blade: conditional @push"
     },
     "prependonce": {
-      "prefix": "lv-blade-prependonce",
+      "prefix": "prependonce",
       "body": [
         "@prependOnce('${1:stack}')",
         "\t$0",
