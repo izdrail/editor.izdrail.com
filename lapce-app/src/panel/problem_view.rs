@@ -31,6 +31,8 @@ pub fn problem_panel(
 ) -> impl View {
     let config = window_tab_data.common.config;
     let is_bottom = position.is_bottom();
+    let available_width = create_rw_signal(800.0);
+    let stacked = move || !is_bottom || available_width.get() < 480.0;
     PanelBuilder::new(config, position)
         .add_style(
             "Errors",
@@ -38,8 +40,8 @@ pub fn problem_panel(
             window_tab_data.panel.section_open(PanelSection::Error),
             move |s| {
                 s.border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                    .apply_if(is_bottom, |s| s.border_right(1.0))
-                    .apply_if(!is_bottom, |s| s.border_bottom(1.0))
+                    .apply_if(!stacked(), |s| s.border_right(1.0))
+                    .apply_if(stacked(), |s| s.border_bottom(1.0))
             },
         )
         .add(
@@ -48,6 +50,8 @@ pub fn problem_panel(
             window_tab_data.panel.section_open(PanelSection::Warn),
         )
         .build()
+        .on_resize(move |rect| available_width.set(rect.width()))
+        .style(move |s| s.min_width(0.0).apply_if(stacked(), |s| s.flex_col()))
         .debug_name("Problem Panel")
 }
 
