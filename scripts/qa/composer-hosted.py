@@ -488,6 +488,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('36-status-cursor-keyboard-focus')
         run('key', 'Return'); time.sleep(1); shot('36a-status-goto-line-palette')
         run('key', 'Escape'); time.sleep(1)
+        run('key', 'shift+Tab', 'shift+Tab', 'shift+Tab', 'shift+Tab')
+        shot('37-status-diagnostics-keyboard-focus')
+        run('key', 'Return'); time.sleep(1); shot('37a-status-problems-panel')
+
 
 
 

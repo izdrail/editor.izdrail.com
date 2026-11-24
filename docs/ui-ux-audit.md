@@ -166,3 +166,5 @@ UI-023, medium/P0: cursor/line-ending/language status actions were pointer-only.
 `45369985403` verifies UI-023: Escape from line-ending palette restores LF control; Tab reaches PHP and Enter opens the real language palette. Source remains visually unedited. Extend cursor-action coverage via Shift-Tab twice and Enter to Go to Line.
 
 UI-024, medium/P0: diagnostic status target omitted from keyboard traversal. Add focus styling and native activation, preventing activation from also editing the code behind it. Its actual keyboard destination remains a runtime gate.
+
+`45373923548` verifies reverse traversal from Language through LF to the cursor status, Enter opens the actual line palette with a source preview. Add diagnostic target capture after reverse traversal across the three center panel toggles, then Enter Problems. Diagnostic acceptance remains pending.
