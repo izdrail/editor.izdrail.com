@@ -2237,9 +2237,11 @@ pub fn clickable_icon_base(
     });
 
     if let Some(on_click) = on_click {
-        view.on_click_stop(move |_| {
-            on_click();
-        })
+        view.keyboard_navigable()
+            .style(move |s| s.focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))))
+            .on_click_stop(move |_| {
+                on_click();
+            })
     } else {
         view
     }

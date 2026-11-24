@@ -445,6 +445,11 @@ impl EventCx<'_> {
                 }
                 Event::KeyDown(_) => {
                     if self.app_state.is_focused(&view_id) && event.is_keyboard_trigger() {
+                        // Popout menus have no Click handler. Match primary-click
+                        // activation for focused keyboard users as well.
+                        if let Some((ep, pec)) = popout_menu() {
+                            return (ep, pec);
+                        }
                         view_id.apply_event(&EventListener::Click, &event);
                     }
                 }

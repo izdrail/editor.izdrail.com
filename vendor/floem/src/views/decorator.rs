@@ -496,6 +496,7 @@ pub trait Decorators: IntoView<V = Self::DV> + Sized {
         let view = self.into_view();
         let id = view.id();
         id.update_popout_menu(menu);
+        id.keyboard_navigable();
         view
     }
 }

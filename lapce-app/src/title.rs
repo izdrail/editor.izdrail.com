@@ -55,6 +55,8 @@ fn left(
             || "Menu",
             config,
         )
+        .style(move |s| s.border(1.0).border_color(Color::TRANSPARENT).border_radius(6.0)
+            .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))))
         .popout_menu(move || window_menu(lapce_command, workbench_command))
         .style(move |s| {
             s.margin_left(4.0)
@@ -79,6 +81,8 @@ fn left(
             )),
             || "Connect to Remote",
         )
+        .style(move |s| s.border(1.0).border_color(Color::TRANSPARENT).border_radius(6.0)
+            .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))))
         .popout_menu(move || {
             #[allow(unused_mut)]
             let mut menu = Menu::new("").entry(
@@ -203,6 +207,8 @@ fn middle(
             || "Open Folder / Recent Workspace",
             config,
         )
+        .style(move |s| s.border(1.0).border_color(Color::TRANSPARENT).border_radius(6.0)
+            .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))))
         .popout_menu(move || {
             Menu::new("")
                 .entry(MenuItem::new("Open Folder").action(move || {
@@ -248,6 +254,7 @@ fn middle(
             ))
             .style(|s| s.align_items(Some(AlignItems::Center))),
         )
+        .keyboard_navigable()
         .on_event_stop(EventListener::PointerDown, |_| {})
         .on_click_stop(move |_| {
             if workspace.clone().path.is_some() {
@@ -268,6 +275,7 @@ fn middle(
                 .border(1.0)
                 .border_color(config.color(LapceColor::LAPCE_BORDER))
                 .border_radius(6.0)
+                .focus_visible(|s| s.border_color(config.color(LapceColor::EDITOR_FOCUS)))
                 .background(config.color(LapceColor::EDITOR_BACKGROUND))
         }),
         stack((
@@ -317,6 +325,8 @@ fn right(
             || "Settings",
             config,
         )
+        .style(move |s| s.border(1.0).border_color(Color::TRANSPARENT).border_radius(6.0)
+            .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))))
         .popout_menu(move || {
             Menu::new("")
                 .entry(MenuItem::new("Command Palette").action(move || {
@@ -336,7 +346,6 @@ fn right(
                             .send(LapceWorkbenchCommand::OpenThemeColorSettings)
                     },
                 ))
-                .separator()
                 .separator()
                 .entry(MenuItem::new("About Gravity Editor").action(move || {
                     workbench_command.send(LapceWorkbenchCommand::ShowAbout)
