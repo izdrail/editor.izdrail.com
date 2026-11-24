@@ -159,6 +159,16 @@ pub fn editor_view(
 
     let doc = e_data.doc_signal();
     let view_kind = e_data.kind;
+    let find = e_data.common.find.clone();
+    create_effect(move |_| {
+        let visible = find.visual.get();
+        find.rev.get();
+        let document = doc.get();
+        document.buffer.with(|buffer| buffer.rev());
+        if visible {
+            document.update_find();
+        }
+    });
     let screen_lines = e_data.screen_lines();
     create_effect(move |_| {
         doc.track();

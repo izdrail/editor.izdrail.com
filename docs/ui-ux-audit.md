@@ -152,3 +152,5 @@ UI-021, medium/P0: search matches jumped to first nonblank instead of the matche
 `45350307713` verifies UI-021: actual long-line preview contains the highlighted match, keyboard activation places the caret at that original text after a Unicode prefix. Both focused regression tests/full suite/release pass.
 
 UI-022, medium/P0: in-file find count remained No Results after a project-search jump to a file containing the query. The count memo read the active editor untracked, keeping dependencies on the previous document. Track editor replacement so count dependencies follow the destination document. Verify existing 32c/34b captures show 1 of 1 rather than No Results.
+
+`45353290145` count still reads No Results in actual pixels, so UI-022 is not accepted. Matching was started only during painting; schedule it explicitly from document/query/buffer/visibility changes instead, and ignore async results after query or buffer revisions change. Retain tracked destination editor count dependencies. Runtime retry required.

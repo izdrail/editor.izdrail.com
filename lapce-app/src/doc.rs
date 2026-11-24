@@ -1910,7 +1910,15 @@ impl Doc {
             .set(FindProgress::InProgress(Selection::new()));
 
         let find_result = self.find_result.clone();
+        let current_find_rev = self.common.find.rev;
+        let buffer = self.buffer;
+        let buffer_rev = self.rev();
         let send = create_ext_action(self.scope, move |occurrences: Selection| {
+            if current_find_rev.get_untracked() != find_rev
+                || buffer.with_untracked(|buffer| buffer.rev()) != buffer_rev
+            {
+                return;
+            }
             find_result.occurrences.set(occurrences);
             find_result.progress.set(FindProgress::Ready);
         });
