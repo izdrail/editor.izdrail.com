@@ -122,3 +122,5 @@ UI-017, medium/P0: project search showed no guidance for empty/no-match/loading/
 `45325538651` verifies nested Settings keyboard navigation, separator skipping, End selection and Enter opening the actual Keyboard Shortcuts view. Search-status first gate failed Rust type inference for the new error branch; add the explicit RPC result type and status grammar tests before runtime acceptance. No search success is claimed from the failed gate.
 
 `45328033432` verifies project-search no-match and cleared-query guidance in actual dark UI. Improve status foreground contrast and capture positive match counts plus regex-error/clear states. Generation-guard delayed-response integration coverage remains open; no empty-state screenshot proves that race is exercised.
+
+`45330444266` verifies positive workspace search: 11 fixture matches in 11 files and readable status. Artifact uploads succeeded. The intended invalid-regex capture still shows a literal bracket result, so regex validation is NOT runtime accepted. Use keyboard toggle/focus captures and retype a different invalid expression to distinguish control targeting from reactive state issues.
