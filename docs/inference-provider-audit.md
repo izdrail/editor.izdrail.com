@@ -52,3 +52,16 @@ Weights and decode inputs now use the same selected device. No partial offload
 claim, no exact-target qwen35moe support claim, no GPU PASS. CPU cargo check and
 27 crate tests passed locally,1 real-model test remains ignored. Hosted full
 workspace and CUDA compilation/inference are still required.
+
+Alternative backend implementation candidate: optional llama-cpp-2 pinned0.1.161
+(MIT OR Apache-2.0), default features off, separate llama-cpp-cuda switch.
+Local LAPCE_AI_BACKEND=llama-cpp selects its actual load/tokenize/prefill/greedy
+decode loop through Provider. Explicit layer count and CPU expert placement
+are opt-in; chat fails clearly until model template handling is implemented.
+FIM requires real special tokens. Current worker wire shapes stay unchanged.
+Native compile and inference acceptance are pending. Initial local native build
+required libclang and headers; compilation exceeds one execution window, so
+a dedicated standard hosted CPU feature check owns the complete build/test.
+No model/backend/CUDA success claim is made from this candidate.
+Sources inspected: https://crates.io/api/v1/crates/llama-cpp-2/0.1.161/download
+and https://github.com/utilityai/llama-cpp-rs .

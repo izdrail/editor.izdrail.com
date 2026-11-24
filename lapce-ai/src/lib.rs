@@ -6,6 +6,8 @@ pub mod catalog;
 pub mod chat;
 pub mod discovery;
 pub mod ollama;
+#[cfg(feature = "llama-cpp")]
+pub mod llamacpp;
 pub mod process;
 use anyhow::{Result, anyhow, bail, ensure};
 use candle_core::{Device, Tensor, quantized::gguf_file};
@@ -530,6 +532,11 @@ pub fn run() -> i32 {
         });
         let mut provider: Option<(PathBuf, PathBuf, CandleProvider)> = None;
         let mut remote_provider: Option<ollama::OllamaProvider> = None;
+        #[cfg(feature = "llama-cpp")]
+        let mut llama_provider: Option<(PathBuf, llamacpp::LlamaCppProvider)> = None;
+        let local_backend = std::env::var("LAPCE_AI_BACKEND").unwrap_or_else(|_| "candle".into());
+        ensure!(["candle", "llama-cpp"].contains(&local_backend.as_str()), "Unknown local AI backend");
+        ensure!(local_backend != "llama-cpp" || cfg!(feature = "llama-cpp"), "llama-cpp backend was not compiled");
         for request in rx {
             if let Some(remote) = request.remote.clone() {
                 // Network lane: no local model files are touched. A remote
@@ -559,6 +566,33 @@ pub fn run() -> i32 {
                         cancelled: true,
                     },
                     Err(e) => return Err(e),
+                };
+                println!("{}", serde_json::to_string(&output)?);
+                std::io::stdout().flush()?;
+                continue;
+            }
+            #[cfg(feature = "llama-cpp")]
+            if local_backend == "llama-cpp" {
+                let id = request.request_id;
+                let cancelled = || {
+                    let named = cancel_for.load(Ordering::Acquire);
+                    named == id || (id == 0 && named != u64::MAX)
+                };
+                let start = Instant::now();
+                let result = (|| -> Result<Completion> {
+                    ensure!(!cancelled(), "Cancelled");
+                    if llama_provider.as_ref().is_none_or(|(path, _)| *path != request.model) {
+                        llama_provider = Some((request.model.clone(), llamacpp::LlamaCppProvider::load(&request.model)?));
+                    }
+                    llama_provider.as_mut().unwrap().1.complete(&request, &cancelled)
+                })();
+                let output = match result {
+                    Ok(output) => output,
+                    Err(error) if is_cancelled(&error) => Completion {
+                        text: String::new(), tokens: 0, prompt_tokens: 0, load_ms: 0,
+                        generation_ms: start.elapsed().as_millis(), prefill_ms: 0, decode_ms: 0, cancelled: true,
+                    },
+                    Err(error) => return Err(error),
                 };
                 println!("{}", serde_json::to_string(&output)?);
                 std::io::stdout().flush()?;

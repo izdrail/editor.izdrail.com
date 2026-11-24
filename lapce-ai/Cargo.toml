@@ -6,9 +6,12 @@ license = "Apache-2.0"
 
 [features]
 default = []
+llama-cpp = ["dep:llama-cpp-2"]
+llama-cpp-cuda = ["llama-cpp", "llama-cpp-2/cuda"]
 candle-cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 
 [dependencies]
+llama-cpp-2 = { version = "=0.1.161", optional = true, default-features = false }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

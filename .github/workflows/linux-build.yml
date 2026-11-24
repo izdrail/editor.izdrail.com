@@ -51,6 +51,26 @@ jobs:
           path: target/acceptance-logs/
           if-no-files-found: warn
           retention-days: 14
+  llama-cpp-check:
+    name: Optional llama.cpp CPU feature
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential cmake clang libclang-dev libssl-dev pkg-config
+      - name: Rust toolchain
+        run: rustup toolchain install 1.98.0 --profile minimal --no-self-update && rustup default 1.98.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          key: llama-cpp-cpu-rust-1.98.0
+      - name: Compile and test optional provider
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+          CARGO_BUILD_JOBS: 2
+        run: cargo test --locked -p lapce-ai --features llama-cpp
+
   linux:
     name: Linux x86_64 release binary
     needs: tests

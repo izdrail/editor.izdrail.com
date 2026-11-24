@@ -57,3 +57,15 @@ CPU. `LAPCE_AI_DEVICE=auto` permits an explicitly logged CPU fallback.
 stderr; worker JSON stays on stdout. This is full-device Candle placement,
 not partial MoE offload. It still rejects the qwen35moe target architecture.
 CUDA compilation and actual GPU inference are NOT yet verified.
+
+## Optional llama.cpp candidate (build/runtime verification pending)
+
+Build CPU: `cargo build --release -p lapce-ai --features llama-cpp`.
+Build CUDA with local toolkit: `cargo build --release -p lapce-ai --features llama-cpp-cuda`.
+Set LAPCE_AI_BACKEND=llama-cpp, LAPCE_AI_GPU_LAYERS to an explicit layer
+count (default0), and LAPCE_AI_CPU_EXPERTS=1 to request CPU-resident MoE experts.
+These are placement requests, not proof that the target model fits or executes
+on GPU. Inspect native logs, process VRAM and actual inference independently.
+FIM requires model special tokens; chat currently returns an unsupported error.
+The exact target may be chat-only; do not interpret that error as successful
+benchmark execution. Full exact-model/chat support remains an implementation item.
