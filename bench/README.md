@@ -46,3 +46,14 @@ comparison environment with `python3 bench/collect.py /path/to/results`. Mixed
 model/hardware/configuration runs are rejected. Failed runs do not contribute
 performance numbers; fewer than three successful runs are marked. CUDA status
 remains unverified regardless of device-wide telemetry.
+
+## Candle device build path (runtime validation pending)
+
+CPU remains the default. Build the optional CUDA path from an installed CUDA
+toolkit with `cargo build --release -p lapce-ai --features candle-cuda`.
+Set `LAPCE_AI_DEVICE=cuda` to require CUDA; unavailable CUDA fails, not silently
+CPU. `LAPCE_AI_DEVICE=auto` permits an explicitly logged CPU fallback.
+`LAPCE_AI_DEVICE=cpu` forces the unchanged CPU path. Device choice logs go to
+stderr; worker JSON stays on stdout. This is full-device Candle placement,
+not partial MoE offload. It still rejects the qwen35moe target architecture.
+CUDA compilation and actual GPU inference are NOT yet verified.

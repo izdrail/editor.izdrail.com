@@ -99,6 +99,7 @@ pub struct CandleProvider {
     tokenizer: Tokenizer,
     load_ms: u128,
     context_length: usize,
+    device: Device,
 }
 // Construct special marker spellings in code rather than shell transport.
 fn marker(name: &str) -> String {
@@ -170,6 +171,29 @@ pub fn sample_loop(
     }
     Ok(out)
 }
+/// CPU is unchanged by default. `cuda` fails closed; only explicitly chosen
+/// `auto` may fall back, and reports that decision on stderr, never JSON stdout.
+fn selected_device() -> Result<Device> {
+    let mode = std::env::var("LAPCE_AI_DEVICE").unwrap_or_else(|_| "cpu".into());
+    ensure!(["cpu", "auto", "cuda"].contains(&mode.as_str()),
+        "LAPCE_AI_DEVICE must be cpu, auto or cuda");
+    if mode == "cpu" {
+        eprintln!("AI backend=candle selected_device=cpu");
+        return Ok(Device::Cpu);
+    }
+    match Device::new_cuda(0) {
+        Ok(device) => {
+            eprintln!("AI backend=candle selected_device=cuda:0");
+            Ok(device)
+        }
+        Err(_) if mode == "auto" => {
+            eprintln!("AI backend=candle selected_device=cpu fallback=cuda_unavailable");
+            Ok(Device::Cpu)
+        }
+        Err(_) => bail!("CUDA requested but unavailable; compile candle-cuda and check the local driver/runtime"),
+    }
+}
+
 /// Reject incompatible external tokenizer IDs before any weight allocation.
 /// Equal vocabulary sizes alone do not establish token-ID compatibility.
 fn validate_vocabulary(
@@ -191,6 +215,11 @@ fn validate_vocabulary(
 
 impl CandleProvider {
     pub fn load(model: &Path, tokenizer: &Path) -> Result<Self> {
+        Self::load_with_device(model, tokenizer, Device::Cpu)
+    }
+
+    /// Explicit device selection, preserving the legacy CPU load() default.
+    pub fn load_with_device(model: &Path, tokenizer: &Path, device: Device) -> Result<Self> {
         let start = Instant::now();
         let mut reader = File::open(model)?;
         let content = gguf_file::Content::read(&mut reader)?;
@@ -216,12 +245,13 @@ impl CandleProvider {
         for name in ["endoftext"] {
             token(&tokenizer, name)?;
         }
-        let model = ModelWeights::from_gguf(content, &mut reader, &Device::Cpu)?;
+        let model = ModelWeights::from_gguf(content, &mut reader, &device)?;
         Ok(Self {
             model,
             tokenizer,
             load_ms: start.elapsed().as_millis(),
             context_length,
+            device,
         })
     }
 }
@@ -260,7 +290,7 @@ impl Provider for CandleProvider {
                 (&out[out.len() - 1..], ids.len() + out.len() - 1)
             };
             let step = Instant::now();
-            let input = Tensor::new(input, &Device::Cpu)?.unsqueeze(0)?;
+            let input = Tensor::new(input, &self.device)?.unsqueeze(0)?;
             let logits = self
                 .model
                 .forward(&input, pos)?
@@ -540,7 +570,7 @@ pub fn run() -> i32 {
                 provider = Some((
                     request.model.clone(),
                     request.tokenizer.clone(),
-                    CandleProvider::load(&request.model, &request.tokenizer)?,
+                    CandleProvider::load_with_device(&request.model, &request.tokenizer, selected_device()?)?,
                 ));
             }
             let id = request.request_id;

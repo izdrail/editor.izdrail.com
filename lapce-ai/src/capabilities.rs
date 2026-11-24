@@ -20,11 +20,11 @@ pub struct Capabilities {
 pub fn available() -> [Capabilities; 2] {
     [Capabilities {
         backend: "candle", execution: "local", architectures: &["qwen2"],
-        fim: true, chat: true, cuda_compiled: false,
+        fim: true, chat: true, cuda_compiled: cfg!(feature = "candle-cuda"),
         cancellation: "cooperative between decode steps; load is not interruptible",
         sampling: "greedy", implicit_downloads: false,
         limitations: &[
-            "CPU only in this build",
+            "CPU by default; explicit LAPCE_AI_DEVICE controls optional CUDA selection",
             "FIM and chat require compatible tokenizer special tokens",
             "qwen35moe target model is not supported by the current loader",
             "tokens are returned as one completion, not incremental worker events",
@@ -51,7 +51,8 @@ mod tests {
         assert_eq!(providers.len(), 2);
         assert_eq!(providers[0].architectures, &["qwen2"]);
         assert_eq!(providers[1].execution, "explicit_remote");
-        assert!(providers.iter().all(|p| !p.cuda_compiled && !p.implicit_downloads));
+        assert_eq!(providers[0].cuda_compiled, cfg!(feature = "candle-cuda"));
+        assert!(providers.iter().all(|p| !p.implicit_downloads));
         let json = serde_json::to_value(providers).unwrap();
         assert_eq!(json[0]["backend"], "candle");
     }

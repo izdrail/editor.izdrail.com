@@ -44,3 +44,11 @@ are bounded1MiB, timeouts bounded, redirects disabled. Model capabilities stay
 server-reported, with no inference of FIM/tool compatibility. Loopback tests
 verify exact paths/methods and show-body model selection.
 API references: https://docs.ollama.com/api/tags and https://docs.ollama.com/api/show .
+
+Optional Candle CUDA path: published0.9.1 APIs support device construction and
+quantized_qwen2 loading/tensors on the selected device. Added candle-cuda feature,
+CPU remains default, explicit cuda fails closed, explicit auto logs fallback.
+Weights and decode inputs now use the same selected device. No partial offload
+claim, no exact-target qwen35moe support claim, no GPU PASS. CPU cargo check and
+27 crate tests passed locally,1 real-model test remains ignored. Hosted full
+workspace and CUDA compilation/inference are still required.
