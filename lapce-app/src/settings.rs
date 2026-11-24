@@ -471,9 +471,14 @@ pub fn settings_view(
         )
         .keyboard_navigable()
         .on_click_stop(move |_| {
+            // Section navigation must not target a header hidden by search.
+            // Clear the query first; scroll offsets react to the restored rows.
+            let search = doc.get_untracked();
+            if search.buffer.with_untracked(|buffer| !buffer.is_empty()) {
+                search.reload(Rope::from(""), true);
+            }
             settings_section.set(Some(target_kind.clone()));
             reflow_anchor.set(None);
-
         })
         .style(move |s| {
             let config = config.get();

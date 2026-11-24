@@ -386,6 +386,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('18a-composer-footer-dark-narrow')
         run('mousemove', '690', '505', 'click', '1')
         shot('18c-composer-footer-focused-narrow')
+        run('windowsize', window, '1443', '796'); time.sleep(2)
+        run('mousemove', '650', '99', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'font size')
+        shot('19-settings-search-before-section')
+        run('mousemove', '300', '236', 'click', '1'); time.sleep(2)
+        shot('19a-settings-section-clears-search')
+
 
 
 
