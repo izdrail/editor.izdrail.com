@@ -9,6 +9,7 @@ pub mod ollama;
 #[cfg(feature = "llama-cpp")]
 pub mod llamacpp;
 pub mod process;
+pub mod sampling;
 pub mod mistralrs;
 use anyhow::{Result, anyhow, bail, ensure};
 use candle_core::{Device, Tensor, quantized::gguf_file};
@@ -283,6 +284,8 @@ impl Provider for CandleProvider {
         .iter()
         .filter_map(|name| self.tokenizer.token_to_id(&marker(name)))
         .collect::<Vec<_>>();
+        let config = sampling::from_environment(request.messages.is_some())?;
+        let mut sampler = config.as_ref().map(|c| c.processor(self.tokenizer.get_vocab_size(true))).transpose()?.flatten();
         let start = Instant::now();
         // Candle 0.9.1 resets its per-layer KV cache when index_pos is zero.
         let mut prefill_ms = 0;
@@ -302,7 +305,10 @@ impl Provider for CandleProvider {
             if out.is_empty() {
                 prefill_ms = step.elapsed().as_millis();
             }
-            greedy(&logits)
+            if let Some(sampler) = sampler.as_mut() {
+                ensure!(logits.iter().all(|v| v.is_finite()), "Non-finite logits cannot be sampled");
+                Ok(sampler.sample(&Tensor::new(logits.as_slice(), &Device::Cpu)?)?)
+            } else { greedy(&logits) }
         })?;
         let text = self
             .tokenizer

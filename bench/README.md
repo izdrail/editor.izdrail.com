@@ -111,3 +111,11 @@ are checked only for requested CUDA builds. No model execution happens during bu
 Build one backend/device at a time and record its binary and feature settings,
 since subsequent builds may replace target/release/lapce-ai. See ACCEPTANCE.md
 for the current unverified and unimplemented areas before running comparisons.
+
+Candle optional sampling profiles: LAPCE_AI_CANDLE_FIM_SAMPLING and
+LAPCE_AI_CANDLE_CHAT_SAMPLING accept JSON, for example
+`{"temperature":0.7,"top_k":40,"top_p":0.95,"seed":42}`. They apply only
+to Candle. Missing profiles keep greedy defaults. Unknown keys and invalid
+values fail, and greedy temperature0 rejects top-k/top-p rather than ignoring
+them. Record profile JSON in CONFIG for comparisons. These settings do not
+establish sampling parity with another backend.

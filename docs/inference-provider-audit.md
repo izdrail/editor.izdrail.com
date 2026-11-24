@@ -112,3 +112,11 @@ thread, poll cancellation/deadline while writing, kill/wait on abort. Added a
 1MiB request fixture whose worker never reads stdin; cancellation returns
 without waiting for its10s sleep. Registry now describes the separate Mistral
 worker's capabilities without claiming its CUDA build state.
+
+Candle sampling slice: optional separate FIM/chat profiles in
+LAPCE_AI_CANDLE_FIM_SAMPLING / LAPCE_AI_CANDLE_CHAT_SAMPLING JSON. Explicit
+temperature/top_k/top_p/seed supported through pinned Candle generation APIs.
+Absent config preserves legacy greedy tie behavior; no default changes. Unknown
+keys and invalid combinations fail, rather than silently ignoring requested
+features. Seeded synthetic logits regression added. This is Candle-only, not
+full cross-provider sampling parity; min-p/penalties remain open.
