@@ -5,7 +5,7 @@ use std::{
 
 use floem::{
     View,
-    event::EventPropagation,
+    event::{Event, EventListener, EventPropagation},
     reactive::{
         Memo, ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo,
     },
@@ -512,7 +512,19 @@ fn status_text<S: std::fmt::Display + 'static>(
     editor: Memo<Option<EditorData>>,
     text: impl Fn() -> S + 'static,
 ) -> impl View {
-    label(text).style(move |s| {
+    label(text)
+    .keyboard_navigable()
+    .on_event(EventListener::KeyDown, |event| {
+        if let Event::KeyDown(key) = event {
+            if matches!(key.key.logical_key, floem::keyboard::Key::Named(
+                floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+            )) {
+                return EventPropagation::Stop;
+            }
+        }
+        EventPropagation::Continue
+    })
+    .style(move |s| {
         let config = config.get();
         let display = if editor
             .get()
@@ -530,6 +542,7 @@ fn status_text<S: std::fmt::Display + 'static>(
         };
 
         s.display(display)
+            .focus_visible(|s| s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND)))
             .height_full()
             .padding_horiz(10.0)
             .items_center()

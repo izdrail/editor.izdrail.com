@@ -154,3 +154,7 @@ UI-021, medium/P0: search matches jumped to first nonblank instead of the matche
 UI-022, medium/P0: in-file find count remained No Results after a project-search jump to a file containing the query. The count memo read the active editor untracked, keeping dependencies on the previous document. Track editor replacement so count dependencies follow the destination document. Verify existing 32c/34b captures show 1 of 1 rather than No Results.
 
 `45353290145` count still reads No Results in actual pixels, so UI-022 is not accepted. Matching was started only during painting; schedule it explicitly from document/query/buffer/visibility changes instead, and ignore async results after query or buffer revisions change. Retain tracked destination editor count dependencies. Runtime retry required.
+
+`45356437620` verifies UI-022: real destination documents now show 1 of 1 and highlights, including long Unicode text. Full test/release gates pass.
+
+UI-023, medium/P0: cursor/line-ending/language status actions were pointer-only. Make shared actionable status text keyboard reachable with visible focus and activation propagation guards. Runtime check line-ending palette, Escape then Tab language focus and Enter language palette; do not change either setting.

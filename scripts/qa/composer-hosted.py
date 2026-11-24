@@ -478,6 +478,12 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('34a-search-long-keyboard-focus')
         run('key', 'Return'); time.sleep(2); shot('34b-search-long-column-destination')
         run('key', 'Escape'); shot('34c-search-long-destination-unobscured')
+        run('mousemove', '1377', '783', 'click', '1')
+        time.sleep(1); shot('35-status-line-ending-palette')
+        run('key', 'Escape', 'Tab'); shot('35a-status-language-keyboard-focus')
+        run('key', 'Return'); time.sleep(1); shot('35b-status-language-palette')
+        run('key', 'Escape')
+
 
 
 
