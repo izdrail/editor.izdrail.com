@@ -557,6 +557,18 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('49-composer-alias-source')
         run('mousemove', '395', '130', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
         time.sleep(2); shot('49a-composer-alias-new-target')
+        # Laravel static detection requires its composer requirement on disk.
+        composer_file = project / 'composer.json'
+        composer_data = json.loads(composer_file.read_text())
+        composer_data['require'] = {'laravel/framework': '^12.0'}
+        composer_file.write_text(json.dumps(composer_data))
+        (project / 'snippet_tab.php').write_text('<?php\n')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'snippet_tab.php'); run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+End'); run('type', '--clearmodifiers', 'lw-component'); run('key', 'ctrl+space'); time.sleep(2)
+        shot('51-snippet-completion-before-tab')
+        run('key', 'Tab'); time.sleep(2); shot('51a-snippet-expanded-after-tab')
+        run('key', 'Escape')
         comment_text = '<?php\n/** Documentation\n * Details to collapse\n */\n// First line comment\n// Second line comment\n# First hash comment\n# Second hash comment\n/* Block comment\nMore details\n*/\nfunction visible_after_comments() {}\n'
         (project / 'comment_folds.php').write_text(comment_text)
         run('key', 'ctrl+p'); time.sleep(1)
