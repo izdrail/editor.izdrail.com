@@ -188,10 +188,18 @@ fn read_stream(reader: impl std::io::Read, cancelled: &dyn Fn() -> bool) -> Resu
 
 pub struct OllamaProvider {
     remote: RemoteFim,
+    agent: ureq::Agent,
 }
 impl OllamaProvider {
     pub fn new(remote: RemoteFim) -> Self {
-        Self { remote }
+        let timeout = Duration::from_millis(remote.timeout_ms.clamp(1_000, 120_000));
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(10).min(timeout))
+            .timeout_read(timeout)
+            .timeout_write(timeout)
+            .redirects(0)
+            .build();
+        Self { remote, agent }
     }
 }
 impl Provider for OllamaProvider {
@@ -224,7 +232,8 @@ impl Provider for OllamaProvider {
             bail!("Cancelled");
         }
         let start = Instant::now();
-        let response = ureq::post(&url)
+        ensure!(serde_json::to_vec(&body)?.len() <= MAX_STREAM_BYTES, "Ollama request exceeds size limit");
+        let response = self.agent.post(&url)
             .timeout(timeout)
             .send_json(body)
             .map_err(|e| anyhow!("Ollama request failed: {e}"))?;
@@ -261,9 +270,12 @@ impl OllamaProvider {
             bail!("Cancelled");
         }
         let start = Instant::now();
-        let response = ureq::post(&url)
+        ensure!(!self.remote.model.trim().is_empty(), "Ollama model name is empty");
+        let body = chat_body(&self.remote.model, messages, request.max_tokens);
+        ensure!(serde_json::to_vec(&body)?.len() <= MAX_STREAM_BYTES, "Ollama request exceeds size limit");
+        let response = self.agent.post(&url)
             .timeout(timeout)
-            .send_json(chat_body(&self.remote.model, messages, request.max_tokens))
+            .send_json(body)
             .map_err(|e| anyhow!("Ollama chat request failed: {e}"))?;
         let (text, chunk) = read_stream(response.into_reader(), cancelled)?;
         // Raw model text: the caller (editor) parses the edit contract.
