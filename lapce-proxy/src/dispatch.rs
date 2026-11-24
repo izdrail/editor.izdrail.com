@@ -2412,7 +2412,7 @@ fn search_in_path(
 fn search_match_preview(line_number: usize, line: &str, start: usize, end: usize) -> SearchMatch {
     let column = line[..start].encode_utf16().count();
     let (preview_start, preview_end) = if line.len() > 200 {
-        let left = line[..start].chars().rev().take(100).map(char::len_utf8).sum::<usize>();
+        let left = line[..start].chars().rev().take(32).map(char::len_utf8).sum::<usize>();
         let right = line[end..].chars().take(100).map(char::len_utf8).sum::<usize>();
         (start - left, end + right)
     } else {
@@ -2448,7 +2448,7 @@ mod search_preview_tests {
         let result = search_match_preview(1, &line, start, start + 6);
         assert_eq!(result.column, 301);
         assert_eq!(&result.line_content[result.start..result.end], "target");
-        assert_eq!(result.line_content[..result.start].chars().count(), 100);
+        assert_eq!(result.line_content[..result.start].chars().count(), 32);
         assert_eq!(result.line_content[result.end..].chars().count(), 100);
     }
 }

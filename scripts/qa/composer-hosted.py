@@ -477,6 +477,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab')
         shot('34a-search-long-keyboard-focus')
         run('key', 'Return'); time.sleep(2); shot('34b-search-long-column-destination')
+        run('key', 'Escape'); shot('34c-search-long-destination-unobscured')
 
 
 
