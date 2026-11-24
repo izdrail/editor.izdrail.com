@@ -296,6 +296,19 @@ mod tests {
     }
 
     #[test]
+    fn laravel_typed_relations_and_binding_keep_types_and_variables() {
+        let text = |prefix: &str| {
+            let s = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&s.body).unwrap().text()
+        };
+        assert!(text("lv-hasmany").contains(": \\Illuminate\\Database\\Eloquent\\Relations\\HasMany"));
+        assert!(text("lv-relation-morphto").contains("return $this->morphTo();"));
+        assert!(text("lv-route-binding").contains("\\App\\Models\\Post $post"));
+        assert!(text("lv-route-domain").contains("'{account}.example.com'"));
+        assert!(text("lv-relation-latest-of-many").contains("->latestOfMany();"));
+    }
+
+    #[test]
     fn laravel_pack_prefixes_are_unique_and_bodies_keep_php() {
         let mut seen = std::collections::HashSet::new();
         for s in &packs().laravel {

@@ -149,8 +149,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-controller | Controller with index action |
 | lv-migration | Create-table migration |
 | lv-validate | Request validation |
-| lv-hasmany | hasMany relation |
-| lv-belongsto | belongsTo relation |
+| lv-hasmany | hasMany relation with fully qualified return type |
+| lv-belongsto | belongsTo relation with fully qualified return type |
 | lv-formrequest | FormRequest rules method |
 | lv-factory | Model factory definition |
 | lv-test | Feature test method |
@@ -164,8 +164,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-command | Console command |
 | lv-scope | Eloquent local scope |
 | lv-accessor | Eloquent attribute accessor/mutator |
-| lv-belongstomany | belongsToMany relation |
-| lv-hasone | hasOne relation |
+| lv-belongstomany | belongsToMany relation with fully qualified return type |
+| lv-hasone | hasOne relation with fully qualified return type |
 | lv-pest | Pest test |
 | lv-route-api | apiResource routes |
 | lv-route-middleware | Route group with middleware |
@@ -180,9 +180,24 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-notification | Notification mail channel message |
 | lv-mail | Mailable envelope and content methods |
 | lv-cast | Custom Eloquent cast get/set methods |
-| lv-morphmany | Polymorphic one-to-many relation |
+| lv-morphmany | Polymorphic one-to-many relation with fully qualified return type |
 | lv-schedule | Scheduled artisan command (routes/console.php) |
 | lv-cache | Cache::remember with a callback |
+| lv-route-named | Named GET route, route file |
+| lv-route-prefix | URI and name prefix group, route file |
+| lv-route-domain | Subdomain group, register before root-domain routes |
+| lv-route-fallback | Fallback route, place after normal routes |
+| lv-route-redirect | Redirect route, explicit status |
+| lv-route-where-number | Numeric route parameter constraint |
+| lv-route-where-uuid | UUID route parameter constraint |
+| lv-route-invokable | Route to a controller implementing __invoke |
+| lv-route-binding | Implicit model binding with typed argument |
+| lv-relation-hasmanythrough | hasManyThrough relation method with fully qualified return type |
+| lv-relation-hasonethrough | hasOneThrough relation method with fully qualified return type |
+| lv-relation-morphone | morphOne relation method with fully qualified return type |
+| lv-relation-morphto | morphTo relation method with fully qualified return type |
+| lv-relation-morphtomany | morphToMany relation method with fully qualified return type |
+| lv-relation-latest-of-many | One-of-many relation using sortable primary key |
 
 ## livewire
 
