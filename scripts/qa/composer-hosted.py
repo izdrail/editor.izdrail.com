@@ -514,6 +514,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
 
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '# cleared synthetic diagnostics')
         time.sleep(3); shot('40a-problems-cleared')
+        run('windowsize', window, '850', '640'); time.sleep(2); shot('43-problems-empty-narrow-dark')
+        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
+        time.sleep(3); shot('43a-problems-empty-narrow-light')
+        run('windowsize', window, '1443', '796'); time.sleep(2); shot('43b-problems-empty-wide-light')
+        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Light"', 'color-theme = "Lapce Dark"'))
+        time.sleep(3); shot('43c-problems-empty-wide-dark')
+
 
 
 
