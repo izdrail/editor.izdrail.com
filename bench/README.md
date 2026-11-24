@@ -100,3 +100,14 @@ No results from that test have been recorded here yet.
 The fixture suite also checks three repeated worker requests and refusal when
 the request model is not the same file as MODEL. This prevents collecting a
 verified hash for one file while benchmarking a different file.
+
+## Explicit owner build helper
+
+`sh bench/build.sh candle cpu`, `sh bench/build.sh llamacpp cuda`, or
+`sh bench/build.sh mistralrs cuda` uses installed tools and pinned lockfiles.
+It can fetch source dependencies through Cargo, but never downloads model weights
+or installs a toolkit. Save stdout/stderr as build provenance. GPU prerequisites
+are checked only for requested CUDA builds. No model execution happens during build.
+Build one backend/device at a time and record its binary and feature settings,
+since subsequent builds may replace target/release/lapce-ai. See ACCEPTANCE.md
+for the current unverified and unimplemented areas before running comparisons.
