@@ -40,3 +40,9 @@ type counts without loading weights. `target-model-header.json` records the
 24 November2026 remote range inspection. Architecture is qwen35moe, not qwen2.
 The server's full-file LFS checksum is provenance, not a locally computed checksum
 of weights. The collector still requires verifying the owner's complete file.
+
+Run `python3 bench/test_bench.py` for non-inference fixtures. Aggregate a single
+comparison environment with `python3 bench/collect.py /path/to/results`. Mixed
+model/hardware/configuration runs are rejected. Failed runs do not contribute
+performance numbers; fewer than three successful runs are marked. CUDA status
+remains unverified regardless of device-wide telemetry.
