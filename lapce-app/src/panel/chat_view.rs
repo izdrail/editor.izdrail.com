@@ -2547,7 +2547,8 @@ fn composer_dropdown_overlay<V: View + 'static>(
     window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View + use<V> {
-    scroll(
+    let focused = floem::reactive::create_rw_signal(false);
+    let menu = scroll(
         rows.style(|s| s.flex_col().width_full().min_width(0.0).cursor(CursorStyle::Pointer)),
     )
     .style(move |s| {
@@ -2556,11 +2557,12 @@ fn composer_dropdown_overlay<V: View + 'static>(
             .set(PropagatePointerWheel, false)
     })
     .keyboard_navigable()
-    .request_focus(|| {})
+    .on_event_stop(EventListener::FocusGained, move |_| focused.set(true))
     .on_event_stop(EventListener::FocusLost, move |_| {
-        if expanded.get_untracked() {
+        if focused.get_untracked() && expanded.get_untracked() {
             expanded.set(false);
         }
+        focused.set(false);
     })
     .on_event_stop(EventListener::PointerMove, |_| {})
     .on_event_stop(EventListener::PointerDown, |_| {})
@@ -2611,7 +2613,14 @@ fn composer_dropdown_overlay<V: View + 'static>(
             .box_shadow_color(config.color(LapceColor::LAPCE_DROPDOWN_SHADOW))
             .inset_left(x)
             .inset_top(y)
-    })
+    });
+    // Opening happens during chip activation. Its queued focus/scroll work
+    // must finish before handing keyboard ownership to the new overlay.
+    let id = menu.id();
+    floem::action::exec_after(std::time::Duration::from_millis(10), move |_| {
+        if expanded.get_untracked() { id.request_focus(); }
+    });
+    menu
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
