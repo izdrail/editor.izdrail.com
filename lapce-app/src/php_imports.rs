@@ -169,7 +169,7 @@ pub fn definition(root: &Path, text: &str, line: &str, col: usize) -> Option<(Pa
     }
     let mut found: Vec<(PathBuf, usize)> = Vec::new();
     for (prefix, directory) in maps {
-        let Some(rest) = fqcn.strip_prefix(&prefix) else { continue; };
+        let Some(rest) = fqcn.strip_prefix(prefix.as_str()) else { continue; };
         if rest.is_empty() || rest.split('\\').any(|s| s.is_empty() || s == "..") { continue; }
         let path = directory.join(format!("{}.php", rest.replace('\\', "/")));
         let Ok(meta) = std::fs::metadata(&path) else { continue; };
