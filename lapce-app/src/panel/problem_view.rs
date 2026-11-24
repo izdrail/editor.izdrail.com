@@ -1,10 +1,11 @@
 use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use floem::{
-    View,
+    View, ViewId,
+    event::{Event, EventListener, EventPropagation},
     peniko::Color,
     reactive::{
-        ReadSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
+        ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
         create_rw_signal,
     },
     style::{CursorStyle, Style},
@@ -63,6 +64,7 @@ fn problem_section(
         })
     });
     let internal_command = window_tab_data.common.internal_command;
+    let keyboard_focus = window_tab_data.common.keyboard_focus;
     container(stack((
         scroll(
             dyn_stack(
@@ -76,6 +78,7 @@ fn problem_section(
                         severity,
                         internal_command,
                         config,
+                        keyboard_focus,
                     )
                 },
             )
@@ -123,6 +126,7 @@ fn file_view(
     severity: DiagnosticSeverity,
     internal_command: Listener<InternalCommand>,
     config: ReadSignal<Arc<LapceConfig>>,
+    keyboard_focus: RwSignal<Option<ViewId>>,
 ) -> impl View {
     let collapsed = create_rw_signal(false);
 
@@ -198,7 +202,7 @@ fn file_view(
 
     stack((
         stack((
-            container(
+            keyboard_problem_action(container(
                 stack((
                     label(move || file_name.clone()).style(|s| {
                         s.margin_right(6.0)
@@ -214,7 +218,7 @@ fn file_view(
                     }),
                 ))
                 .style(move |s| s.width_pct(100.0).min_width(0.0)),
-            )
+            ), keyboard_focus, config)
             .on_click_stop(move |_| {
                 collapsed.update(|collapsed| *collapsed = !*collapsed);
             })
@@ -275,6 +279,7 @@ fn file_view(
                     icon_color,
                     internal_command,
                     config,
+                    keyboard_focus,
                 )
             },
         )
@@ -295,6 +300,7 @@ fn item_view(
     icon_color: impl Fn() -> Color + 'static,
     internal_command: Listener<InternalCommand>,
     config: ReadSignal<Arc<LapceConfig>>,
+    keyboard_focus: RwSignal<Option<ViewId>>,
 ) -> impl View {
     let related = d.diagnostic.related_information.unwrap_or_default();
     let position = if let Some((start, _)) = d.range {
@@ -310,7 +316,7 @@ fn item_view(
         same_editor_tab: false,
     };
     stack((
-        container({
+        keyboard_problem_action(container({
             stack((
                 label(move || d.diagnostic.message.clone()).style(move |s| {
                     s.width_pct(100.0)
@@ -341,14 +347,14 @@ fn item_view(
                     )
                 })
             })
-        })
+        }), keyboard_focus, config)
         .on_click_stop(move |_| {
             internal_command.send(InternalCommand::JumpToLocation {
                 location: location.clone(),
             });
         })
         .style(|s| s.width_pct(100.0).min_width_pct(0.0)),
-        related_view(related, internal_command, config),
+        related_view(related, internal_command, config, keyboard_focus),
     ))
     .style(|s| s.width_pct(100.0).min_width_pct(0.0).flex_col())
 }
@@ -357,6 +363,7 @@ fn related_view(
     related: Vec<DiagnosticRelatedInformation>,
     internal_command: Listener<InternalCommand>,
     config: ReadSignal<Arc<LapceConfig>>,
+    keyboard_focus: RwSignal<Option<ViewId>>,
 ) -> impl View {
     let is_empty = related.is_empty();
     stack((
@@ -386,10 +393,10 @@ fn related_view(
                     same_editor_tab: false,
                 };
                 let message = format!("{path}{}", related.message);
-                container(
+                keyboard_problem_action(container(
                     label(move || message.clone())
                         .style(move |s| s.width_pct(100.0).min_width(0.0)),
-                )
+                ), keyboard_focus, config)
                 .on_click_stop(move |_| {
                     internal_command.send(InternalCommand::JumpToLocation {
                         location: location.clone(),
@@ -432,4 +439,31 @@ fn related_view(
             .color(config.get().color(LapceColor::EDITOR_DIM))
             .apply_if(is_empty, |s| s.hide())
     })
+}
+
+// Native traversal must not fall through to the document's indentation binding.
+fn keyboard_problem_action(
+    view: impl View + 'static,
+    keyboard_focus: RwSignal<Option<ViewId>>,
+    config: ReadSignal<Arc<LapceConfig>>,
+) -> impl View {
+    let id = view.id();
+    view.keyboard_navigable()
+        .on_event_stop(EventListener::FocusGained, move |_| keyboard_focus.set(Some(id)))
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            if keyboard_focus.get_untracked() == Some(id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_event(EventListener::KeyDown, |event| {
+            if let Event::KeyDown(key) = event {
+                if matches!(key.key.logical_key, floem::keyboard::Key::Named(
+                    floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+                )) {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
+        .style(move |s| s.focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND))))
 }

@@ -499,6 +499,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'diagnostics.py'); run('key', 'Return')
         time.sleep(3); shot('40-problems-published')
+        run('mousemove', '820', '518', 'click', '1'); shot('41-problems-warning-group-collapsed')
+        run('key', 'space'); shot('41a-problems-warning-group-reopened')
+        run('key', 'Tab'); shot('41b-problems-warning-keyboard-focus')
+        run('key', 'Return'); time.sleep(1); shot('41c-problems-warning-destination')
+
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '# cleared synthetic diagnostics')
         time.sleep(3); shot('40a-problems-cleared')
 

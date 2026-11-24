@@ -180,3 +180,7 @@ UI-026, medium/P0: empty Errors/Warnings sections were blank, with no indication
 UI-026 acceptance extension: deterministic local stdio LSP fixture now publishes one synthetic error and warning for diagnostics.py, then clears them on text change. Framing/publish/clear smoke test passes locally. Add actual populated and cleared panel captures to verify empty guidance reacts to live RPC notifications. This is UI/RPC fixture coverage, not evidence of a real language provider or a completed code check.
 
 `45386313931` actual 39 shows readable empty guidance, but the in-flow long labels expand the bottom panel and squeeze the explorer/assistant. UI-026 is NOT accepted. Keep content in the section's absolute-size viewport as before, bound label width and explicitly wrap text. Recheck layout plus pending live publication/clear captures.
+
+`45389619554` verifies UI-026: wrapped empty guidance retains normal panel widths; actual local LSP publication shows one error and warning without guidance, then an empty notification restores guidance. All test/release/upload gates pass.
+
+UI-027, medium/P0: Problems file-group, diagnostic and related-location rows were pointer-only. Add native keyboard focus, visible focus, and activation propagation guard; register row focus so Tab does not indent the document. Capture warning file-group collapse/reopen, Tab to warning, and Enter exact warning-line destination. Related-location and offscreen traversal remain unverified.
