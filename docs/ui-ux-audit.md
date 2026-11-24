@@ -120,3 +120,5 @@ UI-016, medium/P0: Linux menu rows had pointer handlers but no arrow selection/a
 UI-017, medium/P0: project search showed no guidance for empty/no-match/loading/error states and accepted old replies after later edits or clearing. Add visible wrapping status, regex validation and per-query generation guard; clear old results before new requests. Runtime captures must show genuine no-result and cleared-query states. Search/replace scope and real large-project performance remain open.
 
 `45325538651` verifies nested Settings keyboard navigation, separator skipping, End selection and Enter opening the actual Keyboard Shortcuts view. Search-status first gate failed Rust type inference for the new error branch; add the explicit RPC result type and status grammar tests before runtime acceptance. No search success is claimed from the failed gate.
+
+`45328033432` verifies project-search no-match and cleared-query guidance in actual dark UI. Improve status foreground contrast and capture positive match counts plus regex-error/clear states. Generation-guard delayed-response integration coverage remains open; no empty-state screenshot proves that race is exercised.

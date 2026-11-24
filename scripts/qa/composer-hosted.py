@@ -447,6 +447,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('type', '--clearmodifiers', 'zz_no_search_match_2026')
         time.sleep(2); shot('29-search-no-results')
         run('key', 'ctrl+a', 'BackSpace'); time.sleep(1); shot('29a-search-empty')
+        run('type', '--clearmodifiers', 'Synthetic'); time.sleep(2)
+        shot('30-search-matches')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', '[')
+        run('mousemove', '1115', '499', 'click', '1')
+        time.sleep(1); shot('30a-search-invalid-regex')
+        run('mousemove', '650', '499', 'click', '1')
+        run('key', 'ctrl+a', 'BackSpace'); time.sleep(1)
+        shot('30b-search-invalid-cleared')
+
 
 
 

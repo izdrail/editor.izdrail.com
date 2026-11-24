@@ -105,7 +105,7 @@ pub fn global_search_panel(
         label(move || search_status.get()).style(move |s| s
             .padding_horiz(10.0).padding_bottom(8.0).max_width_pct(100.0)
             .text_overflow(floem::style::TextOverflow::Wrap)
-            .color(config.get().color(LapceColor::EDITOR_DIM))),
+            .color(config.get().color(LapceColor::EDITOR_FOREGROUND))),
         search_result(workspace, global_search, internal_command, config),
     ))
     .style(|s| s.absolute().size_pct(100.0, 100.0).flex_col())
