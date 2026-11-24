@@ -74,6 +74,20 @@ struct StreamChunk {
     message: Option<ChatPart>,
     #[serde(default)]
     done: bool,
+    #[serde(default)]
+    eval_count: usize,
+    #[serde(default)]
+    prompt_eval_count: usize,
+    #[serde(default)]
+    load_duration: u64,
+    #[serde(default)]
+    prompt_eval_duration: u64,
+    #[serde(default)]
+    eval_duration: u64,
+    #[serde(default)]
+    total_duration: u64,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +145,21 @@ pub fn fim_body(
     })
 }
 
+/// Ollama durations are nanoseconds. Keep the existing Completion wire shape.
+fn streamed_completion(text: String, chunk: &StreamChunk, elapsed_ms: u128) -> Completion {
+    Completion {
+        text,
+        tokens: chunk.eval_count,
+        prompt_tokens: chunk.prompt_eval_count,
+        load_ms: u128::from(chunk.load_duration) / 1_000_000,
+        prefill_ms: u128::from(chunk.prompt_eval_duration) / 1_000_000,
+        decode_ms: u128::from(chunk.eval_duration) / 1_000_000,
+        generation_ms: if chunk.total_duration == 0 { elapsed_ms }
+            else { u128::from(chunk.total_duration) / 1_000_000 },
+        cancelled: false,
+    }
+}
+
 pub struct OllamaProvider {
     remote: RemoteFim,
 }
@@ -177,7 +206,7 @@ impl Provider for OllamaProvider {
         // between chunks, so a soft cancel aborts mid-generation instead of
         // waiting for the whole response.
         let mut text = String::new();
-        let mut done = false;
+        let mut final_chunk = None;
         for line in BufReader::new(response.into_reader()).lines() {
             if cancelled() {
                 bail!("Cancelled");
@@ -188,24 +217,15 @@ impl Provider for OllamaProvider {
             }
             let chunk: StreamChunk = serde_json::from_str(&line)
                 .map_err(|e| anyhow!("Ollama stream parse: {e}"))?;
+            if let Some(error) = &chunk.error { bail!("Ollama server error: {error}"); }
             text.push_str(&chunk.response);
             if chunk.done {
-                done = true;
+                final_chunk = Some(chunk);
                 break;
             }
         }
-        ensure!(done, "Ollama stream ended before the done chunk");
-        Ok(Completion {
-            text: clean(&text, &request.suffix),
-            // Stream chunks carry no token counts; zero means unreported.
-            tokens: 0,
-            prompt_tokens: 0,
-            load_ms: 0,
-            generation_ms: start.elapsed().as_millis(),
-            prefill_ms: 0,
-            decode_ms: 0,
-            cancelled: false,
-        })
+        let chunk = final_chunk.ok_or_else(|| anyhow!("Ollama stream ended before the done chunk"))?;
+        Ok(streamed_completion(clean(&text, &request.suffix), &chunk, start.elapsed().as_millis()))
     }
 }
 
@@ -242,7 +262,7 @@ impl OllamaProvider {
             .send_json(chat_body(&self.remote.model, messages, request.max_tokens))
             .map_err(|e| anyhow!("Ollama chat request failed: {e}"))?;
         let mut text = String::new();
-        let mut done = false;
+        let mut final_chunk = None;
         for line in BufReader::new(response.into_reader()).lines() {
             if cancelled() {
                 bail!("Cancelled");
@@ -253,24 +273,16 @@ impl OllamaProvider {
             }
             let chunk: StreamChunk = serde_json::from_str(&line)
                 .map_err(|e| anyhow!("Ollama chat stream parse: {e}"))?;
+            if let Some(error) = &chunk.error { bail!("Ollama server error: {error}"); }
             text.push_str(chunk.text());
             if chunk.done {
-                done = true;
+                final_chunk = Some(chunk);
                 break;
             }
         }
-        ensure!(done, "Ollama chat stream ended before the done chunk");
+        let chunk = final_chunk.ok_or_else(|| anyhow!("Ollama chat stream ended before the done chunk"))?;
         // Raw model text: the caller (editor) parses the edit contract.
-        Ok(Completion {
-            text,
-            tokens: 0,
-            prompt_tokens: 0,
-            load_ms: 0,
-            generation_ms: start.elapsed().as_millis(),
-            prefill_ms: 0,
-            decode_ms: 0,
-            cancelled: false,
-        })
+        Ok(streamed_completion(text, &chunk, start.elapsed().as_millis()))
     }
 }
 
@@ -291,6 +303,19 @@ pub fn clean(text: &str, suffix: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_chunk_preserves_server_metrics_and_legacy_fallback() {
+        let chunk: StreamChunk = serde_json::from_str(r#"{"done":true,"eval_count":17,"prompt_eval_count":31,"load_duration":12000000,"prompt_eval_duration":23000000,"eval_duration":45000000,"total_duration":81000000}"#).unwrap();
+        let c = streamed_completion("héllo".into(), &chunk, 999);
+        assert_eq!((c.tokens,c.prompt_tokens), (17,31));
+        assert_eq!((c.load_ms,c.prefill_ms,c.decode_ms,c.generation_ms),(12,23,45,81));
+        assert_eq!(c.text,"héllo");
+        let old: StreamChunk = serde_json::from_str(r#"{"done":true}"#).unwrap();
+        assert_eq!(streamed_completion(String::new(), &old, 999).generation_ms,999);
+        let error: StreamChunk = serde_json::from_str(r#"{"error":"model not found"}"#).unwrap();
+        assert!(error.error.is_some());
+    }
 
     #[test]
     fn url_normalization() {
