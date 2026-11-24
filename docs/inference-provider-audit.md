@@ -37,3 +37,10 @@ loader: https://crates.io/api/v1/crates/candle-core/0.9.1/download and
 https://crates.io/api/v1/crates/candle-transformers/0.9.1/download .
 The loader already resets KV cache at position0 and then decodes only the newest
 token. No fabricated KV-cache speedup is claimed.
+
+Explicit discovery: `lapce-ai --ai-ollama-models ENDPOINT [MODEL]` reads
+/api/tags or /api/show, never /api/pull. The endpoint is mandatory. Responses
+are bounded1MiB, timeouts bounded, redirects disabled. Model capabilities stay
+server-reported, with no inference of FIM/tool compatibility. Loopback tests
+verify exact paths/methods and show-body model selection.
+API references: https://docs.ollama.com/api/tags and https://docs.ollama.com/api/show .

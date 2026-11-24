@@ -4,6 +4,7 @@
 pub mod capabilities;
 pub mod catalog;
 pub mod chat;
+pub mod discovery;
 pub mod ollama;
 pub mod process;
 use anyhow::{Result, anyhow, bail, ensure};
@@ -448,6 +449,13 @@ pub fn download_model(root: &Path, id: &str) -> Result<Installed> {
 /// so it could never read a cancellation from the same stream in time.
 pub fn run() -> i32 {
     let result = (|| -> Result<()> {
+        if std::env::args().nth(1).as_deref() == Some("--ai-ollama-models") {
+            let endpoint = std::env::args().nth(2)
+                .ok_or_else(|| anyhow!("Missing explicit Ollama endpoint"))?;
+            let model = std::env::args().nth(3);
+            println!("{}", discovery::discover(&endpoint, model.as_deref())?);
+            return Ok(());
+        }
         if std::env::args().nth(1).as_deref() == Some("--ai-capabilities") {
             println!("{}", serde_json::to_string(&capabilities::available())?);
             return Ok(());
