@@ -32,3 +32,11 @@ laptop without explicit limits in the benchmark command.
 
 No results have been fabricated or prefilled. Target-machine execution remains
 blocked until this package and provider build steps can be run on the owner's laptop.
+
+## Metadata inspection
+
+`python3 bench/inspect_gguf.py /path/to/model.gguf` parses metadata and tensor
+type counts without loading weights. `target-model-header.json` records the
+24 November2026 remote range inspection. Architecture is qwen35moe, not qwen2.
+The server's full-file LFS checksum is provenance, not a locally computed checksum
+of weights. The collector still requires verifying the owner's complete file.

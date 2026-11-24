@@ -15,3 +15,11 @@ Worker follow-through: preserve the Ollama provider between identical sequential
 Build discovery: `lapce-ai --ai-capabilities` emits machine-readable implemented backend capabilities without loading files or making network requests. Reports current CPU-only Candle/qwen2, explicit Ollama execution, existing sampling and cancellation limits. Does not advertise alternative backends or CUDA until implemented and checked. Request/Completion shapes unchanged.
 
 Benchmark collection: `bench/run.sh` is POSIX sh, dispatching to a standard-library Python collector. Requires an exact model hash, preserves raw output, records environment and telemetry, refuses overwrite. Fixture tests exercise collection and hash refusal only. It is not yet the complete provider build/benchmark package.
+
+Exact-target pre-integration check completed from a fresh bounded range request:
+https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf .
+Parsed full metadata and733 tensor descriptors, header length10990035 bytes.
+Architecture qwen35moe,40 blocks,256 experts/8 active, attention interval4;
+tensor type IDs0/8/12/13/14, server file size22360456160 bytes. Full payload
+not downloaded or hashed. Machine-readable provenance in bench/target-model-header.json.
+This verifies the format/architecture, not backend inference compatibility.
