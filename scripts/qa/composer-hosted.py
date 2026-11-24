@@ -439,7 +439,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape')
         # Native menu dismissal resets focus. Start from the observed first
         # toolbar target, not from an assumed retained menu-trigger focus.
-        run('key', 'Tab', 'Tab'); shot('25b-remote-menu-focus')
+        run('key', 'Tab', 'Tab', 'Tab'); shot('25b-remote-menu-focus')
         run('key', 'space'); shot('25c-remote-menu-open')
         run('key', 'Escape')
 

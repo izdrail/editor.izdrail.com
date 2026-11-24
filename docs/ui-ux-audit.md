@@ -106,3 +106,5 @@ UI-014, medium/P0: shared actionable toolbar icons lacked keyboard traversal/foc
 `45311845774` verifies visible keyboard focus on the main menu and Space opening it. The screenshots were initially named workspace-menu, but actual pixels show the main menu; they do not verify the workspace dropdown. Rename captures accurately and continue toolbar traversal/menu checks. Full Rust/release workflow is green.
 
 `45314382956` actual toolbar traversal screenshots map focus to main menu, remote, back, search, workspace dropdown and Run/Debug. The initially named remote-menu capture has no open menu, so it is not accepted. Native menu dismissal resets focus; new captures reacquire targets based on observed traversal and verify actual menus rather than assuming focus retention.
+
+`45316862316` verifies keyboard opening of the actual Open Folder / Open Recent Workspace menu (25a). Remote capture still reaches the main menu, so remote acceptance remains open and its reacquisition sequence is corrected without asserting a false pass. Native popup dismissal/focus return remains a follow-up issue under UX-013.
