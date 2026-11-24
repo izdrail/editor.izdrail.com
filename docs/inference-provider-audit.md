@@ -120,3 +120,8 @@ Absent config preserves legacy greedy tie behavior; no default changes. Unknown
 keys and invalid combinations fail, rather than silently ignoring requested
 features. Seeded synthetic logits regression added. This is Candle-only, not
 full cross-provider sampling parity; min-p/penalties remain open.
+
+Candle sampling follow-up: generated-output repetition/frequency/presence
+penalties and supplementary validated stop-token IDs now implemented, with
+synthetic sign/count/invalid-vocabulary tests. Built-in stops remain mandatory.
+Defaults unchanged. Min-p and cross-provider sampling parity remain open.

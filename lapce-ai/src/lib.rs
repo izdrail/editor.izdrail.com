@@ -271,7 +271,7 @@ impl Provider for CandleProvider {
         ensure!(ids.len().checked_add(request.max_tokens)
             .is_some_and(|n| n <= self.context_length),
             "Prompt and output exceed the model context length");
-        let stops = [
+        let mut stops = [
             "fim_prefix",
             "fim_suffix",
             "fim_middle",
@@ -286,6 +286,7 @@ impl Provider for CandleProvider {
         .collect::<Vec<_>>();
         let config = sampling::from_environment(request.messages.is_some())?;
         let mut sampler = config.as_ref().map(|c| c.processor(self.tokenizer.get_vocab_size(true))).transpose()?.flatten();
+        if let Some(config) = &config { stops.extend_from_slice(&config.stop_token_ids); }
         let start = Instant::now();
         // Candle 0.9.1 resets its per-layer KV cache when index_pos is zero.
         let mut prefill_ms = 0;
@@ -297,7 +298,7 @@ impl Provider for CandleProvider {
             };
             let step = Instant::now();
             let input = Tensor::new(input, &self.device)?.unsqueeze(0)?;
-            let logits = self
+            let mut logits = self
                 .model
                 .forward(&input, pos)?
                 .squeeze(0)?
@@ -305,6 +306,7 @@ impl Provider for CandleProvider {
             if out.is_empty() {
                 prefill_ms = step.elapsed().as_millis();
             }
+            if let Some(config) = &config { config.penalize(&mut logits, out)?; }
             if let Some(sampler) = sampler.as_mut() {
                 ensure!(logits.iter().all(|v| v.is_finite()), "Non-finite logits cannot be sampled");
                 Ok(sampler.sample(&Tensor::new(logits.as_slice(), &Device::Cpu)?)?)

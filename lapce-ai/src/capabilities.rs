@@ -23,7 +23,7 @@ pub fn available() -> Vec<Capabilities> {
         backend: "candle", execution: "local", architectures: &["qwen2"],
         fim: true, chat: true, cuda_compiled: cfg!(feature = "candle-cuda"),
         cancellation: "cooperative between decode steps; load is not interruptible",
-        sampling: "greedy default; explicit Candle chat/FIM profiles support temperature/top-k/top-p/seed", implicit_downloads: false,
+        sampling: "greedy default; explicit Candle chat/FIM profiles support temperature/top-k/top-p/seed/output penalties/stop IDs", implicit_downloads: false,
         limitations: &[
             "CPU by default; explicit LAPCE_AI_DEVICE controls optional CUDA selection",
             "FIM and chat require compatible tokenizer special tokens",

@@ -124,3 +124,12 @@ The local worker driver bounds requests/responses to8MiB. Its deadline covers
 blocked pipe writes and incomplete response lines, not only the first output
 byte. A deadline or malformed output fails the run and terminates the process
 group. Fixture tests cover non-reading and partial-line workers.
+
+Candle profiles also accept repetition_penalty (default1, range0.01..100),
+frequency_penalty and presence_penalty (default0, range-2..2), and up to256
+stop_token_ids validated against the tokenizer vocabulary. Penalties apply to
+generated output only, not the prompt. Repetition divides nonnegative logits
+and multiplies negative logits once per distinct token. Presence subtracts once
+per seen token; frequency subtracts its value times the output count. Additional
+stops supplement built-in model/FIM stops, never remove them. Min-p remains
+unsupported and is rejected. These settings do not change other backends.
