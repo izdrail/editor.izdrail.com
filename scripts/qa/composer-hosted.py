@@ -443,6 +443,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Right'); shot('28a-settings-submenu')
         run('key', 'End'); shot('28b-keyboard-shortcuts-selected')
         run('key', 'Return'); time.sleep(2); shot('28c-keyboard-shortcuts-activated')
+        run('key', 'ctrl+shift+f'); time.sleep(2)
+        run('type', '--clearmodifiers', 'zz_no_search_match_2026')
+        time.sleep(2); shot('29-search-no-results')
+        run('key', 'ctrl+a', 'BackSpace'); time.sleep(1); shot('29a-search-empty')
+
 
 
 

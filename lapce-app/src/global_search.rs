@@ -42,6 +42,8 @@ impl SearchMatchData {
 pub struct GlobalSearchData {
     pub editor: EditorData,
     pub search_result: RwSignal<IndexMap<PathBuf, SearchMatchData>>,
+    pub search_status: RwSignal<String>,
+    pub search_generation: RwSignal<u64>,
     pub main_split: MainSplitData,
     pub common: Rc<CommonData>,
 }
@@ -113,6 +115,8 @@ impl GlobalSearchData {
         let global_search = Self {
             editor,
             search_result,
+            search_status: cx.create_rw_signal("Type to search workspace files.".into()),
+            search_generation: cx.create_rw_signal(0),
             main_split,
             common,
         };
@@ -122,20 +126,41 @@ impl GlobalSearchData {
             let buffer = global_search.editor.doc().buffer;
             cx.create_effect(move |_| {
                 let pattern = buffer.with(|buffer| buffer.to_string());
+                // Every edit, including clearing, invalidates older replies.
+                let generation = global_search.search_generation.get_untracked().wrapping_add(1);
+                global_search.search_generation.set(generation);
+                global_search.search_result.update(|r| r.clear());
                 if pattern.is_empty() {
-                    global_search.search_result.update(|r| r.clear());
+                    global_search.search_status.set("Type to search workspace files.".into());
                     return;
                 }
                 let case_sensitive = global_search.common.find.case_sensitive(true);
                 let whole_word = global_search.common.find.whole_words.get();
                 let is_regex = global_search.common.find.is_regex.get();
+                if is_regex {
+                    if let Err(error) = regex::Regex::new(&pattern) {
+                        global_search.search_status.set(format!("Invalid regular expression: {error}"));
+                        return;
+                    }
+                }
+                global_search.search_status.set("Searching workspace files...".into());
                 let send = {
                     let global_search = global_search.clone();
                     create_ext_action(cx, move |result| {
-                        if let Ok(ProxyResponse::GlobalSearchResponse { matches }) =
-                            result
-                        {
-                            global_search.update_matches(matches);
+                        if generation != global_search.search_generation.get_untracked() { return; }
+                        match result {
+                            Ok(ProxyResponse::GlobalSearchResponse { matches }) => {
+                                let count: usize = matches.values().map(Vec::len).sum();
+                                let files = matches.len();
+                                global_search.search_status.set(if count == 0 {
+                                    "No matches found.".into()
+                                } else {
+                                    format!("{count} matches in {files} files")
+                                });
+                                global_search.update_matches(matches);
+                            }
+                            Err(error) => global_search.search_status.set(format!("Search failed: {}", error.message)),
+                            _ => global_search.search_status.set("Search returned an unexpected response. Try again.".into()),
                         }
                     })
                 };

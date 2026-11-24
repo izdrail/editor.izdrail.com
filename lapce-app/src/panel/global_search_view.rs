@@ -35,6 +35,7 @@ pub fn global_search_panel(
     let case_matching = global_search.common.find.case_matching;
     let whole_word = global_search.common.find.whole_words;
     let is_regex = global_search.common.find.is_regex;
+    let search_status = global_search.search_status;
 
     let focus = global_search.common.focus;
     let is_focused = move || focus.get() == Focus::Panel(PanelKind::Search);
@@ -101,6 +102,10 @@ pub fn global_search_panel(
             }),
         )
         .style(|s| s.width_pct(100.0).padding(10.0)),
+        label(move || search_status.get()).style(move |s| s
+            .padding_horiz(10.0).padding_bottom(8.0).max_width_pct(100.0)
+            .text_overflow(floem::style::TextOverflow::Wrap)
+            .color(config.get().color(LapceColor::EDITOR_DIM))),
         search_result(workspace, global_search, internal_command, config),
     ))
     .style(|s| s.absolute().size_pct(100.0, 100.0).flex_col())
