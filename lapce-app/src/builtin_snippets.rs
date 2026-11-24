@@ -168,6 +168,17 @@ mod tests {
     use crate::snippet::Snippet as Parsed;
 
     #[test]
+    fn laravel_family_prefixes_are_standardized_and_globally_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for snippet in packs().laravel.iter().chain(&packs().livewire).chain(&packs().blade) {
+            for prefix in &snippet.prefix {
+                assert!(prefix.starts_with("lv-"), "{prefix}");
+                assert!(seen.insert(prefix), "duplicate {prefix}");
+            }
+        }
+    }
+
+    #[test]
     fn every_bundled_snippet_parses_and_has_a_prefix() {
         let p = packs();
         for pack in [&p.laravel, &p.wordpress, &p.symfony, &p.twig, &p.blade, &p.livewire, &p.javascript] {
@@ -201,7 +212,7 @@ mod tests {
             ..Default::default()
         };
         let got = for_context("php", &laravel);
-        assert!(got.iter().any(|s| s.prefix.iter().any(|x| x == "route-get")));
+        assert!(got.iter().any(|s| s.prefix.iter().any(|x| x == "lv-route-get")));
         assert!(!got.iter().any(|s| s.prefix.iter().any(|x| x == "wp-action")));
         assert!(for_context("twig", &none).iter().any(|s| s.prefix.iter().any(|x| x == "for")));
         assert!(for_context("rust", &laravel).is_empty());
@@ -223,14 +234,14 @@ mod tests {
     fn blade_files_get_the_blade_pack_and_php_gets_livewire() {
         let none = ProjectProfile::default();
         let b = for_context("blade", &none);
-        for want in ["foreach", "csrf", "wire-click", "livewire", "forelse"] {
+        for want in ["lv-blade-foreach", "lv-blade-csrf", "lv-blade-wire-click", "lv-blade-livewire", "lv-blade-forelse"] {
             assert!(b.iter().any(|s| s.prefix.iter().any(|x| x == want)), "{want}");
         }
         // Blade directives are not offered in plain PHP or Twig files.
         assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "foreach")));
         let laravel = ProjectProfile { laravel: true, ..Default::default() };
-        assert!(for_context("php", &laravel).iter().any(|s| s.prefix.iter().any(|x| x == "lw-component")));
-        assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "lw-component")));
+        assert!(for_context("lv-blade-php", &laravel).iter().any(|s| s.prefix.iter().any(|x| x == "lv-livewire-component")));
+        assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "lv-livewire-component")));
         assert!(for_context("twig", &none).iter().any(|s| s.prefix.iter().any(|x| x == "macro")));
     }
 
@@ -269,7 +280,7 @@ mod tests {
             let lang = snippet_language(Path::new(name), "php");
             assert_eq!(lang, "blade", "{name}");
             let pack = for_context(lang, &ProjectProfile::default());
-            assert!(pack.iter().any(|s| s.prefix.iter().any(|p| p == "wire-target")));
+            assert!(pack.iter().any(|s| s.prefix.iter().any(|p| p == "lv-blade-wire-target")));
             for text in ["<x-", "<x-forms.in", "<livewire:admin.us"] {
                 assert!(lang == "blade" && tag_name_context(text), "{name}: {text}");
             }
@@ -279,7 +290,7 @@ mod tests {
 
     #[test]
     fn blade_bodies_keep_their_dollar_variables() {
-        let each = packs().blade.iter().find(|s| s.prefix.iter().any(|x| x == "foreach")).unwrap();
+        let each = packs().blade.iter().find(|s| s.prefix.iter().any(|x| x == "lv-blade-foreach")).unwrap();
         let text = Parsed::from_str(&each.body).unwrap().text();
         assert!(text.starts_with("@foreach ($items as $item)"), "{text}");
     }
@@ -292,7 +303,7 @@ mod tests {
                 assert!(seen.insert(p.clone()), "duplicate prefix {p}");
             }
         }
-        for want in ["lv-job", "lv-event", "lv-listener", "lv-middleware", "lv-resource", "lv-policy", "lv-command", "lv-scope", "lv-pest", "route-api", "route-post", "route-put", "route-patch", "route-delete", "route-view", "lv-seeder", "lv-observer", "lv-notification", "lv-mail", "lv-cast", "lv-morphmany", "lv-schedule", "lv-cache"] {
+        for want in ["lv-job", "lv-event", "lv-listener", "lv-middleware", "lv-resource", "lv-policy", "lv-command", "lv-scope", "lv-pest", "lv-route-api", "lv-route-post", "lv-route-put", "lv-route-patch", "lv-route-delete", "lv-route-view", "lv-seeder", "lv-observer", "lv-notification", "lv-mail", "lv-cast", "lv-morphmany", "lv-schedule", "lv-cache"] {
             assert!(seen.contains(want), "{want}");
         }
         let text_of = |prefix: &str| {
@@ -304,7 +315,7 @@ mod tests {
         assert!(job.contains("use Illuminate\\Bus\\Queueable;"), "{job}");
         assert!(text_of("lv-policy").contains("User $user"));
         assert!(text_of("lv-resource").contains("$this->id"));
-        assert!(text_of("route-post").contains("Route::post("));
+        assert!(text_of("lv-route-post").contains("Route::post("));
         assert!(text_of("lv-cast").contains("array $attributes"));
         assert!(text_of("lv-mail").contains("new Envelope("));
         assert!(text_of("lv-notification").contains("new MailMessage"));
@@ -318,19 +329,19 @@ mod tests {
                 assert!(seen.insert(p.clone()), "duplicate prefix {p}");
             }
         }
-        for want in ["lw-render", "lw-form", "lw-url", "lw-locked", "lw-modelable", "lw-session", "lw-test", "wire-navigate", "wire-confirm", "wire-dirty", "wire-offline", "wire-cloak"] {
+        for want in ["lv-livewire-render", "lv-livewire-form", "lv-livewire-url", "lv-livewire-locked", "lv-livewire-modelable", "lv-livewire-session", "lv-livewire-test", "lv-blade-wire-navigate", "lv-blade-wire-confirm", "lv-blade-wire-dirty", "lv-blade-wire-offline", "lv-blade-wire-cloak"] {
             assert!(seen.contains(want), "{want}");
         }
         let text_of = |pack: &[Snippet], prefix: &str| {
             let s = pack.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
             Parsed::from_str(&s.body).unwrap().text()
         };
-        let form = text_of(&packs().livewire, "lw-form");
+        let form = text_of(&packs().livewire, "lv-livewire-form");
         assert!(form.contains("namespace App\\Livewire\\Forms;"), "{form}");
         assert!(form.contains("#[Validate('required|min:5')]"), "{form}");
-        assert!(text_of(&packs().livewire, "lw-test").contains("->assertSee('text');"));
-        assert!(text_of(&packs().livewire, "lw-url").contains("#[Url]"));
-        assert!(text_of(&packs().blade, "wire-navigate").contains("wire:navigate href="));
+        assert!(text_of(&packs().livewire, "lv-livewire-test").contains("->assertSee('text');"));
+        assert!(text_of(&packs().livewire, "lv-livewire-url").contains("#[Url]"));
+        assert!(text_of(&packs().blade, "lv-blade-wire-navigate").contains("wire:navigate href="));
     }
 
     #[test]
@@ -343,19 +354,19 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing snippet {prefix}"));
             Parsed::from_str(&s.body).unwrap().text()
         };
-        assert!(text_of("dd").contains("@dd("));
-        assert!(text_of("dump").contains("@dump("));
-        assert!(text_of("canany").contains("@endcanany"));
-        assert!(text_of("cannot").contains("@endcannot"));
-        assert!(text_of("each").contains("@each('view.name'"));
-        assert!(text_of("includefirst").contains("@includeFirst("));
+        assert!(text_of("lv-blade-dd").contains("@dd("));
+        assert!(text_of("lv-blade-dump").contains("@dump("));
+        assert!(text_of("lv-blade-canany").contains("@endcanany"));
+        assert!(text_of("lv-blade-cannot").contains("@endcannot"));
+        assert!(text_of("lv-blade-each").contains("@each('view.name'"));
+        assert!(text_of("lv-blade-includefirst").contains("@includeFirst("));
         assert_eq!(
-            text_of("inject"),
+            text_of("lv-blade-inject"),
             "@inject('name', 'App\\Services\\Service')"
         );
-        assert_eq!(text_of("use"), "@use('App\\Models\\Model')");
-        assert!(text_of("pushif").contains("@endPushIf"));
-        assert!(text_of("prependonce").contains("@endPrependOnce"));
+        assert_eq!(text_of("lv-blade-use"), "@use('App\\Models\\Model')");
+        assert!(text_of("lv-blade-pushif").contains("@endPushIf"));
+        assert!(text_of("lv-blade-prependonce").contains("@endPrependOnce"));
     }
 
     #[test]
@@ -491,15 +502,15 @@ mod tests {
                 assert!(seen.insert(p.clone()), "duplicate prefix {p}");
             }
         }
-        for want in ["pushonce", "prepend", "session", "checked", "selected", "disabled", "style", "aware", "fragment", "hassection", "links"] {
+        for want in ["lv-blade-pushonce", "lv-blade-prepend", "lv-blade-session", "lv-blade-checked", "lv-blade-selected", "lv-blade-disabled", "lv-blade-style", "lv-blade-aware", "lv-blade-fragment", "lv-blade-hassection", "lv-blade-links"] {
             assert!(seen.contains(want), "{want}");
         }
         let text_of = |prefix: &str| {
             let s = packs().blade.iter().find(|s| s.prefix.iter().any(|x| x == prefix)).unwrap();
             Parsed::from_str(&s.body).unwrap().text()
         };
-        assert!(text_of("checked").starts_with("@checked($condition)"));
-        assert!(text_of("session").contains("{{ $value }}"));
-        assert!(text_of("links").contains("$items->links()"));
+        assert!(text_of("lv-blade-checked").starts_with("@checked($condition)"));
+        assert!(text_of("lv-blade-session").contains("{{ $value }}"));
+        assert!(text_of("lv-blade-links").contains("$items->links()"));
     }
 }

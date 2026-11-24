@@ -1,528 +1,850 @@
 {
- "if": {
-  "prefix": "if",
-  "body": [
-   "@if (${1:condition})",
-   "\t$0",
-   "@endif"
-  ],
-  "description": "Blade @if"
- },
- "ifelse": {
-  "prefix": "ifelse",
-  "body": [
-   "@if (${1:condition})",
-   "\t$2",
-   "@else",
-   "\t$0",
-   "@endif"
-  ],
-  "description": "Blade @if / @else"
- },
- "elseif": {
-  "prefix": "elseif",
-  "body": [
-   "@elseif (${1:condition})",
-   "\t$0"
-  ],
-  "description": "Blade @elseif"
- },
- "unless": {
-  "prefix": "unless",
-  "body": [
-   "@unless (${1:condition})",
-   "\t$0",
-   "@endunless"
-  ],
-  "description": "Blade @unless"
- },
- "isset": {
-  "prefix": "isset",
-  "body": [
-   "@isset(${1:\\$var})",
-   "\t$0",
-   "@endisset"
-  ],
-  "description": "Blade @isset"
- },
- "empty": {
-  "prefix": "empty",
-  "body": [
-   "@empty(${1:\\$var})",
-   "\t$0",
-   "@endempty"
-  ],
-  "description": "Blade @empty"
- },
- "foreach": {
-  "prefix": "foreach",
-  "body": [
-   "@foreach (${1:\\$items} as ${2:\\$item})",
-   "\t$0",
-   "@endforeach"
-  ],
-  "description": "Blade @foreach"
- },
- "forelse": {
-  "prefix": "forelse",
-  "body": [
-   "@forelse (${1:\\$items} as ${2:\\$item})",
-   "\t$3",
-   "@empty",
-   "\t$0",
-   "@endforelse"
-  ],
-  "description": "Blade @forelse with empty case"
- },
- "for": {
-  "prefix": "for",
-  "body": [
-   "@for (${1:\\$i = 0}; ${2:\\$i < 10}; ${3:\\$i++})",
-   "\t$0",
-   "@endfor"
-  ],
-  "description": "Blade @for"
- },
- "while": {
-  "prefix": "while",
-  "body": [
-   "@while (${1:condition})",
-   "\t$0",
-   "@endwhile"
-  ],
-  "description": "Blade @while"
- },
- "switch": {
-  "prefix": "switch",
-  "body": [
-   "@switch(${1:\\$value})",
-   "\t@case(${2:1})",
-   "\t\t$3",
-   "\t\t@break",
-   "\t@default",
-   "\t\t$0",
-   "@endswitch"
-  ],
-  "description": "Blade @switch"
- },
- "auth": {
-  "prefix": "auth",
-  "body": [
-   "@auth",
-   "\t$0",
-   "@endauth"
-  ],
-  "description": "Blade @auth"
- },
- "guest": {
-  "prefix": "guest",
-  "body": [
-   "@guest",
-   "\t$0",
-   "@endguest"
-  ],
-  "description": "Blade @guest"
- },
- "can": {
-  "prefix": "can",
-  "body": [
-   "@can('${1:update}', ${2:\\$post})",
-   "\t$0",
-   "@endcan"
-  ],
-  "description": "Blade @can"
- },
- "env": {
-  "prefix": "env",
-  "body": [
-   "@env('${1:local}')",
-   "\t$0",
-   "@endenv"
-  ],
-  "description": "Blade @env"
- },
- "production": {
-  "prefix": "production",
-  "body": [
-   "@production",
-   "\t$0",
-   "@endproduction"
-  ],
-  "description": "Blade @production"
- },
- "php": {
-  "prefix": "php",
-  "body": [
-   "@php",
-   "\t$0",
-   "@endphp"
-  ],
-  "description": "Blade @php block"
- },
- "once": {
-  "prefix": "once",
-  "body": [
-   "@once",
-   "\t$0",
-   "@endonce"
-  ],
-  "description": "Blade @once"
- },
- "extends": {
-  "prefix": "extends",
-  "body": [
-   "@extends('${1:layouts.app}')"
-  ],
-  "description": "Blade @extends"
- },
- "section": {
-  "prefix": "section",
-  "body": [
-   "@section('${1:content}')",
-   "\t$0",
-   "@endsection"
-  ],
-  "description": "Blade @section"
- },
- "yield": {
-  "prefix": "yield",
-  "body": [
-   "@yield('${1:content}')"
-  ],
-  "description": "Blade @yield"
- },
- "include": {
-  "prefix": "include",
-  "body": [
-   "@include('${1:partials.name}')"
-  ],
-  "description": "Blade @include"
- },
- "includeif": {
-  "prefix": "includeif",
-  "body": [
-   "@includeIf('${1:partials.name}')"
-  ],
-  "description": "Blade @includeIf"
- },
- "includewhen": {
-  "prefix": "includewhen",
-  "body": [
-   "@includeWhen(${1:condition}, '${2:partials.name}')"
-  ],
-  "description": "Blade @includeWhen"
- },
- "push": {
-  "prefix": "push",
-  "body": [
-   "@push('${1:scripts}')",
-   "\t$0",
-   "@endpush"
-  ],
-  "description": "Blade @push"
- },
- "stack": {
-  "prefix": "stack",
-  "body": [
-   "@stack('${1:scripts}')"
-  ],
-  "description": "Blade @stack"
- },
- "props": {
-  "prefix": "props",
-  "body": [
-   "@props(['${1:type}' => '${2:info}'])"
-  ],
-  "description": "Blade component @props"
- },
- "component": {
-  "prefix": "component",
-  "body": [
-   "@component('${1:components.alert}')",
-   "\t$0",
-   "@endcomponent"
-  ],
-  "description": "Blade @component"
- },
- "slot": {
-  "prefix": "slot",
-  "body": [
-   "@slot('${1:title}')",
-   "\t$0",
-   "@endslot"
-  ],
-  "description": "Blade @slot"
- },
- "csrf": {
-  "prefix": "csrf",
-  "body": [
-   "@csrf"
-  ],
-  "description": "CSRF token field"
- },
- "method": {
-  "prefix": "method",
-  "body": [
-   "@method('${1:PUT}')"
-  ],
-  "description": "Method spoofing field"
- },
- "error": {
-  "prefix": "error",
-  "body": [
-   "@error('${1:field}')",
-   "\t<span class=\"error\">{{ \\$message }}</span>",
-   "@enderror"
-  ],
-  "description": "Validation error for a field"
- },
- "class": {
-  "prefix": "class",
-  "body": [
-   "@class([",
-   "\t'${1:p-4}',",
-   "\t'${2:font-bold}' => ${3:\\$active},",
-   "])"
-  ],
-  "description": "Conditional classes"
- },
- "json": {
-  "prefix": "json",
-  "body": [
-   "@json(${1:\\$data})"
-  ],
-  "description": "Blade @json"
- },
- "vite": {
-  "prefix": "vite",
-  "body": [
-   "@vite(['resources/css/app.css', 'resources/js/app.js'])"
-  ],
-  "description": "Vite assets"
- },
- "lang": {
-  "prefix": "lang",
-  "body": [
-   "@lang('${1:messages.key}')"
-  ],
-  "description": "Translation"
- },
- "echo": {
-  "prefix": "echo",
-  "body": [
-   "{{ ${1:\\$var} }}"
-  ],
-  "description": "Escaped output"
- },
- "raw": {
-  "prefix": "raw",
-  "body": [
-   "{!! ${1:\\$html} !!}"
-  ],
-  "description": "Unescaped output"
- },
- "comment": {
-  "prefix": "comment",
-  "body": [
-   "{{-- ${1:comment} --}}"
-  ],
-  "description": "Blade comment"
- },
- "xcomponent": {
-  "prefix": "xcomponent",
-  "body": [
-   "<x-${1:name}${2: attr=\"value\"} />"
-  ],
-  "description": "Blade component tag"
- },
- "xslot": {
-  "prefix": "x-slot",
-  "body": [
-   "<x-slot:${1:name}>",
-   "\t$0",
-   "</x-slot>"
-  ],
-  "description": "Named component slot"
- },
- "livewire": {
-  "prefix": "livewire",
-  "body": [
-   "<livewire:${1:component-name} />"
-  ],
-  "description": "Livewire component tag"
- },
- "atlivewire": {
-  "prefix": "atlivewire",
-  "body": [
-   "@livewire('${1:component-name}')"
-  ],
-  "description": "Livewire @livewire directive"
- },
- "livewire-styles": {
-  "prefix": "livewire-assets",
-  "body": [
-   "@livewireStyles",
-   "$0",
-   "@livewireScripts"
-  ],
-  "description": "Livewire styles and scripts"
- },
- "wire-click": {
-  "prefix": "wire-click",
-  "body": [
-   "wire:click=\"${1:method}\""
-  ],
-  "description": "Livewire click action"
- },
- "wire-model": {
-  "prefix": "wire-model",
-  "body": [
-   "wire:model=\"${1:property}\""
-  ],
-  "description": "Livewire model binding"
- },
- "wire-model-live": {
-  "prefix": "wire-model-live",
-  "body": [
-   "wire:model.live=\"${1:property}\""
-  ],
-  "description": "Livewire live model binding (v3)"
- },
- "wire-model-blur": {
-  "prefix": "wire-model-blur",
-  "body": [
-   "wire:model.blur=\"${1:property}\""
-  ],
-  "description": "Livewire blur model binding (v3)"
- },
- "wire-submit": {
-  "prefix": "wire-submit",
-  "body": [
-   "wire:submit=\"${1:save}\""
-  ],
-  "description": "Livewire form submit (v3)"
- },
- "wire-submit-prevent": {
-  "prefix": "wire-submit-prevent",
-  "body": [
-   "wire:submit.prevent=\"${1:save}\""
-  ],
-  "description": "Livewire form submit (v2)"
- },
- "wire-loading": {
-  "prefix": "wire-loading",
-  "body": [
-   "<div wire:loading${1: wire:target=\"${2:method}\"}>",
-   "\t$0",
-   "</div>"
-  ],
-  "description": "Livewire loading state"
- },
- "wire-key": {
-  "prefix": "wire-key",
-  "body": [
-   "wire:key=\"${1:item-\\$id}\""
-  ],
-  "description": "Livewire key for loops"
- },
- "wire-poll": {
-  "prefix": "wire-poll",
-  "body": [
-   "wire:poll.${1:5s}"
-  ],
-  "description": "Livewire polling"
- },
- "entangle": {
-  "prefix": "entangle",
-  "body": [
-   "@entangle('${1:property}')"
-  ],
-  "description": "Livewire/Alpine entangle"
- },
- "pushonce": {"prefix": "pushonce", "body": ["@pushOnce('${1:scripts}')", "\t$0", "@endPushOnce"], "description": "Blade @pushOnce"},
- "prepend": {"prefix": "prepend", "body": ["@prepend('${1:scripts}')", "\t$0", "@endprepend"], "description": "Blade @prepend"},
- "session": {"prefix": "session", "body": ["@session('${1:status}')", "\t<div>{{ \\$value }}</div>", "@endsession"], "description": "Blade @session"},
- "checked": {"prefix": "checked", "body": ["@checked(${1:\\$condition})"], "description": "Blade @checked"},
- "selected": {"prefix": "selected", "body": ["@selected(${1:\\$condition})"], "description": "Blade @selected"},
- "disabled": {"prefix": "disabled", "body": ["@disabled(${1:\\$condition})"], "description": "Blade @disabled"},
- "required": {"prefix": "required", "body": ["@required(${1:\\$condition})"], "description": "Blade @required"},
- "readonly": {"prefix": "readonly", "body": ["@readonly(${1:\\$condition})"], "description": "Blade @readonly"},
- "style": {"prefix": "style", "body": ["@style([", "\t'${1:color: red}' => ${2:\\$active},", "])"], "description": "Conditional inline styles"},
- "aware": {"prefix": "aware", "body": ["@aware(['${1:color}' => '${2:gray}'])"], "description": "Blade @aware"},
- "fragment": {"prefix": "fragment", "body": ["@fragment('${1:name}')", "\t$0", "@endfragment"], "description": "Blade @fragment"},
- "hasSection": {"prefix": "hassection", "body": ["@hasSection('${1:title}')", "\t$0", "@endif"], "description": "Blade @hasSection"},
- "sectionMissing": {"prefix": "sectionmissing", "body": ["@sectionMissing('${1:title}')", "\t$0", "@endif"], "description": "Blade @sectionMissing"},
- "verbatim": {"prefix": "verbatim", "body": ["@verbatim", "\t$0", "@endverbatim"], "description": "Blade @verbatim"},
- "csp": {"prefix": "nonce", "body": ["nonce=\"{{ Vite::cspNonce() }}\""], "description": "Vite CSP nonce attribute"},
- "pagination": {"prefix": "links", "body": ["{{ ${1:\\$items}->links() }}"], "description": "Pagination links"}
-,
- "wire-navigate": {
-  "prefix": "wire-navigate",
-  "body": [
-   "wire:navigate href=\"${1:/path}\""
-  ],
-  "description": "Livewire SPA-style navigation link"
- },
- "wire-confirm": {
-  "prefix": "wire-confirm",
-  "body": [
-   "wire:confirm=\"${1:Are you sure?}\""
-  ],
-  "description": "Confirm before running a Livewire action"
- },
- "wire-dirty": {
-  "prefix": "wire-dirty",
-  "body": [
-   "wire:dirty"
-  ],
-  "description": "Show only when input state diverges from the server"
- },
- "wire-offline": {
-  "prefix": "wire-offline",
-  "body": [
-   "wire:offline"
-  ],
-  "description": "Show only when the user is offline"
- },
- "wire-cloak": {
-  "prefix": "wire-cloak",
-  "body": [
-   "wire:cloak"
-  ],
-  "description": "Hide until Livewire initializes"
- },
-  "wire-init": {"prefix": "wire-init", "body": ["wire:init=\"${1:method}\""], "description": "Livewire: run an action when the element loads"},
-  "wire-ignore": {"prefix": "wire-ignore", "body": ["wire:ignore${1:.self}"], "description": "Livewire: skip DOM diffing for this element"},
-  "wire-stream": {"prefix": "wire-stream", "body": ["wire:stream=\"${1:name}\""], "description": "Livewire: streamed response target"},
-  "wire-target": {"prefix": "wire-target", "body": ["wire:target=\"${1:method}\""], "description": "Livewire: scope loading/offline states to an action"},
-  "wire-transition": {"prefix": "wire-transition", "body": ["wire:transition${1:.opacity}"], "description": "Livewire: transition when the element is added or removed"},
-  "x-data": {"prefix": "x-data", "body": ["x-data=\"{ ${1:open}: ${2:false} }\""], "description": "Alpine: component state"},
-  "x-init": {"prefix": "x-init", "body": ["x-init=\"${1:expression}\""], "description": "Alpine: run when the component initialises"},
-  "x-show": {"prefix": "x-show", "body": ["x-show=\"${1:open}\""], "description": "Alpine: toggle visibility"},
-  "x-on": {"prefix": "x-on", "body": ["x-on:${1:click}=\"${2:handler}\""], "description": "Alpine: event listener (x-on avoids the Blade @ clash)"},
-  "x-bind": {"prefix": "x-bind", "body": ["x-bind:${1:class}=\"${2:expression}\""], "description": "Alpine: bind an attribute"},
-  "x-model": {"prefix": "x-model", "body": ["x-model${1:.debounce}=\"${2:property}\""], "description": "Alpine: two-way binding"},
-  "x-text": {"prefix": "x-text", "body": ["x-text=\"${1:expression}\""], "description": "Alpine: set text content"},
-  "x-html": {"prefix": "x-html", "body": ["x-html=\"${1:expression}\""], "description": "Alpine: set inner HTML (trusted content only)"},
-  "x-ref": {"prefix": "x-ref", "body": ["x-ref=\"${1:name}\""], "description": "Alpine: element reference ($refs)"},
-  "x-cloak": {"prefix": "x-cloak", "body": ["x-cloak"], "description": "Alpine: hide until Alpine has initialised (needs [x-cloak]{display:none})"},
-  "x-transition": {"prefix": "x-transition", "body": ["x-transition${1:.opacity}"], "description": "Alpine: transition for x-show"},
-  "x-for": {"prefix": "x-for", "body": ["<template x-for=\"${1:item} in ${2:items}\" :key=\"${3:item.id}\">", "\t$0", "</template>"], "description": "Alpine: loop"},
-  "x-if": {"prefix": "x-if", "body": ["<template x-if=\"${1:condition}\">", "\t$0", "</template>"], "description": "Alpine: conditional render"},
-  "x-effect": {"prefix": "x-effect", "body": ["x-effect=\"${1:expression}\""], "description": "Alpine: re-run when dependencies change"},
-  "x-teleport": {"prefix": "x-teleport", "body": ["<template x-teleport=\"${1:body}\">", "\t$0", "</template>"], "description": "Alpine: move markup elsewhere in the DOM"},
-  "x-ignore": {"prefix": "x-ignore", "body": ["x-ignore"], "description": "Alpine: do not initialise this subtree"},
-  "x-id": {"prefix": "x-id", "body": ["x-id=\"['${1:name}']\""], "description": "Alpine: scoped ids ($id)"},
-  "x-modelable": {"prefix": "x-modelable", "body": ["x-modelable=\"${1:property}\""], "description": "Alpine: expose a property to x-model on the parent"}
-,
- "dd": {"prefix": "dd", "body": ["@dd(${1:\\$value})"], "description": "Blade: dump and die"},
- "dump": {"prefix": "dump", "body": ["@dump(${1:\\$value})"], "description": "Blade: dump without stopping"},
- "canany": {"prefix": "canany", "body": ["@canany(['${1:edit}', '${2:delete}'], ${3:\\$post})", "\t$0", "@endcanany"], "description": "Blade: any of these abilities"},
- "cannot": {"prefix": "cannot", "body": ["@cannot('${1:edit}', ${2:\\$post})", "\t$0", "@endcannot"], "description": "Blade: missing ability"},
- "each": {"prefix": "each", "body": ["@each('${1:view.name}', ${2:\\$items}, '${3:item}')"], "description": "Blade: render a view per item"},
- "includefirst": {"prefix": "includefirst", "body": ["@includeFirst(['${1:custom.view}', '${2:default.view}'])"], "description": "Blade: first view that exists"},
- "inject": {"prefix": "inject", "body": ["@inject('${1:name}', '${2:App\\\\Services\\\\${3:Service}}')"], "description": "Blade: resolve a service"},
- "use": {"prefix": "use", "body": ["@use('${1:App\\\\Models\\\\${2:Model}}')"], "description": "Blade: import a class"},
- "pushif": {"prefix": "pushif", "body": ["@pushIf(${1:\\$condition}, '${2:stack}')", "\t$0", "@endPushIf"], "description": "Blade: conditional @push"},
- "prependonce": {"prefix": "prependonce", "body": ["@prependOnce('${1:stack}')", "\t$0", "@endPrependOnce"], "description": "Blade: @prependOnce block"}
+  "if": {
+    "prefix": "lv-blade-if",
+    "body": [
+      "@if (${1:condition})",
+      "\t$0",
+      "@endif"
+    ],
+    "description": "Blade @if"
+  },
+  "ifelse": {
+    "prefix": "lv-blade-ifelse",
+    "body": [
+      "@if (${1:condition})",
+      "\t$2",
+      "@else",
+      "\t$0",
+      "@endif"
+    ],
+    "description": "Blade @if / @else"
+  },
+  "elseif": {
+    "prefix": "lv-blade-elseif",
+    "body": [
+      "@elseif (${1:condition})",
+      "\t$0"
+    ],
+    "description": "Blade @elseif"
+  },
+  "unless": {
+    "prefix": "lv-blade-unless",
+    "body": [
+      "@unless (${1:condition})",
+      "\t$0",
+      "@endunless"
+    ],
+    "description": "Blade @unless"
+  },
+  "isset": {
+    "prefix": "lv-blade-isset",
+    "body": [
+      "@isset(${1:\\$var})",
+      "\t$0",
+      "@endisset"
+    ],
+    "description": "Blade @isset"
+  },
+  "empty": {
+    "prefix": "lv-blade-empty",
+    "body": [
+      "@empty(${1:\\$var})",
+      "\t$0",
+      "@endempty"
+    ],
+    "description": "Blade @empty"
+  },
+  "foreach": {
+    "prefix": "lv-blade-foreach",
+    "body": [
+      "@foreach (${1:\\$items} as ${2:\\$item})",
+      "\t$0",
+      "@endforeach"
+    ],
+    "description": "Blade @foreach"
+  },
+  "forelse": {
+    "prefix": "lv-blade-forelse",
+    "body": [
+      "@forelse (${1:\\$items} as ${2:\\$item})",
+      "\t$3",
+      "@empty",
+      "\t$0",
+      "@endforelse"
+    ],
+    "description": "Blade @forelse with empty case"
+  },
+  "for": {
+    "prefix": "lv-blade-for",
+    "body": [
+      "@for (${1:\\$i = 0}; ${2:\\$i < 10}; ${3:\\$i++})",
+      "\t$0",
+      "@endfor"
+    ],
+    "description": "Blade @for"
+  },
+  "while": {
+    "prefix": "lv-blade-while",
+    "body": [
+      "@while (${1:condition})",
+      "\t$0",
+      "@endwhile"
+    ],
+    "description": "Blade @while"
+  },
+  "switch": {
+    "prefix": "lv-blade-switch",
+    "body": [
+      "@switch(${1:\\$value})",
+      "\t@case(${2:1})",
+      "\t\t$3",
+      "\t\t@break",
+      "\t@default",
+      "\t\t$0",
+      "@endswitch"
+    ],
+    "description": "Blade @switch"
+  },
+  "auth": {
+    "prefix": "lv-blade-auth",
+    "body": [
+      "@auth",
+      "\t$0",
+      "@endauth"
+    ],
+    "description": "Blade @auth"
+  },
+  "guest": {
+    "prefix": "lv-blade-guest",
+    "body": [
+      "@guest",
+      "\t$0",
+      "@endguest"
+    ],
+    "description": "Blade @guest"
+  },
+  "can": {
+    "prefix": "lv-blade-can",
+    "body": [
+      "@can('${1:update}', ${2:\\$post})",
+      "\t$0",
+      "@endcan"
+    ],
+    "description": "Blade @can"
+  },
+  "env": {
+    "prefix": "lv-blade-env",
+    "body": [
+      "@env('${1:local}')",
+      "\t$0",
+      "@endenv"
+    ],
+    "description": "Blade @env"
+  },
+  "production": {
+    "prefix": "lv-blade-production",
+    "body": [
+      "@production",
+      "\t$0",
+      "@endproduction"
+    ],
+    "description": "Blade @production"
+  },
+  "php": {
+    "prefix": "lv-blade-php",
+    "body": [
+      "@php",
+      "\t$0",
+      "@endphp"
+    ],
+    "description": "Blade @php block"
+  },
+  "once": {
+    "prefix": "lv-blade-once",
+    "body": [
+      "@once",
+      "\t$0",
+      "@endonce"
+    ],
+    "description": "Blade @once"
+  },
+  "extends": {
+    "prefix": "lv-blade-extends",
+    "body": [
+      "@extends('${1:layouts.app}')"
+    ],
+    "description": "Blade @extends"
+  },
+  "section": {
+    "prefix": "lv-blade-section",
+    "body": [
+      "@section('${1:content}')",
+      "\t$0",
+      "@endsection"
+    ],
+    "description": "Blade @section"
+  },
+  "yield": {
+    "prefix": "lv-blade-yield",
+    "body": [
+      "@yield('${1:content}')"
+    ],
+    "description": "Blade @yield"
+  },
+  "include": {
+    "prefix": "lv-blade-include",
+    "body": [
+      "@include('${1:partials.name}')"
+    ],
+    "description": "Blade @include"
+  },
+  "includeif": {
+    "prefix": "lv-blade-includeif",
+    "body": [
+      "@includeIf('${1:partials.name}')"
+    ],
+    "description": "Blade @includeIf"
+  },
+  "includewhen": {
+    "prefix": "lv-blade-includewhen",
+    "body": [
+      "@includeWhen(${1:condition}, '${2:partials.name}')"
+    ],
+    "description": "Blade @includeWhen"
+  },
+  "push": {
+    "prefix": "lv-blade-push",
+    "body": [
+      "@push('${1:scripts}')",
+      "\t$0",
+      "@endpush"
+    ],
+    "description": "Blade @push"
+  },
+  "stack": {
+    "prefix": "lv-blade-stack",
+    "body": [
+      "@stack('${1:scripts}')"
+    ],
+    "description": "Blade @stack"
+  },
+  "props": {
+    "prefix": "lv-blade-props",
+    "body": [
+      "@props(['${1:type}' => '${2:info}'])"
+    ],
+    "description": "Blade component @props"
+  },
+  "component": {
+    "prefix": "lv-blade-component",
+    "body": [
+      "@component('${1:components.alert}')",
+      "\t$0",
+      "@endcomponent"
+    ],
+    "description": "Blade @component"
+  },
+  "slot": {
+    "prefix": "lv-blade-slot",
+    "body": [
+      "@slot('${1:title}')",
+      "\t$0",
+      "@endslot"
+    ],
+    "description": "Blade @slot"
+  },
+  "csrf": {
+    "prefix": "lv-blade-csrf",
+    "body": [
+      "@csrf"
+    ],
+    "description": "CSRF token field"
+  },
+  "method": {
+    "prefix": "lv-blade-method",
+    "body": [
+      "@method('${1:PUT}')"
+    ],
+    "description": "Method spoofing field"
+  },
+  "error": {
+    "prefix": "lv-blade-error",
+    "body": [
+      "@error('${1:field}')",
+      "\t<span class=\"error\">{{ \\$message }}</span>",
+      "@enderror"
+    ],
+    "description": "Validation error for a field"
+  },
+  "class": {
+    "prefix": "lv-blade-class",
+    "body": [
+      "@class([",
+      "\t'${1:p-4}',",
+      "\t'${2:font-bold}' => ${3:\\$active},",
+      "])"
+    ],
+    "description": "Conditional classes"
+  },
+  "json": {
+    "prefix": "lv-blade-json",
+    "body": [
+      "@json(${1:\\$data})"
+    ],
+    "description": "Blade @json"
+  },
+  "vite": {
+    "prefix": "lv-blade-vite",
+    "body": [
+      "@vite(['resources/css/app.css', 'resources/js/app.js'])"
+    ],
+    "description": "Vite assets"
+  },
+  "lang": {
+    "prefix": "lv-blade-lang",
+    "body": [
+      "@lang('${1:messages.key}')"
+    ],
+    "description": "Translation"
+  },
+  "echo": {
+    "prefix": "lv-blade-echo",
+    "body": [
+      "{{ ${1:\\$var} }}"
+    ],
+    "description": "Escaped output"
+  },
+  "raw": {
+    "prefix": "lv-blade-raw",
+    "body": [
+      "{!! ${1:\\$html} !!}"
+    ],
+    "description": "Unescaped output"
+  },
+  "comment": {
+    "prefix": "lv-blade-comment",
+    "body": [
+      "{{-- ${1:comment} --}}"
+    ],
+    "description": "Blade comment"
+  },
+  "xcomponent": {
+    "prefix": "lv-blade-xcomponent",
+    "body": [
+      "<x-${1:name}${2: attr=\"value\"} />"
+    ],
+    "description": "Blade component tag"
+  },
+  "xslot": {
+    "prefix": "lv-blade-x-slot",
+    "body": [
+      "<x-slot:${1:name}>",
+      "\t$0",
+      "</x-slot>"
+    ],
+    "description": "Named component slot"
+  },
+  "livewire": {
+    "prefix": "lv-blade-livewire",
+    "body": [
+      "<livewire:${1:component-name} />"
+    ],
+    "description": "Livewire component tag"
+  },
+  "atlivewire": {
+    "prefix": "lv-blade-atlivewire",
+    "body": [
+      "@livewire('${1:component-name}')"
+    ],
+    "description": "Livewire @livewire directive"
+  },
+  "livewire-styles": {
+    "prefix": "lv-blade-livewire-assets",
+    "body": [
+      "@livewireStyles",
+      "$0",
+      "@livewireScripts"
+    ],
+    "description": "Livewire styles and scripts"
+  },
+  "wire-click": {
+    "prefix": "lv-blade-wire-click",
+    "body": [
+      "wire:click=\"${1:method}\""
+    ],
+    "description": "Livewire click action"
+  },
+  "wire-model": {
+    "prefix": "lv-blade-wire-model",
+    "body": [
+      "wire:model=\"${1:property}\""
+    ],
+    "description": "Livewire model binding"
+  },
+  "wire-model-live": {
+    "prefix": "lv-blade-wire-model-live",
+    "body": [
+      "wire:model.live=\"${1:property}\""
+    ],
+    "description": "Livewire live model binding (v3)"
+  },
+  "wire-model-blur": {
+    "prefix": "lv-blade-wire-model-blur",
+    "body": [
+      "wire:model.blur=\"${1:property}\""
+    ],
+    "description": "Livewire blur model binding (v3)"
+  },
+  "wire-submit": {
+    "prefix": "lv-blade-wire-submit",
+    "body": [
+      "wire:submit=\"${1:save}\""
+    ],
+    "description": "Livewire form submit (v3)"
+  },
+  "wire-submit-prevent": {
+    "prefix": "lv-blade-wire-submit-prevent",
+    "body": [
+      "wire:submit.prevent=\"${1:save}\""
+    ],
+    "description": "Livewire form submit (v2)"
+  },
+  "wire-loading": {
+    "prefix": "lv-blade-wire-loading",
+    "body": [
+      "<div wire:loading${1: wire:target=\"${2:method}\"}>",
+      "\t$0",
+      "</div>"
+    ],
+    "description": "Livewire loading state"
+  },
+  "wire-key": {
+    "prefix": "lv-blade-wire-key",
+    "body": [
+      "wire:key=\"${1:item-\\$id}\""
+    ],
+    "description": "Livewire key for loops"
+  },
+  "wire-poll": {
+    "prefix": "lv-blade-wire-poll",
+    "body": [
+      "wire:poll.${1:5s}"
+    ],
+    "description": "Livewire polling"
+  },
+  "entangle": {
+    "prefix": "lv-blade-entangle",
+    "body": [
+      "@entangle('${1:property}')"
+    ],
+    "description": "Livewire/Alpine entangle"
+  },
+  "pushonce": {
+    "prefix": "lv-blade-pushonce",
+    "body": [
+      "@pushOnce('${1:scripts}')",
+      "\t$0",
+      "@endPushOnce"
+    ],
+    "description": "Blade @pushOnce"
+  },
+  "prepend": {
+    "prefix": "lv-blade-prepend",
+    "body": [
+      "@prepend('${1:scripts}')",
+      "\t$0",
+      "@endprepend"
+    ],
+    "description": "Blade @prepend"
+  },
+  "session": {
+    "prefix": "lv-blade-session",
+    "body": [
+      "@session('${1:status}')",
+      "\t<div>{{ \\$value }}</div>",
+      "@endsession"
+    ],
+    "description": "Blade @session"
+  },
+  "checked": {
+    "prefix": "lv-blade-checked",
+    "body": [
+      "@checked(${1:\\$condition})"
+    ],
+    "description": "Blade @checked"
+  },
+  "selected": {
+    "prefix": "lv-blade-selected",
+    "body": [
+      "@selected(${1:\\$condition})"
+    ],
+    "description": "Blade @selected"
+  },
+  "disabled": {
+    "prefix": "lv-blade-disabled",
+    "body": [
+      "@disabled(${1:\\$condition})"
+    ],
+    "description": "Blade @disabled"
+  },
+  "required": {
+    "prefix": "lv-blade-required",
+    "body": [
+      "@required(${1:\\$condition})"
+    ],
+    "description": "Blade @required"
+  },
+  "readonly": {
+    "prefix": "lv-blade-readonly",
+    "body": [
+      "@readonly(${1:\\$condition})"
+    ],
+    "description": "Blade @readonly"
+  },
+  "style": {
+    "prefix": "lv-blade-style",
+    "body": [
+      "@style([",
+      "\t'${1:color: red}' => ${2:\\$active},",
+      "])"
+    ],
+    "description": "Conditional inline styles"
+  },
+  "aware": {
+    "prefix": "lv-blade-aware",
+    "body": [
+      "@aware(['${1:color}' => '${2:gray}'])"
+    ],
+    "description": "Blade @aware"
+  },
+  "fragment": {
+    "prefix": "lv-blade-fragment",
+    "body": [
+      "@fragment('${1:name}')",
+      "\t$0",
+      "@endfragment"
+    ],
+    "description": "Blade @fragment"
+  },
+  "hasSection": {
+    "prefix": "lv-blade-hassection",
+    "body": [
+      "@hasSection('${1:title}')",
+      "\t$0",
+      "@endif"
+    ],
+    "description": "Blade @hasSection"
+  },
+  "sectionMissing": {
+    "prefix": "lv-blade-sectionmissing",
+    "body": [
+      "@sectionMissing('${1:title}')",
+      "\t$0",
+      "@endif"
+    ],
+    "description": "Blade @sectionMissing"
+  },
+  "verbatim": {
+    "prefix": "lv-blade-verbatim",
+    "body": [
+      "@verbatim",
+      "\t$0",
+      "@endverbatim"
+    ],
+    "description": "Blade @verbatim"
+  },
+  "csp": {
+    "prefix": "lv-blade-nonce",
+    "body": [
+      "nonce=\"{{ Vite::cspNonce() }}\""
+    ],
+    "description": "Vite CSP nonce attribute"
+  },
+  "pagination": {
+    "prefix": "lv-blade-links",
+    "body": [
+      "{{ ${1:\\$items}->links() }}"
+    ],
+    "description": "Pagination links"
+  },
+  "wire-navigate": {
+    "prefix": "lv-blade-wire-navigate",
+    "body": [
+      "wire:navigate href=\"${1:/path}\""
+    ],
+    "description": "Livewire SPA-style navigation link"
+  },
+  "wire-confirm": {
+    "prefix": "lv-blade-wire-confirm",
+    "body": [
+      "wire:confirm=\"${1:Are you sure?}\""
+    ],
+    "description": "Confirm before running a Livewire action"
+  },
+  "wire-dirty": {
+    "prefix": "lv-blade-wire-dirty",
+    "body": [
+      "wire:dirty"
+    ],
+    "description": "Show only when input state diverges from the server"
+  },
+  "wire-offline": {
+    "prefix": "lv-blade-wire-offline",
+    "body": [
+      "wire:offline"
+    ],
+    "description": "Show only when the user is offline"
+  },
+  "wire-cloak": {
+    "prefix": "lv-blade-wire-cloak",
+    "body": [
+      "wire:cloak"
+    ],
+    "description": "Hide until Livewire initializes"
+  },
+  "wire-init": {
+    "prefix": "lv-blade-wire-init",
+    "body": [
+      "wire:init=\"${1:method}\""
+    ],
+    "description": "Livewire: run an action when the element loads"
+  },
+  "wire-ignore": {
+    "prefix": "lv-blade-wire-ignore",
+    "body": [
+      "wire:ignore${1:.self}"
+    ],
+    "description": "Livewire: skip DOM diffing for this element"
+  },
+  "wire-stream": {
+    "prefix": "lv-blade-wire-stream",
+    "body": [
+      "wire:stream=\"${1:name}\""
+    ],
+    "description": "Livewire: streamed response target"
+  },
+  "wire-target": {
+    "prefix": "lv-blade-wire-target",
+    "body": [
+      "wire:target=\"${1:method}\""
+    ],
+    "description": "Livewire: scope loading/offline states to an action"
+  },
+  "wire-transition": {
+    "prefix": "lv-blade-wire-transition",
+    "body": [
+      "wire:transition${1:.opacity}"
+    ],
+    "description": "Livewire: transition when the element is added or removed"
+  },
+  "x-data": {
+    "prefix": "lv-blade-x-data",
+    "body": [
+      "x-data=\"{ ${1:open}: ${2:false} }\""
+    ],
+    "description": "Alpine: component state"
+  },
+  "x-init": {
+    "prefix": "lv-blade-x-init",
+    "body": [
+      "x-init=\"${1:expression}\""
+    ],
+    "description": "Alpine: run when the component initialises"
+  },
+  "x-show": {
+    "prefix": "lv-blade-x-show",
+    "body": [
+      "x-show=\"${1:open}\""
+    ],
+    "description": "Alpine: toggle visibility"
+  },
+  "x-on": {
+    "prefix": "lv-blade-x-on",
+    "body": [
+      "x-on:${1:click}=\"${2:handler}\""
+    ],
+    "description": "Alpine: event listener (x-on avoids the Blade @ clash)"
+  },
+  "x-bind": {
+    "prefix": "lv-blade-x-bind",
+    "body": [
+      "x-bind:${1:class}=\"${2:expression}\""
+    ],
+    "description": "Alpine: bind an attribute"
+  },
+  "x-model": {
+    "prefix": "lv-blade-x-model",
+    "body": [
+      "x-model${1:.debounce}=\"${2:property}\""
+    ],
+    "description": "Alpine: two-way binding"
+  },
+  "x-text": {
+    "prefix": "lv-blade-x-text",
+    "body": [
+      "x-text=\"${1:expression}\""
+    ],
+    "description": "Alpine: set text content"
+  },
+  "x-html": {
+    "prefix": "lv-blade-x-html",
+    "body": [
+      "x-html=\"${1:expression}\""
+    ],
+    "description": "Alpine: set inner HTML (trusted content only)"
+  },
+  "x-ref": {
+    "prefix": "lv-blade-x-ref",
+    "body": [
+      "x-ref=\"${1:name}\""
+    ],
+    "description": "Alpine: element reference ($refs)"
+  },
+  "x-cloak": {
+    "prefix": "lv-blade-x-cloak",
+    "body": [
+      "x-cloak"
+    ],
+    "description": "Alpine: hide until Alpine has initialised (needs [x-cloak]{display:none})"
+  },
+  "x-transition": {
+    "prefix": "lv-blade-x-transition",
+    "body": [
+      "x-transition${1:.opacity}"
+    ],
+    "description": "Alpine: transition for x-show"
+  },
+  "x-for": {
+    "prefix": "lv-blade-x-for",
+    "body": [
+      "<template x-for=\"${1:item} in ${2:items}\" :key=\"${3:item.id}\">",
+      "\t$0",
+      "</template>"
+    ],
+    "description": "Alpine: loop"
+  },
+  "x-if": {
+    "prefix": "lv-blade-x-if",
+    "body": [
+      "<template x-if=\"${1:condition}\">",
+      "\t$0",
+      "</template>"
+    ],
+    "description": "Alpine: conditional render"
+  },
+  "x-effect": {
+    "prefix": "lv-blade-x-effect",
+    "body": [
+      "x-effect=\"${1:expression}\""
+    ],
+    "description": "Alpine: re-run when dependencies change"
+  },
+  "x-teleport": {
+    "prefix": "lv-blade-x-teleport",
+    "body": [
+      "<template x-teleport=\"${1:body}\">",
+      "\t$0",
+      "</template>"
+    ],
+    "description": "Alpine: move markup elsewhere in the DOM"
+  },
+  "x-ignore": {
+    "prefix": "lv-blade-x-ignore",
+    "body": [
+      "x-ignore"
+    ],
+    "description": "Alpine: do not initialise this subtree"
+  },
+  "x-id": {
+    "prefix": "lv-blade-x-id",
+    "body": [
+      "x-id=\"['${1:name}']\""
+    ],
+    "description": "Alpine: scoped ids ($id)"
+  },
+  "x-modelable": {
+    "prefix": "lv-blade-x-modelable",
+    "body": [
+      "x-modelable=\"${1:property}\""
+    ],
+    "description": "Alpine: expose a property to x-model on the parent"
+  },
+  "dd": {
+    "prefix": "lv-blade-dd",
+    "body": [
+      "@dd(${1:\\$value})"
+    ],
+    "description": "Blade: dump and die"
+  },
+  "dump": {
+    "prefix": "lv-blade-dump",
+    "body": [
+      "@dump(${1:\\$value})"
+    ],
+    "description": "Blade: dump without stopping"
+  },
+  "canany": {
+    "prefix": "lv-blade-canany",
+    "body": [
+      "@canany(['${1:edit}', '${2:delete}'], ${3:\\$post})",
+      "\t$0",
+      "@endcanany"
+    ],
+    "description": "Blade: any of these abilities"
+  },
+  "cannot": {
+    "prefix": "lv-blade-cannot",
+    "body": [
+      "@cannot('${1:edit}', ${2:\\$post})",
+      "\t$0",
+      "@endcannot"
+    ],
+    "description": "Blade: missing ability"
+  },
+  "each": {
+    "prefix": "lv-blade-each",
+    "body": [
+      "@each('${1:view.name}', ${2:\\$items}, '${3:item}')"
+    ],
+    "description": "Blade: render a view per item"
+  },
+  "includefirst": {
+    "prefix": "lv-blade-includefirst",
+    "body": [
+      "@includeFirst(['${1:custom.view}', '${2:default.view}'])"
+    ],
+    "description": "Blade: first view that exists"
+  },
+  "inject": {
+    "prefix": "lv-blade-inject",
+    "body": [
+      "@inject('${1:name}', '${2:App\\\\Services\\\\${3:Service}}')"
+    ],
+    "description": "Blade: resolve a service"
+  },
+  "use": {
+    "prefix": "lv-blade-use",
+    "body": [
+      "@use('${1:App\\\\Models\\\\${2:Model}}')"
+    ],
+    "description": "Blade: import a class"
+  },
+  "pushif": {
+    "prefix": "lv-blade-pushif",
+    "body": [
+      "@pushIf(${1:\\$condition}, '${2:stack}')",
+      "\t$0",
+      "@endPushIf"
+    ],
+    "description": "Blade: conditional @push"
+  },
+  "prependonce": {
+    "prefix": "lv-blade-prependonce",
+    "body": [
+      "@prependOnce('${1:stack}')",
+      "\t$0",
+      "@endPrependOnce"
+    ],
+    "description": "Blade: @prependOnce block"
+  }
 }

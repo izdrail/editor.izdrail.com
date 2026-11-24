@@ -1,175 +1,174 @@
 {
- "lw-component": {
-  "prefix": "lw-component",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Livewire;",
-   "",
-   "use Livewire\\\\Component;",
-   "",
-   "class ${1:Counter} extends Component",
-   "{",
-   "\tpublic \\$${2:count} = 0;",
-   "",
-   "\tpublic function ${3:increment}()",
-   "\t{",
-   "\t\t$0",
-   "\t}",
-   "",
-   "\tpublic function render()",
-   "\t{",
-   "\t\treturn view('livewire.${4:counter}');",
-   "\t}",
-   "}"
-  ],
-  "description": "Livewire 3 component class"
- },
- "lw-rule": {
-  "prefix": "lw-rule",
-  "body": [
-   "#[Rule('${1:required|min:3}')]",
-   "public \\$${2:name} = '';"
-  ],
-  "description": "Livewire 3 #[Rule] property"
- },
- "lw-on": {
-  "prefix": "lw-on",
-  "body": [
-   "#[On('${1:event}')]",
-   "public function ${2:handle}()",
-   "{",
-   "\t$0",
-   "}"
-  ],
-  "description": "Livewire 3 #[On] listener"
- },
- "lw-computed": {
-  "prefix": "lw-computed",
-  "body": [
-   "#[Computed]",
-   "public function ${1:items}()",
-   "{",
-   "\treturn $0;",
-   "}"
-  ],
-  "description": "Livewire 3 #[Computed] property"
- },
- "lw-dispatch": {
-  "prefix": "lw-dispatch",
-  "body": [
-   "\\$this->dispatch('${1:event}'${2:, ${3:key}: ${4:\\$value}});"
-  ],
-  "description": "Livewire 3 dispatch event"
- },
- "lw-validate": {
-  "prefix": "lw-validate",
-  "body": [
-   "\\$this->validate();"
-  ],
-  "description": "Livewire validate"
- },
- "lw-redirect": {
-  "prefix": "lw-redirect",
-  "body": [
-   "return \\$this->redirect('${1:/}', navigate: true);"
-  ],
-  "description": "Livewire redirect"
- },
- "lw-mount": {
-  "prefix": "lw-mount",
-  "body": [
-   "public function mount(${1:\\$param})",
-   "{",
-   "\t$0",
-   "}"
-  ],
-  "description": "Livewire mount"
- },
- "lw-reset": {
-  "prefix": "lw-reset",
-  "body": [
-   "\\$this->reset('${1:property}');"
-  ],
-  "description": "Livewire reset property"
- },
- "lw-pagination": {
-  "prefix": "lw-pagination",
-  "body": [
-   "use WithPagination;"
-  ],
-  "description": "Livewire pagination trait"
- }
-,
- "lw-render": {
-  "prefix": "lw-render",
-  "body": [
-   "public function render()",
-   "{",
-   "\treturn view('livewire.${1:name}');",
-   "}"
-  ],
-  "description": "Livewire render method"
- },
- "lw-form": {
-  "prefix": "lw-form",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Livewire\\\\Forms;",
-   "",
-   "use Livewire\\\\Form;",
-   "",
-   "class ${1:Post}Form extends Form",
-   "{",
-   "\t#[Validate('${2:required|min:5}')]",
-   "\tpublic \\$${3:title} = '';",
-   "",
-   "\t$0",
-   "}"
-  ],
-  "description": "Livewire form object class"
- },
- "lw-url": {
-  "prefix": "lw-url",
-  "body": [
-   "#[Url]",
-   "public \\$${1:search} = '';"
-  ],
-  "description": "Property persisted in the URL query string"
- },
- "lw-locked": {
-  "prefix": "lw-locked",
-  "body": [
-   "#[Locked]",
-   "public \\$${1:id};"
-  ],
-  "description": "Property the front end cannot change"
- },
- "lw-modelable": {
-  "prefix": "lw-modelable",
-  "body": [
-   "#[Modelable]",
-   "public \\$${1:value} = '';"
-  ],
-  "description": "Child property bindable from a parent with wire:model"
- },
- "lw-session": {
-  "prefix": "lw-session",
-  "body": [
-   "#[Session]",
-   "public \\$${1:token} = '';"
-  ],
-  "description": "Property persisted in the session"
- },
- "lw-test": {
-  "prefix": "lw-test",
-  "body": [
-   "Livewire::test(${1:Post}::class)",
-   "\t->set('${2:title}', '${3:value}')",
-   "\t->call('${4:save}')",
-   "\t->assertSee('${5:text}');"
-  ],
-  "description": "Livewire component test"
- }
+  "lw-component": {
+    "prefix": "lv-livewire-component",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Livewire;",
+      "",
+      "use Livewire\\\\Component;",
+      "",
+      "class ${1:Counter} extends Component",
+      "{",
+      "\tpublic \\$${2:count} = 0;",
+      "",
+      "\tpublic function ${3:increment}()",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "",
+      "\tpublic function render()",
+      "\t{",
+      "\t\treturn view('livewire.${4:counter}');",
+      "\t}",
+      "}"
+    ],
+    "description": "Livewire 3 component class"
+  },
+  "lw-rule": {
+    "prefix": "lv-livewire-rule",
+    "body": [
+      "#[Rule('${1:required|min:3}')]",
+      "public \\$${2:name} = '';"
+    ],
+    "description": "Livewire 3 #[Rule] property"
+  },
+  "lw-on": {
+    "prefix": "lv-livewire-on",
+    "body": [
+      "#[On('${1:event}')]",
+      "public function ${2:handle}()",
+      "{",
+      "\t$0",
+      "}"
+    ],
+    "description": "Livewire 3 #[On] listener"
+  },
+  "lw-computed": {
+    "prefix": "lv-livewire-computed",
+    "body": [
+      "#[Computed]",
+      "public function ${1:items}()",
+      "{",
+      "\treturn $0;",
+      "}"
+    ],
+    "description": "Livewire 3 #[Computed] property"
+  },
+  "lw-dispatch": {
+    "prefix": "lv-livewire-dispatch",
+    "body": [
+      "\\$this->dispatch('${1:event}'${2:, ${3:key}: ${4:\\$value}});"
+    ],
+    "description": "Livewire 3 dispatch event"
+  },
+  "lw-validate": {
+    "prefix": "lv-livewire-validate",
+    "body": [
+      "\\$this->validate();"
+    ],
+    "description": "Livewire validate"
+  },
+  "lw-redirect": {
+    "prefix": "lv-livewire-redirect",
+    "body": [
+      "return \\$this->redirect('${1:/}', navigate: true);"
+    ],
+    "description": "Livewire redirect"
+  },
+  "lw-mount": {
+    "prefix": "lv-livewire-mount",
+    "body": [
+      "public function mount(${1:\\$param})",
+      "{",
+      "\t$0",
+      "}"
+    ],
+    "description": "Livewire mount"
+  },
+  "lw-reset": {
+    "prefix": "lv-livewire-reset",
+    "body": [
+      "\\$this->reset('${1:property}');"
+    ],
+    "description": "Livewire reset property"
+  },
+  "lw-pagination": {
+    "prefix": "lv-livewire-pagination",
+    "body": [
+      "use WithPagination;"
+    ],
+    "description": "Livewire pagination trait"
+  },
+  "lw-render": {
+    "prefix": "lv-livewire-render",
+    "body": [
+      "public function render()",
+      "{",
+      "\treturn view('livewire.${1:name}');",
+      "}"
+    ],
+    "description": "Livewire render method"
+  },
+  "lw-form": {
+    "prefix": "lv-livewire-form",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Livewire\\\\Forms;",
+      "",
+      "use Livewire\\\\Form;",
+      "",
+      "class ${1:Post}Form extends Form",
+      "{",
+      "\t#[Validate('${2:required|min:5}')]",
+      "\tpublic \\$${3:title} = '';",
+      "",
+      "\t$0",
+      "}"
+    ],
+    "description": "Livewire form object class"
+  },
+  "lw-url": {
+    "prefix": "lv-livewire-url",
+    "body": [
+      "#[Url]",
+      "public \\$${1:search} = '';"
+    ],
+    "description": "Property persisted in the URL query string"
+  },
+  "lw-locked": {
+    "prefix": "lv-livewire-locked",
+    "body": [
+      "#[Locked]",
+      "public \\$${1:id};"
+    ],
+    "description": "Property the front end cannot change"
+  },
+  "lw-modelable": {
+    "prefix": "lv-livewire-modelable",
+    "body": [
+      "#[Modelable]",
+      "public \\$${1:value} = '';"
+    ],
+    "description": "Child property bindable from a parent with wire:model"
+  },
+  "lw-session": {
+    "prefix": "lv-livewire-session",
+    "body": [
+      "#[Session]",
+      "public \\$${1:token} = '';"
+    ],
+    "description": "Property persisted in the session"
+  },
+  "lw-test": {
+    "prefix": "lv-livewire-test",
+    "body": [
+      "Livewire::test(${1:Post}::class)",
+      "\t->set('${2:title}', '${3:value}')",
+      "\t->call('${4:save}')",
+      "\t->assertSee('${5:text}');"
+    ],
+    "description": "Livewire component test"
+  }
 }

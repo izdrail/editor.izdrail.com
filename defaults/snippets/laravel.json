@@ -1,528 +1,527 @@
 {
- "Route get": {
-  "prefix": "route-get",
-  "body": [
-   "Route::get('${1:/path}', [${2:Controller}::class, '${3:index}'])->name('${4:name}');"
-  ],
-  "description": "Laravel route to a controller method"
- },
- "Route resource": {
-  "prefix": "route-resource",
-  "body": [
-   "Route::resource('${1:photos}', ${2:PhotoController}::class);"
-  ],
-  "description": "Laravel resource routes"
- },
- "Route group": {
-  "prefix": "route-group",
-  "body": [
-   "Route::middleware(['${1:auth}'])->prefix('${2:admin}')->group(function () {",
-   "\t$0",
-   "});"
-  ],
-  "description": "Laravel route group"
- },
- "Eloquent model": {
-  "prefix": "lv-model",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Models;",
-   "",
-   "use Illuminate\\\\Database\\\\Eloquent\\\\Model;",
-   "",
-   "class ${1:Post} extends Model",
-   "{",
-   "\tprotected \\$fillable = [${2:'title'}];",
-   "",
-   "\t$0",
-   "}"
-  ],
-  "description": "Eloquent model class"
- },
- "Controller": {
-  "prefix": "lv-controller",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Http\\\\Controllers;",
-   "",
-   "use Illuminate\\\\Http\\\\Request;",
-   "",
-   "class ${1:Post}Controller extends Controller",
-   "{",
-   "\tpublic function index()",
-   "\t{",
-   "\t\t$0",
-   "\t}",
-   "}"
-  ],
-  "description": "Controller with index action"
- },
- "Migration": {
-  "prefix": "lv-migration",
-  "body": [
-   "use Illuminate\\\\Database\\\\Migrations\\\\Migration;",
-   "use Illuminate\\\\Database\\\\Schema\\\\Blueprint;",
-   "use Illuminate\\\\Support\\\\Facades\\\\Schema;",
-   "",
-   "return new class extends Migration",
-   "{",
-   "\tpublic function up(): void",
-   "\t{",
-   "\t\tSchema::create('${1:table}', function (Blueprint \\$table) {",
-   "\t\t\t\\$table->id();",
-   "\t\t\t$0",
-   "\t\t\t\\$table->timestamps();",
-   "\t\t});",
-   "\t}",
-   "",
-   "\tpublic function down(): void",
-   "\t{",
-   "\t\tSchema::dropIfExists('${1:table}');",
-   "\t}",
-   "};"
-  ],
-  "description": "Create-table migration"
- },
- "Validate request": {
-  "prefix": "lv-validate",
-  "body": [
-   "\\$validated = \\$request->validate([",
-   "\t'${1:field}' => '${2:required|string|max:255}',",
-   "]);"
-  ],
-  "description": "Request validation"
- },
- "Eloquent relation hasMany": {
-  "prefix": "lv-hasmany",
-  "body": [
-   "public function ${1:comments}()",
-   "{",
-   "\treturn \\$this->hasMany(${2:Comment}::class);",
-   "}"
-  ],
-  "description": "hasMany relation"
- },
- "Eloquent relation belongsTo": {
-  "prefix": "lv-belongsto",
-  "body": [
-   "public function ${1:user}()",
-   "{",
-   "\treturn \\$this->belongsTo(${2:User}::class);",
-   "}"
-  ],
-  "description": "belongsTo relation"
- },
- "Form request": {
-  "prefix": "lv-formrequest",
-  "body": [
-   "public function rules(): array",
-   "{",
-   "\treturn [",
-   "\t\t'${1:field}' => ['required'],",
-   "\t];",
-   "}"
-  ],
-  "description": "FormRequest rules method"
- },
- "Factory definition": {
-  "prefix": "lv-factory",
-  "body": [
-   "public function definition(): array",
-   "{",
-   "\treturn [",
-   "\t\t'${1:name}' => fake()->${2:name}(),",
-   "\t];",
-   "}"
-  ],
-  "description": "Model factory definition"
- },
- "Feature test": {
-  "prefix": "lv-test",
-  "body": [
-   "public function test_${1:example}(): void",
-   "{",
-   "\t\\$response = \\$this->get('${2:/}');",
-   "",
-   "\t\\$response->assertStatus(${3:200});",
-   "}"
-  ],
-  "description": "Feature test method"
- },
- "Log info": {
-  "prefix": "lv-log",
-  "body": [
-   "\\\\Log::info('${1:message}', [${2:}]);"
-  ],
-  "description": "Log::info call"
- },
- "Job": {
-  "prefix": "lv-job",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Jobs;",
-   "",
-   "use Illuminate\\\\Bus\\\\Queueable;",
-   "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldQueue;",
-   "use Illuminate\\\\Foundation\\\\Bus\\\\Dispatchable;",
-   "use Illuminate\\\\Queue\\\\InteractsWithQueue;",
-   "use Illuminate\\\\Queue\\\\SerializesModels;",
-   "",
-   "class ${1:Process}Job implements ShouldQueue",
-   "{",
-   "\tuse Dispatchable, InteractsWithQueue, Queueable, SerializesModels;",
-   "",
-   "\tpublic function __construct(${2:})",
-   "\t{",
-   "\t}",
-   "",
-   "\tpublic function handle(): void",
-   "\t{",
-   "\t\t$0",
-   "\t}",
-   "}"
-  ],
-  "description": "Queued job"
- },
- "Event": {
-  "prefix": "lv-event",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Events;",
-   "",
-   "use Illuminate\\\\Foundation\\\\Events\\\\Dispatchable;",
-   "use Illuminate\\\\Queue\\\\SerializesModels;",
-   "",
-   "class ${1:Order}Event",
-   "{",
-   "\tuse Dispatchable, SerializesModels;",
-   "",
-   "\tpublic function __construct(public ${2:Order} \\$${3:order})",
-   "\t{",
-   "\t}",
-   "}"
-  ],
-  "description": "Event class"
- },
- "Listener": {
-  "prefix": "lv-listener",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Listeners;",
-   "",
-   "use App\\\\Events\\\\${1:Order}Event;",
-   "",
-   "class ${2:Send}Listener",
-   "{",
-   "\tpublic function handle(${1:Order}Event \\$event): void",
-   "\t{",
-   "\t\t$0",
-   "\t}",
-   "}"
-  ],
-  "description": "Event listener"
- },
- "Middleware": {
-  "prefix": "lv-middleware",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Http\\\\Middleware;",
-   "",
-   "use Closure;",
-   "use Illuminate\\\\Http\\\\Request;",
-   "use Symfony\\\\Component\\\\HttpFoundation\\\\Response;",
-   "",
-   "class ${1:Check}",
-   "{",
-   "\tpublic function handle(Request \\$request, Closure \\$next): Response",
-   "\t{",
-   "\t\t$0",
-   "\t\treturn \\$next(\\$request);",
-   "\t}",
-   "}"
-  ],
-  "description": "HTTP middleware"
- },
- "API resource": {
-  "prefix": "lv-resource",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Http\\\\Resources;",
-   "",
-   "use Illuminate\\\\Http\\\\Request;",
-   "use Illuminate\\\\Http\\\\Resources\\\\Json\\\\JsonResource;",
-   "",
-   "class ${1:Post}Resource extends JsonResource",
-   "{",
-   "\tpublic function toArray(Request \\$request): array",
-   "\t{",
-   "\t\treturn [",
-   "\t\t\t'id' => \\$this->id,",
-   "\t\t\t$0",
-   "\t\t];",
-   "\t}",
-   "}"
-  ],
-  "description": "JsonResource"
- },
- "Policy": {
-  "prefix": "lv-policy",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Policies;",
-   "",
-   "use App\\\\Models\\\\${1:Post};",
-   "use App\\\\Models\\\\User;",
-   "",
-   "class ${1:Post}Policy",
-   "{",
-   "\tpublic function view(User \\$user, ${1:Post} \\$${2:post}): bool",
-   "\t{",
-   "\t\t$0",
-   "\t}",
-   "",
-   "\tpublic function update(User \\$user, ${1:Post} \\$${2:post}): bool",
-   "\t{",
-   "\t\treturn \\$user->id === \\$${2:post}->user_id;",
-   "\t}",
-   "}"
-  ],
-  "description": "Policy class"
- },
- "Artisan command": {
-  "prefix": "lv-command",
-  "body": [
-   "<?php",
-   "",
-   "namespace App\\\\Console\\\\Commands;",
-   "",
-   "use Illuminate\\\\Console\\\\Command;",
-   "",
-   "class ${1:Sync}Command extends Command",
-   "{",
-   "\tprotected \\$signature = '${2:app:sync}';",
-   "",
-   "\tprotected \\$description = '${3:Describe the command}';",
-   "",
-   "\tpublic function handle(): int",
-   "\t{",
-   "\t\t$0",
-   "\t\treturn self::SUCCESS;",
-   "\t}",
-   "}"
-  ],
-  "description": "Console command"
- },
- "Local scope": {
-  "prefix": "lv-scope",
-  "body": [
-   "public function scope${1:Published}(\\$query)",
-   "{",
-   "\treturn \\$query->where('${2:published}', true);",
-   "}"
-  ],
-  "description": "Eloquent local scope"
- },
- "Accessor": {
-  "prefix": "lv-accessor",
-  "body": [
-   "protected function ${1:name}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute",
-   "{",
-   "\treturn \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute::make(",
-   "\t\tget: fn (string \\$value) => $0,",
-   "\t);",
-   "}"
-  ],
-  "description": "Eloquent attribute accessor/mutator"
- },
- "Relation belongsToMany": {
-  "prefix": "lv-belongstomany",
-  "body": [
-   "public function ${1:tags}()",
-   "{",
-   "\treturn \\$this->belongsToMany(${2:Tag}::class);",
-   "}"
-  ],
-  "description": "belongsToMany relation"
- },
- "Relation hasOne": {
-  "prefix": "lv-hasone",
-  "body": [
-   "public function ${1:profile}()",
-   "{",
-   "\treturn \\$this->hasOne(${2:Profile}::class);",
-   "}"
-  ],
-  "description": "hasOne relation"
- },
- "Pest test": {
-  "prefix": "lv-pest",
-  "body": [
-   "it('${1:does something}', function () {",
-   "\t$0",
-   "});"
-  ],
-  "description": "Pest test"
- },
- "Route api resource": {
-  "prefix": "route-api",
-  "body": [
-   "Route::apiResource('${1:posts}', ${2:PostController}::class);"
-  ],
-  "description": "apiResource routes"
- },
- "Route middleware group": {
-  "prefix": "route-middleware",
-  "body": [
-   "Route::middleware(['${1:auth}'])->group(function () {",
-   "\t$0",
-   "});"
-  ],
-  "description": "Route group with middleware"
- },
- "Dump and die": {
-  "prefix": "lv-dd",
-  "body": [
-   "dd(\\$${1:var});"
-  ],
-  "description": "dd()"
- }
-,
- "Route post": {
-  "prefix": "route-post",
-  "body": [
-   "Route::post('${1:/path}', [${2:Controller}::class, '${3:store}'])->name('${4:name}');"
-  ],
-  "description": "Laravel POST route to a controller method"
- },
- "Route put": {
-  "prefix": "route-put",
-  "body": [
-   "Route::put('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
-  ],
-  "description": "Laravel PUT route to a controller method"
- },
- "Route patch": {
-  "prefix": "route-patch",
-  "body": [
-   "Route::patch('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
-  ],
-  "description": "Laravel PATCH route to a controller method"
- },
- "Route delete": {
-  "prefix": "route-delete",
-  "body": [
-   "Route::delete('${1:/path}', [${2:Controller}::class, '${3:destroy}'])->name('${4:name}');"
-  ],
-  "description": "Laravel DELETE route to a controller method"
- },
- "Route view": {
-  "prefix": "route-view",
-  "body": [
-   "Route::view('${1:/path}', '${2:view}')->name('${3:name}');"
-  ],
-  "description": "Laravel route straight to a view"
- },
- "Seeder run": {
-  "prefix": "lv-seeder",
-  "body": [
-   "public function run(): void",
-   "{",
-   "\t${1:Post}::factory(${2:10})->create();",
-   "\t$0",
-   "}"
-  ],
-  "description": "Database seeder run method"
- },
- "Observer method": {
-  "prefix": "lv-observer",
-  "body": [
-   "public function ${1:created}(${2:Post} \\$${3:post}): void",
-   "{",
-   "\t$0",
-   "}"
-  ],
-  "description": "Eloquent observer method"
- },
- "Notification mail": {
-  "prefix": "lv-notification",
-  "body": [
-   "public function toMail(object \\$notifiable): MailMessage",
-   "{",
-   "\treturn (new MailMessage)",
-   "\t\t->subject('${1:Subject}')",
-   "\t\t->line('${2:Line}')",
-   "\t\t->action('${3:View}', \\$this->${4:url})",
-   "\t\t->line('${5:Thanks}');",
-   "}"
-  ],
-  "description": "Notification mail channel message"
- },
- "Mailable envelope/content": {
-  "prefix": "lv-mail",
-  "body": [
-   "public function envelope(): Envelope",
-   "{",
-   "\treturn new Envelope(",
-   "\t\tsubject: '${1:Subject}',",
-   "\t);",
-   "}",
-   "",
-   "public function content(): Content",
-   "{",
-   "\treturn new Content(",
-   "\t\tview: '${2:emails.${3:name}}',",
-   "\t);",
-   "}"
-  ],
-  "description": "Mailable envelope and content methods"
- },
- "Custom cast": {
-  "prefix": "lv-cast",
-  "body": [
-   "public function get(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
-   "{",
-   "\treturn \\$value;",
-   "}",
-   "",
-   "public function set(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
-   "{",
-   "\treturn \\$value;",
-   "}"
-  ],
-  "description": "Custom Eloquent cast get/set methods"
- },
- "Morph many relation": {
-  "prefix": "lv-morphmany",
-  "body": [
-   "public function ${1:comments}(): MorphMany",
-   "{",
-   "\treturn \\$this->morphMany(${2:Comment}::class, '${3:commentable}');",
-   "}"
-  ],
-  "description": "Polymorphic one-to-many relation"
- },
- "Scheduled command": {
-  "prefix": "lv-schedule",
-  "body": [
-   "Schedule::command('${1:inspire}')->${2:daily}();"
-  ],
-  "description": "Scheduled artisan command (routes/console.php)"
- },
- "Cache remember": {
-  "prefix": "lv-cache",
-  "body": [
-   "\\$${1:value} = Cache::remember('${2:key}', ${3:3600}, function () {",
-   "\treturn ${4:value};",
-   "});"
-  ],
-  "description": "Cache::remember with a callback"
- }
+  "Route get": {
+    "prefix": "lv-route-get",
+    "body": [
+      "Route::get('${1:/path}', [${2:Controller}::class, '${3:index}'])->name('${4:name}');"
+    ],
+    "description": "Laravel route to a controller method"
+  },
+  "Route resource": {
+    "prefix": "lv-route-resource",
+    "body": [
+      "Route::resource('${1:photos}', ${2:PhotoController}::class);"
+    ],
+    "description": "Laravel resource routes"
+  },
+  "Route group": {
+    "prefix": "lv-route-group",
+    "body": [
+      "Route::middleware(['${1:auth}'])->prefix('${2:admin}')->group(function () {",
+      "\t$0",
+      "});"
+    ],
+    "description": "Laravel route group"
+  },
+  "Eloquent model": {
+    "prefix": "lv-model",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Models;",
+      "",
+      "use Illuminate\\\\Database\\\\Eloquent\\\\Model;",
+      "",
+      "class ${1:Post} extends Model",
+      "{",
+      "\tprotected \\$fillable = [${2:'title'}];",
+      "",
+      "\t$0",
+      "}"
+    ],
+    "description": "Eloquent model class"
+  },
+  "Controller": {
+    "prefix": "lv-controller",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Controllers;",
+      "",
+      "use Illuminate\\\\Http\\\\Request;",
+      "",
+      "class ${1:Post}Controller extends Controller",
+      "{",
+      "\tpublic function index()",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Controller with index action"
+  },
+  "Migration": {
+    "prefix": "lv-migration",
+    "body": [
+      "use Illuminate\\\\Database\\\\Migrations\\\\Migration;",
+      "use Illuminate\\\\Database\\\\Schema\\\\Blueprint;",
+      "use Illuminate\\\\Support\\\\Facades\\\\Schema;",
+      "",
+      "return new class extends Migration",
+      "{",
+      "\tpublic function up(): void",
+      "\t{",
+      "\t\tSchema::create('${1:table}', function (Blueprint \\$table) {",
+      "\t\t\t\\$table->id();",
+      "\t\t\t$0",
+      "\t\t\t\\$table->timestamps();",
+      "\t\t});",
+      "\t}",
+      "",
+      "\tpublic function down(): void",
+      "\t{",
+      "\t\tSchema::dropIfExists('${1:table}');",
+      "\t}",
+      "};"
+    ],
+    "description": "Create-table migration"
+  },
+  "Validate request": {
+    "prefix": "lv-validate",
+    "body": [
+      "\\$validated = \\$request->validate([",
+      "\t'${1:field}' => '${2:required|string|max:255}',",
+      "]);"
+    ],
+    "description": "Request validation"
+  },
+  "Eloquent relation hasMany": {
+    "prefix": "lv-hasmany",
+    "body": [
+      "public function ${1:comments}()",
+      "{",
+      "\treturn \\$this->hasMany(${2:Comment}::class);",
+      "}"
+    ],
+    "description": "hasMany relation"
+  },
+  "Eloquent relation belongsTo": {
+    "prefix": "lv-belongsto",
+    "body": [
+      "public function ${1:user}()",
+      "{",
+      "\treturn \\$this->belongsTo(${2:User}::class);",
+      "}"
+    ],
+    "description": "belongsTo relation"
+  },
+  "Form request": {
+    "prefix": "lv-formrequest",
+    "body": [
+      "public function rules(): array",
+      "{",
+      "\treturn [",
+      "\t\t'${1:field}' => ['required'],",
+      "\t];",
+      "}"
+    ],
+    "description": "FormRequest rules method"
+  },
+  "Factory definition": {
+    "prefix": "lv-factory",
+    "body": [
+      "public function definition(): array",
+      "{",
+      "\treturn [",
+      "\t\t'${1:name}' => fake()->${2:name}(),",
+      "\t];",
+      "}"
+    ],
+    "description": "Model factory definition"
+  },
+  "Feature test": {
+    "prefix": "lv-test",
+    "body": [
+      "public function test_${1:example}(): void",
+      "{",
+      "\t\\$response = \\$this->get('${2:/}');",
+      "",
+      "\t\\$response->assertStatus(${3:200});",
+      "}"
+    ],
+    "description": "Feature test method"
+  },
+  "Log info": {
+    "prefix": "lv-log",
+    "body": [
+      "\\\\Log::info('${1:message}', [${2:}]);"
+    ],
+    "description": "Log::info call"
+  },
+  "Job": {
+    "prefix": "lv-job",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Jobs;",
+      "",
+      "use Illuminate\\\\Bus\\\\Queueable;",
+      "use Illuminate\\\\Contracts\\\\Queue\\\\ShouldQueue;",
+      "use Illuminate\\\\Foundation\\\\Bus\\\\Dispatchable;",
+      "use Illuminate\\\\Queue\\\\InteractsWithQueue;",
+      "use Illuminate\\\\Queue\\\\SerializesModels;",
+      "",
+      "class ${1:Process}Job implements ShouldQueue",
+      "{",
+      "\tuse Dispatchable, InteractsWithQueue, Queueable, SerializesModels;",
+      "",
+      "\tpublic function __construct(${2:})",
+      "\t{",
+      "\t}",
+      "",
+      "\tpublic function handle(): void",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Queued job"
+  },
+  "Event": {
+    "prefix": "lv-event",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Events;",
+      "",
+      "use Illuminate\\\\Foundation\\\\Events\\\\Dispatchable;",
+      "use Illuminate\\\\Queue\\\\SerializesModels;",
+      "",
+      "class ${1:Order}Event",
+      "{",
+      "\tuse Dispatchable, SerializesModels;",
+      "",
+      "\tpublic function __construct(public ${2:Order} \\$${3:order})",
+      "\t{",
+      "\t}",
+      "}"
+    ],
+    "description": "Event class"
+  },
+  "Listener": {
+    "prefix": "lv-listener",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Listeners;",
+      "",
+      "use App\\\\Events\\\\${1:Order}Event;",
+      "",
+      "class ${2:Send}Listener",
+      "{",
+      "\tpublic function handle(${1:Order}Event \\$event): void",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Event listener"
+  },
+  "Middleware": {
+    "prefix": "lv-middleware",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Middleware;",
+      "",
+      "use Closure;",
+      "use Illuminate\\\\Http\\\\Request;",
+      "use Symfony\\\\Component\\\\HttpFoundation\\\\Response;",
+      "",
+      "class ${1:Check}",
+      "{",
+      "\tpublic function handle(Request \\$request, Closure \\$next): Response",
+      "\t{",
+      "\t\t$0",
+      "\t\treturn \\$next(\\$request);",
+      "\t}",
+      "}"
+    ],
+    "description": "HTTP middleware"
+  },
+  "API resource": {
+    "prefix": "lv-resource",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Resources;",
+      "",
+      "use Illuminate\\\\Http\\\\Request;",
+      "use Illuminate\\\\Http\\\\Resources\\\\Json\\\\JsonResource;",
+      "",
+      "class ${1:Post}Resource extends JsonResource",
+      "{",
+      "\tpublic function toArray(Request \\$request): array",
+      "\t{",
+      "\t\treturn [",
+      "\t\t\t'id' => \\$this->id,",
+      "\t\t\t$0",
+      "\t\t];",
+      "\t}",
+      "}"
+    ],
+    "description": "JsonResource"
+  },
+  "Policy": {
+    "prefix": "lv-policy",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Policies;",
+      "",
+      "use App\\\\Models\\\\${1:Post};",
+      "use App\\\\Models\\\\User;",
+      "",
+      "class ${1:Post}Policy",
+      "{",
+      "\tpublic function view(User \\$user, ${1:Post} \\$${2:post}): bool",
+      "\t{",
+      "\t\t$0",
+      "\t}",
+      "",
+      "\tpublic function update(User \\$user, ${1:Post} \\$${2:post}): bool",
+      "\t{",
+      "\t\treturn \\$user->id === \\$${2:post}->user_id;",
+      "\t}",
+      "}"
+    ],
+    "description": "Policy class"
+  },
+  "Artisan command": {
+    "prefix": "lv-command",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Console\\\\Commands;",
+      "",
+      "use Illuminate\\\\Console\\\\Command;",
+      "",
+      "class ${1:Sync}Command extends Command",
+      "{",
+      "\tprotected \\$signature = '${2:app:sync}';",
+      "",
+      "\tprotected \\$description = '${3:Describe the command}';",
+      "",
+      "\tpublic function handle(): int",
+      "\t{",
+      "\t\t$0",
+      "\t\treturn self::SUCCESS;",
+      "\t}",
+      "}"
+    ],
+    "description": "Console command"
+  },
+  "Local scope": {
+    "prefix": "lv-scope",
+    "body": [
+      "public function scope${1:Published}(\\$query)",
+      "{",
+      "\treturn \\$query->where('${2:published}', true);",
+      "}"
+    ],
+    "description": "Eloquent local scope"
+  },
+  "Accessor": {
+    "prefix": "lv-accessor",
+    "body": [
+      "protected function ${1:name}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute",
+      "{",
+      "\treturn \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute::make(",
+      "\t\tget: fn (string \\$value) => $0,",
+      "\t);",
+      "}"
+    ],
+    "description": "Eloquent attribute accessor/mutator"
+  },
+  "Relation belongsToMany": {
+    "prefix": "lv-belongstomany",
+    "body": [
+      "public function ${1:tags}()",
+      "{",
+      "\treturn \\$this->belongsToMany(${2:Tag}::class);",
+      "}"
+    ],
+    "description": "belongsToMany relation"
+  },
+  "Relation hasOne": {
+    "prefix": "lv-hasone",
+    "body": [
+      "public function ${1:profile}()",
+      "{",
+      "\treturn \\$this->hasOne(${2:Profile}::class);",
+      "}"
+    ],
+    "description": "hasOne relation"
+  },
+  "Pest test": {
+    "prefix": "lv-pest",
+    "body": [
+      "it('${1:does something}', function () {",
+      "\t$0",
+      "});"
+    ],
+    "description": "Pest test"
+  },
+  "Route api resource": {
+    "prefix": "lv-route-api",
+    "body": [
+      "Route::apiResource('${1:posts}', ${2:PostController}::class);"
+    ],
+    "description": "apiResource routes"
+  },
+  "Route middleware group": {
+    "prefix": "lv-route-middleware",
+    "body": [
+      "Route::middleware(['${1:auth}'])->group(function () {",
+      "\t$0",
+      "});"
+    ],
+    "description": "Route group with middleware"
+  },
+  "Dump and die": {
+    "prefix": "lv-dd",
+    "body": [
+      "dd(\\$${1:var});"
+    ],
+    "description": "dd()"
+  },
+  "Route post": {
+    "prefix": "lv-route-post",
+    "body": [
+      "Route::post('${1:/path}', [${2:Controller}::class, '${3:store}'])->name('${4:name}');"
+    ],
+    "description": "Laravel POST route to a controller method"
+  },
+  "Route put": {
+    "prefix": "lv-route-put",
+    "body": [
+      "Route::put('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
+    ],
+    "description": "Laravel PUT route to a controller method"
+  },
+  "Route patch": {
+    "prefix": "lv-route-patch",
+    "body": [
+      "Route::patch('${1:/path}', [${2:Controller}::class, '${3:update}'])->name('${4:name}');"
+    ],
+    "description": "Laravel PATCH route to a controller method"
+  },
+  "Route delete": {
+    "prefix": "lv-route-delete",
+    "body": [
+      "Route::delete('${1:/path}', [${2:Controller}::class, '${3:destroy}'])->name('${4:name}');"
+    ],
+    "description": "Laravel DELETE route to a controller method"
+  },
+  "Route view": {
+    "prefix": "lv-route-view",
+    "body": [
+      "Route::view('${1:/path}', '${2:view}')->name('${3:name}');"
+    ],
+    "description": "Laravel route straight to a view"
+  },
+  "Seeder run": {
+    "prefix": "lv-seeder",
+    "body": [
+      "public function run(): void",
+      "{",
+      "\t${1:Post}::factory(${2:10})->create();",
+      "\t$0",
+      "}"
+    ],
+    "description": "Database seeder run method"
+  },
+  "Observer method": {
+    "prefix": "lv-observer",
+    "body": [
+      "public function ${1:created}(${2:Post} \\$${3:post}): void",
+      "{",
+      "\t$0",
+      "}"
+    ],
+    "description": "Eloquent observer method"
+  },
+  "Notification mail": {
+    "prefix": "lv-notification",
+    "body": [
+      "public function toMail(object \\$notifiable): MailMessage",
+      "{",
+      "\treturn (new MailMessage)",
+      "\t\t->subject('${1:Subject}')",
+      "\t\t->line('${2:Line}')",
+      "\t\t->action('${3:View}', \\$this->${4:url})",
+      "\t\t->line('${5:Thanks}');",
+      "}"
+    ],
+    "description": "Notification mail channel message"
+  },
+  "Mailable envelope/content": {
+    "prefix": "lv-mail",
+    "body": [
+      "public function envelope(): Envelope",
+      "{",
+      "\treturn new Envelope(",
+      "\t\tsubject: '${1:Subject}',",
+      "\t);",
+      "}",
+      "",
+      "public function content(): Content",
+      "{",
+      "\treturn new Content(",
+      "\t\tview: '${2:emails.${3:name}}',",
+      "\t);",
+      "}"
+    ],
+    "description": "Mailable envelope and content methods"
+  },
+  "Custom cast": {
+    "prefix": "lv-cast",
+    "body": [
+      "public function get(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
+      "{",
+      "\treturn \\$value;",
+      "}",
+      "",
+      "public function set(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
+      "{",
+      "\treturn \\$value;",
+      "}"
+    ],
+    "description": "Custom Eloquent cast get/set methods"
+  },
+  "Morph many relation": {
+    "prefix": "lv-morphmany",
+    "body": [
+      "public function ${1:comments}(): MorphMany",
+      "{",
+      "\treturn \\$this->morphMany(${2:Comment}::class, '${3:commentable}');",
+      "}"
+    ],
+    "description": "Polymorphic one-to-many relation"
+  },
+  "Scheduled command": {
+    "prefix": "lv-schedule",
+    "body": [
+      "Schedule::command('${1:inspire}')->${2:daily}();"
+    ],
+    "description": "Scheduled artisan command (routes/console.php)"
+  },
+  "Cache remember": {
+    "prefix": "lv-cache",
+    "body": [
+      "\\$${1:value} = Cache::remember('${2:key}', ${3:3600}, function () {",
+      "\treturn ${4:value};",
+      "});"
+    ],
+    "description": "Cache::remember with a callback"
+  }
 }
