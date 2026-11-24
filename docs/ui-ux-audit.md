@@ -172,3 +172,7 @@ UI-024, medium/P0: diagnostic status target omitted from keyboard traversal. Add
 `45377964611` verifies UI-024: actual diagnostic-count focus and Enter opens the real Errors/Warnings panel without visible source changes. All artifact uploads succeeded.
 
 UI-025, medium/P0: branch status was pointer-only and used custom pointer tracking. Reuse status palette focus/activation handling for this compound control, including Escape return, visible focus and activation propagation stop. Runtime must show actual branch focus, SCM references palette, and Escape return without selecting a branch. No source-control change is authorized.
+
+`45381445187` verifies UI-025: keyboard branch focus, real SCM references palette with main/origin-main and Escape returns branch focus. No reference selected. Full test/release/upload gates pass.
+
+UI-026, medium/P0: empty Errors/Warnings sections were blank, with no indication that diagnostics depend on language-service reports. Show severity-specific reported-state guidance only while that section has no diagnostics, tracking diagnostic publication changes. Do not claim a completed clean-code check. Unit wording check and actual hosted empty-state capture required; nonempty/clear transition remains open.

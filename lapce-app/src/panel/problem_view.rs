@@ -4,7 +4,7 @@ use floem::{
     View,
     peniko::Color,
     reactive::{
-        ReadSignal, SignalGet, SignalUpdate, SignalWith, create_effect,
+        ReadSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
         create_rw_signal,
     },
     style::{CursorStyle, Style},
@@ -56,8 +56,14 @@ fn problem_section(
 ) -> impl View {
     let config = window_tab_data.common.config;
     let main_split = window_tab_data.main_split.clone();
+    let diagnostic_split = main_split.clone();
+    let has_diagnostics = create_memo(move |_| {
+        diagnostic_split.diagnostics.get().iter().any(|(_, data)| {
+            data.diagnostics.get().iter().any(|diagnostic| diagnostic.severity == Some(severity))
+        })
+    });
     let internal_command = window_tab_data.common.internal_command;
-    container({
+    container(stack((
         scroll(
             dyn_stack(
                 move || main_split.diagnostics.get(),
@@ -75,9 +81,38 @@ fn problem_section(
             )
             .style(|s| s.flex_col().width_pct(100.0).line_height(1.8)),
         )
-        .style(|s| s.absolute().size_pct(100.0, 100.0))
-    })
+        .style(|s| s.absolute().size_pct(100.0, 100.0)),
+        label(move || problem_empty_message(severity))
+            .style(move |s| {
+                s.width_pct(100.0).min_width(0.0).padding(12.0)
+                    .color(config.get().color(LapceColor::PANEL_FOREGROUND))
+                    .apply_if(has_diagnostics.get(), |s| s.hide())
+                    .selectable(false)
+            }),
+    )).style(|s| s.size_pct(100.0, 100.0)))
     .style(|s| s.size_pct(100.0, 100.0))
+}
+
+fn problem_empty_message(severity: DiagnosticSeverity) -> &'static str {
+    if severity == DiagnosticSeverity::ERROR {
+        "No errors reported. Diagnostics appear here when a language service reports them."
+    } else {
+        "No warnings reported. Diagnostics appear here when a language service reports them."
+    }
+}
+
+#[cfg(test)]
+mod problem_empty_tests {
+    use super::*;
+
+    #[test]
+    fn empty_message_describes_reports_not_a_clean_code_check() {
+        assert!(problem_empty_message(DiagnosticSeverity::ERROR).starts_with("No errors reported."));
+        assert!(problem_empty_message(DiagnosticSeverity::WARNING).starts_with("No warnings reported."));
+        for severity in [DiagnosticSeverity::ERROR, DiagnosticSeverity::WARNING] {
+            assert!(problem_empty_message(severity).contains("when a language service reports them"));
+        }
+    }
 }
 
 fn file_view(
