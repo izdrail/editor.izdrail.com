@@ -125,3 +125,10 @@ Candle sampling follow-up: generated-output repetition/frequency/presence
 penalties and supplementary validated stop-token IDs now implemented, with
 synthetic sign/count/invalid-vocabulary tests. Built-in stops remain mandatory.
 Defaults unchanged. Min-p and cross-provider sampling parity remain open.
+
+Resource/cancellation follow-up: Candle now checks cancellation before model
+loading, not only before tokenization. Candle and llama.cpp model switches drop
+old weights before allocating replacements, avoiding a double-weight peak.
+Failed replacements leave no stale cached model. A generic lifecycle fixture
+checks drop order, failed replacement and cancellation without touching weights.
+Actual loader calls remain non-interruptible, with a check immediately afterward.

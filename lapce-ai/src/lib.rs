@@ -334,6 +334,18 @@ impl Provider for CandleProvider {
     }
 }
 
+/// Drop old weights before allocating a replacement, avoiding double-model
+/// peak memory. A failed load leaves the cache empty, never a stale model.
+fn replace_loaded<T>(slot: &mut Option<T>, replace: bool, cancelled: &dyn Fn() -> bool, load: impl FnOnce() -> Result<T>) -> Result<()> {
+    ensure!(!cancelled(), "Cancelled");
+    if replace {
+        drop(slot.take());
+        *slot = Some(load()?);
+    }
+    ensure!(!cancelled(), "Cancelled");
+    Ok(())
+}
+
 /// Do not insert the existing suffix again when a small model runs past the hole.
 pub fn clip_suffix(text: &str, suffix: &str) -> String {
     if suffix.len() >= 2 && !suffix.trim().is_empty() {
@@ -613,9 +625,9 @@ pub fn run() -> i32 {
                 let start = Instant::now();
                 let result = (|| -> Result<Completion> {
                     ensure!(!cancelled(), "Cancelled");
-                    if llama_provider.as_ref().is_none_or(|(path, _)| *path != request.model) {
-                        llama_provider = Some((request.model.clone(), llamacpp::LlamaCppProvider::load(&request.model)?));
-                    }
+                    let replace = llama_provider.as_ref().is_none_or(|(path, _)| *path != request.model);
+                    replace_loaded(&mut llama_provider, replace, &cancelled,
+                        || Ok((request.model.clone(), llamacpp::LlamaCppProvider::load(&request.model)?)))?;
                     llama_provider.as_mut().unwrap().1.complete(&request, &cancelled)
                 })();
                 let output = match result {
@@ -630,15 +642,6 @@ pub fn run() -> i32 {
                 std::io::stdout().flush()?;
                 continue;
             }
-            if provider.as_ref().is_none_or(|(m, t, _)| {
-                *m != request.model || *t != request.tokenizer
-            }) {
-                provider = Some((
-                    request.model.clone(),
-                    request.tokenizer.clone(),
-                    CandleProvider::load_with_device(&request.model, &request.tokenizer, selected_device()?)?,
-                ));
-            }
             let id = request.request_id;
             let cancelled = {
                 let cancel_for = cancel_for.clone();
@@ -648,14 +651,22 @@ pub fn run() -> i32 {
                 }
             };
             let start = Instant::now();
+            let result = (|| -> Result<Completion> {
+                let replace = provider.as_ref().is_none_or(|(m, t, _)| *m != request.model || *t != request.tokenizer);
+                replace_loaded(&mut provider, replace, &cancelled, || Ok((
+                    request.model.clone(), request.tokenizer.clone(),
+                    CandleProvider::load_with_device(&request.model, &request.tokenizer, selected_device()?)?,
+                )))?;
+                provider.as_mut().unwrap().2.complete(&request, &cancelled)
+            })();
             let output =
-                match provider.as_mut().unwrap().2.complete(&request, &cancelled) {
+                match result {
                     Ok(output) => output,
                     Err(e) if is_cancelled(&e) => Completion {
                         text: String::new(),
                         tokens: 0,
                         prompt_tokens: 0,
-                        load_ms: provider.as_ref().unwrap().2.load_ms,
+                        load_ms: provider.as_ref().map_or(0, |p| p.2.load_ms),
                         generation_ms: start.elapsed().as_millis(),
                         prefill_ms: 0,
                         decode_ms: 0,
@@ -679,6 +690,23 @@ pub fn run() -> i32 {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn replacement_drops_old_weights_before_load_and_checks_cancellation() {
+        use std::{cell::Cell, rc::Rc};
+        struct Weights(Rc<Cell<usize>>);
+        impl Drop for Weights { fn drop(&mut self) { self.0.set(self.0.get() - 1); } }
+        let alive = Rc::new(Cell::new(1));
+        let mut slot = Some(Weights(alive.clone()));
+        super::replace_loaded(&mut slot, true, &|| false, || {
+            assert_eq!(alive.get(), 0);
+            alive.set(1); Ok(Weights(alive.clone()))
+        }).unwrap();
+        assert!(super::replace_loaded(&mut slot, true, &|| true, || -> anyhow::Result<Weights> { panic!("cancelled load must not run") }).is_err());
+        assert_eq!(alive.get(), 1);
+        assert!(super::replace_loaded(&mut slot, true, &|| false, || anyhow::bail!("fixture load failure")).is_err());
+        assert!(slot.is_none()); assert_eq!(alive.get(), 0);
+    }
+
     use super::*;
     #[test]
     fn vocabulary_checks_ids_and_token_mapping_not_only_size() {
