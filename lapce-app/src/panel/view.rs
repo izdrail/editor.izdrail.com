@@ -67,7 +67,9 @@ pub fn foldable_panel_section(
                 .width_pct(100.0)
                 .cursor(CursorStyle::Pointer)
                 .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
+                .focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
         })
+        .keyboard_navigable()
         .on_click_stop(move |_| {
             open.update(|open| *open = !*open);
         }),
