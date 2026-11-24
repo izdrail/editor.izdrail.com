@@ -1650,6 +1650,8 @@ impl EditorData {
     }
 
     fn go_to_definition(&self) {
+        // Definition navigation preserves preview tabs. All destinations below
+        // bypass preview replacement, while existing destination tabs are reused.
         // The source tooltip must not follow us to the destination, nor may
         // an already scheduled hover or late LSP response bring it back.
         self.common.mouse_hover_timer.set(TimerToken::INVALID);
@@ -1685,7 +1687,7 @@ impl EditorData {
                         path: target,
                         position: None,
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -1695,7 +1697,7 @@ impl EditorData {
                 if let Some(target) = crate::file_refs::resolve(root, &path, &line_text, col) {
                     self.common.internal_command.send(InternalCommand::JumpToLocation {
                         location: EditorLocation { path: target, position: None,
-                            scroll_offset: None, ignore_unconfirmed: false, same_editor_tab: false },
+                            scroll_offset: None, ignore_unconfirmed: true, same_editor_tab: false },
                     });
                     return;
                 }
@@ -1719,7 +1721,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1735,7 +1737,7 @@ impl EditorData {
                         path: target,
                         position: None,
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -1755,7 +1757,7 @@ impl EditorData {
                             path: target,
                             position: None,
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1773,7 +1775,7 @@ impl EditorData {
                             path: target,
                             position: None,
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1791,7 +1793,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1809,7 +1811,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1826,7 +1828,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1843,7 +1845,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1858,7 +1860,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1874,7 +1876,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1891,7 +1893,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1909,7 +1911,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1927,7 +1929,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1943,7 +1945,7 @@ impl EditorData {
                         path: target,
                         position: None,
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -1960,7 +1962,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -1977,7 +1979,7 @@ impl EditorData {
                         path: target,
                         position: Some(EditorPosition::Line(line)),
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -1993,7 +1995,7 @@ impl EditorData {
                         path: target,
                         position: None,
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -2008,7 +2010,7 @@ impl EditorData {
                         path: target,
                         position: Some(EditorPosition::Line(line)),
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -2023,7 +2025,7 @@ impl EditorData {
                         path: target,
                         position: Some(EditorPosition::Line(line)),
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -2038,7 +2040,7 @@ impl EditorData {
                         path: target,
                         position: Some(EditorPosition::Line(line)),
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -2054,7 +2056,7 @@ impl EditorData {
                         path: target,
                         position: Some(EditorPosition::Line(line)),
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -2071,7 +2073,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -2089,7 +2091,7 @@ impl EditorData {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
                             scroll_offset: None,
-                            ignore_unconfirmed: false,
+                            ignore_unconfirmed: true,
                             same_editor_tab: false,
                         },
                     });
@@ -2105,7 +2107,7 @@ impl EditorData {
                         path: target,
                         position: Some(EditorPosition::Line(line)),
                         scroll_offset: None,
-                        ignore_unconfirmed: false,
+                        ignore_unconfirmed: true,
                         same_editor_tab: false,
                     },
                 });
@@ -2143,7 +2145,7 @@ impl EditorData {
                                     l.range.start,
                                 )),
                                 scroll_offset: None,
-                                ignore_unconfirmed: false,
+                                ignore_unconfirmed: true,
                                 same_editor_tab: false,
                             })
                             .collect(),
@@ -2205,7 +2207,7 @@ impl EditorData {
                                                         ),
                                                     ),
                                                     scroll_offset: None,
-                                                    ignore_unconfirmed: false,
+                                                    ignore_unconfirmed: true,
                                                     same_editor_tab: false,
                                                 },
                                             ));
@@ -2225,7 +2227,7 @@ impl EditorData {
                                     location.range.start,
                                 )),
                                 scroll_offset: None,
-                                ignore_unconfirmed: false,
+                                ignore_unconfirmed: true,
                                 same_editor_tab: false,
                             }));
                         }
