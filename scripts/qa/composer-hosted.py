@@ -514,6 +514,24 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
 
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '# cleared synthetic diagnostics')
         time.sleep(3); shot('40a-problems-cleared')
+
+        for relative, contents in {
+            'app/Models/Post.php': '<?php\nnamespace App\\Models;\nclass Post {}\n',
+            'app/Services/ReceiptService.php': '<?php\nnamespace App\\Services;\nclass ReceiptService {}\n',
+            'routes/web.php': "<?php\nRoute::get('/users', fn () => null)->name('users.index');\n",
+            'model_usage.php': '<?php\nPost::class;\n',
+            'class_usage.php': '<?php\nReceiptService::class;\n',
+            'route_usage.php': "<?php\nroute('users.index');\n",
+        }.items():
+            fixture = project / relative
+            fixture.parent.mkdir(parents=True, exist_ok=True)
+            fixture.write_text(contents)
+        for source_name, x, capture in [('model_usage.php', 355, '44-model'), ('class_usage.php', 380, '45-class'), ('route_usage.php', 420, '46-route')]:
+            run('key', 'ctrl+p'); time.sleep(1)
+            run('type', '--clearmodifiers', source_name); run('key', 'Return'); time.sleep(2)
+            shot(capture + '-source')
+            run('mousemove', str(x), '112', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+            time.sleep(2); shot(capture + '-new-tab-target')
         run('windowsize', window, '850', '640'); time.sleep(2); shot('43-problems-empty-narrow-dark')
         settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
         time.sleep(3); shot('43a-problems-empty-narrow-light')
