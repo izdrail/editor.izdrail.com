@@ -565,7 +565,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         (project / 'snippet_tab.php').write_text('<?php\n')
         run('key', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'snippet_tab.php'); run('key', 'Return'); time.sleep(2)
-        run('key', 'ctrl+End'); run('type', '--clearmodifiers', 'lw-component'); run('key', 'ctrl+space'); time.sleep(2)
+        run('key', 'ctrl+End'); run('type', '--clearmodifiers', 'lv-livewire-component'); run('key', 'ctrl+space'); time.sleep(2)
         shot('51-snippet-completion-before-tab')
         run('key', 'Tab'); time.sleep(2); shot('51a-snippet-expanded-after-tab')
         run('key', 'Escape')

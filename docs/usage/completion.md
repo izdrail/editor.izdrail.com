@@ -35,10 +35,10 @@ A snippet is a code template offered in completion. Type its prefix, choose its 
 
 | File / project | Prefix | Template |
 | --- | --- | --- |
-| PHP in Laravel | `route-get` | Route to a controller method |
+| PHP in Laravel | `lv-route-get` | Route to a controller method |
 | PHP in Laravel | `lv-model` | Model class |
-| PHP in Laravel | `lw-component` | Livewire component |
-| Blade template | `foreach` | Blade loop |
+| PHP in Laravel | `lv-livewire-component` | Livewire component |
+| Blade template | `lv-blade-foreach` | Blade loop |
 | WordPress PHP | `wp-action` | Action hook |
 | Symfony PHP | `sf-controller` | Controller |
 | Twig template | `for` | Twig loop |
