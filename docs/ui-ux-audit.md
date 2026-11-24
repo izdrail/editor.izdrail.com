@@ -158,3 +158,5 @@ UI-022, medium/P0: in-file find count remained No Results after a project-search
 `45356437620` verifies UI-022: real destination documents now show 1 of 1 and highlights, including long Unicode text. Full test/release gates pass.
 
 UI-023, medium/P0: cursor/line-ending/language status actions were pointer-only. Make shared actionable status text keyboard reachable with visible focus and activation propagation guards. Runtime check line-ending palette, Escape then Tab language focus and Enter language palette; do not change either setting.
+
+`45361313625` opens the real line-ending palette, but Escape/Tab then indents the source instead of moving to Language. UI-023 keyboard flow is NOT accepted. Register status focus for form traversal and restore the invoking status control after its palette closes; keep both settings unchanged.

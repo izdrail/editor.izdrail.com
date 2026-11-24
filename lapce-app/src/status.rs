@@ -4,7 +4,7 @@ use std::{
 };
 
 use floem::{
-    View,
+    View, ViewId,
     event::{Event, EventListener, EventPropagation},
     reactive::{
         Memo, ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo,
@@ -40,6 +40,8 @@ pub fn status(
     let editor = window_tab_data.main_split.active_editor;
     let panel = window_tab_data.panel.clone();
     let palette = window_tab_data.palette.clone();
+    let palette_status = palette.status;
+    let keyboard_focus = window_tab_data.common.keyboard_focus;
     let diagnostic_count = create_memo(move |_| {
         let mut errors = 0;
         let mut warnings = 0;
@@ -382,7 +384,7 @@ pub fn status(
         }),
         stack({
             let palette_clone = palette.clone();
-            let cursor_info = status_text(config, editor, move || {
+            let cursor_info = status_text(config, editor, palette_status, keyboard_focus, move || {
                 if let Some(editor) = editor.get() {
                     let mut status = String::new();
                     let cursor = editor.cursor().get();
@@ -419,7 +421,7 @@ pub fn status(
                 palette_clone.run(PaletteKind::Line);
             });
             let palette_clone = palette.clone();
-            let line_ending_info = status_text(config, editor, move || {
+            let line_ending_info = status_text(config, editor, palette_status, keyboard_focus, move || {
                 if let Some(editor) = editor.get() {
                     let doc = editor.doc_signal().get();
                     doc.buffer.with(|b| b.line_ending()).as_str()
@@ -435,7 +437,7 @@ pub fn status(
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             });
             let palette_clone = palette.clone();
-            let language_info = status_text(config, editor, move || {
+            let language_info = status_text(config, editor, palette_status, keyboard_focus, move || {
                 if let Some(editor) = editor.get() {
                     let doc = editor.doc_signal().get();
                     doc.syntax().with(|s| s.language.name())
@@ -510,10 +512,31 @@ fn progress_view(
 fn status_text<S: std::fmt::Display + 'static>(
     config: ReadSignal<Arc<LapceConfig>>,
     editor: Memo<Option<EditorData>>,
+    palette_status: RwSignal<crate::palette::PaletteStatus>,
+    keyboard_focus: RwSignal<Option<ViewId>>,
     text: impl Fn() -> S + 'static,
 ) -> impl View {
-    label(text)
-    .keyboard_navigable()
+    let view = label(text);
+    let id = view.id();
+    let return_focus = floem::reactive::create_rw_signal(false);
+    floem::reactive::create_effect(move |previous| {
+        let active = palette_status.get() != crate::palette::PaletteStatus::Inactive;
+        if active && keyboard_focus.get_untracked() == Some(id) {
+            return_focus.set(true);
+        }
+        if !active && previous == Some(true) && return_focus.get_untracked() {
+            return_focus.set(false);
+            id.request_focus();
+        }
+        active
+    });
+    view.keyboard_navigable()
+    .on_event_stop(EventListener::FocusGained, move |_| keyboard_focus.set(Some(id)))
+    .on_event_stop(EventListener::FocusLost, move |_| {
+        if keyboard_focus.get_untracked() == Some(id) {
+            keyboard_focus.set(None);
+        }
+    })
     .on_event(EventListener::KeyDown, |event| {
         if let Event::KeyDown(key) = event {
             if matches!(key.key.logical_key, floem::keyboard::Key::Named(
