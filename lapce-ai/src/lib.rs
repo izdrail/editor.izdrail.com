@@ -1,6 +1,7 @@
 //! Qwen FIM providers: local CPU-only Candle (no network) and an
 //! explicit, config-carried Ollama network lane. No implicit downloads;
 //! remote inference happens only when a request carries remote parameters.
+pub mod capabilities;
 pub mod catalog;
 pub mod chat;
 pub mod ollama;
@@ -412,6 +413,10 @@ pub fn download_model(root: &Path, id: &str) -> Result<Installed> {
 /// so it could never read a cancellation from the same stream in time.
 pub fn run() -> i32 {
     let result = (|| -> Result<()> {
+        if std::env::args().nth(1).as_deref() == Some("--ai-capabilities") {
+            println!("{}", serde_json::to_string(&capabilities::available())?);
+            return Ok(());
+        }
         if std::env::args().nth(1).as_deref() == Some("--ai-download") {
             let root = std::env::args()
                 .nth(2)
