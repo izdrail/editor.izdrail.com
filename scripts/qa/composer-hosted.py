@@ -541,6 +541,17 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             shot(capture + '-source')
             run('mousemove', str(x), '130', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
             time.sleep(2); shot(capture + '-destination-or-failure')
+        # A fresh target outside Laravel's conventional directories proves that
+        # composer mapping and import aliases work, not a basename search.
+        (project / 'composer.json').write_text(json.dumps({'autoload': {'psr-4': {'App\\': 'app/', 'Domain\\': 'domain/'}}}))
+        (project / 'domain').mkdir(exist_ok=True)
+        (project / 'domain/Billing.php').write_text('<?php\nnamespace Domain;\nclass Billing {}\n')
+        (project / 'alias_usage.php').write_text('<?php\nuse Domain\\Billing as Invoice;\nnew Invoice();\n')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'alias_usage.php'); run('key', 'Return'); time.sleep(2)
+        shot('49-composer-alias-source')
+        run('mousemove', '395', '130', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+        time.sleep(2); shot('49a-composer-alias-new-target')
         run('windowsize', window, '850', '640'); time.sleep(2); shot('43-problems-empty-narrow-dark')
         settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
         time.sleep(3); shot('43a-problems-empty-narrow-light')

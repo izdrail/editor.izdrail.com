@@ -192,6 +192,9 @@ fn definition(root: &Path, text: &str, line: &str, col: usize) -> Option<(PathBu
         if !meta.is_file() || meta.len() > 1024 * 1024 { continue; }
         let Ok(body) = std::fs::read_to_string(&path) else { continue; };
         let Some((decl, line)) = crate::app_class_index::class_decl(&body) else { continue; };
+        let declared_namespace = parse_header(&body).namespace.unwrap_or_default();
+        let declared_fqcn = if declared_namespace.is_empty() { decl.clone() } else { format!("{declared_namespace}\\{decl}") };
+        if !declared_fqcn.eq_ignore_ascii_case(&fqcn) { continue; }
         if !decl.eq_ignore_ascii_case(fqcn.rsplit('\\').next()?) { continue; }
         if !found.iter().any(|(p, _)| p == &path) { found.push((path, line)); }
     }
@@ -563,6 +566,12 @@ mod definition_tests {
         ] {
             assert!(definition(d.path(), text, line, at).is_some(), "{line}");
         }
+    }
+    #[test]
+    fn definition_rejects_wrong_namespace_at_mapped_path() {
+        let d = fixture();
+        std::fs::write(d.path().join("app/Models/Post.php"), "<?php\nnamespace Other;\nclass Post {}\n").unwrap();
+        assert_eq!(definition(d.path(), "<?php\nuse App\\Models\\Post;", "Post::query();", 2), None);
     }
     #[test]
     fn definition_at_excludes_multiline_noncode() {
