@@ -138,3 +138,5 @@ UI-017 regression follow-up: route success, error and unexpected-response handli
 UI-020, medium/P0: shared foldable-panel section headers had only pointer activation, with no native keyboard target or focus feedback. Add native traversal and selected-background focus feedback without changing header geometry. Verify actual Open Editors collapse and Space re-expand/collapse; other panel sections inherit the component but remain individually unverified.
 
 `45341285950` builds/tests pass, but actual 32a shows Space also inserted into the query after the row action, rebuilding results and losing focus. Result activation is NOT ACCEPTED. Stop focused row activation propagation after Floem's default click dispatch; preserve Tab traversal. Header captures were obscured by the resulting main menu, so reacquire with Escape before the independent header test.
+
+UI-020 follow-up uses the same post-click activation boundary for panel headers, preventing Space/Enter from reaching an editor still logically focused behind the header. Native Tab remains unconsumed. Runtime capture pending.

@@ -70,6 +70,16 @@ pub fn foldable_panel_section(
                 .focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
         })
         .keyboard_navigable()
+        .on_event(EventListener::KeyDown, move |event| {
+            if let Event::KeyDown(key) = event {
+                if matches!(key.key.logical_key, floem::keyboard::Key::Named(
+                    floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+                )) {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
         .on_click_stop(move |_| {
             open.update(|open| *open = !*open);
         }),
