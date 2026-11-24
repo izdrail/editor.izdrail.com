@@ -1405,11 +1405,33 @@ fn context_menu_view(
         })
     });
     let context_menu_size = cx.create_rw_signal(Size::ZERO);
+    let selected_path = cx.create_rw_signal(Vec::<usize>::new());
+    create_effect(move |_| {
+        context_menu_items.get();
+        selected_path.set(Vec::new());
+    });
+
+    fn menu_at_path<'a>(items: &'a [MenuDisplay], path: &[usize]) -> Option<&'a MenuDisplay> {
+        let (first, rest) = path.split_first()?;
+        let item = items.get(*first)?;
+        if rest.is_empty() { return Some(item); }
+        if let MenuDisplay::Item { children: Some(children), .. } = item {
+            menu_at_path(children, rest)
+        } else { None }
+    }
+
+    fn enabled_indices(items: &[MenuDisplay]) -> Vec<usize> {
+        items.iter().enumerate().filter_map(|(index, item)| {
+            matches!(item, MenuDisplay::Item { enabled: true, .. }).then_some(index)
+        }).collect()
+    }
 
     fn view_fn(
         menu: MenuDisplay,
         context_menu: RwSignal<Option<(Menu, Point, bool)>>,
         on_child_submenu_for_parent: RwSignal<bool>,
+        selected_path: RwSignal<Vec<usize>>,
+        path: Vec<usize>,
     ) -> impl IntoView {
         match menu {
             MenuDisplay::Item {
@@ -1423,6 +1445,9 @@ fn context_menu_view(
                 let on_submenu = create_rw_signal(false);
                 let on_child_submenu = create_rw_signal(false);
                 let has_submenu = children.is_some();
+                let highlight_path = path.clone();
+                let submenu_path = path.clone();
+                let child_path = path.clone();
                 let submenu_svg = r#"<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/></svg>"#;
                 container(
                     stack((
@@ -1470,8 +1495,10 @@ fn context_menu_view(
                             }
                         })
                         .disabled(move || !enabled)
-                        .style(|s| {
-                            s.width(100.pct())
+                        .style(move |s| {
+                            s.apply_if(selected_path.get() == highlight_path, |s| s
+                                .border_radius(10.0).background(Color::from_rgb8(65, 65, 65)))
+                                .width(100.pct())
                                 .min_width(100.pct())
                                 .padding_horiz(20.0)
                                 .justify_between()
@@ -1487,18 +1514,14 @@ fn context_menu_view(
                                 .disabled(|s| s.color(Color::from_rgb8(92, 92, 92)))
                         }),
                         dyn_stack(
-                            move || children.clone().unwrap_or_default(),
-                            move |s| s.clone(),
-                            move |menu| view_fn(menu, context_menu, on_child_submenu),
+                            move || children.clone().unwrap_or_default().into_iter().enumerate().collect::<Vec<_>>(),
+                            move |(index, menu)| (*index, menu.clone()),
+                            move |(index, menu)| {
+                                let mut path = child_path.clone();
+                                path.push(index);
+                                view_fn(menu, context_menu, on_child_submenu, selected_path, path)
+                            },
                         )
-                        .keyboard_navigable()
-                        .on_event_stop(EventListener::KeyDown, move |event| {
-                            if let Event::KeyDown(event) = event {
-                                if event.key.logical_key == Key::Named(NamedKey::Escape) {
-                                    context_menu.set(None);
-                                }
-                            }
-                        })
                         .on_event_stop(EventListener::PointerEnter, move |_| {
                             if has_submenu {
                                 on_submenu.set(true);
@@ -1526,7 +1549,8 @@ fn context_menu_view(
                                 .apply_if(
                                     !show_submenu.get()
                                         && !on_submenu.get()
-                                        && !on_child_submenu.get(),
+                                        && !on_child_submenu.get()
+                                        && !selected_path.with(|p| p.len() > submenu_path.len() && p.starts_with(&submenu_path)),
                                     |s| s.hide(),
                                 )
                         }),
@@ -1550,9 +1574,9 @@ fn context_menu_view(
 
     let on_child_submenu = create_rw_signal(false);
     let view = dyn_stack(
-        move || context_menu_items.get().unwrap_or_default(),
-        move |s| s.clone(),
-        move |menu| view_fn(menu, context_menu, on_child_submenu),
+        move || context_menu_items.get().unwrap_or_default().into_iter().enumerate().collect::<Vec<_>>(),
+        move |(index, menu)| (*index, menu.clone()),
+        move |(index, menu)| view_fn(menu, context_menu, on_child_submenu, selected_path, vec![index]),
     )
     .on_resize(move |rect| {
         context_menu_size.set(rect.size());
@@ -1574,14 +1598,49 @@ fn context_menu_view(
     .on_event_stop(EventListener::PointerMove, move |_| {})
     .keyboard_navigable()
     .on_event_stop(EventListener::KeyDown, move |event| {
-        if let Event::KeyDown(event) = event {
-            if event.key.logical_key == Key::Named(NamedKey::Escape) {
+        let Event::KeyDown(event) = event else { return; };
+        let items = context_menu_items.get_untracked().unwrap_or_default();
+        let mut path = selected_path.get_untracked();
+        match &event.key.logical_key {
+            Key::Named(NamedKey::Escape) => {
                 context_menu.set(None);
-                if let Some(target) = return_focus.get_untracked() {
-                    target.request_focus();
+                if let Some(target) = return_focus.get_untracked() { target.request_focus(); }
+            }
+            Key::Named(NamedKey::ArrowLeft) => { path.pop(); }
+            Key::Named(NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::Home | NamedKey::End) => {
+                let parent_path = if path.is_empty() { &[][..] } else { &path[..path.len()-1] };
+                let siblings = if parent_path.is_empty() { &items[..] }
+                    else if let Some(MenuDisplay::Item { children: Some(children), .. }) = menu_at_path(&items, parent_path) { &children[..] }
+                    else { &[][..] };
+                let indices = enabled_indices(siblings);
+                if !indices.is_empty() {
+                    let current = path.last().and_then(|i| indices.iter().position(|n| n == i));
+                    let next = match &event.key.logical_key {
+                        Key::Named(NamedKey::Home) => 0,
+                        Key::Named(NamedKey::End) => indices.len()-1,
+                        Key::Named(NamedKey::ArrowUp) => current.map(|i| (i+indices.len()-1)%indices.len()).unwrap_or(indices.len()-1),
+                        _ => current.map(|i| (i+1)%indices.len()).unwrap_or(0),
+                    };
+                    path = parent_path.to_vec();
+                    path.push(indices[next]);
                 }
             }
+            Key::Named(NamedKey::ArrowRight | NamedKey::Enter | NamedKey::Space) => {
+                if let Some(MenuDisplay::Item { enabled: true, children, id, .. }) = menu_at_path(&items, &path) {
+                    if let Some(children) = children {
+                        if let Some(index) = enabled_indices(children).first() { path.push(*index); }
+                    } else if event.key.logical_key != Key::Named(NamedKey::ArrowRight) {
+                        if let Some(action_id) = id.clone() {
+                            context_menu.set(None);
+                            if let Some(target) = return_focus.get_untracked() { target.request_focus(); }
+                            add_app_update_event(AppUpdateEvent::MenuAction { action_id });
+                        }
+                    }
+                }
+            }
+            _ => (),
         }
+        selected_path.set(path);
     })
     .style(move |s| {
         let window_size = window_size.get();

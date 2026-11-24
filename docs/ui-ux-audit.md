@@ -110,3 +110,7 @@ UI-014, medium/P0: shared actionable toolbar icons lacked keyboard traversal/foc
 `45316862316` verifies keyboard opening of the actual Open Folder / Open Recent Workspace menu (25a). Remote capture still reaches the main menu, so remote acceptance remains open and its reacquisition sequence is corrected without asserting a false pass. Native popup dismissal/focus return remains a follow-up issue under UX-013.
 
 UI-015, medium/P0: Linux popup Escape left focus on the now-hidden menu, making subsequent Tab restart unexpectedly. Store the opening focus target and restore it on Escape. Runtime captures must show main-menu focus restored, Tab reaching Remote, actual remote menu, then Escape returning focus. Opening a menu is not evidence that its item keyboard navigation or actions work; those remain unverified.
+
+`45320561657` verifies UI-015: Escape returns visible focus to main/remote triggers and the expected Tab target opens the real remote menu.
+
+UI-016, medium/P0: Linux menu rows had pointer handlers but no arrow selection/activation. Add enabled-row keyboard selection, wrapping Up/Down, Home/End, Right/Enter submenus, Left parent, Enter/Space leaf activation and Escape focus return. Skip separators/disabled rows. Runtime captures must inspect selection and submenu open/back, with no remote connection activation. Leaf-action acceptance remains separate.

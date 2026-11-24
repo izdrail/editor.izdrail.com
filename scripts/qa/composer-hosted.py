@@ -434,6 +434,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('26a-remote-menu-focus')
         run('key', 'space'); shot('26b-remote-menu-open')
         run('key', 'Escape'); shot('26c-remote-menu-return-focus')
+        # Keyboard menu navigation only. Never activate a remote connection.
+        run('key', 'space', 'Down'); shot('27-remote-menu-selected')
+        run('key', 'Escape', 'shift+Tab', 'space', 'Down', 'Right')
+        shot('27a-main-submenu-keyboard')
+        run('key', 'Left'); shot('27b-main-submenu-back')
+        run('key', 'Escape')
+
 
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
