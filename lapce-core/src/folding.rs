@@ -123,6 +123,47 @@ pub fn indentation_ranges(text: &str, tab_width: usize) -> Vec<FoldRange> {
     ranges
 }
 
+/// Comment folds use the accepted lexer snapshot, so comment-looking text
+/// inside strings cannot become a fold. Keep the first line as the header.
+pub fn comment_ranges(text: &str, is_comment: impl Fn(usize) -> bool) -> Vec<FoldRange> {
+    let mut result = Vec::new();
+    let mut line_starts = vec![0usize];
+    for (i, byte) in text.bytes().enumerate() {
+        if byte == b'\n' { line_starts.push(i + 1); }
+    }
+    let line_of = |offset: usize| line_starts.partition_point(|start| *start <= offset).saturating_sub(1);
+    let bytes = text.as_bytes();
+    let mut offset = 0;
+    while offset + 1 < bytes.len() {
+        if bytes[offset..].starts_with(b"/*") && is_comment(offset) {
+            let start = line_of(offset);
+            let mut end = offset + 2;
+            while end < bytes.len() && is_comment(end) { end += 1; }
+            let last = line_of(end.saturating_sub(1));
+            if last > start { result.push(FoldRange { start, end: last + 1 }); }
+            offset = end;
+        } else { offset += 1; }
+    }
+    let mut run: Option<usize> = None;
+    for line in 0..=line_starts.len() {
+        let comment = line_starts.get(line).is_some_and(|&start| {
+            let end = line_starts.get(line + 1).copied().unwrap_or(text.len());
+            let raw = &text[start..end];
+            let trimmed = raw.trim_start();
+            let at = start + raw.len() - trimmed.len();
+            (trimmed.starts_with("//") || (trimmed.starts_with('#') && !trimmed.starts_with("#[")))
+                && is_comment(at)
+        });
+        if comment { run.get_or_insert(line); }
+        else if let Some(start) = run.take() {
+            if line > start + 1 { result.push(FoldRange { start, end: line }); }
+        }
+    }
+    result.sort_unstable_by_key(|range| (range.start, std::cmp::Reverse(range.end)));
+    result.dedup_by_key(|range| range.start);
+    result
+}
+
 /// A projection shared by rendering, pointer and keyboard navigation. This
 /// model is deliberately separate from UI so mapping cannot become paint-only.
 #[derive(Debug, Clone, Default)]

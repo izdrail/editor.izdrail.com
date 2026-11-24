@@ -557,6 +557,17 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('49-composer-alias-source')
         run('mousemove', '395', '130', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
         time.sleep(2); shot('49a-composer-alias-new-target')
+        comment_text = '<?php\n/** Documentation\n * Details to collapse\n */\n// First line comment\n// Second line comment\n# First hash comment\n# Second hash comment\n/* Block comment\nMore details\n*/\nfunction visible_after_comments() {}\n'
+        (project / 'comment_folds.php').write_text(comment_text)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'comment_folds.php'); run('key', 'Return'); time.sleep(2)
+        shot('50-comments-expanded')
+        run('key', 'F1'); time.sleep(1); run('type', '--clearmodifiers', 'Fold All'); run('key', 'Return'); time.sleep(2)
+        shot('50a-comments-folded')
+        run('key', 'F1'); time.sleep(1); run('type', '--clearmodifiers', 'Unfold All'); run('key', 'Return'); time.sleep(2)
+        shot('50b-comments-unfolded')
+        if (project / 'comment_folds.php').read_text() != comment_text:
+            raise RuntimeError('Folding changed comment source bytes')
         run('windowsize', window, '850', '640'); time.sleep(2); shot('43-problems-empty-narrow-dark')
         settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
         time.sleep(3); shot('43a-problems-empty-narrow-light')

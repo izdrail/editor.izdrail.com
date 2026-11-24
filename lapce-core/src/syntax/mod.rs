@@ -988,7 +988,7 @@ impl Syntax {
         }
         // Lexer fold levels (braces, tags) win where the lexer provides
         // them; indentation stays the language-independent fallback.
-        let folding_ranges = snapshot
+        let mut folding_ranges = snapshot
             .as_ref()
             .and_then(|s| s.levels())
             .map(crate::folding::level_ranges)
@@ -996,6 +996,13 @@ impl Syntax {
             .unwrap_or_else(|| {
                 crate::folding::indentation_ranges(&new_text.to_string(), 4)
             });
+        if let Some(snapshot) = snapshot.as_ref() {
+            folding_ranges.extend(crate::folding::comment_ranges(&new_text.to_string(), |offset| {
+                snapshot.styles().get(offset).is_some_and(|style| snapshot.scope(*style) == Some("comment"))
+            }));
+            folding_ranges.sort_unstable_by_key(|range| (range.start, std::cmp::Reverse(range.end)));
+            folding_ranges.dedup_by_key(|range| range.start);
+        }
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }

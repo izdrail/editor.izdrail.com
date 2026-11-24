@@ -216,3 +216,5 @@ UI-033, high/P0, owner17:16: Chat and model/endpoint menus do not appear. Reprod
 `45452321542` still loses the menus, so deferred focus alone is insufficient. Remove focus-loss dismissal during overlay mounting; explicit Escape/Tab/toggle/row-choice remain. Recheck actual menus before restoring robust outside dismissal. Custom PSR-4 alias fresh target49a now visibly passes, source alias_usage.php and Billing.php coexist.
 
 UI-033 source refinement: pointer-down focus itself changes footer height, shifting the chip before pointer-up, so Click can be missed entirely. Open on pointer-down, retain native keyboard Click separately and ignore pointer Click to avoid double toggle.
+
+UI-034, owner17:19: comment blocks need folding. Merge lexer-scoped block comments/docblocks and consecutive full-line // or # groups into existing code folding. Do not treat quoted comment delimiters as comments. Keep existing fold projection/edit behavior, include comment terminator, preserve next code line. Add accepted-snapshot regression and actual expand/fold-all/unfold-all captures; acceptance pending.

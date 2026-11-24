@@ -553,6 +553,16 @@ mod tests {
         assert_eq!(syntax.folding_ranges.len(), 1);
     }
     #[test]
+    fn php_comment_folds_merge_with_zero_indent_code_folds() {
+        let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Php);
+        let text = "<?php\n/** Docs\n * detail\n */\nfunction a() {\nreturn 1;\n}\n// first\n// second\n# third\n# fourth\n$x = '/* fake\ncomment */';\n/* block\nmore\n*/\n";
+        syntax.parse(1, Rope::from(text), None);
+        for (start,end) in [(1,4),(4,6),(7,11),(13,16)] {
+            assert!(syntax.folding_ranges.contains(&crate::folding::FoldRange { start,end }), "{start}..{end}: {:?}",syntax.folding_ranges);
+        }
+        assert!(!syntax.folding_ranges.iter().any(|range| range.start == 11));
+    }
+    #[test]
     fn plaintext_also_gets_local_folding() {
         let mut syntax = crate::syntax::Syntax::plaintext();
         syntax.parse(1, Rope::from("heading\n    body\nnext"), None);
