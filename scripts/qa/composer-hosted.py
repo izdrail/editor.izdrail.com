@@ -368,7 +368,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'space'); time.sleep(2); shot('17b-settings-toggle-keyboard-off')
         if 'auto-close-quotes = false' not in settings_file.read_text():
             raise RuntimeError('Keyboard settings toggle did not persist false')
-        run('key', 'shift+Tab', 'ctrl+a'); run('type', '--clearmodifiers', 'keymap preset')
+        # Persistence reload rebuilds the boolean row, so reacquire the
+        # visible search field before testing an independent dropdown.
+        run('mousemove', '650', '99', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'keymap preset')
         shot('17c-settings-dropdown-filtered')
         run('key', 'Tab', 'space'); shot('17d-settings-dropdown-keyboard-open')
         run('key', 'Down'); shot('17e-settings-dropdown-keyboard-moved')
