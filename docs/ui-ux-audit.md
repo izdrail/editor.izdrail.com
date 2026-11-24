@@ -102,3 +102,5 @@ UI-013, medium/P0: boolean and pointer-dropdown controls changed their visible v
 `45309283043` verifies UI-012/013: invalid numeric feedback, unchanged persisted settings, read-only boolean and keyboard-dropdown failures retain their prior state with errors. Actual dark screenshots 21a/22/22a inspected.
 
 UI-014, medium/P0: shared actionable toolbar icons lacked keyboard traversal/focus; popout menu defaults handled pointer activation but not focused keyboard activation. Add traversal/visible focus for actionable icons and title menus/search, route focused Enter/Space to popout menus, and remove duplicate separator in Settings menu. Runtime toolbar keyboard/menu acceptance is required; broad workspace acceptance remains open.
+
+`45311845774` verifies visible keyboard focus on the main menu and Space opening it. The screenshots were initially named workspace-menu, but actual pixels show the main menu; they do not verify the workspace dropdown. Rename captures accurately and continue toolbar traversal/menu checks. Full Rust/release workflow is green.

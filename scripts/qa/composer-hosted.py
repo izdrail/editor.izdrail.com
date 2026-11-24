@@ -427,9 +427,14 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             settings_file.chmod(0o644)
         # Focus the title search by pointer, then exercise keyboard targets.
         run('mousemove', '650', '14', 'click', '1'); run('key', 'Escape')
-        run('key', 'Tab'); shot('23-toolbar-workspace-menu-focus')
-        run('key', 'space'); shot('23a-toolbar-workspace-menu-open')
+        run('key', 'Tab'); shot('23-toolbar-main-menu-focus')
+        run('key', 'space'); shot('23a-toolbar-main-menu-open')
+        run('key', 'Escape', 'Tab'); shot('24-toolbar-remote-focus')
+        run('key', 'space'); shot('24a-toolbar-remote-menu')
         run('key', 'Escape')
+        for index in range(6):
+            run('key', 'Tab'); shot(f'24b-toolbar-traversal-{index}')
+
 
 
 
