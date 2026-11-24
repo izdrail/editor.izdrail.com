@@ -589,7 +589,7 @@
   "Route implicit binding": {
     "prefix": "lv-route-binding",
     "body": [
-      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('/${1:posts}/{${2:post}}', function (\\\\App\\\\Models\\${3:Post} \\$${2:post}) {",
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('/${1:posts}/{${2:post}}', function (\\\\App\\\\Models\\\\${3:Post} \\$${2:post}) {",
       "\treturn \\$${2:post};",
       "});"
     ],
