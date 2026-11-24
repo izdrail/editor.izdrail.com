@@ -2450,7 +2450,9 @@ fn find_view(
         if !visual {
             return (0, 0);
         }
-        let editor = editor.get_untracked();
+        // Track the active editor as well as its cursor and occurrences. A
+        // result jump can reuse this find view for a different document.
+        let editor = editor.get();
         let cursor = editor.cursor();
         let offset = cursor.with(|cursor| cursor.offset());
         let occurrences = editor.doc_signal().get().find_result.occurrences;

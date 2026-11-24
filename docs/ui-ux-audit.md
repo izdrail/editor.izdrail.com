@@ -148,3 +148,7 @@ UI-021, medium/P0: search matches jumped to first nonblank instead of the matche
 `45346172016` stopped at the new Unicode test: expected column was miscounted as 5; é + surrogate-pair emoji + space is 4 UTF-16 units. Correct the test expectation, retain the passing long-line offsets test, and add runtime unique long-line preview/keyboard-destination captures. This failed run is not acceptance.
 
 `45347459958` passes new Unicode/long-line tests and actual search jumps now show byte column 10 for the short fixture and byte column 331 for the UTF-8 long fixture, matching the true offsets. The long preview still ellipsizes before reaching the match when retaining 100 preceding characters. Reduce leading preview context to 32 characters so the match remains visible at ordinary panel widths; add an unobscured destination capture after dismissing in-file find. In-file find's stale No Results state remains a separate issue.
+
+`45350307713` verifies UI-021: actual long-line preview contains the highlighted match, keyboard activation places the caret at that original text after a Unicode prefix. Both focused regression tests/full suite/release pass.
+
+UI-022, medium/P0: in-file find count remained No Results after a project-search jump to a file containing the query. The count memo read the active editor untracked, keeping dependencies on the previous document. Track editor replacement so count dependencies follow the destination document. Verify existing 32c/34b captures show 1 of 1 rather than No Results.
