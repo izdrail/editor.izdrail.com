@@ -376,6 +376,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab', 'space'); shot('17d-settings-dropdown-keyboard-open')
         run('key', 'Down'); shot('17e-settings-dropdown-keyboard-moved')
         run('key', 'Escape'); shot('17f-settings-dropdown-keyboard-cancel')
+        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Light"', 'color-theme = "Lapce Dark"'))
+        time.sleep(3); shot('18-composer-footer-dark-wide')
+        run('windowsize', window, '850', '640'); time.sleep(2)
+        shot('18a-composer-footer-dark-narrow')
+
 
 
         if bracket_file.read_text() != bracket_text:

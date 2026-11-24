@@ -82,3 +82,9 @@ Known source-audit gaps to reproduce: generic value writes can fail without inli
 `45288278519` has passing Rust tests but failed the real keyboard persistence gate: Tab from the settings search did not focus the filtered boolean target, Space did not change the setting. Screenshots 17a/17b show the value unchanged. Keyboard accessibility is NOT ACCEPTED. Fix focus routing before proceeding to new features; do not weaken the assertion or infer a pass from keyboard_navigable declarations.
 
 `45292659897` actual images 17a/17b verify native Tab reaches the boolean target with visible focus, and Space disables it; the disk persistence assertion passes. The dropdown captures did not reach the dropdown because settings reload rebuilt the focused row; they are NOT evidence of dropdown acceptance. Reacquire search for the independent dropdown test. Compact dark/light images from `45290865787` show top section navigation and wider content without the prior sidebar squeeze. Overall Phase 1 remains open.
+
+## Owner feedback, 24 November 00:13
+
+UI-009, medium/P0: the AI composer's one-line footer reserved 48px plus 8px gap and bottom padding. Remove that minimum, retain natural wrapping for longer keyboard guidance, and use 4px gap/bottom padding. Requires dark wide/narrow runtime screenshots before acceptance.
+
+UI-010, preview-theme confusion: the screenshot supplied to the owner was the explicit light-theme acceptance state, not a change to the shipped default. `defaults/settings.toml` selects Lapce Dark, and config initialization has a dark fallback. Keep testing light, then restore the disposable profile to dark and capture dark final states. Do not overwrite users who explicitly selected another theme.

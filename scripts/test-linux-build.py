@@ -10,6 +10,15 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class LinuxBuildTests(unittest.TestCase):
+    def test_dark_theme_default_and_compact_composer_footer(self):
+        self.assertIn('color-theme = "Lapce Dark"', (ROOT / 'defaults/settings.toml').read_text())
+        script = (ROOT / 'scripts/qa/composer-hosted.py').read_text()
+        self.assertIn("shot('18-composer-footer-dark-wide')", script)
+        self.assertIn("shot('18a-composer-footer-dark-narrow')", script)
+        source = (ROOT / 'lapce-app/src/panel/chat_view.rs').read_text()
+        footer = source[source.index('// Reuse the footer for temporary completion feedback.'):source.index('// Absolute and sized to the panel')]
+        self.assertNotIn('min_height(48.0)', footer)
+
     def test_gravity_is_default_and_only_main_linux_bundle_binary(self):
         import re
         manifest = (ROOT / 'Cargo.toml').read_text()
