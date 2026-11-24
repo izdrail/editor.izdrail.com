@@ -98,7 +98,6 @@ pub fn status(
         format!("Ghost: {accept} accept, {cancel} dismiss")
     };
     let mode = create_memo(move |_| window_tab_data.mode());
-    let pointer_down = floem::reactive::create_rw_signal(false);
 
     stack((
         stack((
@@ -150,7 +149,8 @@ pub fn status(
                     .align_items(Some(AlignItems::Center))
                     .selectable(false)
             }),
-            stack((
+            palette_status_action(
+                stack((
                 svg(move || config.get().ui_svg(LapceIcons::SCM)).style(move |s| {
                     let config = config.get();
                     let icon_size = config.ui.icon_size() as f32;
@@ -170,6 +170,7 @@ pub fn status(
                     Display::Flex
                 })
                 .height_pct(100.0)
+                .focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
                 .padding_horiz(10.0)
                 .align_items(Some(AlignItems::Center))
                 .hover(|s| {
@@ -177,21 +178,13 @@ pub fn status(
                         config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
                     )
                 })
-            })
-            .on_event_cont(floem::event::EventListener::PointerDown, move |_| {
-                pointer_down.set(true);
-            })
-            .on_event(
-                floem::event::EventListener::PointerUp,
-                move |_| {
-                    if pointer_down.get() {
-                        workbench_command
-                            .send(LapceWorkbenchCommand::PaletteSCMReferences);
-                    }
-                    pointer_down.set(false);
-                    EventPropagation::Continue
-                },
-            ),
+            }),
+                palette_status,
+                keyboard_focus,
+            )
+            .on_click_stop(move |_| {
+                workbench_command.send(LapceWorkbenchCommand::PaletteSCMReferences);
+            }),
             {
                 let panel = panel.clone();
                 stack((
@@ -521,14 +514,11 @@ fn progress_view(
     .style(move |s| s.flex_row().height_pct(100.0).min_width(0.0))
 }
 
-fn status_text<S: std::fmt::Display + 'static>(
-    config: ReadSignal<Arc<LapceConfig>>,
-    editor: Memo<Option<EditorData>>,
+fn palette_status_action(
+    view: impl View + 'static,
     palette_status: RwSignal<crate::palette::PaletteStatus>,
     keyboard_focus: RwSignal<Option<ViewId>>,
-    text: impl Fn() -> S + 'static,
 ) -> impl View {
-    let view = label(text);
     let id = view.id();
     let return_focus = floem::reactive::create_rw_signal(false);
     floem::reactive::create_effect(move |previous| {
@@ -566,6 +556,16 @@ fn status_text<S: std::fmt::Display + 'static>(
         }
         EventPropagation::Continue
     })
+}
+
+fn status_text<S: std::fmt::Display + 'static>(
+    config: ReadSignal<Arc<LapceConfig>>,
+    editor: Memo<Option<EditorData>>,
+    palette_status: RwSignal<crate::palette::PaletteStatus>,
+    keyboard_focus: RwSignal<Option<ViewId>>,
+    text: impl Fn() -> S + 'static,
+) -> impl View {
+    palette_status_action(label(text), palette_status, keyboard_focus)
     .style(move |s| {
         let config = config.get();
         let display = if editor

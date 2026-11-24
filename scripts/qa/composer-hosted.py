@@ -491,6 +491,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'shift+Tab', 'shift+Tab', 'shift+Tab', 'shift+Tab')
         shot('37-status-diagnostics-keyboard-focus')
         run('key', 'Return'); time.sleep(1); shot('37a-status-problems-panel')
+        run('key', 'shift+Tab'); shot('38-status-branch-keyboard-focus')
+        run('key', 'Return'); time.sleep(1); shot('38a-status-branch-palette')
+        run('key', 'Escape'); time.sleep(1); shot('38b-status-branch-focus-restored')
+
 
 
 

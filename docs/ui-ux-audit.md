@@ -168,3 +168,7 @@ UI-023, medium/P0: cursor/line-ending/language status actions were pointer-only.
 UI-024, medium/P0: diagnostic status target omitted from keyboard traversal. Add focus styling and native activation, preventing activation from also editing the code behind it. Its actual keyboard destination remains a runtime gate.
 
 `45373923548` verifies reverse traversal from Language through LF to the cursor status, Enter opens the actual line palette with a source preview. Add diagnostic target capture after reverse traversal across the three center panel toggles, then Enter Problems. Diagnostic acceptance remains pending.
+
+`45377964611` verifies UI-024: actual diagnostic-count focus and Enter opens the real Errors/Warnings panel without visible source changes. All artifact uploads succeeded.
+
+UI-025, medium/P0: branch status was pointer-only and used custom pointer tracking. Reuse status palette focus/activation handling for this compound control, including Escape return, visible focus and activation propagation stop. Runtime must show actual branch focus, SCM references palette, and Escape return without selecting a branch. No source-control change is authorized.
