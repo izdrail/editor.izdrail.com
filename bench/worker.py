@@ -25,6 +25,9 @@ def main():
         parser.error('this driver accepts local requests only; remote benchmarking requires separate server telemetry')
     if not Path(request.get('model', '')).is_file():
         parser.error('request must name an existing local model')
+    expected_model = os.environ.get('MODEL')
+    if not expected_model or not Path(request['model']).samefile(expected_model):
+        parser.error('request model must be the exact MODEL file verified by run.sh')
     command = [args.worker, '--ai-worker']
     records = []
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr,
