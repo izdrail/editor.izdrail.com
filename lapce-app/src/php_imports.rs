@@ -123,6 +123,65 @@ fn push_use(h: &mut Header, spec: &str, line_start: usize) {
     h.uses.push((full.to_string(), short.to_string(), line_start));
 }
 
+
+/// Resolve an explicit class reference without executing PHP or guessing a basename.
+/// Dynamic variables, methods, comments and quoted strings are left to the LSP.
+pub fn definition(root: &Path, text: &str, line: &str, col: usize) -> Option<(PathBuf, usize)> {
+    if text.len() > 1024 * 1024 || col > line.len() || !line.is_char_boundary(col) {
+        return None;
+    }
+    let valid = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '\\';
+    let start = line[..col].char_indices().rev().find(|(_, c)| !valid(*c)).map_or(0, |(i,c)| i+c.len_utf8());
+    let end = col + line[col..].find(|c: char| !valid(c)).unwrap_or(line.len()-col);
+    let token = &line[start..end];
+    if token.is_empty() || token.len() > 300 || token.starts_with(|c: char| !c.is_ascii_uppercase() && c != '\\') {
+        return None;
+    }
+    let before = &line[..start];
+    // Conservative line-level exclusion. Do not turn text in a string/comment
+    // into a competing local definition result.
+    if before.contains(['\'', '"']) || before.contains("//") || before.contains("/*")
+        || before.contains('#') || before.ends_with('$') || before.ends_with("->")
+        || before.ends_with("::") || before.trim_start().starts_with('*') {
+        return None;
+    }
+    let after = line[end..].trim_start();
+    let class_context = after.starts_with("::") || before.trim_end().ends_with("new")
+        || before.trim_start().starts_with("use ") || before.trim_end().ends_with("extends")
+        || before.trim_end().ends_with("implements") || after.starts_with('$');
+    if !class_context { return None; }
+    let h = parse_header(text);
+    let head = token.trim_start_matches('\\').split('\\').next()?;
+    let tail = &token.trim_start_matches('\\')[head.len()..];
+    let imported: Vec<_> = h.uses.iter().filter(|(_, short, _)| short.eq_ignore_ascii_case(head)).collect();
+    if imported.len() > 1 { return None; }
+    let fqcn = if token.starts_with('\\') {
+        token.trim_start_matches('\\').to_string()
+    } else if let Some((full, _, _)) = imported.first() {
+        format!("{full}{tail}")
+    } else if let Some(ns) = h.namespace {
+        format!("{ns}\\{token}")
+    } else { token.to_string() };
+    let mut maps = crate::class_refs::psr4(root);
+    maps.extend(vendor_psr4(root));
+    if !root.join("composer.json").exists() {
+        maps.push(("App\\".to_string(), root.join("app")));
+    }
+    let mut found: Vec<(PathBuf, usize)> = Vec::new();
+    for (prefix, directory) in maps {
+        let Some(rest) = fqcn.strip_prefix(&prefix) else { continue; };
+        if rest.is_empty() || rest.split('\\').any(|s| s.is_empty() || s == "..") { continue; }
+        let path = directory.join(format!("{}.php", rest.replace('\\', "/")));
+        let Ok(meta) = std::fs::metadata(&path) else { continue; };
+        if !meta.is_file() || meta.len() > 1024 * 1024 { continue; }
+        let Ok(body) = std::fs::read_to_string(&path) else { continue; };
+        let Some((decl, line)) = crate::app_class_index::class_decl(&body) else { continue; };
+        if !decl.eq_ignore_ascii_case(fqcn.rsplit('\\').next()?) { continue; }
+        if !found.iter().any(|(p, _)| p == &path) { found.push((path, line)); }
+    }
+    if found.len() == 1 { found.pop() } else { None }
+}
+
 /// Walk `dir` for `<short>.php`, pushing the PSR-4 name built from `prefix`.
 fn walk(
     dir: &Path,
@@ -450,5 +509,54 @@ mod tests {
         fs::write(d.path().join("composer.json"), "{{{").unwrap();
         assert!(candidates(d.path(), "A").is_empty());
         assert!(insertion("", "A\\B").is_none());
+    }
+}
+
+
+#[cfg(test)]
+mod definition_tests {
+    use super::*;
+    fn fixture() -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        for (file, body) in [
+            ("composer.json", r#"{"autoload":{"psr-4":{"App\\":"app/"}}}"#),
+            ("app/Models/Post.php", "<?php\nnamespace App\\Models;\nclass Post {}\n"),
+            ("app/Services/ReceiptService.php", "<?php\nnamespace App\\Services;\nclass ReceiptService {}\n"),
+        ] {
+            let p = d.path().join(file);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        d
+    }
+    #[test]
+    fn definition_imported_model_and_alias_new_class() {
+        let d = fixture();
+        let text = "<?php\nuse App\\Models\\Post;\nPost::query();\n";
+        assert_eq!(definition(d.path(), text, "Post::query();", 2), Some((d.path().join("app/Models/Post.php"), 2)));
+        let text = "<?php\nuse App\\Services\\ReceiptService as Receipt;\nnew Receipt();\n";
+        assert_eq!(definition(d.path(), text, "new Receipt();", 6), Some((d.path().join("app/Services/ReceiptService.php"), 2)));
+    }
+    #[test]
+    fn definition_namespace_qualified_and_group_imports() {
+        let d = fixture();
+        for (text, line, at) in [
+            ("<?php\nnamespace App\\Models;\nPost::query();", "Post::query();", 2),
+            ("<?php", "new \\App\\Services\\ReceiptService();", 12),
+            ("<?php\nuse App\\Models\\{Post};", "Post::query();", 2),
+        ] {
+            assert!(definition(d.path(), text, line, at).is_some(), "{line}");
+        }
+    }
+    #[test]
+    fn definition_does_not_guess_dynamic_methods_strings_or_missing_imports() {
+        let d = fixture();
+        let text = "<?php\nuse App\\Models\\Post;";
+        for (line, at) in [("$Post::query();", 3), ("$x->Post();", 6), ("// Post::query();", 5), ("'Post::query()'", 3), ("Post::query();", 8)] {
+            assert_eq!(definition(d.path(), text, line, at), None, "{line}");
+        }
+        assert_eq!(definition(d.path(), "<?php", "Post::query();", 2), None);
+        let text = "<?php\nuse App\\Models\\Post;\nuse Other\\Post;";
+        assert_eq!(definition(d.path(), text, "Post::query();", 2), None);
     }
 }
