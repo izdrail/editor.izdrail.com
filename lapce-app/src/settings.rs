@@ -807,6 +807,7 @@ fn settings_item_view(
                     expanded,
                     settings_data.common.window_common.size,
                     config,
+                    validation_message,
                 )
                 .into_any()
             } else if item.header {
@@ -854,18 +855,6 @@ fn settings_item_view(
 
                 let kind = item.kind.clone();
                 let field = item.field.clone();
-                create_effect(move |last| {
-                    let checked = checked.get();
-                    if last.is_none() {
-                        return;
-                    }
-                    if let Ok(value) = serde::Serialize::serialize(
-                        &checked,
-                        toml_edit::ser::ValueSerializer::new(),
-                    ) {
-                        LapceConfig::update_file(&kind, &field, value);
-                    }
-                });
 
                 container(
                     stack((
@@ -877,7 +866,13 @@ fn settings_item_view(
                 .keyboard_navigable()
                 .on_click_stop(move |_| {
                     checked.update(|checked| {
-                        *checked = !*checked;
+                        let next = !*checked;
+                        if LapceConfig::update_file(&kind, &field, toml_edit::Value::from(next)).is_some() {
+                            *checked = next;
+                            validation_message.set(String::new());
+                        } else {
+                            validation_message.set("Could not save setting. Previous value is unchanged.".into());
+                        }
                     });
                 })
                 .style(move |s| {
@@ -1354,6 +1349,7 @@ fn dropdown_view(
     expanded: RwSignal<bool>,
     window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
+    validation_message: RwSignal<String>,
 ) -> impl View + use<> {
     let window_origin = create_rw_signal(Point::ZERO);
     let size = create_rw_signal(Size::ZERO);
@@ -1382,6 +1378,7 @@ fn dropdown_view(
                         window_size,
                         config,
                         input_id,
+                        validation_message,
                     )
                 });
                 overlay_id.set(Some(id));
@@ -1491,6 +1488,7 @@ fn dropdown_scroll(
     window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
     input_id: RwSignal<Option<floem::ViewId>>,
+    validation_message: RwSignal<String>,
 ) -> impl View + use<> {
     dropdown_scroll_focus.set(true);
     let selected = create_rw_signal(dropdown.active_index.min(dropdown.items.len().saturating_sub(1)));
@@ -1503,12 +1501,11 @@ fn dropdown_scroll(
         let local_item_string = item_string.clone();
         label(move || local_item_string.clone())
             .on_click_stop(move |_| {
-                current_value.set(item_string.clone());
-                if let Ok(value) = serde::Serialize::serialize(
-                    &item_string,
-                    toml_edit::ser::ValueSerializer::new(),
-                ) {
-                    LapceConfig::update_file(&kind, &field, value);
+                if LapceConfig::update_file(&kind, &field, toml_edit::Value::from(item_string.as_str())).is_some() {
+                    current_value.set(item_string.clone());
+                    validation_message.set(String::new());
+                } else {
+                    validation_message.set("Could not save setting. Previous value is unchanged.".into());
                 }
                 expanded.set(false);
                 if let Some(id) = input_id.get_untracked() { id.request_focus(); }
@@ -1552,7 +1549,12 @@ fn dropdown_scroll(
             Key::Named(NamedKey::End) => selected.set(keyboard_items.len().saturating_sub(1)),
             Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
                 if let Some(value) = keyboard_items.get(selected.get_untracked()) {
-                    if LapceConfig::update_file(&keyboard_kind,&keyboard_field,toml_edit::Value::from(value.as_str())).is_some() { current_value.set(value.clone()); }
+                    if LapceConfig::update_file(&keyboard_kind,&keyboard_field,toml_edit::Value::from(value.as_str())).is_some() {
+                        current_value.set(value.clone());
+                        validation_message.set(String::new());
+                    } else {
+                        validation_message.set("Could not save setting. Previous value is unchanged.".into());
+                    }
                 }
                 expanded.set(false);
                 if let Some(id) = input_id.get_untracked() { id.request_focus(); }

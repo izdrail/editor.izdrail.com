@@ -401,9 +401,31 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '650', '99', 'click', '1')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'editor: font size')
         time.sleep(1); shot('21-settings-numeric-before')
-        run('mousemove', '600', '270', 'click', '1')
+        numeric_settings_before = settings_file.read_text()
+        run('key', 'Tab')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'invalid-number')
         time.sleep(1); shot('21a-settings-numeric-invalid')
+        if settings_file.read_text() != numeric_settings_before:
+            raise RuntimeError('Invalid numeric setting changed persisted settings')
+        # A read-only isolated settings file exercises real write failures.
+        # Restore permissions even when the acceptance assertion fails.
+        settings_file.chmod(0o444)
+        try:
+            run('mousemove', '650', '99', 'click', '1')
+            run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'auto close quotes')
+            time.sleep(1); run('key', 'Tab', 'space')
+            time.sleep(1); shot('22-settings-toggle-save-failed')
+            if settings_file.read_text() != numeric_settings_before:
+                raise RuntimeError('Failed toggle write changed settings')
+            run('mousemove', '650', '99', 'click', '1')
+            run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'keymap preset')
+            time.sleep(1); run('key', 'Tab', 'space', 'Home', 'Return')
+            time.sleep(1); shot('22a-settings-dropdown-save-failed')
+            if settings_file.read_text() != numeric_settings_before:
+                raise RuntimeError('Failed dropdown write changed settings')
+        finally:
+            settings_file.chmod(0o644)
+
 
 
 
