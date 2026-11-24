@@ -465,6 +465,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'space'); shot('32a-search-file-keyboard-collapsed')
         run('key', 'space', 'Tab'); shot('32b-search-result-keyboard-focus')
         run('key', 'Return'); time.sleep(2); shot('32c-search-result-keyboard-opened')
+        run('key', 'Escape')
         run('mousemove', '120', '93', 'click', '1')
         shot('33-open-editors-header-collapsed')
         run('key', 'space'); shot('33a-open-editors-header-keyboard-expanded')

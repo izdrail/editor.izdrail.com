@@ -2,7 +2,8 @@ use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use floem::{
     View,
-    event::EventListener,
+    event::{Event, EventListener, EventPropagation},
+    keyboard::{Key, NamedKey},
     reactive::{ReadSignal, SignalGet, SignalUpdate},
     style::{CursorStyle, Style},
     views::{Decorators, container, label, scroll, stack, svg, virtual_stack},
@@ -199,6 +200,7 @@ fn search_result(
                             .style(move |s| s.min_width(0.0).items_center()),
                         ))
                         .keyboard_navigable()
+                        .on_event(EventListener::KeyDown, stop_search_activation)
                         .on_click_stop(move |_| {
                             expanded.update(|expanded| *expanded = !*expanded);
                         })
@@ -282,6 +284,7 @@ fn search_result(
                                     )
                                 })
                                 .keyboard_navigable()
+                                .on_event(EventListener::KeyDown, stop_search_activation)
                                 .on_click_stop(
                                     move |_| {
                                         internal_command.send(
@@ -318,4 +321,15 @@ fn search_result(
         .style(|s| s.absolute().size_pct(100.0, 100.0))
     })
     .style(|s| s.size_pct(100.0, 100.0))
+}
+
+// Floem dispatches the focused row's click before this listener. Consume the
+// activation afterwards so the search editor cannot also insert Space/Enter.
+fn stop_search_activation(event: &Event) -> EventPropagation {
+    if let Event::KeyDown(key) = event {
+        if matches!(key.key.logical_key, Key::Named(NamedKey::Enter | NamedKey::Space)) {
+            return EventPropagation::Stop;
+        }
+    }
+    EventPropagation::Continue
 }
