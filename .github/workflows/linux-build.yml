@@ -71,6 +71,28 @@ jobs:
           CARGO_BUILD_JOBS: 2
         run: cargo test --locked -p lapce-ai --features llama-cpp
 
+  mistral-worker-check:
+    name: Isolated Mistral.rs CPU worker
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential cmake clang libclang-dev libssl-dev pkg-config protobuf-compiler
+      - name: Rust toolchain
+        run: rustup toolchain install 1.98.0 --profile minimal --no-self-update && rustup default 1.98.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          workspaces: inference/mistral-worker
+          key: mistral-worker-cpu-rust-1.98.0
+      - name: Compile isolated offline worker
+        env:
+          CARGO_BUILD_JOBS: 2
+          CARGO_PROFILE_DEV_DEBUG: 0
+          HF_HUB_OFFLINE: 1
+        run: cargo check --locked --manifest-path inference/mistral-worker/Cargo.toml
+
   linux:
     name: Linux x86_64 release binary
     needs: tests

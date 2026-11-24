@@ -91,3 +91,11 @@ https://github.com/EricLBuehler/mistral.rs , mistralrs/Cargo.toml and the local
 GGUF builder example. Its APIs offer local GGUF loading and deterministic bounded
 chat requests, but local-only auxiliary-file and cancellation behavior still
 need source verification before execution.
+
+Isolated Mistral.rs implementation candidate added under inference/mistral-worker
+with an independent714-package lockfile, resolving the image conflict without
+editor dependency changes. Local GGUF path, HF_HUB_OFFLINE=1 mandatory, CPU
+default/explicit CUDA feature, deterministic bounded chat, Completion JSON
+metrics from SDK usage. Raw FIM and cooperative cancellation fail explicitly;
+hard cancellation and editor adapter integration remain open. Added hosted
+isolated CPU compile gate. Resolution passed, compilation/inference pending.

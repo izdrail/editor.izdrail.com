@@ -1,0 +1,20 @@
+[package]
+name = "lapce-mistral-worker"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# Dependency isolation is intentional: the editor pins image0.25.1; this SDK
+# requires0.25.10. Do not upgrade the editor's rendering stack to resolve it.
+[workspace]
+
+[features]
+default = []
+cuda = ["mistralrs/cuda"]
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs", rev = "21da642fdd2210c30ca4028e1eabdd28e9c602fd", default-features = false }
