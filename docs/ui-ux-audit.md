@@ -88,3 +88,5 @@ Known source-audit gaps to reproduce: generic value writes can fail without inli
 UI-009, medium/P0: the AI composer's one-line footer reserved 48px plus 8px gap and bottom padding. Remove that minimum, retain natural wrapping for longer keyboard guidance, and use 4px gap/bottom padding. Requires dark wide/narrow runtime screenshots before acceptance.
 
 UI-010, preview-theme confusion: the screenshot supplied to the owner was the explicit light-theme acceptance state, not a change to the shipped default. `defaults/settings.toml` selects Lapce Dark, and config initialization has a dark fallback. Keep testing light, then restore the disposable profile to dark and capture dark final states. Do not overwrite users who explicitly selected another theme.
+
+`45295688323` verifies UI-009 compact disclaimer at dark wide/narrow sizes, and final dark restoration for UI-010. `45295024939` verifies the actual dropdown popup, arrow highlight and Escape cancellation with unchanged selected value. Wrapped focused-footer guidance remains a separate runtime gate, not established by unfocused screenshots.

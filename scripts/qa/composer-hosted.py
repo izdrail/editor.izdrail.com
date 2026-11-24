@@ -378,8 +378,14 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape'); shot('17f-settings-dropdown-keyboard-cancel')
         settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Light"', 'color-theme = "Lapce Dark"'))
         time.sleep(3); shot('18-composer-footer-dark-wide')
+        run('mousemove', '1250', '660', 'click', '1')
+        run('type', '--clearmodifiers', 'Footer wrapping preview only, never send')
+        shot('18b-composer-footer-focused-wide')
+
         run('windowsize', window, '850', '640'); time.sleep(2)
         shot('18a-composer-footer-dark-narrow')
+        run('mousemove', '690', '505', 'click', '1')
+        shot('18c-composer-footer-focused-narrow')
 
 
 
