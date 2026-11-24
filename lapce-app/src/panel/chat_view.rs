@@ -5365,10 +5365,17 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .keyboard_navigable()
                     .on_event_cont(EventListener::FocusGained, move |_| mode_focused.set(true))
                     .on_event_cont(EventListener::FocusLost, move |_| mode_focused.set(false))
-                    .on_click_stop(move |_| {
+                    .on_event_stop(EventListener::PointerDown, move |_| {
                         let open = !mode_expanded.get_untracked();
                         mode_expanded.set(open);
                         if open { model_expanded.set(false); }
+                    })
+                    .on_click_stop(move |event| {
+                        if matches!(event, Event::KeyDown(_)) {
+                            let open = !mode_expanded.get_untracked();
+                            mode_expanded.set(open);
+                            if open { model_expanded.set(false); }
+                        }
                     })
                     .on_move(move |point| {
                         // The help footer changes height when the menu opens.
@@ -5426,6 +5433,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         }
                     });
                     let click_model_open = set_model_open.clone();
+                    let pointer_model_open = set_model_open.clone();
                     let chip = h_stack((
                         label(move || {
                             let c = config.get();
@@ -5463,7 +5471,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .keyboard_navigable()
                     .on_event_cont(EventListener::FocusGained, move |_| model_focused.set(true))
                     .on_event_cont(EventListener::FocusLost, move |_| model_focused.set(false))
-                    .on_click_stop(move |_| click_model_open(!model_expanded.get_untracked()))
+                    .on_event_stop(EventListener::PointerDown, move |_| pointer_model_open(!model_expanded.get_untracked()))
+                    .on_click_stop(move |event| {
+                        if matches!(event, Event::KeyDown(_)) { click_model_open(!model_expanded.get_untracked()); }
+                    })
                     .on_move(move |point| {
                         model_origin.set(point);
                     })

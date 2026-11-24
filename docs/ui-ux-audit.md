@@ -214,3 +214,5 @@ UI-033, high/P0, owner17:16: Chat and model/endpoint menus do not appear. Reprod
 `45447212879` full build passes, but actual00b still shows focus only and no mode menu. UI-033 is NOT accepted. Removing on_move close alone was insufficient. Delay overlay focus until after trigger activation and queued focus/scroll processing; only dismiss a menu on FocusLost after it actually gained focus. Repeat runtime gate.
 
 `45452321542` still loses the menus, so deferred focus alone is insufficient. Remove focus-loss dismissal during overlay mounting; explicit Escape/Tab/toggle/row-choice remain. Recheck actual menus before restoring robust outside dismissal. Custom PSR-4 alias fresh target49a now visibly passes, source alias_usage.php and Billing.php coexist.
+
+UI-033 source refinement: pointer-down focus itself changes footer height, shifting the chip before pointer-up, so Click can be missed entirely. Open on pointer-down, retain native keyboard Click separately and ignore pointer Click to avoid double toggle.
