@@ -369,7 +369,7 @@ fn related_view(
     stack((
         dyn_stack(
             move || related.clone(),
-            |_| 0,
+            |related| (related.location.uri.clone(), related.location.range, related.message.clone()),
             move |related| {
                 let full_path = path_from_url(&related.location.uri);
                 let path = full_path
@@ -378,8 +378,8 @@ fn related_view(
                     .map(|f| {
                         format!(
                             "{f} [{}, {}]: ",
-                            related.location.range.start.line,
-                            related.location.range.start.character
+                            related.location.range.start.line + 1,
+                            related.location.range.start.character + 1
                         )
                     })
                     .unwrap_or_default();

@@ -495,6 +495,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); time.sleep(1); shot('38a-status-branch-palette')
         run('key', 'Escape'); time.sleep(1); shot('38b-status-branch-focus-restored')
         run('key', 'Tab', 'Return'); time.sleep(1); shot('39-problems-empty-guidance')
+        (project / 'related_target.py').write_text('# first related target\n# middle\n#   second related target\n')
         (project / 'diagnostics.py').write_text('# ERROR synthetic error\n# WARN synthetic warning\n')
         run('key', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'diagnostics.py'); run('key', 'Return')
@@ -503,6 +504,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'space'); shot('41a-problems-warning-group-reopened')
         run('key', 'Tab'); shot('41b-problems-warning-keyboard-focus')
         run('key', 'Return'); time.sleep(1); shot('41c-problems-warning-destination')
+        run('mousemove', '920', '540', 'click', '1')
+        run('key', 'Tab'); shot('42-problems-related-first-focus')
+        run('key', 'Tab'); shot('42a-problems-related-second-focus')
+        run('key', 'Return'); time.sleep(1); shot('42b-problems-related-destination')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'diagnostics.py'); run('key', 'Return'); time.sleep(1)
+
 
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '# cleared synthetic diagnostics')
         time.sleep(3); shot('40a-problems-cleared')

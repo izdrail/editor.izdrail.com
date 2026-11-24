@@ -40,6 +40,13 @@ while True:
                     if token in content:
                         column = content.index(token)
                         diagnostics.append({'range': {'start': {'line': line, 'character': column}, 'end': {'line': line, 'character': column + len(token)}}, 'severity': severity, 'source': 'local-ui-fixture', 'message': 'Synthetic ' + token.lower() + ' for UI acceptance'})
+            for diagnostic in diagnostics:
+                if diagnostic['severity'] == 2:
+                    target = Path(unquote(urlparse(document['uri']).path)).with_name('related_target.py').as_uri()
+                    diagnostic['relatedInformation'] = [
+                        {'location': {'uri': target, 'range': {'start': {'line': line, 'character': column}, 'end': {'line': line, 'character': column + 1}}}, 'message': message}
+                        for line, column, message in [(0, 0, 'First synthetic related location'), (2, 4, 'Second synthetic related location')]
+                    ]
             body = json.dumps({'jsonrpc': '2.0', 'method': 'textDocument/publishDiagnostics', 'params': {'uri': document['uri'], 'version': document.get('version', 0), 'diagnostics': diagnostics}}).encode()
             sys.stdout.buffer.write(b'Content-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
             sys.stdout.buffer.flush()

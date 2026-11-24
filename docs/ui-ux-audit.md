@@ -184,3 +184,7 @@ UI-026 acceptance extension: deterministic local stdio LSP fixture now publishes
 `45389619554` verifies UI-026: wrapped empty guidance retains normal panel widths; actual local LSP publication shows one error and warning without guidance, then an empty notification restores guidance. All test/release/upload gates pass.
 
 UI-027, medium/P0: Problems file-group, diagnostic and related-location rows were pointer-only. Add native keyboard focus, visible focus, and activation propagation guard; register row focus so Tab does not indent the document. Capture warning file-group collapse/reopen, Tab to warning, and Enter exact warning-line destination. Related-location and offscreen traversal remain unverified.
+
+`45394796677` verifies UI-027 for file-group collapse/reopen, native warning-row focus and Enter destination line 2 column 3. No source edit from activation. Related-row acceptance remains pending.
+
+UI-028, medium/P0: related diagnostic rows reused one constant list key and displayed zero-based positions. Use URI/range/message identity and display one-based positions, preserving zero-based LSP jump coordinates. Add two related locations in the local fixture, native Tab between them and Enter the second target at line 3 column 5. Runtime list identity and destination acceptance required.
