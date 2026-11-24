@@ -420,10 +420,12 @@ pub(crate) fn completion_word_start(
             &before_cursor,
         ) {
             crate::project_completion::dotted_word_len(&before)
-        } else if blade {
-            crate::builtin_snippets::hyphen_word_len(&before)
         } else {
-            0
+            let extension = crate::builtin_snippets::hyphen_word_len(&before);
+            let full = buffer.slice_to_cow(start.saturating_sub(extension)..offset);
+            if blade || full.starts_with("lv-") || full.starts_with("lw-") {
+                extension
+            } else { 0 }
         }
     };
     start - ext
@@ -504,6 +506,17 @@ mod completion_word_start_tests {
     fn dotted_context_is_unchanged() {
         let b = Buffer::new("route('admin.us')");
         assert_eq!(completion_word_start(&b, php(), 15), 7);
+    }
+
+    #[test]
+    fn php_snippet_prefix_replaces_all_hyphenated_segments() {
+        for prefix in ["lw-component", "lv-livewire-component", "lv-route-get"] {
+            let text = format!("    {prefix}");
+            let b = Buffer::new(&text);
+            assert_eq!(completion_word_start(&b, php(), text.len()), 4, "{prefix}");
+        }
+        let b = Buffer::new("value-other");
+        assert_eq!(completion_word_start(&b, php(), 11), 6);
     }
 
     #[test]
