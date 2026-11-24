@@ -459,6 +459,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '650', '499', 'click', '1')
         run('key', 'ctrl+a', 'BackSpace'); time.sleep(1)
         shot('30b-search-invalid-cleared')
+        run('type', '--clearmodifiers', 'Synthetic')
+        time.sleep(2); run('key', 'Tab', 'Tab', 'Tab', 'Tab')
+        shot('32-search-file-keyboard-focus')
+        run('key', 'space'); shot('32a-search-file-keyboard-collapsed')
+        run('key', 'space', 'Tab'); shot('32b-search-result-keyboard-focus')
+        run('key', 'Return'); time.sleep(2); shot('32c-search-result-keyboard-opened')
+
 
 
 

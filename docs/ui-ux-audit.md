@@ -128,3 +128,7 @@ UI-017, medium/P0: project search showed no guidance for empty/no-match/loading/
 UI-018, medium/P0: actual 31 capture shows Tab inserted spaces into the project-search query instead of moving to option buttons. The form input had deferred Tab, but the workbench-level panel binding consumed it as editor indentation. Bypass that binding for native form traversal, including search-panel focus. Regex keyboard focus/error acceptance remains open until rerun. `45333034590` full build passed but its regex workflow is not accepted.
 
 UI-018 follow-up: `45335551758` proves Tab no longer inserts spaces, but actual focus starts from the toolbar because the search input itself was omitted from traversal. Add keyboard_navigable to the input and explicitly reacquire it before option traversal. Regex acceptance remains open; the green build is not a visual pass.
+
+`45338002057` verifies query Tab reaches Regex, Space enables it and actual [ / ( invalid-expression errors display. UI-018 keyboard query traversal is accepted for this path.
+
+UI-019, medium/P0: search file-group and match rows were pointer-only. Add native keyboard reachability with visible focus and preserve existing expand/jump actions. Capture file-group focus/collapse/reopen, result focus and Enter destination. Virtualized offscreen traversal, precise match-column navigation and delayed search races remain open.

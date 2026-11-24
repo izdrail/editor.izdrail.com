@@ -198,11 +198,14 @@ fn search_result(
                             ))
                             .style(move |s| s.min_width(0.0).items_center()),
                         ))
+                        .keyboard_navigable()
                         .on_click_stop(move |_| {
                             expanded.update(|expanded| *expanded = !*expanded);
                         })
                         .style(move |s| {
-                            s.width_pct(100.0)
+                            s.border(1.0).border_color(floem::peniko::Color::TRANSPARENT)
+                                .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))
+                                .width_pct(100.0)
                                 .min_width_pct(100.0)
                                 .items_center()
                                 .hover(|s| {
@@ -267,7 +270,9 @@ fn search_result(
                                 .style(move |s| {
                                     let config = config.get();
                                     let icon_size = config.ui.icon_size() as f32;
-                                    s.margin_left(10.0 + icon_size + 6.0).hover(
+                                    s.border(1.0).border_color(floem::peniko::Color::TRANSPARENT)
+                                    .focus_visible(|s| s.border_color(config.color(LapceColor::EDITOR_FOCUS)))
+                                    .margin_left(10.0 + icon_size + 6.0).hover(
                                         |s| {
                                             s.cursor(CursorStyle::Pointer)
                                                 .background(config.color(
@@ -276,6 +281,7 @@ fn search_result(
                                         },
                                     )
                                 })
+                                .keyboard_navigable()
                                 .on_click_stop(
                                     move |_| {
                                         internal_command.send(
