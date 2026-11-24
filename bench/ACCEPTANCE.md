@@ -19,6 +19,7 @@ This is a checkpoint, not a completion report or backend recommendation.
 | Mistral cooperative cancellation | NOT IMPLEMENTED | hard cancellation kills/unloads worker instead |
 | CUDA compilation, each backend | BLOCKED on toolkit check | owner build.sh paths supplied; not yet run with CUDA |
 | Exact-model inference, each compatible backend | BLOCKED on owner execution | laptop not reachable; no generic Qwen compatibility claim |
+| VRAM-aware automatic device placement | NOT IMPLEMENTED | auto only probes device0; use explicit tested device or CPU |
 | Actual GPU utilization/VRAM during inference | BLOCKED | logs and process-specific telemetry required, detection is insufficient |
 | Benchmark collection | PASS, fixture tests | POSIX sh/Python, hash guard, same-model driver, comparison guard |
 | Benchmarks, 3+ identical runs | BLOCKED | no target-machine runs recorded |

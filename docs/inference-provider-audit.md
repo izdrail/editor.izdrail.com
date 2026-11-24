@@ -132,3 +132,8 @@ old weights before allocating replacements, avoiding a double-weight peak.
 Failed replacements leave no stale cached model. A generic lifecycle fixture
 checks drop order, failed replacement and cancellation without touching weights.
 Actual loader calls remain non-interruptible, with a check immediately afterward.
+
+Device selection follow-up: explicit cuda:N now parsed/validated and passed
+to the pinned Candle Device::new_cuda(index) API. Parser tests are not GPU
+acceptance. Auto remains device0 initialization fallback only, not VRAM-aware
+placement; this limitation is now explicit in the owner README/checkpoint.

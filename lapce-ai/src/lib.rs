@@ -177,24 +177,40 @@ pub fn sample_loop(
 }
 /// CPU is unchanged by default. `cuda` fails closed; only explicitly chosen
 /// `auto` may fall back, and reports that decision on stderr, never JSON stdout.
+#[derive(Debug, PartialEq)]
+enum DeviceChoice { Cpu, Auto, Cuda(usize) }
+fn parse_device(mode: &str) -> Result<DeviceChoice> {
+    match mode {
+        "cpu" => Ok(DeviceChoice::Cpu),
+        "auto" => Ok(DeviceChoice::Auto),
+        "cuda" => Ok(DeviceChoice::Cuda(0)),
+        value if value.starts_with("cuda:") => {
+            let index = &value[5..];
+            ensure!(!index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()), "CUDA device index must be a nonnegative integer");
+            let index: usize = index.parse()?;
+            ensure!(index < 256, "CUDA device index must be below 256");
+            Ok(DeviceChoice::Cuda(index))
+        }
+        _ => bail!("LAPCE_AI_DEVICE must be cpu, auto, cuda or cuda:N"),
+    }
+}
 fn selected_device() -> Result<Device> {
-    let mode = std::env::var("LAPCE_AI_DEVICE").unwrap_or_else(|_| "cpu".into());
-    ensure!(["cpu", "auto", "cuda"].contains(&mode.as_str()),
-        "LAPCE_AI_DEVICE must be cpu, auto or cuda");
-    if mode == "cpu" {
+    let mode = parse_device(&std::env::var("LAPCE_AI_DEVICE").unwrap_or_else(|_| "cpu".into()))?;
+    if mode == DeviceChoice::Cpu {
         eprintln!("AI backend=candle selected_device=cpu");
         return Ok(Device::Cpu);
     }
-    match Device::new_cuda(0) {
+    let index = match mode { DeviceChoice::Cuda(index) => index, _ => 0 };
+    match Device::new_cuda(index) {
         Ok(device) => {
-            eprintln!("AI backend=candle selected_device=cuda:0");
+            eprintln!("AI backend=candle selected_device=cuda:{index}");
             Ok(device)
         }
-        Err(_) if mode == "auto" => {
+        Err(_) if mode == DeviceChoice::Auto => {
             eprintln!("AI backend=candle selected_device=cpu fallback=cuda_unavailable");
             Ok(Device::Cpu)
         }
-        Err(_) => bail!("CUDA requested but unavailable; compile candle-cuda and check the local driver/runtime"),
+        Err(_) => bail!("CUDA device {index} requested but unavailable; compile candle-cuda and check the local driver/runtime"),
     }
 }
 
@@ -690,6 +706,16 @@ pub fn run() -> i32 {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn device_selection_parses_explicit_indices_without_claiming_gpu_availability() {
+        use super::{parse_device, DeviceChoice};
+        assert_eq!(parse_device("cpu").unwrap(), DeviceChoice::Cpu);
+        assert_eq!(parse_device("auto").unwrap(), DeviceChoice::Auto);
+        assert_eq!(parse_device("cuda").unwrap(), DeviceChoice::Cuda(0));
+        assert_eq!(parse_device("cuda:3").unwrap(), DeviceChoice::Cuda(3));
+        for invalid in ["", "gpu", "cuda:", "cuda:-1", "cuda:1.0", "cuda:256", "cuda:999999999999999999999999"] { assert!(parse_device(invalid).is_err()); }
+    }
+
     #[test]
     fn replacement_drops_old_weights_before_load_and_checks_cancellation() {
         use std::{cell::Cell, rc::Rc};

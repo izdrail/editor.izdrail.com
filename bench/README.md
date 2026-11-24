@@ -133,3 +133,10 @@ and multiplies negative logits once per distinct token. Presence subtracts once
 per seen token; frequency subtracts its value times the output count. Additional
 stops supplement built-in model/FIM stops, never remove them. Min-p remains
 unsupported and is rejected. These settings do not change other backends.
+
+Candle LAPCE_AI_DEVICE accepts cpu (unchanged default), cuda (device0),
+cuda:N (explicit nonnegative index below256), or auto. Explicit cuda:N errors
+if unavailable, never silently falls back. Auto currently only probes device0
+and falls back on initialization failure. VRAM/context-aware auto placement is
+not implemented, so use cpu or a verified explicit device for now. Neither
+selection nor initialization establishes that an inference ran on the GPU.
