@@ -23,3 +23,17 @@ Architecture qwen35moe,40 blocks,256 experts/8 active, attention interval4;
 tensor type IDs0/8/12/13/14, server file size22360456160 bytes. Full payload
 not downloaded or hashed. Machine-readable provenance in bench/target-model-header.json.
 This verifies the format/architecture, not backend inference compatibility.
+
+Candle compatibility guard: before loading weights, read actual GGUF context
+length and embedding vocabulary size. Check external tokenizer IDs against the
+embedding range and, when present, the GGUF token-ID mapping. Completion rejects
+prompt-plus-output budgets over the model's context before forward(), and checks
+cancellation before/after tokenization. Synthetic vocabulary regression tests
+cover mismatched IDs, swapped mappings and missing entries. Real-model regression
+remains required; this does not establish support for qwen35moe.
+
+Candle0.9.1 source API verified from its published crate and quantized_qwen2
+loader: https://crates.io/api/v1/crates/candle-core/0.9.1/download and
+https://crates.io/api/v1/crates/candle-transformers/0.9.1/download .
+The loader already resets KV cache at position0 and then decodes only the newest
+token. No fabricated KV-cache speedup is claimed.

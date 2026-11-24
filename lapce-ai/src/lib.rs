@@ -97,6 +97,7 @@ pub struct CandleProvider {
     model: ModelWeights,
     tokenizer: Tokenizer,
     load_ms: u128,
+    context_length: usize,
 }
 // Construct special marker spellings in code rather than shell transport.
 fn marker(name: &str) -> String {
@@ -168,6 +169,25 @@ pub fn sample_loop(
     }
     Ok(out)
 }
+/// Reject incompatible external tokenizer IDs before any weight allocation.
+/// Equal vocabulary sizes alone do not establish token-ID compatibility.
+fn validate_vocabulary(
+    vocab: &std::collections::HashMap<String, u32>,
+    model_vocab: usize,
+    gguf_tokens: Option<&Vec<gguf_file::Value>>,
+) -> Result<()> {
+    ensure!(model_vocab > 0 && !vocab.is_empty(), "Empty model/tokenizer vocabulary");
+    for (text, &id) in vocab {
+        ensure!((id as usize) < model_vocab, "Tokenizer ID exceeds model vocabulary");
+        if let Some(tokens) = gguf_tokens {
+            ensure!(tokens.get(id as usize)
+                .and_then(|v| v.to_string().ok()).is_some_and(|v| v == text),
+                "Tokenizer token IDs do not match GGUF vocabulary");
+        }
+    }
+    Ok(())
+}
+
 impl CandleProvider {
     pub fn load(model: &Path, tokenizer: &Path) -> Result<Self> {
         let start = Instant::now();
@@ -181,8 +201,17 @@ impl CandleProvider {
                 == Some(&"qwen2".to_owned()),
             "Only qwen2 GGUF is supported"
         );
+        let context_length = content.metadata.get("qwen2.context_length")
+            .ok_or_else(|| anyhow!("Model lacks qwen2 context length"))?.to_u32()? as usize;
+        ensure!(context_length > 0, "Model context length is zero");
+        let vocab_size = content.tensor_infos.get("token_embd.weight")
+            .and_then(|info| info.shape.dims().first()).copied()
+            .ok_or_else(|| anyhow!("Model lacks token embeddings"))?;
         let tokenizer =
             Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e.to_string()))?;
+        let gguf_tokens = content.metadata.get("tokenizer.ggml.tokens")
+            .map(|v| v.to_vec()).transpose()?;
+        validate_vocabulary(&tokenizer.get_vocab(true), vocab_size, gguf_tokens)?;
         for name in ["endoftext"] {
             token(&tokenizer, name)?;
         }
@@ -191,6 +220,7 @@ impl CandleProvider {
             model,
             tokenizer,
             load_ms: start.elapsed().as_millis(),
+            context_length,
         })
     }
 }
@@ -200,7 +230,12 @@ impl Provider for CandleProvider {
         request: &Request,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Completion> {
+        ensure!(!cancelled(), "Cancelled");
         let ids = prompt_ids(&self.tokenizer, request)?;
+        ensure!(!cancelled(), "Cancelled");
+        ensure!(ids.len().checked_add(request.max_tokens)
+            .is_some_and(|n| n <= self.context_length),
+            "Prompt and output exceed the model context length");
         let stops = [
             "fim_prefix",
             "fim_suffix",
@@ -541,6 +576,17 @@ pub fn run() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vocabulary_checks_ids_and_token_mapping_not_only_size() {
+        let vocab = std::collections::HashMap::from([("a".to_string(), 0), ("b".to_string(), 1)]);
+        let correct = vec![gguf_file::Value::String("a".into()), gguf_file::Value::String("b".into())];
+        assert!(validate_vocabulary(&vocab, 2, Some(&correct)).is_ok());
+        assert!(validate_vocabulary(&vocab, 1, None).is_err());
+        let swapped = vec![gguf_file::Value::String("b".into()), gguf_file::Value::String("a".into())];
+        assert!(validate_vocabulary(&vocab, 2, Some(&swapped)).is_err());
+        assert!(validate_vocabulary(&vocab, 2, Some(&vec![])).is_err());
+    }
+
     #[test]
     fn suffix_overlap() {
         assert_eq!(clip_suffix("a + b\n}\nfn main() {}", "\n}"), "a + b");
