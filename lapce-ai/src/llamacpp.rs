@@ -108,3 +108,29 @@ impl Provider for LlamaCppProvider {
             decode_ms: generation_ms.saturating_sub(prefill_ms), cancelled: false })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires exact local GGUF via AI_MODEL; no implicit download"]
+    fn real_model_chat_and_cancellation() {
+        let model = std::path::PathBuf::from(std::env::var("AI_MODEL").unwrap());
+        let mut provider = LlamaCppProvider::load(&model).unwrap();
+        let request = Request {
+            model, tokenizer: Default::default(), prefix: String::new(), suffix: String::new(),
+            prefix_tokens: 128, suffix_tokens: 64, max_tokens: 64, request_id: 1,
+            messages: Some(vec![crate::chat::Message {role: "user".into(), content: "Reply with a short greeting.".into()}]),
+            remote: None,
+        };
+        assert!(provider.complete(&request, &|| true).unwrap_err().to_string().contains("Cancelled"));
+        for _ in 0..3 {
+            let output = provider.complete(&request, &|| false).unwrap();
+            assert!(!output.text.trim().is_empty(), "Empty model response");
+            assert!(output.tokens > 0 && output.prompt_tokens > 0);
+            assert!(!output.cancelled);
+            eprintln!("{}", serde_json::to_string(&output).unwrap());
+        }
+    }
+}

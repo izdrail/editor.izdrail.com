@@ -69,3 +69,30 @@ on GPU. Inspect native logs, process VRAM and actual inference independently.
 FIM requires model special tokens; chat uses the model's embedded template and
 returns a clear error if it cannot be applied. Exact-model support remains
 unverified until inference succeeds.
+
+## Execute a local worker request
+
+Create request.json with the existing Request fields (model path, tokenizer path,
+prefix, suffix, token budgets, max_tokens, request_id, optional messages, remote:null).
+For llama.cpp chat, set messages to system/user/assistant objects; tokenizer path is
+not used because its tokenizer comes from the GGUF. Keep the exact approved model.
+The request file is private input and is not bundled into uploaded results by default.
+
+    MODEL=/path/to/exact.gguf EXPECT_SHA256=verified_hash CONFIG='same-workload' \
+      LAPCE_AI_BACKEND=llama-cpp sh bench/run.sh llamacpp short 1 -- \
+      python3 bench/worker.py --worker target/release/lapce-ai --request request.json
+
+Use --repeat 3 for sequential warm requests in one loaded process. Separate process
+invocations give load-inclusive runs, not verified cold-page-cache measurements.
+The driver enforces a response deadline and kills the process group on failure.
+It preserves raw completions on stderr and emits measured final-decode tokens/s
+only when decode_ms is nonzero. TTFT, streaming latency and prompt throughput
+remain null because the current worker protocol does not expose those observations.
+Review output quality separately. A completed command alone is not model acceptance.
+
+Ignored real-model regression (owner-run only, no download):
+
+    AI_MODEL=/path/to/exact.gguf cargo test -p lapce-ai --features llama-cpp \
+      real_model_chat_and_cancellation -- --ignored --nocapture
+
+No results from that test have been recorded here yet.
