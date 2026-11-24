@@ -66,7 +66,7 @@ const STOPS: [&str; 7] = [
     "<|file_sep|>",
 ];
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct StreamChunk {
     #[serde(default)]
     response: String,
@@ -90,7 +90,7 @@ struct StreamChunk {
     error: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ChatPart {
     content: String,
 }
@@ -160,6 +160,32 @@ fn streamed_completion(text: String, chunk: &StreamChunk, elapsed_ms: u128) -> C
     }
 }
 
+const MAX_STREAM_LINE: u64 = 1024 * 1024;
+const MAX_STREAM_BYTES: usize = 8 * 1024 * 1024;
+
+/// Bound each read before allocating an arbitrary server-controlled line.
+fn read_stream(reader: impl std::io::Read, cancelled: &dyn Fn() -> bool) -> Result<(String, StreamChunk)> {
+    let mut reader = BufReader::new(reader);
+    let mut text = String::new();
+    let mut total = 0usize;
+    loop {
+        if cancelled() { bail!("Cancelled"); }
+        let mut line = String::new();
+        let count = std::io::Read::take(&mut reader, MAX_STREAM_LINE + 1).read_line(&mut line)?;
+        if cancelled() { bail!("Cancelled"); }
+        ensure!(count <= MAX_STREAM_LINE as usize, "Ollama stream line exceeds limit");
+        if count == 0 { bail!("Ollama stream ended before the done chunk"); }
+        total = total.saturating_add(count);
+        ensure!(total <= MAX_STREAM_BYTES, "Ollama stream exceeds response limit");
+        if line.trim().is_empty() { continue; }
+        let chunk: StreamChunk = serde_json::from_str(&line)
+            .map_err(|error| anyhow!("Ollama stream parse: {error}"))?;
+        if let Some(error) = &chunk.error { bail!("Ollama server error: {error}"); }
+        text.push_str(chunk.text());
+        if chunk.done { return Ok((text, chunk)); }
+    }
+}
+
 pub struct OllamaProvider {
     remote: RemoteFim,
 }
@@ -202,29 +228,7 @@ impl Provider for OllamaProvider {
             .timeout(timeout)
             .send_json(body)
             .map_err(|e| anyhow!("Ollama request failed: {e}"))?;
-        // Streaming keeps cancellation cooperative: the flag is checked
-        // between chunks, so a soft cancel aborts mid-generation instead of
-        // waiting for the whole response.
-        let mut text = String::new();
-        let mut final_chunk = None;
-        for line in BufReader::new(response.into_reader()).lines() {
-            if cancelled() {
-                bail!("Cancelled");
-            }
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            let chunk: StreamChunk = serde_json::from_str(&line)
-                .map_err(|e| anyhow!("Ollama stream parse: {e}"))?;
-            if let Some(error) = &chunk.error { bail!("Ollama server error: {error}"); }
-            text.push_str(&chunk.response);
-            if chunk.done {
-                final_chunk = Some(chunk);
-                break;
-            }
-        }
-        let chunk = final_chunk.ok_or_else(|| anyhow!("Ollama stream ended before the done chunk"))?;
+        let (text, chunk) = read_stream(response.into_reader(), cancelled)?;
         Ok(streamed_completion(clean(&text, &request.suffix), &chunk, start.elapsed().as_millis()))
     }
 }
@@ -261,26 +265,7 @@ impl OllamaProvider {
             .timeout(timeout)
             .send_json(chat_body(&self.remote.model, messages, request.max_tokens))
             .map_err(|e| anyhow!("Ollama chat request failed: {e}"))?;
-        let mut text = String::new();
-        let mut final_chunk = None;
-        for line in BufReader::new(response.into_reader()).lines() {
-            if cancelled() {
-                bail!("Cancelled");
-            }
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            let chunk: StreamChunk = serde_json::from_str(&line)
-                .map_err(|e| anyhow!("Ollama chat stream parse: {e}"))?;
-            if let Some(error) = &chunk.error { bail!("Ollama server error: {error}"); }
-            text.push_str(chunk.text());
-            if chunk.done {
-                final_chunk = Some(chunk);
-                break;
-            }
-        }
-        let chunk = final_chunk.ok_or_else(|| anyhow!("Ollama chat stream ended before the done chunk"))?;
+        let (text, chunk) = read_stream(response.into_reader(), cancelled)?;
         // Raw model text: the caller (editor) parses the edit contract.
         Ok(streamed_completion(text, &chunk, start.elapsed().as_millis()))
     }
@@ -303,6 +288,19 @@ pub fn clean(text: &str, suffix: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_stream_preserves_unicode_and_rejects_bad_or_partial_responses() {
+        let wire = concat!("{\"response\":\"héllo🦀\"}\n", "{\"response\":\"!\",\"done\":true,\"eval_count\":2}\n");
+        let (text, done) = read_stream(wire.as_bytes(), &|| false).unwrap();
+        assert_eq!(text, "héllo🦀!"); assert_eq!(done.eval_count,2);
+        for bad in ["", "not json\n", "{\"response\":\"partial\"}\n", "{\"error\":\"missing model\"}\n"] {
+            assert!(read_stream(bad.as_bytes(), &||false).is_err());
+        }
+        assert!(read_stream(wire.as_bytes(), &||true).unwrap_err().to_string().contains("Cancelled"));
+        let oversized = vec![b'x'; MAX_STREAM_LINE as usize + 1];
+        assert!(read_stream(oversized.as_slice(), &||false).unwrap_err().to_string().contains("limit"));
+    }
 
     #[test]
     fn final_chunk_preserves_server_metrics_and_legacy_fallback() {
