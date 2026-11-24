@@ -5363,10 +5363,9 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         if open { model_expanded.set(false); }
                     })
                     .on_move(move |point| {
+                        // The help footer changes height when the menu opens.
+                        // Reposition its overlay instead of immediately closing it.
                         mode_origin.set(point);
-                        if mode_expanded.get_untracked() {
-                            mode_expanded.set(false);
-                        }
                     })
                     .on_resize(move |rect| {
                         mode_trigger_size.set(rect.size());
@@ -5459,9 +5458,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                     .on_click_stop(move |_| click_model_open(!model_expanded.get_untracked()))
                     .on_move(move |point| {
                         model_origin.set(point);
-                        if model_expanded.get_untracked() {
-                            model_expanded.set(false);
-                        }
                     })
                     .on_resize(move |rect| {
                         model_trigger_size.set(rect.size());

@@ -69,6 +69,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('type', '--clearmodifiers', '--delay', '40', 'toggle ai chat')
         run('key', 'Return'); time.sleep(2)
         shot('00-initial')
+        # Pointer opening must survive the composer help footer changing height.
+        run('mousemove', '1195', '727', 'click', '1'); time.sleep(2); shot('00b-pointer-mode-menu')
+        run('key', 'Escape'); time.sleep(1)
+        run('mousemove', '1290', '727', 'click', '1'); time.sleep(2); shot('00c-pointer-model-menu')
+        run('key', 'Escape'); time.sleep(1)
         run('mousemove', '1250', '640', 'click', '1')
         shot('00a-empty-focused')
         run('type', '--clearmodifiers', 'Hosted synthetic draft, never send')
