@@ -48,6 +48,25 @@ class BenchTests(unittest.TestCase):
             env['EXPECT_SHA256'] = '0' * 64
             self.assertNotEqual(subprocess.run(command, env=env, capture_output=True).returncode, 0)
 
+    def test_worker_driver_repeats_and_refuses_different_model(self):
+        with tempfile.TemporaryDirectory() as d:
+            model = Path(d, 'model'); model.write_bytes(b'fixture')
+            other = Path(d, 'other'); other.write_bytes(b'fixture')
+            worker = Path(d, 'worker')
+            worker.write_text('#!/usr/bin/env python3\nimport sys,json\nfor line in sys.stdin:\n print(json.dumps(dict(text="ok",tokens=2,decode_ms=10,load_ms=1)),flush=True)\n')
+            worker.chmod(0o700)
+            request = Path(d, 'request.json');request.write_text(json.dumps(dict(model=str(model),remote=None)))
+            env = dict(os.environ, MODEL=str(model))
+            command = [sys.executable, str(ROOT/'worker.py'), '--worker', str(worker), '--request', str(request), '--repeat', '3']
+            result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = json.loads(result.stdout)
+            self.assertEqual(output['worker_requests'], 3)
+            self.assertEqual(output['gen_tps'], 200)
+            self.assertIsNone(output['ttft_ms'])
+            env['MODEL'] = str(other)
+            self.assertNotEqual(subprocess.run(command, env=env, capture_output=True, timeout=10).returncode, 0)
+
     def test_aggregate_excludes_failed_metrics_and_rejects_mixed_config(self):
         collector = module('collect')
         with tempfile.TemporaryDirectory() as d:

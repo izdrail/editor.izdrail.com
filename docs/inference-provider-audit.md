@@ -79,3 +79,15 @@ exact-model inference. The9126 full-workspace run separately hit ETXTBSY while
 launching a temporary shell test fixture. Fixture publication now uses unique
 paths and a fully closed/synced staging file before atomic rename. No timeout
 threshold or production behavior changed.
+
+Mistral.rs integration finding: pinned upstream commit
+21da642fdd2210c30ca4028e1eabdd28e9c602fd uses image^0.25.10 while lapce-app
+pins image=0.25.1. Adding the optional SDK to this workspace fails dependency
+resolution even with its feature disabled. Do not silently upgrade the editor's
+image stack to hide this conflict. Evaluate a separately built local worker
+adapter with its own dependency graph, preserving the current editor protocol.
+SDK implementation remains open. Source inspected:
+https://github.com/EricLBuehler/mistral.rs , mistralrs/Cargo.toml and the local
+GGUF builder example. Its APIs offer local GGUF loading and deterministic bounded
+chat requests, but local-only auxiliary-file and cancellation behavior still
+need source verification before execution.

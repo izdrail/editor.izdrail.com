@@ -18,6 +18,7 @@ pub struct Capabilities {
 /// Only backends implemented in this build are advertised. A remote server's
 /// model support must be discovered there, never inferred from this registry.
 pub fn available() -> Vec<Capabilities> {
+    #[allow(unused_mut)]
     let mut providers = vec![Capabilities {
         backend: "candle", execution: "local", architectures: &["qwen2"],
         fim: true, chat: true, cuda_compiled: cfg!(feature = "candle-cuda"),

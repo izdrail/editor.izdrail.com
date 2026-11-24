@@ -96,3 +96,7 @@ Ignored real-model regression (owner-run only, no download):
       real_model_chat_and_cancellation -- --ignored --nocapture
 
 No results from that test have been recorded here yet.
+
+The fixture suite also checks three repeated worker requests and refusal when
+the request model is not the same file as MODEL. This prevents collecting a
+verified hash for one file while benchmarking a different file.
