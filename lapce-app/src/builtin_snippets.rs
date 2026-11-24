@@ -240,7 +240,7 @@ mod tests {
         // Blade directives are not offered in plain PHP or Twig files.
         assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "foreach")));
         let laravel = ProjectProfile { laravel: true, ..Default::default() };
-        assert!(for_context("lv-blade-php", &laravel).iter().any(|s| s.prefix.iter().any(|x| x == "lv-livewire-component")));
+        assert!(for_context("php", &laravel).iter().any(|s| s.prefix.iter().any(|x| x == "lv-livewire-component")));
         assert!(!for_context("php", &none).iter().any(|s| s.prefix.iter().any(|x| x == "lv-livewire-component")));
         assert!(for_context("twig", &none).iter().any(|s| s.prefix.iter().any(|x| x == "macro")));
     }
