@@ -114,3 +114,5 @@ UI-015, medium/P0: Linux popup Escape left focus on the now-hidden menu, making 
 `45320561657` verifies UI-015: Escape returns visible focus to main/remote triggers and the expected Tab target opens the real remote menu.
 
 UI-016, medium/P0: Linux menu rows had pointer handlers but no arrow selection/activation. Add enabled-row keyboard selection, wrapping Up/Down, Home/End, Right/Enter submenus, Left parent, Enter/Space leaf activation and Escape focus return. Skip separators/disabled rows. Runtime captures must inspect selection and submenu open/back, with no remote connection activation. Leaf-action acceptance remains separate.
+
+`45323098016` verifies UI-016 arrow selection, Right opening the Gravity Editor submenu with About selected, and Left returning to parent. Add nested Settings navigation across a separator, End selection, and Enter opening Keyboard Shortcuts to verify a real safe leaf action. Remove remaining Lapce branding from Quit/Hide labels. No remote action is activated.

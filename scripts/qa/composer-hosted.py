@@ -439,7 +439,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape', 'shift+Tab', 'space', 'Down', 'Right')
         shot('27a-main-submenu-keyboard')
         run('key', 'Left'); shot('27b-main-submenu-back')
-        run('key', 'Escape')
+        run('key', 'Right', 'Down'); shot('28-menu-skips-separator')
+        run('key', 'Right'); shot('28a-settings-submenu')
+        run('key', 'End'); shot('28b-keyboard-shortcuts-selected')
+        run('key', 'Return'); time.sleep(2); shot('28c-keyboard-shortcuts-activated')
+
 
 
         if bracket_file.read_text() != bracket_text:
