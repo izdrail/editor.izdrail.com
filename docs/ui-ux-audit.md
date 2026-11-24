@@ -132,3 +132,5 @@ UI-018 follow-up: `45335551758` proves Tab no longer inserts spaces, but actual 
 `45338002057` verifies query Tab reaches Regex, Space enables it and actual [ / ( invalid-expression errors display. UI-018 keyboard query traversal is accepted for this path.
 
 UI-019, medium/P0: search file-group and match rows were pointer-only. Add native keyboard reachability with visible focus and preserve existing expand/jump actions. Capture file-group focus/collapse/reopen, result focus and Enter destination. Virtualized offscreen traversal, precise match-column navigation and delayed search races remain open.
+
+UI-017 regression follow-up: route success, error and unexpected-response handling through a single generation-checked boundary. Add deterministic out-of-order reply tests covering stale success, stale error, wrong response kind and generation wrap, plus current success/error distinction. This covers reply acceptance policy, not transport scheduling or a runtime delayed-search race.

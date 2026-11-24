@@ -147,16 +147,15 @@ impl GlobalSearchData {
                 let send = {
                     let global_search = global_search.clone();
                     create_ext_action(cx, move |result: Result<ProxyResponse, lapce_rpc::RpcError>| {
-                        if generation != global_search.search_generation.get_untracked() { return; }
-                        match result {
-                            Ok(ProxyResponse::GlobalSearchResponse { matches }) => {
-                                let count: usize = matches.values().map(Vec::len).sum();
-                                let files = matches.len();
-                                global_search.search_status.set(search_result_status(count, files));
+                        if let Some((status, matches)) = search_response(
+                            generation,
+                            global_search.search_generation.get_untracked(),
+                            result,
+                        ) {
+                            global_search.search_status.set(status);
+                            if let Some(matches) = matches {
                                 global_search.update_matches(matches);
                             }
-                            Err(error) => global_search.search_status.set(format!("Search failed: {}", error.message)),
-                            _ => global_search.search_status.set("Search returned an unexpected response. Try again.".into()),
                         }
                     })
                 };
@@ -220,6 +219,28 @@ impl GlobalSearchData {
     }
 }
 
+type SearchMatches = IndexMap<PathBuf, Vec<SearchMatch>>;
+
+// One boundary for success and failure replies. Older replies must not change
+// either rows or status after a newer query, validation error, or clear.
+fn search_response(
+    generation: u64,
+    current_generation: u64,
+    result: Result<ProxyResponse, lapce_rpc::RpcError>,
+) -> Option<(String, Option<SearchMatches>)> {
+    if generation != current_generation {
+        return None;
+    }
+    Some(match result {
+        Ok(ProxyResponse::GlobalSearchResponse { matches }) => {
+            let count = matches.values().map(Vec::len).sum();
+            (search_result_status(count, matches.len()), Some(matches))
+        }
+        Err(error) => (format!("Search failed: {}", error.message), None),
+        _ => ("Search returned an unexpected response. Try again.".into(), None),
+    })
+}
+
 fn search_result_status(matches: usize, files: usize) -> String {
     if matches == 0 { return "No matches found.".into(); }
     format!("{matches} {} in {files} {}", if matches == 1 { "match" } else { "matches" }, if files == 1 { "file" } else { "files" })
@@ -227,7 +248,32 @@ fn search_result_status(matches: usize, files: usize) -> String {
 
 #[cfg(test)]
 mod search_status_tests {
-    use super::search_result_status;
+    use super::{search_response, search_result_status};
+    use indexmap::IndexMap;
+    use lapce_rpc::{proxy::ProxyResponse, RpcError};
+
+    #[test]
+    fn delayed_replies_never_replace_newer_query_status_or_rows() {
+        assert!(search_response(1, 2, Ok(ProxyResponse::GlobalSearchResponse { matches: IndexMap::new() })).is_none());
+        assert!(search_response(1, 2, Err(RpcError { code: 1, message: "old failure".into() })).is_none());
+        assert!(search_response(1, 2, Ok(ProxyResponse::Success {})).is_none());
+        // Covers generation wrap without treating numeric ordering as freshness.
+        assert!(search_response(u64::MAX, 0, Ok(ProxyResponse::Success {})).is_none());
+    }
+
+    #[test]
+    fn current_replies_keep_success_error_and_protocol_states_distinct() {
+        let (status, matches) = search_response(2, 2, Ok(ProxyResponse::GlobalSearchResponse { matches: IndexMap::new() })).unwrap();
+        assert_eq!(status, "No matches found.");
+        assert!(matches.unwrap().is_empty());
+        let (status, matches) = search_response(2, 2, Err(RpcError { code: 1, message: "permission denied".into() })).unwrap();
+        assert_eq!(status, "Search failed: permission denied");
+        assert!(matches.is_none());
+        let (status, matches) = search_response(2, 2, Ok(ProxyResponse::Success {})).unwrap();
+        assert!(status.contains("unexpected response"));
+        assert!(matches.is_none());
+    }
+
     #[test]
     fn empty_and_counted_states_are_explicit() {
         assert_eq!(search_result_status(0, 0), "No matches found.");
