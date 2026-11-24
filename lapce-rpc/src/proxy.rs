@@ -55,6 +55,9 @@ pub struct SearchMatch {
     pub start: usize,
     pub end: usize,
     pub line_content: String,
+    /// UTF-16 column in the original line, independent of preview truncation.
+    #[serde(default)]
+    pub column: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

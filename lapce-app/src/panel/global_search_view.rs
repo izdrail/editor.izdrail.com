@@ -230,6 +230,7 @@ fn search_result(
                             move |m| {
                                 let path = full_path.clone();
                                 let line_number = m.line;
+                                let column = m.column;
                                 let start = m.start;
                                 let end = m.end;
                                 let line_content = m.line_content.clone();
@@ -292,10 +293,10 @@ fn search_result(
                                                 location: EditorLocation {
                                                     path: path.clone(),
                                                     position: Some(
-                                                        EditorPosition::Line(
-                                                            line_number
-                                                                .saturating_sub(1),
-                                                        ),
+                                                        EditorPosition::Position(lsp_types::Position {
+                                                            line: line_number.saturating_sub(1) as u32,
+                                                            character: column as u32,
+                                                        }),
                                                     ),
                                                     scroll_offset: None,
                                                     ignore_unconfirmed: false,

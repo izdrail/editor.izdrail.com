@@ -2390,34 +2390,9 @@ fn search_in_path(
                     }
 
                     let mymatch = matcher.find(line.as_bytes())?.unwrap();
-                    let line = if line.len() > 200 {
-                        // Shorten the line to avoid sending over absurdly long-lines
-                        // (such as in minified javascript)
-                        // Note that the start/end are column based, not absolute from the
-                        // start of the file.
-                        let left_keep = line[..mymatch.start()]
-                            .chars()
-                            .rev()
-                            .take(100)
-                            .map(|c| c.len_utf8())
-                            .sum::<usize>();
-                        let right_keep = line[mymatch.end()..]
-                            .chars()
-                            .take(100)
-                            .map(|c| c.len_utf8())
-                            .sum::<usize>();
-                        let display_range =
-                            mymatch.start() - left_keep..mymatch.end() + right_keep;
-                        line[display_range].to_string()
-                    } else {
-                        line.to_string()
-                    };
-                    line_matches.push(SearchMatch {
-                        line: lnum as usize,
-                        start: mymatch.start(),
-                        end: mymatch.end(),
-                        line_content: line,
-                    });
+                    line_matches.push(search_match_preview(
+                        lnum as usize, line, mymatch.start(), mymatch.end(),
+                    ));
                     Ok(true)
                 }),
             ) {
@@ -2432,6 +2407,50 @@ fn search_in_path(
     }
 
     Ok(ProxyResponse::GlobalSearchResponse { matches })
+}
+
+fn search_match_preview(line_number: usize, line: &str, start: usize, end: usize) -> SearchMatch {
+    let column = line[..start].encode_utf16().count();
+    let (preview_start, preview_end) = if line.len() > 200 {
+        let left = line[..start].chars().rev().take(100).map(char::len_utf8).sum::<usize>();
+        let right = line[end..].chars().take(100).map(char::len_utf8).sum::<usize>();
+        (start - left, end + right)
+    } else {
+        (0, line.len())
+    };
+    SearchMatch {
+        line: line_number,
+        start: start - preview_start,
+        end: end - preview_start,
+        column,
+        line_content: line[preview_start..preview_end].to_string(),
+    }
+}
+
+#[cfg(test)]
+mod search_preview_tests {
+    use super::search_match_preview;
+
+    #[test]
+    fn unicode_column_is_utf16_while_preview_offsets_are_bytes() {
+        let line = "é😀 target";
+        let start = line.find("target").unwrap();
+        let result = search_match_preview(3, line, start, line.len());
+        assert_eq!(result.column, 5);
+        assert_eq!(&result.line_content[result.start..result.end], "target");
+        assert_eq!(result.line, 3);
+    }
+
+    #[test]
+    fn long_line_preview_keeps_highlight_and_original_column() {
+        let line = format!("{} target {}", "😀".repeat(150), "é".repeat(150));
+        let start = line.find("target").unwrap();
+        let result = search_match_preview(1, &line, start, start + 6);
+        assert_eq!(result.column, 301);
+        assert_eq!(&result.line_content[result.start..result.end], "target");
+        assert_eq!(result.line_content[..result.start].chars().count(), 100);
+        assert_eq!(result.line_content[result.end..].chars().count(), 100);
+    }
 }
 
 #[cfg(test)]
