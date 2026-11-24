@@ -46,6 +46,7 @@ pub fn global_search_panel(
                 TextInputBuilder::new()
                     .is_focused(is_focused)
                     .build_editor(editor.clone())
+                    .keyboard_navigable()
                     .style(|s| s.width_pct(100.0)),
                 clickable_icon(
                     || LapceIcons::SEARCH_CASE_SENSITIVE,

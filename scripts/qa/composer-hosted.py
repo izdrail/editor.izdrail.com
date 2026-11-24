@@ -449,6 +449,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+a', 'BackSpace'); time.sleep(1); shot('29a-search-empty')
         run('type', '--clearmodifiers', 'Synthetic'); time.sleep(2)
         shot('30-search-matches')
+        run('mousemove', '650', '499', 'click', '1')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', '[')
         run('key', 'Tab', 'Tab', 'Tab'); shot('31-search-regex-keyboard-focus')
         run('key', 'space'); time.sleep(2); shot('31a-search-regex-toggle')
