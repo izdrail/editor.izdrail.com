@@ -392,6 +392,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('19-settings-search-before-section')
         run('mousemove', '300', '236', 'click', '1'); time.sleep(2)
         shot('19a-settings-section-clears-search')
+        run('mousemove', '650', '99', 'click', '1')
+        run('type', '--clearmodifiers', 'keymap preset')
+        run('key', 'Tab', 'space', 'Down', 'Return'); time.sleep(2)
+        shot('20-settings-dropdown-accepted')
+        if 'keymap-preset = "vscode"' not in settings_file.read_text():
+            raise RuntimeError('Dropdown keyboard acceptance did not persist vscode')
+
 
 
 

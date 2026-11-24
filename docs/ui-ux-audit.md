@@ -92,3 +92,5 @@ UI-010, preview-theme confusion: the screenshot supplied to the owner was the ex
 `45295688323` verifies UI-009 compact disclaimer at dark wide/narrow sizes, and final dark restoration for UI-010. `45295024939` verifies the actual dropdown popup, arrow highlight and Escape cancellation with unchanged selected value. Wrapped focused-footer guidance remains a separate runtime gate, not established by unfocused screenshots.
 
 UI-011, medium/P0: selecting a settings section while search excluded its header had no useful destination. Section activation now clears the search query before using reactive section offsets. Runtime acceptance must show filtered font settings, then Terminal navigation with empty query and actual terminal settings. `45299561539` verifies focused composer footer wrapping at both widths without clipping or sending.
+
+`45302425777` verifies UI-011 search clearing and real Terminal destination after a sidebar click. Dropdown arrow/cancel evidence is separate from persistence; a final keyboard accept/persist assertion and screenshot now exercise choosing vscode. No whole-settings acceptance is inferred.
