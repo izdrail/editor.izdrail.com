@@ -806,7 +806,7 @@ impl View for TextInput {
     }
 }
 
-fn form_input_traversal(key: &floem::keyboard::Key, mods: floem::keyboard::Modifiers) -> bool {
+pub(crate) fn form_input_traversal(key: &floem::keyboard::Key, mods: floem::keyboard::Modifiers) -> bool {
     *key == floem::keyboard::Key::Named(floem::keyboard::NamedKey::Tab)
         && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT)
 }

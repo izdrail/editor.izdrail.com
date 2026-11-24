@@ -2727,6 +2727,14 @@ impl WindowTabData {
             return false;
         }
         let focus = self.common.focus.get_untracked();
+        if let EventRef::Keyboard(key) = event.into() {
+            if crate::text_input::form_input_traversal(&key.key.logical_key, key.modifiers)
+                && (self.common.keyboard_focus.get_untracked().is_some()
+                    || focus == Focus::Panel(PanelKind::Search))
+            {
+                return false;
+            }
+        }
         let keypress = self.common.keypress.get_untracked();
         let handle = match focus {
             Focus::Workbench => self.main_split.key_down(event, &keypress),
