@@ -146,17 +146,13 @@ impl GlobalSearchData {
                 global_search.search_status.set("Searching workspace files...".into());
                 let send = {
                     let global_search = global_search.clone();
-                    create_ext_action(cx, move |result| {
+                    create_ext_action(cx, move |result: Result<ProxyResponse, lapce_rpc::RpcError>| {
                         if generation != global_search.search_generation.get_untracked() { return; }
                         match result {
                             Ok(ProxyResponse::GlobalSearchResponse { matches }) => {
                                 let count: usize = matches.values().map(Vec::len).sum();
                                 let files = matches.len();
-                                global_search.search_status.set(if count == 0 {
-                                    "No matches found.".into()
-                                } else {
-                                    format!("{count} matches in {files} files")
-                                });
+                                global_search.search_status.set(search_result_status(count, files));
                                 global_search.update_matches(matches);
                             }
                             Err(error) => global_search.search_status.set(format!("Search failed: {}", error.message)),
@@ -221,5 +217,22 @@ impl GlobalSearchData {
         self.editor
             .cursor()
             .update(|cursor| cursor.set_insert(Selection::region(0, pattern_len)));
+    }
+}
+
+fn search_result_status(matches: usize, files: usize) -> String {
+    if matches == 0 { return "No matches found.".into(); }
+    format!("{matches} {} in {files} {}", if matches == 1 { "match" } else { "matches" }, if files == 1 { "file" } else { "files" })
+}
+
+#[cfg(test)]
+mod search_status_tests {
+    use super::search_result_status;
+    #[test]
+    fn empty_and_counted_states_are_explicit() {
+        assert_eq!(search_result_status(0, 0), "No matches found.");
+        assert_eq!(search_result_status(1, 1), "1 match in 1 file");
+        assert_eq!(search_result_status(4, 1), "4 matches in 1 file");
+        assert_eq!(search_result_status(4, 2), "4 matches in 2 files");
     }
 }
