@@ -532,6 +532,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             shot(capture + '-source')
             run('mousemove', str(x), '112', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
             time.sleep(2); shot(capture + '-new-tab-target')
+
+        (project / 'model_import_usage.php').write_text('<?php\nuse App\\Models\\Post;\nPost::query();\n')
+        (project / 'class_import_usage.php').write_text('<?php\nuse App\\Services\\ReceiptService;\nnew ReceiptService();\n')
+        for source_name, x, capture in [('model_import_usage.php', 355, '47-imported-model'), ('class_import_usage.php', 410, '48-imported-class')]:
+            run('key', 'ctrl+p'); time.sleep(1)
+            run('type', '--clearmodifiers', source_name); run('key', 'Return'); time.sleep(2)
+            shot(capture + '-source')
+            run('mousemove', str(x), '130', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
+            time.sleep(2); shot(capture + '-destination-or-failure')
         run('windowsize', window, '850', '640'); time.sleep(2); shot('43-problems-empty-narrow-dark')
         settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
         time.sleep(3); shot('43a-problems-empty-narrow-light')
