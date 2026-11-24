@@ -9,6 +9,7 @@ pub mod ollama;
 #[cfg(feature = "llama-cpp")]
 pub mod llamacpp;
 pub mod process;
+pub mod mistralrs;
 use anyhow::{Result, anyhow, bail, ensure};
 use candle_core::{Device, Tensor, quantized::gguf_file};
 use candle_transformers::models::quantized_qwen2::ModelWeights;
@@ -535,8 +536,12 @@ pub fn run() -> i32 {
         #[cfg(feature = "llama-cpp")]
         let mut llama_provider: Option<(PathBuf, llamacpp::LlamaCppProvider)> = None;
         let local_backend = std::env::var("LAPCE_AI_BACKEND").unwrap_or_else(|_| "candle".into());
-        ensure!(["candle", "llama-cpp"].contains(&local_backend.as_str()), "Unknown local AI backend");
+        ensure!(["candle", "llama-cpp", "mistral-rs"].contains(&local_backend.as_str()), "Unknown local AI backend");
         ensure!(local_backend != "llama-cpp" || cfg!(feature = "llama-cpp"), "llama-cpp backend was not compiled");
+        let mut mistral_provider = if local_backend == "mistral-rs" {
+            Some(mistralrs::MistralRsProvider::new(PathBuf::from(std::env::var("LAPCE_AI_MISTRAL_WORKER")
+                .map_err(|_| anyhow!("Set LAPCE_AI_MISTRAL_WORKER to the explicit worker executable"))?))?)
+        } else { None };
         for request in rx {
             if let Some(remote) = request.remote.clone() {
                 // Network lane: no local model files are touched. A remote
@@ -566,6 +571,25 @@ pub fn run() -> i32 {
                         cancelled: true,
                     },
                     Err(e) => return Err(e),
+                };
+                println!("{}", serde_json::to_string(&output)?);
+                std::io::stdout().flush()?;
+                continue;
+            }
+            if let Some(provider) = mistral_provider.as_mut() {
+                let id = request.request_id;
+                let cancelled = || {
+                    let named = cancel_for.load(Ordering::Acquire);
+                    named == id || (id == 0 && named != u64::MAX)
+                };
+                let start = Instant::now();
+                let output = match provider.complete(&request, &cancelled) {
+                    Ok(output) => output,
+                    Err(error) if is_cancelled(&error) => Completion {
+                        text: String::new(), tokens: 0, prompt_tokens: 0, load_ms: 0,
+                        generation_ms: start.elapsed().as_millis(), prefill_ms: 0, decode_ms: 0, cancelled: true,
+                    },
+                    Err(error) => return Err(error),
                 };
                 println!("{}", serde_json::to_string(&output)?);
                 std::io::stdout().flush()?;

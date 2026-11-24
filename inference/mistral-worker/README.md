@@ -22,3 +22,10 @@ GPU selection is requested, not demonstrated. CPU/CUDA feature builds and actual
 model tests remain acceptance gates. Native logs must stay separate from JSON.
 Source: https://github.com/EricLBuehler/mistral.rs at
 21da642fdd2210c30ca4028e1eabdd28e9c602fd .
+
+Editor adapter: set LAPCE_AI_BACKEND=mistral-rs and
+LAPCE_AI_MISTRAL_WORKER to the absolute existing worker executable. The adapter
+forces offline mode, bounds request/response size, polls cancellation and kills
+the worker on cancel/error/timeout. Hard cancellation unloads the model. JSON
+parse failures stop the worker rather than treating native diagnostics as output.
+The isolated SDK worker compilation must pass before this route is usable.

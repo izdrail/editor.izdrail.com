@@ -99,3 +99,10 @@ default/explicit CUDA feature, deterministic bounded chat, Completion JSON
 metrics from SDK usage. Raw FIM and cooperative cancellation fail explicitly;
 hard cancellation and editor adapter integration remain open. Added hosted
 isolated CPU compile gate. Resolution passed, compilation/inference pending.
+
+MistralRsProvider process adapter wired through the existing Provider trait and
+worker backend selector. Explicit executable path, offline child environment,
+8MiB request/response bounds,300s response deadline,25ms cancellation polling,
+kill/wait cleanup and cold restart after cancellation. Fixture regression checks
+completion JSON and cancellation cleanup;28 default crate tests passed locally.
+This verifies the adapter, not SDK compilation or actual model inference.
