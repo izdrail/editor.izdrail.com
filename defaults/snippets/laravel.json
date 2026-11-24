@@ -1266,5 +1266,101 @@
       "}"
     ],
     "description": "Database notification method, add database to via and create notification table"
+  },
+  "Model casts method": {
+    "prefix": "lv-model-casts",
+    "description": "Eloquent casts method inside a model; Laravel 11+",
+    "body": [
+      "protected function casts(): array",
+      "{",
+      "\treturn [",
+      "\t\t'${1:enabled}' => '${2:boolean}',",
+      "\t];",
+      "}"
+    ]
+  },
+  "Model enum cast": {
+    "prefix": "lv-model-enum-cast",
+    "description": "Entry inside casts(): enum class must exist",
+    "body": [
+      "'${1:status}' => \\\\App\\\\Enums\\\\${2:Status}::class,"
+    ]
+  },
+  "Model soft deletes": {
+    "prefix": "lv-model-soft-deletes",
+    "description": "Trait inside a model; requires deleted_at timestamp migration",
+    "body": [
+      "use \\\\Illuminate\\\\Database\\\\Eloquent\\\\SoftDeletes;"
+    ]
+  },
+  "Model UUID identifiers": {
+    "prefix": "lv-model-uuid",
+    "description": "Trait inside a model; requires UUID-compatible primary key",
+    "body": [
+      "use \\\\Illuminate\\\\Database\\\\Eloquent\\\\Concerns\\\\HasUuids;"
+    ]
+  },
+  "Model eager loading": {
+    "prefix": "lv-model-with",
+    "description": "Default eager-loaded relationships inside a model",
+    "body": [
+      "protected \\$with = ['${1:author}'];"
+    ]
+  },
+  "Model hidden attributes": {
+    "prefix": "lv-model-hidden",
+    "description": "Attributes excluded from array/JSON output, not access control",
+    "body": [
+      "protected \\$hidden = ['${1:password}', '${2:remember_token}'];"
+    ]
+  },
+  "Model attribute transform": {
+    "prefix": "lv-model-attribute",
+    "description": "Typed attribute accessor and mutator inside a model",
+    "body": [
+      "protected function ${1:title}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute",
+      "{",
+      "\treturn \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute::make(",
+      "\t\tget: fn (string \\$value): string => ${2:ucfirst(\\$value)},",
+      "\t\tset: fn (string \\$value): string => ${3:trim(\\$value)},",
+      "\t);",
+      "}"
+    ]
+  },
+  "Model typed local scope": {
+    "prefix": "lv-model-scope",
+    "description": "Typed conventional local scope inside a model",
+    "body": [
+      "public function scope${1:Published}(\\\\Illuminate\\\\Database\\\\Eloquent\\\\Builder \\$query): void",
+      "{",
+      "\t\\$query->where('${2:published}', ${3:true});",
+      "}"
+    ]
+  },
+  "Factory named state": {
+    "prefix": "lv-factory-state",
+    "description": "State method inside a model factory",
+    "body": [
+      "public function ${1:published}(): static",
+      "{",
+      "\treturn \\$this->state(fn (array \\$attributes): array => [",
+      "\t\t'${2:published_at}' => ${3:now()},",
+      "\t]);",
+      "}"
+    ]
+  },
+  "Factory configuration callbacks": {
+    "prefix": "lv-factory-configure",
+    "description": "Factory callbacks; replace model placeholder and callback bodies",
+    "body": [
+      "public function configure(): static",
+      "{",
+      "\treturn \\$this->afterMaking(function (\\\\App\\\\Models\\\\${1:Post} \\$model): void {",
+      "\t\t${2:// Configure the unsaved model.}",
+      "\t})->afterCreating(function (\\\\App\\\\Models\\\\${1:Post} \\$model): void {",
+      "\t\t$0",
+      "\t});",
+      "}"
+    ]
   }
 }

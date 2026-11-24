@@ -167,6 +167,25 @@ mod tests {
 
     use crate::snippet::Snippet as Parsed;
 
+
+    #[test]
+    fn model_and_factory_snippets_keep_variables_types_and_namespace_separators() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-model-casts").contains("protected function casts(): array"));
+        assert!(text("lv-model-enum-cast").contains("\\App\\Enums\\Status::class"));
+        assert!(text("lv-model-soft-deletes").contains("\\Illuminate\\Database\\Eloquent\\SoftDeletes;"));
+        assert!(text("lv-model-uuid").contains("\\Illuminate\\Database\\Eloquent\\Concerns\\HasUuids;"));
+        assert!(text("lv-model-with").contains("protected $with = ['author'];"));
+        assert!(text("lv-model-hidden").contains("protected $hidden = ['password', 'remember_token'];"));
+        assert!(text("lv-model-attribute").contains("get: fn (string $value): string => ucfirst($value)"));
+        assert!(text("lv-model-scope").contains("Builder $query): void"));
+        assert!(text("lv-factory-state").contains("$this->state(fn (array $attributes): array"));
+        assert!(text("lv-factory-configure").contains("function (\\App\\Models\\Post $model): void"));
+    }
+
     #[test]
     fn laravel_family_prefixes_are_standardized_and_globally_unique() {
         let mut seen = std::collections::HashSet::new();

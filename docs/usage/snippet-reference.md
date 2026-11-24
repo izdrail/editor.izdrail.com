@@ -247,6 +247,16 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-hash-password | Hash a password using the configured hashing driver |
 | lv-notification-queued | Queued mail notification, requires mail and queue configuration |
 | lv-notification-database | Database notification method, add database to via and create notification table |
+| lv-model-casts | Eloquent casts method inside a model; Laravel 11+ |
+| lv-model-enum-cast | Entry inside casts(): enum class must exist |
+| lv-model-soft-deletes | Trait inside a model; requires deleted_at timestamp migration |
+| lv-model-uuid | Trait inside a model; requires UUID-compatible primary key |
+| lv-model-with | Default eager-loaded relationships inside a model |
+| lv-model-hidden | Attributes excluded from array/JSON output, not access control |
+| lv-model-attribute | Typed attribute accessor and mutator inside a model |
+| lv-model-scope | Typed conventional local scope inside a model |
+| lv-factory-state | State method inside a model factory |
+| lv-factory-configure | Factory callbacks; replace model placeholder and callback bodies |
 
 ## livewire
 

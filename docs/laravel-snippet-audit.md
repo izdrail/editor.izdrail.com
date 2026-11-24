@@ -39,3 +39,13 @@ This remains partial F/H/I/J coverage, not full A-J acceptance.
 Sources: https://laravel.com/docs/12.x/queues ,
 https://laravel.com/docs/12.x/events , https://laravel.com/docs/12.x/authorization ,
 https://laravel.com/docs/12.x/notifications .
+
+Model/factory slice: ten entries (Laravel115), covering typed casts, enum
+casts, soft deletes/UUID prerequisites, eager loading, hidden output attributes,
+typed attribute transform/local scope, factory states and lifecycle callbacks.
+Descriptions distinguish model members from casts-array entries and schema
+requirements. Hidden attributes are not described as authorization. This remains
+partial A-J coverage, not complete acceptance. Sources checked:
+https://laravel.com/docs/12.x/eloquent ,
+https://laravel.com/docs/12.x/eloquent-mutators ,
+https://laravel.com/docs/12.x/eloquent-factories .
