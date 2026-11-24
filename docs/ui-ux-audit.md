@@ -194,3 +194,7 @@ UI-028, medium/P0: related diagnostic rows reused one constant list key and disp
 `45405535031` GUI 42a/42b verifies normal-foreground related text is readable; the second related row still opens line 3 column 5. Full release completion remains awaited at capture inspection. Add empty Problems narrow dark/light, wide light and restored wide dark captures to check wrapping within the existing panel layout.
 
 `45409417065` full gates pass and actual wide dark/light empty states are readable. Narrow captures expose excessively tall word-by-word wrapping in the two side-by-side severity columns. UI-030, medium/P0: stack Problems sections vertically below 480px panel width and move the divider to the bottom edge. Verify actual narrow dark/light and wide restoration before responsive acceptance. Other panels are unchanged.
+
+## Owner clarification, 24 November 14:45 GMT
+
+UI-002 / UX-004 navigation backlog: Ctrl+click on a Laravel Model, class or route reference must resolve the target and open it in a new tab, rather than replacing the current tab. This is an existing workspace/navigation interaction under Phase 1, not a new autocomplete or AI-agent feature. Verify Laravel-specific reference resolution and tab preservation separately, using a real project/provider before claiming Laravel support. Existing deterministic LSP navigation captures do not close this request. Keep strict phase order.
