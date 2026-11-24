@@ -106,3 +106,9 @@ worker backend selector. Explicit executable path, offline child environment,
 kill/wait cleanup and cold restart after cancellation. Fixture regression checks
 completion JSON and cancellation cleanup;28 default crate tests passed locally.
 This verifies the adapter, not SDK compilation or actual model inference.
+
+Adapter backpressure fix: move potentially blocked pipe writes off the serving
+thread, poll cancellation/deadline while writing, kill/wait on abort. Added a
+1MiB request fixture whose worker never reads stdin; cancellation returns
+without waiting for its10s sleep. Registry now describes the separate Mistral
+worker's capabilities without claiming its CUDA build state.

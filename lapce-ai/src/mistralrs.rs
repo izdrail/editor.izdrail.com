@@ -58,9 +58,24 @@ impl Provider for MistralRsProvider {
         ensure!(body.len() <= 8 * 1024 * 1024, "Mistral request exceeds limit");
         self.start()?;
         let result = (|| -> Result<Completion> {
-            let stdin = self.stdin.as_mut().ok_or_else(|| anyhow!("Mistral stdin unavailable"))?;
-            stdin.write_all(&body)?; stdin.write_all(b"\n")?; stdin.flush()?;
+            let mut stdin = self.stdin.take().ok_or_else(|| anyhow!("Mistral stdin unavailable"))?;
+            let (written_tx, written_rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let written = (|| -> std::io::Result<()> {
+                    stdin.write_all(&body)?; stdin.write_all(b"\n")?; stdin.flush()
+                })();
+                let _ = written_tx.send((stdin, written));
+            });
             let started = Instant::now();
+            loop {
+                ensure!(!cancelled(), "Cancelled");
+                ensure!(started.elapsed() < Duration::from_secs(300), "Mistral request write deadline exceeded");
+                match written_rx.recv_timeout(Duration::from_millis(25)) {
+                    Ok((stdin, result)) => { self.stdin = Some(stdin); result?; break; }
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(_) => bail!("Mistral request writer closed"),
+                }
+            }
             loop {
                 if cancelled() { bail!("Cancelled"); }
                 ensure!(started.elapsed() < Duration::from_secs(300), "Mistral worker response deadline exceeded");
@@ -81,6 +96,24 @@ impl Provider for MistralRsProvider {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn cancellation_interrupts_a_blocked_request_write() {
+        let root = std::env::temp_dir().join(format!("mistral-blocked-{}",std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let exe = root.join("worker.sh");
+        std::fs::write(&exe,"#!/bin/sh\nexec sleep 10\n").unwrap();
+        std::fs::set_permissions(&exe,std::fs::Permissions::from_mode(0o700)).unwrap();
+        let model = root.join("model");std::fs::write(&model,b"fixture").unwrap();
+        let request: Request = serde_json::from_value(serde_json::json!({"model":model,"tokenizer":"", "prefix":"", "suffix":"", "prefix_tokens":1,"suffix_tokens":0,"max_tokens":1,"messages":[{"role":"user","content":"x".repeat(1024*1024)}]})).unwrap();
+        let mut provider = MistralRsProvider::new(exe).unwrap();
+        let started = Instant::now();
+        let result = provider.complete(&request,&|| started.elapsed()>Duration::from_millis(150));
+        assert!(result.unwrap_err().to_string().contains("Cancelled"));
+        assert!(started.elapsed()<Duration::from_secs(3));
+        assert!(provider.child.is_none());
+        drop(provider);std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn adapter_reads_compatible_completion_and_kills_on_cancel() {
         let root = std::env::temp_dir().join(format!("mistral-adapter-{}",std::process::id()));
