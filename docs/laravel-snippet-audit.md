@@ -109,3 +109,7 @@ ownership assumption. Both permissions must be implemented for the application.
 lv-cast method parameters now fully qualify Eloquent Model instead of assuming
 an import. Identity behavior is explicit; these methods alone are not a cast
 class. Entry count unchanged. Expansion regressions added.
+
+A-J acceptance checkpoint now tracked in laravel-snippet-coverage.md. Entry
+counts alone are not completion. The checkpoint separates missing templates,
+missing original attachment/tail and runtime validation not performed.
