@@ -132,3 +132,9 @@ to all attributes, and boot override preserves parent boot for model traits.
 Source for query update: https://raw.githubusercontent.com/laravel/docs/12.x/queries.md .
 Model lifecycle source was verified in Laravel12 Model.php in the prior slice.
 No database queries run; runtime fixtures remain pending.
+
+Password reset broker handler (Laravel157): validates token/email/confirmed
+password with Password::defaults(), delegates credential checks to broker, hashes
+password, rotates remember token and emits PasswordReset after save. Description
+requires guest/CSRF/throttle/broker setup. No real password or account changed.
+Source: https://raw.githubusercontent.com/laravel/docs/12.x/passwords.md .

@@ -298,6 +298,7 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-query-update | Bulk query update with explicit nonempty key list; bypasses Eloquent model events, authorize affected rows |
 | lv-model-guarded | Inside model; deny all mass assignment until an explicit fillable/guarded policy replaces this |
 | lv-model-boot | Inside model; merge with any existing boot method, preserve parent boot for traits |
+| lv-password-reset | Guest CSRF-protected controller body; configure broker, reset token table and login route, add throttling |
 
 ## livewire
 

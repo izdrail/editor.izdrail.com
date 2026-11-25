@@ -180,6 +180,18 @@ mod tests {
 
 
 
+
+    #[test]
+    fn password_reset_template_uses_broker_validation_hash_and_token_rotation() {
+        let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == "lv-password-reset")).unwrap();
+        let text = Parsed::from_str(&item.body).unwrap().text();
+        assert!(text.contains("'confirmed'"));
+        assert!(text.contains("Password::reset("));
+        assert!(text.contains("Hash::make($password)"));
+        assert!(text.contains("->setRememberToken(\\Illuminate\\Support\\Str::random(60))"));
+        assert!(text.contains("PasswordReset($user)"));
+    }
+
     #[test]
     fn bulk_update_and_model_safety_templates_have_explicit_guards() {
         let text = |prefix: &str| {

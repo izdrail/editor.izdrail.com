@@ -1822,5 +1822,28 @@
       "\t$0",
       "}"
     ]
+  },
+  "Password reset broker handler": {
+    "prefix": "lv-password-reset",
+    "description": "Guest CSRF-protected controller body; configure broker, reset token table and login route, add throttling",
+    "body": [
+      "\\$request->validate([",
+      "\t'token' => ['required', 'string'],",
+      "\t'email' => ['required', 'email'],",
+      "\t'password' => ['required', 'confirmed', \\\\Illuminate\\\\Validation\\\\Rules\\\\Password::defaults()],",
+      "]);",
+      "\\$status = \\\\Illuminate\\\\Support\\\\Facades\\\\Password::reset(",
+      "\t\\$request->only('email', 'password', 'password_confirmation', 'token'),",
+      "\tfunction (\\\\App\\\\Models\\\\User \\$user, string \\$password): void {",
+      "\t\t\\$user->forceFill(['password' => \\\\Illuminate\\\\Support\\\\Facades\\\\Hash::make(\\$password)])",
+      "\t\t\t->setRememberToken(\\\\Illuminate\\\\Support\\\\Str::random(60));",
+      "\t\t\\$user->save();",
+      "\t\tevent(new \\\\Illuminate\\\\Auth\\\\Events\\\\PasswordReset(\\$user));",
+      "\t}",
+      ");",
+      "return \\$status === \\\\Illuminate\\\\Support\\\\Facades\\\\Password::PasswordReset",
+      "\t? redirect()->route('login')->with('status', __(\\$status))",
+      "\t: back()->withErrors(['email' => [__(\\$status)]]);"
+    ]
   }
 }
