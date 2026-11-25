@@ -137,3 +137,11 @@ Device selection follow-up: explicit cuda:N now parsed/validated and passed
 to the pinned Candle Device::new_cuda(index) API. Parser tests are not GPU
 acceptance. Auto remains device0 initialization fallback only, not VRAM-aware
 placement; this limitation is now explicit in the owner README/checkpoint.
+
+Hosted routing80c5dfe failed only in the optional provider test job after
+successful compilation: process worker fixture hit Linux ETXTBSY on spawn.
+Close/sync/rename publication was already in place. Worker spawn now retries
+only Linux errno26 up to five attempts,10ms apart (40ms maximum delay).
+Other launch errors fail immediately. Deterministic tests cover transient,
+exhausted and permission-error cases. No test/inference timeout increased.
+Source evidence: https://github.com/izdrail/editor.izdrail.com/actions/runs/45522375880 .

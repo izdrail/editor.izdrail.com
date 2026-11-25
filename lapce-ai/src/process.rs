@@ -21,6 +21,19 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
+/// Linux can briefly reject an atomically published executable with ETXTBSY.
+/// Retry only that errno, never permissions, missing files or arbitrary errors.
+fn spawn_retry<T>(mut spawn: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    for attempt in 0..5 {
+        match spawn() {
+            Err(error) if cfg!(target_os = "linux") && error.raw_os_error() == Some(26) && attempt < 4 => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+    unreachable!()
+}
 type Reply = Box<dyn FnOnce(Result<Completion, String>) + Send>;
 struct Job {
     generation: u64,
@@ -153,12 +166,12 @@ fn serve(executable: PathBuf, shared: Arc<Shared>) {
                 }
             };
             if dead {
-                let mut process = Command::new(&executable)
+                let mut process = spawn_retry(|| Command::new(&executable)
                     .arg("--ai-worker")
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::null())
-                    .spawn()?;
+                    .spawn())?;
                 let stdin = process.stdin.take().unwrap();
                 stdout = Some(BufReader::new(process.stdout.take().unwrap()));
                 let mut slot = shared.child.lock().unwrap();
@@ -217,6 +230,22 @@ fn serve(executable: PathBuf, shared: Arc<Shared>) {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn spawn_retry_only_retries_linux_text_busy_and_is_bounded() {
+        let mut calls = 0;
+        let result = spawn_retry(|| {
+            calls += 1;
+            if calls == 1 { Err(std::io::Error::from_raw_os_error(26)) } else { Ok(7) }
+        });
+        if cfg!(target_os = "linux") { assert_eq!(result.unwrap(), 7); assert_eq!(calls, 2); }
+        else { assert!(result.is_err()); assert_eq!(calls, 1); }
+        let mut calls = 0;
+        let result: std::io::Result<()> = spawn_retry(|| { calls += 1; Err(std::io::Error::from_raw_os_error(26)) });
+        assert!(result.is_err()); assert_eq!(calls, if cfg!(target_os = "linux") {5} else {1});
+        let mut calls = 0;
+        let result: std::io::Result<()> = spawn_retry(|| { calls += 1; Err(std::io::Error::from_raw_os_error(13)) });
+        assert!(result.is_err()); assert_eq!(calls, 1);
+    }
     fn script(name: &str, body: &str) -> PathBuf {
         use std::io::Write;
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
