@@ -1,7 +1,9 @@
 //! Experimental PHP/HTML byte styling. No parser, I/O, PHP execution or UI state.
-//! Style IDs match LexPHP. Checkpoints currently support inspection, not incremental reuse.
+//! Style IDs match LexPHP. Safe line checkpoints preserve host/mode restart state.
 pub mod laravel;
 pub mod symfony;
+pub mod incremental;
+pub mod cooperative;
 
 use logos::Logos;
 use std::ops::Range;
@@ -92,10 +94,19 @@ pub struct Checkpoint {
     pub mode: Mode,
     pub host: HtmlContext,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineCheckpoint {
+    pub line_offset: usize,
+    /// Multiline tokens restart at their opening token, never inside a string.
+    pub restart_offset: usize,
+    pub mode: Mode,
+    pub host: HtmlContext,
+}
 #[derive(Debug, Clone)]
 pub struct Output {
     pub styles: Vec<u8>,
     pub checkpoints: Vec<Checkpoint>,
+    pub line_checkpoints: Vec<LineCheckpoint>,
 }
 
 pub fn lex(source: &str) -> Output { lex_mode(source, false) }
@@ -106,9 +117,12 @@ pub fn lex_blade(source: &str) -> Output { lex_mode(source, true) }
 fn lex_mode(source: &str, blade: bool) -> Output {
     Driver {
         blade,
+        cancel:None,
+        budget:None,
         source,
         styles: vec![style::HTML; source.len()],
         checkpoints: vec![],
+        line_checkpoints: vec![],
         html: HtmlContext::Text,
     }
     .run()
@@ -123,31 +137,59 @@ pub enum HtmlContext {
 }
 struct Driver<'a> {
     blade: bool,
+    cancel:Option<&'a std::sync::atomic::AtomicUsize>,
+    budget:Option<cooperative::Budget>,
     source: &'a str,
     styles: Vec<u8>,
     checkpoints: Vec<Checkpoint>,
+    line_checkpoints: Vec<LineCheckpoint>,
     html: HtmlContext,
 }
 impl Driver<'_> {
-    fn paint(&mut self, r: Range<usize>, style: u8) {
-        self.styles[r].fill(style);
+    fn tick(&mut self,amount:usize)->bool {self.budget.as_mut().is_none_or(|budget|budget.tick(amount)) && !self.cancelled()}
+    fn cancelled(&self)->bool {self.cancel.is_some_and(|cancel|cancel.load(std::sync::atomic::Ordering::Relaxed)!=0)}
+    fn find_bounded(&mut self,start:usize,needle:&str)->Option<usize> {
+        let mut at=start;
+        while at<self.source.len() {
+            if !self.tick(1){return None;}
+            if self.source[at..].starts_with(needle){return Some(at);}
+            at+=self.source[at..].chars().next().unwrap().len_utf8();
+        }
+        None
     }
-    fn run(mut self) -> Output {
-        let mut offset = 0;
-        let mut mode = Mode::Html;
+    fn paint(&mut self, r: Range<usize>, style: u8) {
+        let mut at=r.start;
+        while at<r.end {
+            let end=(at+1024).min(r.end);
+            if !self.tick(end-at){return;}
+            self.styles[at..end].fill(style);at=end;
+        }
+    }
+    fn run(self) -> Output { self.run_from(0,Mode::Html) }
+    fn run_from(mut self, mut offset:usize, mut mode:Mode) -> Output {
         self.checkpoints.push(Checkpoint { offset, mode, host: self.html });
         while offset < self.source.len() {
+            if !self.tick(1){break;}
+            let start=offset;
+            let start_mode=mode;
+            let start_host=self.html;
+            if offset==0 || self.source.as_bytes()[offset-1]==b'\n' {
+                let checkpoint=LineCheckpoint{line_offset:offset,restart_offset:offset,mode,host:self.html};
+                if self.line_checkpoints.last().is_some_and(|c|c.line_offset==offset) {self.line_checkpoints.pop();}
+                self.line_checkpoints.push(checkpoint);
+            }
             if mode == Mode::Html {
                 if self.blade {
-                    if let Some(end) = self.blade_token(offset) { offset=end; continue; }
+                    if let Some(end) = self.blade_token(offset) { self.record_lines(start,end,start_mode,start_host);offset=end; continue; }
                 }
-                if self.source[offset..].eq_ignore_ascii_case("<?php") {
+                if self.source.len()-offset==5 && self.source[offset..].eq_ignore_ascii_case("<?php") {
                     self.paint(offset..self.source.len(), style::OPEN);
                     self.checkpoints.push(Checkpoint {
                         offset: self.source.len(),
                         mode: Mode::Php,
                         host: self.html,
                     });
+                    self.record_lines(start,self.source.len(),start_mode,start_host);
                     break;
                 }
                 let mut lexer = Html::lexer(&self.source[offset..]);
@@ -176,10 +218,21 @@ impl Driver<'_> {
                 }
                 offset = end;
             }
+            self.record_lines(start,offset,start_mode,start_host);
         }
+        if self.source.is_empty() {self.line_checkpoints.push(LineCheckpoint{line_offset:0,restart_offset:0,mode,host:self.html});}
         Output {
             styles: self.styles,
             checkpoints: self.checkpoints,
+            line_checkpoints: self.line_checkpoints,
+        }
+    }
+    fn record_lines(&mut self,start:usize,end:usize,mode:Mode,host:HtmlContext) {
+        for (relative,byte) in self.source.as_bytes()[start..end].iter().enumerate() {
+            if relative%1024==0 && self.budget.as_mut().is_some_and(|budget|!budget.tick((end-start-relative).min(1024))){return;}
+            if *byte==b'\n' && start+relative+1<end {
+                self.line_checkpoints.push(LineCheckpoint{line_offset:start+relative+1,restart_offset:start,mode,host});
+            }
         }
     }
     // Host syntax survives PHP islands, including islands inside quoted
@@ -198,8 +251,12 @@ impl Driver<'_> {
                 self.html = HtmlContext::Tag(true);
                 (start + 1, style::HTML_DELIMITER)
             }
+            HtmlContext::Text if bytes[start]==b'\n' => (start+1,style::HTML),
             HtmlContext::Text => {
-                let end = bytes[start+1..].iter().position(|b| *b==b'<' || (self.blade && matches!(*b,b'@'|b'{'))).map_or(bytes.len(), |n| start+1+n);
+                let mut end=start+self.source[start..].chars().next().unwrap().len_utf8();
+                while end<bytes.len() && bytes[end]!=b'<' && bytes[end]!=b'\n' && !(self.blade && matches!(bytes[end],b'@'|b'{')) {
+                    if !self.tick(1){break;}if !self.tick(1){break;}end+=self.source[end..].chars().next().unwrap().len_utf8();
+                }
                 // Search byte-wise for ASCII delimiters, never slice UTF-8 at1.
                 (end, style::HTML)
             }
@@ -213,7 +270,7 @@ impl Driver<'_> {
                 while end<bytes.len() && !self.source[end..].starts_with("-->")
                     && !(self.blade && matches!(bytes[end], b'@'|b'{'))
                     && !self.source[end..].starts_with("<?") {
-                    end+=self.source[end..].chars().next().unwrap().len_utf8();
+                    if !self.tick(1){break;}end+=self.source[end..].chars().next().unwrap().len_utf8();
                 }
                 (end,style::HTML_COMMENT)
             }
@@ -223,7 +280,7 @@ impl Driver<'_> {
                 else {
                     while end<bytes.len() && bytes[end]!=quote
                         && !(self.blade && matches!(bytes[end],b'@'|b'{'))
-                        && !(bytes[end]==b'<' && bytes.get(end+1)==Some(&b'?')) { end+=1; }
+                        && !(bytes[end]==b'<' && bytes.get(end+1)==Some(&b'?')) { if !self.tick(1){break;}end+=1; }
                 }
                 if end==start { end+=1; } // Invalid <? prefix, still host text.
                 (end,style::HTML_STRING)
@@ -241,7 +298,7 @@ impl Driver<'_> {
                     let mut end=start+1;
                     while end<bytes.len() && !bytes[end].is_ascii_whitespace()
                         && !(self.blade && matches!(bytes[end],b'@'|b'{'))
-                        && !matches!(bytes[end], b'<'|b'>'|b'/'|b'='|b'\''|b'"') { end+=1; }
+                        && !matches!(bytes[end], b'<'|b'>'|b'/'|b'='|b'\''|b'"') { if !self.tick(1){break;}end+=1; }
                     self.html=HtmlContext::Tag(false);
                     (end,if name {style::HTML_TAG} else {style::HTML_ATTRIBUTE})
                 }
@@ -253,17 +310,17 @@ impl Driver<'_> {
     fn blade_token(&mut self, start: usize) -> Option<usize> {
         let rest=&self.source[start..];
         if rest.starts_with("{{--") {
-            let end=rest[4..].find("--}}").map_or(self.source.len(),|n|start+4+n+4);
+            let end=self.find_bounded(start+4,"--}}").map_or(self.source.len(),|n|n+4);
             self.paint(start..end,style::COMMENT); return Some(end);
         }
         // Escaped Blade constructs are literal output, including escaped echos.
         if rest.starts_with("@@") || rest.starts_with("@{{") || rest.starts_with("@{!!") {
             let mut end=start+2;
             if rest.starts_with("@{{") || rest.starts_with("@{!!") {
-                let close=if rest.starts_with("@{{") {"}}"} else {"!!}"};
-                end=self.source[start+3..].find(close).map_or(self.source.len(),|n|start+3+n+close.len());
+                let close=if self.source[start..].starts_with("@{{") {"}}"} else {"!!}"};
+                end=self.find_bounded(start+3,close).map_or(self.source.len(),|n|n+close.len());
             } else {
-                while end<self.source.len() && self.source.as_bytes()[end].is_ascii_alphabetic() {end+=1;}
+                while end<self.source.len() && self.source.as_bytes()[end].is_ascii_alphabetic() {if !self.tick(1){return Some(self.source.len());}end+=1;}
             }
             let scope=if matches!(self.html,HtmlContext::Quoted(_)) {style::HTML_STRING} else {style::HTML};
             self.paint(start..end,scope); return Some(end);
@@ -276,20 +333,20 @@ impl Driver<'_> {
         }
         if rest.starts_with('@') && rest.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic) {
             let mut end=start+2;
-            while end<self.source.len() && (self.source.as_bytes()[end].is_ascii_alphanumeric() || self.source.as_bytes()[end]==b'_') {end+=1;}
+            while end<self.source.len() && (self.source.as_bytes()[end].is_ascii_alphanumeric() || self.source.as_bytes()[end]==b'_') {if !self.tick(1){return Some(self.source.len());}end+=1;}
             let name=&self.source[start+1..end];
             // Avoid treating email addresses as directives.
             if start>0 && self.source.as_bytes()[start-1].is_ascii_alphanumeric() && self.source.as_bytes().get(end)==Some(&b'.') {return None;}
             self.paint(start..end,style::KEYWORD);
             if name=="verbatim" {
                 let close="@endverbatim";
-                let stop=self.source[end..].find(close).map_or(self.source.len(),|n|end+n);
+                let stop=self.find_bounded(end,close).unwrap_or(self.source.len());
                 self.paint(end..stop,style::HTML);
                 let finish=(stop+close.len()).min(self.source.len());
                 self.paint(stop..finish,style::KEYWORD);return Some(finish);
             }
             let mut args=end;
-            while args<self.source.len() && self.source.as_bytes()[args].is_ascii_whitespace() {args+=1;}
+            while args<self.source.len() && self.source.as_bytes()[args].is_ascii_whitespace() {if !self.tick(1){return Some(self.source.len());}args+=1;}
             if self.source.as_bytes().get(args)==Some(&b'(') {
                 self.paint(end..args,style::DEFAULT);
                 return Some(self.blade_php(args,"",true));
@@ -305,6 +362,7 @@ impl Driver<'_> {
     fn blade_php(&mut self, mut at: usize, close: &str, parentheses: bool) -> usize {
         let mut depth=0usize;
         while at<self.source.len() {
+            if !self.tick(1){return self.source.len();}
             if !parentheses && depth==0 && self.source[at..].starts_with(close) {
                 let end=at+close.len();self.paint(at..end,style::CLOSE);return end;
             }
@@ -322,11 +380,42 @@ impl Driver<'_> {
         at
     }
     fn php_token(&mut self, start: usize) -> usize {
+        // Logos DFA token scans can otherwise consume an unbounded identifier
+        // before returning. Walk long candidate runs cooperatively first and
+        // classify names directly with the same accepted character grammar.
+        let first=self.source[start..].chars().next().unwrap();
+        if first=='_' || first.is_alphabetic() || first as u32>=0x80 || first=='$' {
+            let variable=first=='$';let mut end=start+first.len_utf8();
+            if variable && !self.source[end..].chars().next().is_some_and(|c|c=='_' || c.is_alphabetic() || c as u32>=0x80) {
+                self.paint(start..end,style::OPERATOR);return end;
+            }
+            while end<self.source.len() {
+                let c=self.source[end..].chars().next().unwrap();
+                if !(c=='_' || c.is_alphanumeric() || c as u32>=0x80){break;}
+                if !self.tick(c.len_utf8()){return self.source.len();}end+=c.len_utf8();
+            }
+            let scope=if variable{style::VARIABLE}else if end-start<64 {word_style(&self.source[start..end])} else {
+                let mut upper=false;let mut lower=false;let mut at=start;
+                while at<end {let c=self.source[at..].chars().next().unwrap();if !self.tick(c.len_utf8()){return self.source.len();}upper|=c.is_uppercase();lower|=c.is_lowercase();at+=c.len_utf8();}
+                if upper&&!lower {style::CONSTANT}else{style::IDENTIFIER}
+            };
+            self.paint(start..end,scope);return end;
+        }
+        if first.is_ascii_whitespace() {
+            let mut end=start;
+            while end<self.source.len() && matches!(self.source.as_bytes()[end],b' '|b'\t'|b'\r'|b'\n'|12) {
+                if !self.tick(1){return self.source.len();}end+=1;if self.source.as_bytes()[end-1]==b'\n'{break;}
+            }
+            if end>start{self.paint(start..end,style::DEFAULT);return end;}
+        }
+        if first.is_ascii_digit() || (first=='.' && self.source.as_bytes().get(start+1).is_some_and(u8::is_ascii_digit)) {
+            let end=self.number_end(start);self.paint(start..end,style::NUMBER);return end;
+        }
         let mut lexer = Php::lexer(&self.source[start..]);
         let token = lexer.next();
         let end = start + lexer.span().end;
         let (end, style) = match token {
-            Some(Ok(Php::Whitespace)) => (end, style::DEFAULT),
+            Some(Ok(Php::Whitespace)) => (self.source[start..end].find('\n').map_or(end,|n|start+n+1), style::DEFAULT),
             Some(Ok(Php::Variable)) => (end, style::VARIABLE),
             Some(Ok(Php::Identifier)) => (end, word_style(&self.source[start..end])),
             Some(Ok(Php::Number)) => (end, style::NUMBER),
@@ -336,9 +425,7 @@ impl Driver<'_> {
                 return self.quoted(start, quote);
             }
             Some(Ok(Php::Block)) => {
-                let end = self.source[end..]
-                    .find("*/")
-                    .map_or(self.source.len(), |n| end + n + 2);
+                let end = self.find_bounded(end,"*/").map_or(self.source.len(),|n|n+2);
                 let style = if self.source[start..].starts_with("/**")
                     && !self.source[start..].starts_with("/**/") {
                     style::DOC
@@ -349,10 +436,11 @@ impl Driver<'_> {
             }
             Some(Ok(Php::Line)) => {
                 // PHP ends a line comment on ?>, but never a block comment.
-                let rest = &self.source[end..];
-                let stop = rest.find(['\r', '\n']).unwrap_or(rest.len());
-                let stop = rest[..stop].find("?>").unwrap_or(stop);
-                (end + stop, style::LINE_COMMENT)
+                let mut stop=end;
+                while stop<self.source.len() && !matches!(self.source.as_bytes()[stop],b'\r'|b'\n') && !self.source[stop..].starts_with("?>") {
+                    if !self.tick(1){break;}stop+=self.source[stop..].chars().next().unwrap().len_utf8();
+                }
+                (stop,style::LINE_COMMENT)
             }
             Some(Ok(Php::Heredoc)) => {
                 if let Some(end) = self.heredoc(start) {
@@ -366,10 +454,33 @@ impl Driver<'_> {
         self.paint(start..end, style);
         end
     }
+    fn digits(&mut self,mut at:usize,radix:u32)->usize {
+        let bytes=self.source.as_bytes();
+        while at<bytes.len() && (bytes[at] as char).is_digit(radix) {
+            if !self.tick(1){return at;}at+=1;
+            if bytes.get(at)==Some(&b'_') && bytes.get(at+1).is_some_and(|b|(*b as char).is_digit(radix)) {at+=1;}
+        }
+        at
+    }
+    fn number_end(&mut self,start:usize)->usize {
+        let bytes=self.source.as_bytes();
+        if bytes[start]==b'0' {
+            let radix=match bytes.get(start+1){Some(b'x'|b'X')=>16,Some(b'b'|b'B')=>2,Some(b'o'|b'O')=>8,_=>0};
+            if radix!=0 && bytes.get(start+2).is_some_and(|b|(*b as char).is_digit(radix)){return self.digits(start+2,radix);}
+        }
+        let mut end=self.digits(start,10);
+        if bytes.get(end)==Some(&b'.') {end=self.digits(end+1,10);}
+        if bytes.get(end).is_some_and(|b|matches!(b,b'e'|b'E')) {
+            let mut digits=end+1;if bytes.get(digits).is_some_and(|b|matches!(b,b'+'|b'-')){digits+=1;}
+            if bytes.get(digits).is_some_and(u8::is_ascii_digit){end=self.digits(digits,10);}
+        }
+        end
+    }
     fn quoted(&mut self, start: usize, quote: u8) -> usize {
         let bytes = self.source.as_bytes();
         let mut at = start + 1;
         while at < bytes.len() {
+            if !self.tick(1){return self.source.len();}
             if bytes[at] == b'\\' {
                 at = (at + 2).min(bytes.len());
                 continue;
@@ -378,7 +489,7 @@ impl Driver<'_> {
                 && ((bytes[at] == b'{' && bytes.get(at + 1) == Some(&b'$'))
                     || (bytes[at] == b'$' && bytes.get(at + 1) == Some(&b'{')))
             {
-                at = braced_end(bytes, at + 2, bytes.len());
+                at = braced_end(bytes, at + 2, bytes.len(),&mut self.budget);
                 continue;
             }
             if bytes[at] == quote {
@@ -403,6 +514,7 @@ impl Driver<'_> {
         let bytes = self.source.as_bytes();
         let mut at = start;
         while at < end {
+            if !self.tick(1){return;}
             if bytes[at] == b'\\' {
                 at = (at + 2).min(end);
                 continue;
@@ -412,7 +524,7 @@ impl Driver<'_> {
             if brace || dollar_brace {
                 let begin = at;
                 at += 2;
-                at = braced_end(bytes, at, end);
+                at = braced_end(bytes, at, end,&mut self.budget);
                 self.paint(begin..at, style::INTERPOLATED);
             } else if bytes[at] == b'$' && self.source.is_char_boundary(at) {
                 let mut lexer = Php::lexer(&self.source[at..end]);
@@ -425,7 +537,7 @@ impl Driver<'_> {
                         if bytes.get(cursor) == Some(&b'-') { cursor += 1; }
                         while cursor < end && (bytes[cursor].is_ascii_alphanumeric()
                             || bytes[cursor] == b'_' || bytes[cursor] == b'$'
-                            || bytes[cursor] >= 0x80) { cursor += 1; }
+                            || bytes[cursor] >= 0x80) { if !self.tick(1){return;}cursor += 1; }
                         if cursor > stop + 1 && bytes.get(cursor) == Some(&b']') {
                             stop = cursor + 1;
                         }
@@ -447,7 +559,7 @@ impl Driver<'_> {
         }
     }
     fn heredoc(&mut self, start: usize) -> Option<usize> {
-        let line_end = start + self.source[start..].find('\n')? + 1;
+        let line_end = self.find_bounded(start,"\n")? + 1;
         let head = self.source[start + 3..line_end].trim();
         let nowdoc = head.starts_with('\'');
         let label = if head.starts_with(['\'', '"']) {
@@ -465,23 +577,21 @@ impl Driver<'_> {
         {
             return None;
         }
+        let label=label.to_owned();
         let mut end = self.source.len();
         let mut content_end = end;
         let mut at = line_end;
-        for line in self.source[line_end..].split_inclusive('\n') {
-            let trimmed = line.trim_start_matches([' ', '\t']);
-            if let Some(rest) = trimmed.strip_prefix(label) {
-                let follows_identifier = rest
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c == '_' || c.is_alphanumeric());
-                if !follows_identifier {
-                    content_end = at;
-                    end = at + line.len() - trimmed.len() + label.len();
-                    break;
+        while at<self.source.len() {
+            let next=self.find_bounded(at,"\n").map_or(self.source.len(),|n|n+1);
+            if self.cancelled(){return Some(self.source.len());}
+            let line=&self.source[at..next];
+            let trimmed=line.trim_start_matches([' ','\t']);
+            if let Some(rest)=trimmed.strip_prefix(label.as_str()) {
+                if !rest.chars().next().is_some_and(|c|c=='_' || c.is_alphanumeric()) {
+                    content_end=at;end=next-trimmed.len()+label.len();break;
                 }
             }
-            at += line.len();
+            at=next;
         }
         self.paint(
             start..end,
@@ -498,9 +608,10 @@ impl Driver<'_> {
     }
 }
 // Explicit stack depth avoids recursive parsing on malformed or deeply nested input.
-fn braced_end(bytes: &[u8], mut at: usize, end: usize) -> usize {
+fn braced_end(bytes: &[u8], mut at: usize, end: usize,budget:&mut Option<cooperative::Budget>) -> usize {
     let mut depth = 1usize;
     while at < end && depth > 0 {
+        if budget.as_mut().is_some_and(|budget|!budget.tick(1)){return end;}
         match bytes[at] {
             b'\\' => {
                 at = (at + 2).min(end);
@@ -510,6 +621,7 @@ fn braced_end(bytes: &[u8], mut at: usize, end: usize) -> usize {
                 let q = bytes[at];
                 at += 1;
                 while at < end && bytes[at] != q {
+                    if budget.as_mut().is_some_and(|budget|!budget.tick(1)){return end;}
                     if bytes[at] == b'\\' {
                         at += 1;
                     }

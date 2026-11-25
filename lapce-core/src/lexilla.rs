@@ -118,38 +118,81 @@ fn profile_php_lists(
 }
 
 #[cfg(feature = "logos-php")]
-fn highlight_logos(language:LapceLanguage,source:&str,project:&crate::project_profile::ProjectProfile)->Option<Arc<Snapshot>> {
+fn highlight_logos(language:LapceLanguage,source:&str,project:&crate::project_profile::ProjectProfile, prepared:Option<gravity_lex::Output>,cancel:Option<&std::sync::atomic::AtomicUsize>)->Option<Arc<Snapshot>> {
     use LapceLanguage::*;
     if matches!(language, Php | Blade) && project.laravel {
-        let mut output = if language==Blade {gravity_lex::lex_blade(source)} else {gravity_lex::lex(source)};
+        let mut output = prepared.clone().unwrap_or_else(||if language==Blade {gravity_lex::lex_blade(source)} else {gravity_lex::lex(source)});
         let lists=crate::web_metadata::php_lists(project);
         let vocab=gravity_lex::laravel::Vocabulary {
             facades: &lists[4], route_methods: &lists[5], artisan: &lists[6], helpers: &lists[7], eloquent: &lists[8],
         };
-        if gravity_lex::laravel::overlay(source,&mut output.styles,&vocab) {
+        if gravity_lex::laravel::overlay_cancellable(source,&mut output.styles,&vocab,cancel) {
             if let Some(snapshot)=Snapshot::from_laravel_styles(source,output.styles,language==Blade) {return Some(Arc::new(snapshot));}
         }
     }
     if language==Php && project.symfony_app && !project.laravel {
-        let mut output=gravity_lex::lex(source);
+        let mut output=prepared.clone().unwrap_or_else(||gravity_lex::lex(source));
         let types=crate::web_metadata::php_symbols(project).filter(|symbol|symbol.framework=="symfony" && symbol.kind=="class").map(|symbol|symbol.name.as_str()).collect::<Vec<_>>().join(" ");
-        if gravity_lex::symfony::overlay(source,&mut output.styles,&types) {
+        if gravity_lex::symfony::overlay_cancellable(source,&mut output.styles,&types,cancel) {
             if let Some(snapshot)=Snapshot::from_symfony_styles(source,output.styles) {return Some(Arc::new(snapshot));}
         }
     }
     // Unsupported profiles fall through to native Lexilla.
     if language == Blade {
-        if let Some(snapshot) = Snapshot::from_blade_styles(source, gravity_lex::lex_blade(source).styles) {
+        if let Some(snapshot) = Snapshot::from_blade_styles(source, prepared.clone().unwrap_or_else(||gravity_lex::lex_blade(source)).styles) {
             return Some(Arc::new(snapshot));
         }
     }
     if language == Php && !project.laravel && !project.symfony_app && !project.wordpress {
-        if let Some(snapshot) = Snapshot::from_mixed_php_styles(source, gravity_lex::lex(source).styles) {
+        if let Some(snapshot) = Snapshot::from_mixed_php_styles(source, prepared.clone().unwrap_or_else(||gravity_lex::lex(source)).styles) {
             return Some(Arc::new(snapshot));
         }
     }
     if language == Twig && project.symfony_app {return crate::web_templates::twig_profile(source,true).map(Arc::new);}
     None
+}
+
+#[cfg(feature = "logos-php")]
+pub(crate) fn highlight_incremental(
+    language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile,
+    cache:&mut Option<Arc<gravity_lex::incremental::Cache>>,cancel:&Arc<std::sync::atomic::AtomicUsize>,
+)->Option<Arc<Snapshot>> {
+    let backend=std::env::var("GRAVITY_LEXER").ok();
+    highlight_incremental_backend(language,text,project,cache,cancel,backend.as_deref())
+}
+#[cfg(feature="logos-php")]
+pub(crate) fn highlight_incremental_backend(language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile,
+cache:&mut Option<Arc<gravity_lex::incremental::Cache>>,cancel:&Arc<std::sync::atomic::AtomicUsize>,backend:Option<&str>)->Option<Arc<Snapshot>> {
+    if !logos_requested(backend) || !matches!(language,LapceLanguage::Php|LapceLanguage::Blade) || (project.wordpress && !project.laravel && !project.symfony_app) {
+        *cache=None;return highlight_profile_backend(language,text,project,backend);
+    }
+    let source=text.to_string();let blade=language==LapceLanguage::Blade;
+    if cancel.load(std::sync::atomic::Ordering::Acquire)!=0{return None;}
+    let quick=cache.as_mut().filter(|cache|cache.blade()==blade).map(|cache|Arc::make_mut(cache).update_cancellable(source.clone(),64*1024,Some(cancel)));
+    let output=match quick {
+        Some(gravity_lex::incremental::Update::Ready{output,..})=>output,
+        Some(gravity_lex::incremental::Update::Cancelled)=>return None,
+        _=> {
+            let mut session=gravity_lex::cooperative::Session::new(source.clone(),blade,cancel.clone());
+            loop {
+                match session.step(16*1024) {
+                    gravity_lex::cooperative::Step::Complete(output)=> {
+                        *cache=gravity_lex::incremental::Cache::from_output(source.clone(),blade,output.clone()).map(Arc::new);break output;
+                    }
+                    gravity_lex::cooperative::Step::Yielded{..}=>std::thread::yield_now(),
+                    gravity_lex::cooperative::Step::Cancelled=>return None,
+                }
+            }
+        }
+    };
+    if cancel.load(std::sync::atomic::Ordering::Acquire)!=0{return None;}
+    let snapshot=highlight_logos(language,&source,project,Some(output),Some(cancel))?;
+    Some(snapshot)
+}
+
+#[cfg(feature="logos-php")]
+pub(crate) fn native_folding_snapshot(language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile)->Option<Arc<Snapshot>> {
+    highlight_profile_backend(language,text,project,None)
 }
 
 pub fn highlight_profile(
@@ -178,7 +221,7 @@ fn highlight_profile_backend(
     // The only backend-selection hook. Compiling support never changes default.
     #[cfg(feature = "logos-php")]
     if logos_requested(backend) {
-        if let Some(mut snapshot)=highlight_logos(language,&source,project) {
+        if let Some(mut snapshot)=highlight_logos(language,&source,project,None,None) {
             // This flag changes colouring only. Preserve native folding until
             // the experimental driver has its own equivalent fold producer.
             if let Some(native)=highlight_profile_backend(language,text,project,None) {
@@ -1476,6 +1519,19 @@ mod logos_import_tests {
         super::highlight_profile_backend(language,text,project,Some("logos"))
     }
 
+    #[test]
+    fn logos_import_incremental_worker_matches_full_and_cancellation_keeps_cache() {
+        let mut cache=None;let cancel=Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let source="<?php\n$x='one\ntwo';\n";
+        let first=super::highlight_incremental_backend(LapceLanguage::Php,&Rope::from(source),&Default::default(),&mut cache,&cancel,Some("logos")).unwrap();
+        assert_eq!(first.lexer(),"php-logos");assert!(first.levels().is_none());
+        let changed=source.replace("two","λ");
+        let second=super::highlight_incremental_backend(LapceLanguage::Php,&Rope::from(changed.as_str()),&Default::default(),&mut cache,&cancel,Some("logos")).unwrap();
+        assert_eq!(second.styles(),gravity_lex::lex(&changed).styles);
+        let before=cache.as_ref().unwrap().output().styles.clone();cancel.store(1,std::sync::atomic::Ordering::Release);
+        assert!(super::highlight_incremental_backend(LapceLanguage::Php,&Rope::from("<?php changed"),&Default::default(),&mut cache,&cancel,Some("logos")).is_none());
+        assert_eq!(cache.as_ref().unwrap().output().styles,before);
+    }
     #[test]
     fn logos_import_runtime_opt_in_does_not_change_native_defaults_or_unsupported_languages() {
         for (language,source) in [(LapceLanguage::Php,"<?php echo 1;"),(LapceLanguage::Blade,"{{ $x }}"),(LapceLanguage::Javascript,"let x=1;")] {

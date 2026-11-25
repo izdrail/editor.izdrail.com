@@ -21,12 +21,13 @@ pub(crate) struct Token { pub(crate) range: Range<usize>, pub(crate) kind: u8 }
 fn member(s: &str, list: &str) -> bool { list.split_ascii_whitespace().any(|word|word==s) }
 pub(crate) fn code_identifier(s:u8) -> bool { matches!(s,style::IDENTIFIER|style::CONSTANT|style::FUNCTION|style::TYPE|style::KEYWORD) }
 
-pub(crate) fn tokens(source:&str, styles:&[u8]) -> Vec<Token> {
+pub(crate) fn tokens_cancellable(source:&str, styles:&[u8],cancel:Option<&std::sync::atomic::AtomicUsize>) -> Option<Vec<Token>> {
     let mut tokens=Vec::new();
     let mut start=0;
     while start<styles.len() {
+        if start%1024==0 {std::thread::yield_now();if cancel.is_some_and(|flag|flag.load(std::sync::atomic::Ordering::Relaxed)!=0){return None;}}
         let kind=styles[start];let mut end=start+1;
-        while end<styles.len() && styles[end]==kind {end+=1;}
+        while end<styles.len() && styles[end]==kind {if end%1024==0 {std::thread::yield_now();if cancel.is_some_and(|flag|flag.load(std::sync::atomic::Ordering::Relaxed)!=0){return None;}}end+=1;}
         if kind==style::OPERATOR {
             // Keep multi-byte member operators but separate punctuation.
             let mut at=start;
@@ -39,18 +40,20 @@ pub(crate) fn tokens(source:&str, styles:&[u8]) -> Vec<Token> {
         }
         start=end;
     }
-    tokens
+    Some(tokens)
 }
 
 /// The caller owns project detection and supplies existing framework word lists.
 /// Reject a mismatched byte buffer rather than creating partial highlighting.
-pub fn overlay(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>) -> bool {
+pub fn overlay(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>) -> bool {overlay_cancellable(source,styles,vocab,None)}
+pub fn overlay_cancellable(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>,cancel:Option<&std::sync::atomic::AtomicUsize>) -> bool {
     if source.len()!=styles.len() {return false;}
-    let tokens=tokens(source,styles);
+    let Some(tokens)=tokens_cancellable(source,styles,cancel) else{return false;};
     let text=|index:usize| -> &str { &source[tokens[index].range.clone()] };
     let conventions="Model Authenticatable ServiceProvider Controller FormRequest Middleware Job ShouldQueue Dispatchable InteractsWithQueue Queueable SerializesModels Event Listener Notification Notifiable Policy Gate HasFactory SoftDeletes HasMany HasOne BelongsTo BelongsToMany MorphTo MorphMany MorphOne HasManyThrough HasOneThrough";
     let methods="dispatch dispatchSync dispatchAfterResponse listen subscribe fire notify notifyNow via toMail toDatabase toArray authorize authorizeForUser allows denies check before after forUser policy define bind singleton scoped instance make makeWith resolve boot register provides when needs give commands loadRoutesFrom loadViewsFrom publishes hasMany hasOne belongsTo belongsToMany morphTo morphMany morphOne hasManyThrough hasOneThrough";
     for (index,token) in tokens.iter().enumerate() {
+        if index%1024==0 {std::thread::yield_now();if cancel.is_some_and(|flag|flag.load(std::sync::atomic::Ordering::Relaxed)!=0){return false;}}
         if !code_identifier(token.kind) {continue;}
         let word=text(index);
         let prev=index.checked_sub(1).map(text).unwrap_or("");
@@ -67,6 +70,7 @@ pub fn overlay(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>) -> bool {
     // A stack bounds nested calls and arrays without trying to parse PHP.
     let mut calls:Vec<Option<&str>>=Vec::new();
     for(index,token)in tokens.iter().enumerate() {
+        if index%1024==0 {std::thread::yield_now();if cancel.is_some_and(|flag|flag.load(std::sync::atomic::Ordering::Relaxed)!=0){return false;}}
         let word=text(index);
         if token.kind==style::OPERATOR && word=="(" {
             let name=index.checked_sub(1).filter(|i|code_identifier(tokens[*i].kind)).map(text);

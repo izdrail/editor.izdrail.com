@@ -891,6 +891,9 @@ impl SyntaxLayers {
 
 #[derive(Clone)]
 pub struct Syntax {
+    #[cfg(feature="logos-php")]
+    pub logos_cache:Option<Arc<gravity_lex::incremental::Cache>>,
+    pub folding_pending:bool,
     pub rev: u64,
     pub language: LapceLanguage,
     pub text: Rope,
@@ -942,6 +945,9 @@ impl Syntax {
 
     pub fn from_language(language: LapceLanguage) -> Syntax {
         Syntax {
+            #[cfg(feature="logos-php")]
+            logos_cache:None,
+            folding_pending:false,
             rev: 0,
             language,
             text: Rope::from(""),
@@ -978,6 +984,9 @@ impl Syntax {
         if let Some(path) = &self.project_path {
             self.project = crate::project_profile::detect(path);
         }
+        #[cfg(feature="logos-php")]
+        let snapshot = crate::lexilla::highlight_incremental(self.language,&new_text,&self.project,&mut self.logos_cache,&self.cancel_flag);
+        #[cfg(not(feature="logos-php"))]
         let snapshot = crate::lexilla::highlight_profile(self.language, &new_text, &self.project);
         let textmate = match (&snapshot, &self.textmate_scope) {
             (None, Some(scope)) => crate::textmate::highlight(scope, &new_text),
@@ -986,23 +995,9 @@ impl Syntax {
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }
-        // Lexer fold levels (braces, tags) win where the lexer provides
-        // them; indentation stays the language-independent fallback.
-        let mut folding_ranges = snapshot
-            .as_ref()
-            .and_then(|s| s.levels())
-            .map(crate::folding::level_ranges)
-            .filter(|ranges| !ranges.is_empty())
-            .unwrap_or_else(|| {
-                crate::folding::indentation_ranges(&new_text.to_string(), 4)
-            });
-        if let Some(snapshot) = snapshot.as_ref() {
-            folding_ranges.extend(crate::folding::comment_ranges(&new_text.to_string(), |offset| {
-                snapshot.styles().get(offset).is_some_and(|style| snapshot.scope(*style) == Some("comment"))
-            }));
-            folding_ranges.sort_unstable_by_key(|range| (range.start, std::cmp::Reverse(range.end)));
-            folding_ranges.dedup_by_key(|range| range.start);
-        }
+        let experimental=snapshot.as_ref().is_some_and(|snapshot|snapshot.lexer().ends_with("logos"));
+        let folding_ranges=if experimental {self.folding_ranges.clone()} else { Self::fold_ranges(&new_text,snapshot.as_deref()) };
+        self.folding_pending=experimental;
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }
@@ -1019,6 +1014,42 @@ impl Syntax {
             &[],
         );
         self.text = new_text;
+    }
+
+    fn fold_ranges(text:&Rope,snapshot:Option<&lexilla_rs::Snapshot>)->Vec<crate::folding::FoldRange> {
+        // Lexer fold levels (braces, tags) win where the lexer provides
+        // them; indentation stays the language-independent fallback.
+        let mut folding_ranges = snapshot
+            .and_then(|s| s.levels())
+            .map(crate::folding::level_ranges)
+            .filter(|ranges| !ranges.is_empty())
+            .unwrap_or_else(|| {
+                crate::folding::indentation_ranges(&text.to_string(), 4)
+            });
+        if let Some(snapshot) = snapshot {
+            folding_ranges.extend(crate::folding::comment_ranges(&text.to_string(), |offset| {
+                snapshot.styles().get(offset).is_some_and(|style| snapshot.scope(*style) == Some("comment"))
+            }));
+            folding_ranges.sort_unstable_by_key(|range| (range.start, std::cmp::Reverse(range.end)));
+            folding_ranges.dedup_by_key(|range| range.start);
+        }
+        folding_ranges
+    }
+
+    pub fn accept_fold_refresh(&mut self,refresh:&Self)->bool {
+        if self.rev!=refresh.rev || refresh.folding_pending || self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return false;}
+        self.folding_ranges=refresh.folding_ranges.clone();self.folding_pending=false;true
+    }
+
+    /// Called only by the debounced background worker. Stale work is discarded.
+    #[cfg(feature="logos-php")]
+    pub fn refresh_native_folding(&mut self) {
+        if !self.folding_pending || self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
+        let native=crate::lexilla::native_folding_snapshot(self.language,&self.text,&self.project);
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
+        let ranges=Self::fold_ranges(&self.text,native.as_deref());
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
+        self.folding_ranges=ranges;self.folding_pending=false;
     }
 
     pub fn update_lens_height(&mut self, line_height: usize, lens_height: usize) {
@@ -1274,6 +1305,22 @@ mod tests {
 #[cfg(test)]
 mod cancellation_entry_tests {
     use super::*;
+    #[cfg(feature="logos-php")]
+    #[test]
+    fn cancelled_native_fold_refresh_keeps_previous_ranges_pending() {
+        let mut syntax=Syntax::from_language(LapceLanguage::Php);syntax.folding_pending=true;syntax.text=Rope::from("<?php if ($x) {\n echo 1;\n}");
+        syntax.cancel_flag.store(1,std::sync::atomic::Ordering::Release);syntax.refresh_native_folding();assert!(syntax.folding_pending);
+        syntax.cancel_flag.store(0,std::sync::atomic::Ordering::Release);syntax.refresh_native_folding();assert!(!syntax.folding_pending);
+    }
+    #[test]
+    fn stale_fold_refresh_never_overwrites_newer_syntax() {
+        let mut current=Syntax::from_language(LapceLanguage::Php);current.rev=2;current.folding_pending=true;
+        let mut stale=current.clone();stale.rev=1;stale.folding_pending=false;
+        assert!(!current.accept_fold_refresh(&stale));assert!(current.folding_pending);assert_eq!(current.rev,2);
+        let mut fresh=current.clone();fresh.folding_pending=false;
+        assert!(current.accept_fold_refresh(&fresh));assert!(!current.folding_pending);
+        current.cancel_flag.store(1,std::sync::atomic::Ordering::Release);assert!(!current.accept_fold_refresh(&fresh));
+    }
     #[test]
     fn cancelled_parse_does_not_refresh_profile_or_publish_snapshot() {
         let root = tempfile::tempdir().unwrap();

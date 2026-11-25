@@ -1246,7 +1246,9 @@ impl Doc {
         let send = create_ext_action(self.scope, move |syntax| {
             if doc.buffer.with_untracked(|b| b.rev()) == rev {
                 doc.syntax.set(syntax);
-                doc.get_folding_range();
+                if !doc.syntax.with_untracked(|syntax|syntax.folding_pending) {doc.get_folding_range();}
+                #[cfg(feature="logos-php")]
+                if doc.syntax.with_untracked(|syntax|syntax.folding_pending) {doc.schedule_native_folding(rev);}
                 doc.do_bracket_colorization();
                 doc.clear_style_cache();
                 doc.clear_sticky_headers_cache();
@@ -1261,6 +1263,25 @@ impl Doc {
         rayon::spawn(move || {
             syntax.parse(rev, text, edits.as_deref());
             send(syntax);
+        });
+    }
+
+    #[cfg(feature="logos-php")]
+    fn schedule_native_folding(&self,rev:u64) {
+        let doc=self.clone();
+        exec_after(Duration::from_millis(250),move |_| {
+            if doc.rev()!=rev {return;}
+            let mut syntax=doc.syntax.get_untracked();
+            if syntax.rev!=rev || !syntax.folding_pending {return;}
+            let publish=doc.clone();
+            let send=create_ext_action(doc.scope,move |syntax:Syntax| {
+                if publish.rev()!=rev || syntax.rev!=rev || syntax.folding_pending {return;}
+                publish.syntax.update(|current| {
+                    current.accept_fold_refresh(&syntax);
+                });
+                publish.get_folding_range();
+            });
+            rayon::spawn(move || {syntax.refresh_native_folding();send(syntax);});
         });
     }
 
