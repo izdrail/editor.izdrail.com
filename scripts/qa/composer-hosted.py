@@ -172,6 +172,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('00-open-editors-next-focus')
         run('key', 'shift+Tab'); shot('00-open-editors-return-focus')
         run('key', 'Return'); shot('00-open-editors-keyboard-activate')
+        # Existing terminal tab header, never the PTY content area.
+        run('mousemove', '350', '490', 'click', '1'); shot('00-terminal-header-focus')
+        run('key', 'Return'); shot('00-terminal-header-keyboard-activate')
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'

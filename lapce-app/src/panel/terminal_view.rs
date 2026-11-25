@@ -63,6 +63,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
     let terminal = window_tab_data.terminal.clone();
     let config = window_tab_data.common.config;
     let focus = window_tab_data.common.focus;
+    let keyboard_focus = window_tab_data.common.keyboard_focus;
     let active_index = move || terminal.tab_info.with(|info| info.active);
     let tab_info = terminal.tab_info;
     let header_width = create_rw_signal(0.0);
@@ -127,7 +128,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                     }
                     LapceIcons::TERMINAL
                 };
-                stack((
+                let row = stack((
                     container({
                         stack((
                             container(
@@ -205,20 +206,48 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                             .pointer_events_none()
                     }),
                 ))
-                .style(|s| s.cursor(CursorStyle::Pointer))
-                .on_event_cont(
-                    EventListener::PointerDown,
-                    move |_| {
-                        if tab_info.with_untracked(|tab| tab.active)
-                            != index.get_untracked()
-                        {
-                            tab_info.update(|tab| {
-                                tab.active = index.get_untracked();
-                            });
-                            local_terminal.update_debug_active_term();
+                .style(move |s| {
+                    s.cursor(CursorStyle::Pointer).focus_visible(|s| {
+                        s.background(
+                            config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                        )
+                    })
+                });
+                let row_id = row.id();
+                let activate = move || {
+                    if tab_info.with_untracked(|tab| tab.active)
+                        != index.get_untracked()
+                    {
+                        tab_info.update(|tab| tab.active = index.get_untracked());
+                        local_terminal.update_debug_active_term();
+                    }
+                };
+                row.keyboard_navigable()
+                    .on_event_stop(EventListener::FocusGained, move |_| {
+                        keyboard_focus.set(Some(row_id));
+                    })
+                    .on_event_stop(EventListener::FocusLost, move |_| {
+                        if keyboard_focus.get_untracked() == Some(row_id) {
+                            keyboard_focus.set(None);
                         }
-                    },
-                )
+                    })
+                    .on_event(EventListener::KeyDown, move |event| {
+                        if let Event::KeyDown(key) = event {
+                            if terminal_tab_activation(
+                                &key.key.logical_key,
+                                key.modifiers,
+                            ) {
+                                return EventPropagation::Stop;
+                            }
+                        }
+                        EventPropagation::Continue
+                    })
+                    .on_click_stop(move |event| {
+                        if matches!(event, Event::KeyDown(_)) {
+                            activate();
+                        }
+                    })
+                    .on_event_cont(EventListener::PointerDown, move |_| activate())
             },
         ))
         .on_resize(move |rect| {
@@ -399,4 +428,40 @@ fn tab_secondary_click(
             });
         }));
     show_context_menu(menu, None);
+}
+
+// Header activation must never inject a newline/space into the shell.
+fn terminal_tab_activation(
+    key: &floem::keyboard::Key,
+    modifiers: floem::keyboard::Modifiers,
+) -> bool {
+    modifiers.is_empty()
+        && matches!(
+            key,
+            floem::keyboard::Key::Named(
+                floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+            )
+        )
+}
+#[cfg(test)]
+mod terminal_tab_keyboard_tests {
+    use super::terminal_tab_activation;
+    use floem::keyboard::{Key, Modifiers, NamedKey};
+    #[test]
+    fn plain_activation_isolated_from_shell_input() {
+        for key in [NamedKey::Enter, NamedKey::Space] {
+            assert!(terminal_tab_activation(
+                &Key::Named(key.clone()),
+                Modifiers::empty()
+            ));
+            assert!(!terminal_tab_activation(
+                &Key::Named(key),
+                Modifiers::CONTROL
+            ));
+        }
+        assert!(!terminal_tab_activation(
+            &Key::Named(NamedKey::Tab),
+            Modifiers::empty()
+        ));
+    }
 }

@@ -276,3 +276,10 @@ draft clipboard roundtrip and post-traversal saved disposable source both pass.
 This establishes the previous capture target was wrong; no application typing
 fix is claimed. Hosted corrected capture remains the reproducible acceptance
 gate. Preserve that gate and inspect actual images before closing UI-037.
+
+
+UI-038 medium/P0: terminal tab headers were pointer-only. Add native keyboard
+focus, visible focus and Enter/Space switching using the existing tab activation;
+consume plain activation keys so they cannot enter the PTY. Tab remains native
+traversal, modified shortcuts unchanged. Add header-only captures; shell content
+is not an activation target. Actual runtime acceptance still pending.
