@@ -1,0 +1,58 @@
+{
+  "accuracy": "scope agreement is diagnostic only; token_get_all corpus is the independent accuracy gate",
+  "default_decision": "KEEP_LEXILLA",
+  "measurement": "raw lexers; native snapshots include folding, Logos cache excludes deferred native folding and framework overlays",
+  "memory": "RSS mode requires a fresh process per backend and case; delta is retained RSS, not allocation or peak",
+  "mode": "syntax-worker",
+  "profile": "release",
+  "reason": "no end-to-end UI benefit established",
+  "responsiveness": "worker step and cancellation proxies, not UI frame or input latency; no timing threshold",
+  "results": [
+    {
+      "backend": "logos",
+      "bytes": 5243016,
+      "case": "php",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 74.283507,
+      "syntax_initial_median_ms": 177.45857,
+      "syntax_tail_median_ms": 24.277865
+    },
+    {
+      "backend": "logos",
+      "bytes": 5242976,
+      "case": "mixed",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 113.13949199999999,
+      "syntax_initial_median_ms": 164.054172,
+      "syntax_tail_median_ms": 25.576280999999998
+    },
+    {
+      "backend": "logos",
+      "bytes": 5584824,
+      "case": "blade",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 85.019846,
+      "syntax_initial_median_ms": 228.132754,
+      "syntax_tail_median_ms": 150.775429
+    },
+    {
+      "backend": "logos",
+      "bytes": 5670900,
+      "case": "laravel",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 134.205841,
+      "syntax_initial_median_ms": 758.173291,
+      "syntax_tail_median_ms": 266.85616
+    },
+    {
+      "backend": "logos",
+      "bytes": 5540853,
+      "case": "symfony",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 124.32179599999999,
+      "syntax_initial_median_ms": 476.325652,
+      "syntax_tail_median_ms": 50.063993
+    }
+  ],
+  "schema": 2
+}

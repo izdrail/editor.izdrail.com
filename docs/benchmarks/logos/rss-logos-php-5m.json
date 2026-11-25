@@ -1,0 +1,21 @@
+{
+  "accuracy": "scope agreement is diagnostic only; token_get_all corpus is the independent accuracy gate",
+  "default_decision": "KEEP_LEXILLA",
+  "measurement": "raw lexers; native snapshots include folding, Logos cache excludes deferred native folding and framework overlays",
+  "memory": "RSS mode requires a fresh process per backend and case; delta is retained RSS, not allocation or peak",
+  "mode": "isolated-rss",
+  "profile": "release",
+  "reason": "no end-to-end UI benefit established",
+  "responsiveness": "worker step and cancellation proxies, not UI frame or input latency; no timing threshold",
+  "results": [
+    {
+      "backend": "logos",
+      "bytes": 5243016,
+      "case": "php",
+      "rss_before": 39628800,
+      "rss_delta_bytes": 13762560,
+      "rss_retained": 53391360
+    }
+  ],
+  "schema": 2
+}

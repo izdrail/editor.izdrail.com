@@ -1,0 +1,58 @@
+{
+  "accuracy": "scope agreement is diagnostic only; token_get_all corpus is the independent accuracy gate",
+  "default_decision": "KEEP_LEXILLA",
+  "measurement": "raw lexers; native snapshots include folding, Logos cache excludes deferred native folding and framework overlays",
+  "memory": "RSS mode requires a fresh process per backend and case; delta is retained RSS, not allocation or peak",
+  "mode": "syntax-worker",
+  "profile": "release",
+  "reason": "no end-to-end UI benefit established",
+  "responsiveness": "worker step and cancellation proxies, not UI frame or input latency; no timing threshold",
+  "results": [
+    {
+      "backend": "lexilla",
+      "bytes": 5243016,
+      "case": "php",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 0.000183,
+      "syntax_initial_median_ms": 77.315206,
+      "syntax_tail_median_ms": 78.519729
+    },
+    {
+      "backend": "lexilla",
+      "bytes": 5242976,
+      "case": "mixed",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 0.000115,
+      "syntax_initial_median_ms": 117.316795,
+      "syntax_tail_median_ms": 118.551077
+    },
+    {
+      "backend": "lexilla",
+      "bytes": 5584824,
+      "case": "blade",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 0.000114,
+      "syntax_initial_median_ms": 84.75356500000001,
+      "syntax_tail_median_ms": 84.938784
+    },
+    {
+      "backend": "lexilla",
+      "bytes": 5670900,
+      "case": "laravel",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 0.000111,
+      "syntax_initial_median_ms": 132.55949999999999,
+      "syntax_tail_median_ms": 133.271796
+    },
+    {
+      "backend": "lexilla",
+      "bytes": 5540853,
+      "case": "symfony",
+      "iterations": 3,
+      "separate_fold_refresh_median_ms": 0.00023,
+      "syntax_initial_median_ms": 132.678764,
+      "syntax_tail_median_ms": 125.09794199999999
+    }
+  ],
+  "schema": 2
+}

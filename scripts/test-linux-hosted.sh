@@ -37,5 +37,10 @@ php scripts/runtime-laravel-fixtures.php target/acceptance-logs/laravel-expansio
 cargo test --locked -p gravity-lex --test corpus -- --nocapture 2>&1 | tee target/acceptance-logs/logos-php-token-oracle.log
 cargo test --locked --manifest-path lexilla-rs/Cargo.toml 2>&1 | tee target/acceptance-logs/logos-style-import.log
 cargo test --locked -p lapce-core --features logos-php logos_import -- --test-threads=1 2>&1 | tee target/acceptance-logs/logos-import.log
+cargo run --locked -p lapce-core --features logos-php --example snapshot_perf -- --compare --quick > target/acceptance-logs/logos-benchmark-smoke.json
+python3 scripts/check-logos-benchmark.py target/acceptance-logs/logos-benchmark-smoke.json
+for backend in lexilla logos; do
+  GRAVITY_LEXER=$backend SNAPSHOT_PERF_SYNTAX=$backend cargo run --locked -p lapce-core --features logos-php --example snapshot_perf -- --compare --quick > "target/acceptance-logs/logos-syntax-$backend-smoke.json"
+done
 cargo test --locked --workspace -- --test-threads=2 2>&1 | tee target/acceptance-logs/workspace.log
 df -h .

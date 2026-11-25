@@ -1,0 +1,173 @@
+{
+  "accuracy": "scope agreement is diagnostic only; token_get_all corpus is the independent accuracy gate",
+  "default_decision": "KEEP_LEXILLA",
+  "measurement": "raw lexers; native snapshots include folding, Logos cache excludes deferred native folding and framework overlays",
+  "memory": "RSS mode requires a fresh process per backend and case; delta is retained RSS, not allocation or peak",
+  "mode": "raw-lexer",
+  "profile": "release",
+  "reason": "no end-to-end UI benefit established",
+  "responsiveness": "worker step and cancellation proxies, not UI frame or input latency; no timing threshold",
+  "results": [
+    {
+      "bytes": 5243016,
+      "case": "php",
+      "edits": [
+        {
+          "logos_cache_update_median_ms": 121.20563299999999,
+          "logos_relexed_bytes": 5243017,
+          "native_full_snapshot_median_ms": 53.259346,
+          "position": "front"
+        },
+        {
+          "logos_cache_update_median_ms": 65.44708200000001,
+          "logos_relexed_bytes": 2621519,
+          "native_full_snapshot_median_ms": 51.322227999999996,
+          "position": "middle"
+        },
+        {
+          "logos_cache_update_median_ms": 11.316769,
+          "logos_relexed_bytes": 2,
+          "native_full_snapshot_median_ms": 51.998267,
+          "position": "tail"
+        }
+      ],
+      "iterations": 3,
+      "logos_initial_median_ms": 114.737355,
+      "native_initial_median_ms": 46.461599,
+      "native_scope_agreement_diagnostic": 0.9894832394950366,
+      "worker_cancel_observed_ms": 0.033062,
+      "worker_step_max_observed_ms": 10.83814,
+      "worker_total_ms": 204.768298,
+      "worker_yields": 1051
+    },
+    {
+      "bytes": 5242976,
+      "case": "mixed",
+      "edits": [
+        {
+          "logos_cache_update_median_ms": 102.012957,
+          "logos_relexed_bytes": 5242977,
+          "native_full_snapshot_median_ms": 45.522722,
+          "position": "front"
+        },
+        {
+          "logos_cache_update_median_ms": 54.905865999999996,
+          "logos_relexed_bytes": 2621532,
+          "native_full_snapshot_median_ms": 45.381961,
+          "position": "middle"
+        },
+        {
+          "logos_cache_update_median_ms": 10.093653,
+          "logos_relexed_bytes": 9,
+          "native_full_snapshot_median_ms": 45.312196,
+          "position": "tail"
+        }
+      ],
+      "iterations": 3,
+      "logos_initial_median_ms": 101.54915700000001,
+      "native_initial_median_ms": 44.155434,
+      "native_scope_agreement_diagnostic": 0.6298487732282387,
+      "worker_cancel_observed_ms": 0.032646,
+      "worker_step_max_observed_ms": 1.3259459999999998,
+      "worker_total_ms": 149.830015,
+      "worker_yields": 1005
+    },
+    {
+      "bytes": 5584824,
+      "case": "blade",
+      "edits": [
+        {
+          "logos_cache_update_median_ms": 38.77734,
+          "logos_relexed_bytes": 5584825,
+          "native_full_snapshot_median_ms": 66.125463,
+          "position": "front"
+        },
+        {
+          "logos_cache_update_median_ms": 23.513928,
+          "logos_relexed_bytes": 2792413,
+          "native_full_snapshot_median_ms": 64.783456,
+          "position": "middle"
+        },
+        {
+          "logos_cache_update_median_ms": 8.280492,
+          "logos_relexed_bytes": 20,
+          "native_full_snapshot_median_ms": 65.74110599999999,
+          "position": "tail"
+        }
+      ],
+      "iterations": 3,
+      "logos_initial_median_ms": 35.609541,
+      "native_initial_median_ms": 60.575538,
+      "native_scope_agreement_diagnostic": 0.775,
+      "worker_cancel_observed_ms": 0.033303000000000006,
+      "worker_step_max_observed_ms": 1.150277,
+      "worker_total_ms": 82.35201,
+      "worker_yields": 1043
+    },
+    {
+      "bytes": 5670900,
+      "case": "laravel",
+      "edits": [
+        {
+          "logos_cache_update_median_ms": 434.74732700000004,
+          "logos_relexed_bytes": 5670901,
+          "native_full_snapshot_median_ms": 88.34159799999999,
+          "position": "front"
+        },
+        {
+          "logos_cache_update_median_ms": 237.16330399999998,
+          "logos_relexed_bytes": 2835501,
+          "native_full_snapshot_median_ms": 84.912491,
+          "position": "middle"
+        },
+        {
+          "logos_cache_update_median_ms": 7.527285,
+          "logos_relexed_bytes": 54,
+          "native_full_snapshot_median_ms": 85.205314,
+          "position": "tail"
+        }
+      ],
+      "iterations": 3,
+      "logos_initial_median_ms": 437.176611,
+      "native_initial_median_ms": 79.581109,
+      "native_scope_agreement_diagnostic": 0.8235296543068228,
+      "worker_cancel_observed_ms": 0.033309000000000005,
+      "worker_step_max_observed_ms": 1.059116,
+      "worker_total_ms": 486.08548099999996,
+      "worker_yields": 1071
+    },
+    {
+      "bytes": 5540853,
+      "case": "symfony",
+      "edits": [
+        {
+          "logos_cache_update_median_ms": 372.418379,
+          "logos_relexed_bytes": 5540854,
+          "native_full_snapshot_median_ms": 74.593085,
+          "position": "front"
+        },
+        {
+          "logos_cache_update_median_ms": 190.61953400000002,
+          "logos_relexed_bytes": 2770471,
+          "native_full_snapshot_median_ms": 80.171482,
+          "position": "middle"
+        },
+        {
+          "logos_cache_update_median_ms": 6.3891219999999995,
+          "logos_relexed_bytes": 94,
+          "native_full_snapshot_median_ms": 73.886606,
+          "position": "tail"
+        }
+      ],
+      "iterations": 3,
+      "logos_initial_median_ms": 388.185412,
+      "native_initial_median_ms": 70.007893,
+      "native_scope_agreement_diagnostic": 1.0,
+      "worker_cancel_observed_ms": 0.026432999999999998,
+      "worker_step_max_observed_ms": 0.967954,
+      "worker_total_ms": 425.459105,
+      "worker_yields": 1047
+    }
+  ],
+  "schema": 2
+}
