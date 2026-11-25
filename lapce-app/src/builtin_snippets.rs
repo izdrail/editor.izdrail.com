@@ -183,6 +183,20 @@ mod tests {
 
 
     #[test]
+    fn observer_registration_templates_preserve_qualified_names() {
+        let text = |prefix: &str| {
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert_eq!(text("lv-observer-register"), "\\App\\Models\\Post::observe(\\App\\Observers\\PostObserver::class);");
+        assert_eq!(text("lv-model-observed-by"), "#[\\Illuminate\\Database\\Eloquent\\Attributes\\ObservedBy([\\App\\Observers\\PostObserver::class])]");
+    }
+
+    #[test]
     fn html_resource_and_base_controller_templates_keep_distinct_roles() {
         let text = |prefix: &str| {
             let item = packs()

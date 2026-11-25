@@ -148,3 +148,9 @@ Resource binding correction: API/HTML scaffold model arguments now use an editab
 post placeholder matching the default Post model, rather than the unrelated model
 argument. Description requires matching the actual resource route parameter.
 Source: https://raw.githubusercontent.com/laravel/docs/12.x/controllers.md
+
+Observer registration follow-up (Laravel161): qualified model observe call for
+a provider boot method and ObservedBy attribute for placement above a model class.
+Expansion tests preserve class names and attribute punctuation. Observer business
+logic and event dispatch remain application-specific and not runtime-verified.
+Source: https://raw.githubusercontent.com/laravel/docs/12.x/eloquent.md

@@ -301,6 +301,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-password-reset | Guest CSRF-protected controller body; configure broker, reset token table and login route, add throttling |
 | lv-controller-resource | Seven-action HTML resource scaffold with model binding; replace 501 stubs with authorized validated view/redirect logic; match the editable post argument to the resource route parameter |
 | lv-controller-base | Base application Controller class; only create if absent, do not overwrite application traits/methods |
+| lv-observer-register | Register an observer inside a service provider boot method |
+| lv-model-observed-by | ObservedBy attribute directly above a model class, requires Laravel observer class |
 
 ## livewire
 

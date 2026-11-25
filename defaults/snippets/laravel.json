@@ -1906,5 +1906,19 @@
       "\t$0",
       "}"
     ]
+  },
+  "Observer registration": {
+    "prefix": "lv-observer-register",
+    "description": "Register an observer inside a service provider boot method",
+    "body": [
+      "\\\\App\\\\Models\\\\${1:Post}::observe(\\\\App\\\\Observers\\\\${2:PostObserver}::class);"
+    ]
+  },
+  "Model observed-by attribute": {
+    "prefix": "lv-model-observed-by",
+    "description": "ObservedBy attribute directly above a model class, requires Laravel observer class",
+    "body": [
+      "#[\\\\Illuminate\\\\Database\\\\Eloquent\\\\Attributes\\\\ObservedBy([\\\\App\\\\Observers\\\\${1:PostObserver}::class])]"
+    ]
   }
 }
