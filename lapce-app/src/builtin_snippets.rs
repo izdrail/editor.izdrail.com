@@ -172,6 +172,20 @@ mod tests {
 
 
 
+
+    #[test]
+    fn model_lifecycle_snippets_preserve_callback_scope_and_column_qualification() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-model-booted").contains("protected static function booted(): void"));
+        assert!(text("lv-model-creating").contains("static::creating(function (self $model): void"));
+        assert!(text("lv-model-global-scope").contains("$builder->where('posts.published', true)"));
+        assert!(text("lv-model-scope-class").contains("namespace App\\Models\\Scopes;"));
+        assert!(text("lv-model-scope-class").contains("$model->qualifyColumn('published')"));
+    }
+
     #[test]
     fn advanced_model_snippets_keep_collection_and_pivot_types() {
         let text = |prefix: &str| {

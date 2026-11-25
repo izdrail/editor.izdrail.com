@@ -75,3 +75,12 @@ custom pivot class, Eloquent collection class and CollectedBy model attribute.
 Source checked: https://laravel.com/docs/12.x/eloquent ,
 https://laravel.com/docs/12.x/eloquent-collections ,
 https://laravel.com/docs/12.x/eloquent-relationships . A-J still partial.
+
+Model lifecycle slice: four entries (Laravel140), booted method, creating callback,
+named global scope registration and Scope class. Descriptions specify insertion
+context and query-wide effects. Source APIs verified against Laravel12 framework:
+https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Model.php ,
+https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Concerns/HasEvents.php ,
+https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Concerns/HasGlobalScopes.php ,
+https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Scope.php .
+A-J remains partial.

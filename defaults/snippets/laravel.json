@@ -1574,5 +1574,50 @@
     "body": [
       "#[\\\\Illuminate\\\\Database\\\\Eloquent\\\\Attributes\\\\CollectedBy(\\\\App\\\\Collections\\\\${1:PostCollection}::class)]"
     ]
+  },
+  "Model booted lifecycle": {
+    "prefix": "lv-model-booted",
+    "description": "Method inside a model; merge with any existing booted method",
+    "body": [
+      "protected static function booted(): void",
+      "{",
+      "\t$0",
+      "}"
+    ]
+  },
+  "Model creating callback": {
+    "prefix": "lv-model-creating",
+    "description": "Register inside booted(); runs before insert, not on bulk query updates",
+    "body": [
+      "static::creating(function (self \\$model): void {",
+      "\t$0",
+      "});"
+    ]
+  },
+  "Model named global scope": {
+    "prefix": "lv-model-global-scope",
+    "description": "Register inside booted(); qualify column and review effects on all queries",
+    "body": [
+      "static::addGlobalScope('${1:published}', function (\\\\Illuminate\\\\Database\\\\Eloquent\\\\Builder \\$builder): void {",
+      "\t\\$builder->where('${2:posts.published}', ${3:true});",
+      "});"
+    ]
+  },
+  "Global scope class": {
+    "prefix": "lv-model-scope-class",
+    "description": "Eloquent Scope class; register on model explicitly",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Models\\\\Scopes;",
+      "",
+      "class ${1:PublishedScope} implements \\\\Illuminate\\\\Database\\\\Eloquent\\\\Scope",
+      "{",
+      "\tpublic function apply(\\\\Illuminate\\\\Database\\\\Eloquent\\\\Builder \\$builder, \\\\Illuminate\\\\Database\\\\Eloquent\\\\Model \\$model): void",
+      "\t{",
+      "\t\t\\$builder->where(\\$model->qualifyColumn('${2:published}'), ${3:true});",
+      "\t}",
+      "}"
+    ]
   }
 }

@@ -278,6 +278,10 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-pivot | Pivot model class; attach with relationship using(), configure guarded attributes explicitly |
 | lv-model-collection-class | Eloquent collection subclass; register with model CollectedBy or newCollection |
 | lv-model-collected-by | Attribute above model class, Laravel 12; custom collection class must exist |
+| lv-model-booted | Method inside a model; merge with any existing booted method |
+| lv-model-creating | Register inside booted(); runs before insert, not on bulk query updates |
+| lv-model-global-scope | Register inside booted(); qualify column and review effects on all queries |
+| lv-model-scope-class | Eloquent Scope class; register on model explicitly |
 
 ## livewire
 
