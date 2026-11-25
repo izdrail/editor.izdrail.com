@@ -177,3 +177,10 @@ dispatch templates. Descriptions distinguish current-process work from backgroun
 execution and condition checks from authorization. Expansion regressions cover
 arguments and transaction method. No live queue/rollback acceptance claimed.
 Source: https://raw.githubusercontent.com/laravel/docs/12.x/queues.md
+
+Auth follow-up (Laravel173): request-guard registration scaffold denies all until
+real credential verification is supplied, with explicit auth.php wiring note.
+Route examples select a guard and pair authentication with policy middleware.
+These do not implement a credential verifier or custom user provider, and no
+runtime security acceptance is claimed.
+Source: https://raw.githubusercontent.com/laravel/docs/12.x/authentication.md

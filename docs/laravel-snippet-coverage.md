@@ -1,7 +1,7 @@
 # Laravel snippet coverage checkpoint
 
 25 November 2026. This maps the recorded A-J request to implemented examples and
-remaining gaps. It is not full acceptance. Laravel170, Livewire17, Blade108.
+remaining gaps. It is not full acceptance. Laravel173, Livewire17, Blade108.
 The original supplied configuration attachment and the rest of the message after
 SMS notifications were not available. The repository inventory is the audited
 baseline; it is not claimed to be that missing attachment.
@@ -13,7 +13,7 @@ baseline; it is not claimed to be that missing attachment.
 | C Eloquent | Model, UUID/ULID, fillable/guarded, casts, accessor/mutator, requested relation families with return types, local/global scopes, observer method/registration/ObservedBy, creating/boot/booted, collection/pivot classes, soft deletes, factories, hidden attributes, allowlisted array/JSON serialization | Broader model-event coverage, serialization relationship/accessor behavior, runtime schema fixtures |
 | D Database | Create/modify/drop migration, foreign/unique/composite indexes, transaction/raw/builder/typed Eloquent predicate group, chunk/lazy/pagination, seeder/factory, upsert/insert/key-bounded bulk update, named connection | Broader Eloquent Builder runtime fixtures; drop migration rollback intentionally throws until original schema supplied, backup/data restoration and runtime verification remain |
 | E Validation | Inline/FormRequest/rule classes, nested arrays, file upload validation, custom messages, requiredIf condition, after hooks, explicit authorization placeholder | Further conditional/Rule-object examples and executable request tests |
-| F Auth | Session login/logout, guard lookup, gates/policy, password hashing/reset-link/reset broker handler, verification routes, Sanctum scoped token/revocation | Custom guard and user-provider implementation, auth/authorization middleware examples and runtime security tests |
+| F Auth | Session login/logout, guard lookup/request-guard registration stub, auth/can route middleware, gates/policy, password hashing/reset-link/reset broker handler, verification routes, Sanctum scoped token/revocation | Custom guard credential-verification logic and user-provider implementation, configuration wiring and runtime security tests |
 | G Middleware | Standard/terminable/parameter/alias/global append/response-header templates, method/boolean request inspection | Runtime ordering checks; input inspection does not replace validation/authorization |
 | H Events | Event/listener/queued listener/subscriber/discovery/dispatch/ShouldBroadcast/ShouldBroadcastNow | Channel authorization and event-discovery runtime checks |
 | I Queues | Job/unique/batchable, middleware, retry/backoff/failure hooks, chains/batches, after-response/after-commit/synchronous/conditional dispatch and queueable notification | Coverage review against every requested item; no live queue worker/transaction rollback test run |

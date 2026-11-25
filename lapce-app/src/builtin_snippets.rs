@@ -183,6 +183,24 @@ mod tests {
 
 
     #[test]
+    fn auth_registration_and_route_templates_do_not_grant_implicit_access() {
+        let text = |prefix: &str| {
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let guard = text("lv-auth-via-request");
+        assert!(guard.contains("Auth::viaRequest('custom-token'"));
+        assert!(guard.contains("?\\Illuminate\\Contracts\\Auth\\Authenticatable"));
+        assert!(guard.contains("return null;"));
+        assert!(text("lv-route-auth").contains("middleware('auth:web')"));
+        assert!(text("lv-route-can").contains("can:update,post"));
+    }
+
+    #[test]
     fn queue_dispatch_variants_keep_transaction_and_sync_semantics_explicit() {
         let text = |prefix: &str| {
             let item = packs()

@@ -2004,5 +2004,29 @@
     "body": [
       "\\\\App\\\\Jobs\\\\${1:ProcessItem}::dispatchIf(\\$${2:shouldDispatch}, \\$${3:item});"
     ]
+  },
+  "Custom request guard registration": {
+    "prefix": "lv-auth-via-request",
+    "description": "Register in provider boot; configure matching auth.php driver; denies all until real credential verification is implemented",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Auth::viaRequest('${1:custom-token}', function (\\\\Illuminate\\\\Http\\\\Request \\$request): ?\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable {",
+      "\t// Verify credentials and return an authenticatable user. Never trust an unverified request identifier.",
+      "\treturn null;",
+      "});"
+    ]
+  },
+  "Authenticated route middleware": {
+    "prefix": "lv-route-auth",
+    "description": "Protect a route using an explicitly selected configured guard",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::${1:get}('${2:/account}', [\\\\App\\\\Http\\\\Controllers\\\\${3:AccountController}::class, '${4:show}'])->middleware('auth:${5:web}');"
+    ]
+  },
+  "Authorized route middleware": {
+    "prefix": "lv-route-can",
+    "description": "Require authentication and a policy ability on the implicitly bound route model; match route parameter and policy",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::${1:get}('${2:/posts/{post}}', [\\\\App\\\\Http\\\\Controllers\\\\${3:PostController}::class, '${4:edit}'])->middleware(['auth:${5:web}', 'can:${6:update},${7:post}']);"
+    ]
   }
 }

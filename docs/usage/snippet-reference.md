@@ -312,6 +312,9 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-queue-after-commit | Dispatch only after open transactions commit; choose an async queue connection for background execution |
 | lv-queue-sync | Run a job immediately in this process, not in a background queue |
 | lv-queue-dispatch-if | Dispatch a job when the explicit condition is true; a condition is not authorization |
+| lv-auth-via-request | Register in provider boot; configure matching auth.php driver; denies all until real credential verification is implemented |
+| lv-route-auth | Protect a route using an explicitly selected configured guard |
+| lv-route-can | Require authentication and a policy ability on the implicitly bound route model; match route parameter and policy |
 
 ## livewire
 
