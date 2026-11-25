@@ -1,32 +1,46 @@
 # Experimental Logos highlighting
 
-Lexilla remains the default. Logos support is opt-in at build time **and**
-runtime. The [benchmark gate](logos-benchmarks.md) found no basis for changing
-the default. This guide describes the current implementation; the
-[initial plan](logos-lexer-plan.md) and numbered phase notes contain historical
-checkpoints, not current feature guarantees.
+Logos is the default for supported PHP/Blade/framework routes in standard builds,
+following the explicit product decision on 25 November 2026. The
+[benchmark results](logos-benchmarks.md) did **not** establish an overall speed
+win; the default changed by choice, not because that performance gate passed.
+Lexilla remains available and supplies native folding and other languages.
+The [initial plan](logos-lexer-plan.md) and phase notes are historical records.
 
-## Enable, disable and verify
+## Choose the lexer in Settings
 
-From the repository root:
+Open Settings and search for `lexer`. **Editor > Lexer** offers `logos` and
+`lexilla`, persisted as `editor.lexer` in settings.toml. Logos is the default.
+Changes apply on the next edit or when a file is reopened, not immediately to
+an unchanged open buffer. This selector controls supported PHP/Blade routes,
+not completion, diagnostics, inference or every language in the editor.
 
-```sh
-cargo build --locked --bin gravity --features lapce-app/logos-php
-GRAVITY_LEXER=logos target/debug/gravity
+```toml
+[editor]
+lexer = "lexilla"
 ```
 
-Restart the process to change the environment. Only the exact value `logos`,
-case-insensitive, enables experimental routing. An unset, empty, unknown or
-`lexilla` value uses native routing. A build without the feature stays native
-even with the environment variable. No persistent setting is written. Disable
-by restarting without `GRAVITY_LEXER`, or use `GRAVITY_LEXER=lexilla`.
+For process-wide recovery, launch with `GRAVITY_LEXER=lexilla`. An explicit
+`GRAVITY_LEXER=logos` forces Logos regardless of the saved choice. Unset/empty
+values use the saved choice; an unknown nonempty override falls back to native.
+Standard app builds include `logos-php`; custom builds without that feature
+continue to use Lexilla even if Settings stores `logos`.
+
+```sh
+cargo build --locked --bin gravity
+GRAVITY_LEXER=lexilla target/debug/gravity
+```
+
+Restart the process to change an environment override. Changing the Settings
+choice needs no process restart: edit or reopen the document. Native fallback
+does not remove the stored preference.
 
 Tests inspect snapshot identity rather than infer the backend from similar
 colours. `php-logos`, `blade-logos`, `laravel-logos`, `blade-laravel-logos` and
 `symfony-logos` identify imported experimental snapshots. Symfony Twig is an
 existing template composition, not the new PHP/Blade scanner.
 
-| Context | Opt-in behaviour |
+| Context | Default supported route |
 |---|---|
 | Plain PHP, including mixed HTML/PHP | PHP/HTML driver |
 | Blade, outside a Laravel project | Blade driver, no Laravel overlay |
@@ -103,8 +117,8 @@ remain separate systems. A lexer is not a parser or a language server.
    validating snapshot importer and scope mapping in `lexilla-rs`; reject wrong
    lengths and unsupported IDs. Update PHP comment-context classification when
    a new PHP-owned ID needs it.
-4. Route the overlay only through the existing opt-in hook with explicit profile
-   precedence and native fallback. Keep default routing and native fold refresh.
+4. Route the overlay only through the existing backend hook with explicit profile
+   precedence and native fallback. Preserve the settings choice, fallback and native fold refresh.
    Do not add a second environment selector or change inference/serialization.
 5. Test positives, same-name false positives, comments/strings/HTML exclusions,
    UTF-8 prefixes, malformed/incomplete input, snapshot IDs/scopes, profile
@@ -133,8 +147,8 @@ runs the default workspace, and checks the existing GUI/build acceptance path.
 Release results and reproduction are in [logos-benchmarks.md](logos-benchmarks.md).
 Initial and edit times, isolated retained RSS and worker/cancellation proxies
 are separate measurements. None measures actual input-to-paint/frame latency.
-Native-scope agreement is not an accuracy percentage. Keep the default gate
-closed until complete-workload results justify a change.
+Native-scope agreement is not an accuracy percentage. The measured performance gate remains unmet; the default changed by explicit
+product choice after these results, not a new speed claim.
 
 ## Known limits
 
@@ -144,8 +158,9 @@ closed until complete-workload results justify a change.
   are not interpreted. Malformed input is styled conservatively through EOF.
 - Whole braced interpolation uses the shared interpolation scope rather than
   semantically styling every nested expression.
-- Experimental PHP/Blade does not add native-equivalent embedded JS/CSS raw-text
-  overlays. HTML styling is not DOM parsing or validation.
+- PHP/Blade reuses the existing JS/CSS raw-text overlays for recognized script/style
+  bodies without PHP/template syntax. This is not full nested-language parsing;
+  ambiguous injected bodies stay with the host. HTML styling is not DOM validation.
 - Safe restart may go back to a multiline opener; large edits can require a full
   scan. Framework overlays still inspect the full token list.
 - Native folds remain a separate, uninterruptible native call. Previous
@@ -153,4 +168,4 @@ closed until complete-workload results justify a change.
 - Work permits bound scan work, not OS scheduling/allocation or a real-time
   deadline. Finite tests do not prove universal termination or panic-freedom.
 - Performance varies by input: tail reuse helps some cases, while initial and
-  framework-overlay costs can be worse. No default switch or speed guarantee.
+  framework-overlay costs can be worse. The default is a product choice, not a speed guarantee.

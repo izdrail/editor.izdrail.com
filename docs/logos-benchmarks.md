@@ -1,6 +1,10 @@
 # Logos vs Lexilla benchmark gate (#15)
 
-Decision: **keep Lexilla as default**. No routing or defaults changed.
+Benchmark recommendation at measurement time: **keep Lexilla as default**.
+These numbers did not justify a performance-based switch. A later explicit
+product decision selected Logos as default with a persisted Settings choice;
+see [the current guide](logos-lexer.md). Measurements and raw decisions below
+remain unchanged historical evidence, not a claim that Logos became faster.
 
 ## Reproduce
 

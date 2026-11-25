@@ -436,6 +436,21 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab', 'space'); shot('17d-settings-dropdown-keyboard-open')
         run('key', 'Down'); shot('17e-settings-dropdown-keyboard-moved')
         run('key', 'Escape'); shot('17f-settings-dropdown-keyboard-cancel')
+        run('mousemove', '650', '99', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'lexer')
+        shot('17g-lexer-setting-default')
+        run('key', 'Tab', 'space'); shot('17h-lexer-setting-options')
+        run('key', 'Down', 'Return'); time.sleep(2)
+        shot('17i-lexer-setting-lexilla')
+        if 'lexer = "lexilla"' not in settings_file.read_text():
+            raise RuntimeError('Lexer dropdown did not persist Lexilla')
+        run('mousemove', '650', '99', 'click', '1')
+        run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'lexer')
+        run('key', 'Tab', 'space', 'Up', 'Return'); time.sleep(2)
+        shot('17j-lexer-setting-logos-restored')
+        if 'lexer = "logos"' not in settings_file.read_text():
+            raise RuntimeError('Lexer dropdown did not persist Logos')
+
         settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Light"', 'color-theme = "Lapce Dark"'))
         time.sleep(3); shot('18-composer-footer-dark-wide')
         run('mousemove', '1250', '660', 'click', '1')

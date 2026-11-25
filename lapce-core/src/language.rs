@@ -2470,7 +2470,8 @@ mod tests {
 
     #[test]
     fn comment_tokens_leave_ambiguous_lines_unchanged() {
-        use crate::lexilla::highlight;
+        // Explicit native coverage; default Logos has separate context tests.
+        let highlight=|language,text:&lapce_xi_rope::Rope|crate::lexilla::highlight_profile_backend(language,text,&Default::default(),Some("lexilla"));
         // <style> CSS bodies are covered by an embed_web span (recorded when
         // the body was re-lexed as CSS), so they get real CSS block comments.
         let doc = "<style>\np { color: red }\n</style>\nplain text\n<p>x</p>\n";

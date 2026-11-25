@@ -10,6 +10,15 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class LinuxBuildTests(unittest.TestCase):
+    def test_lexer_default_settings_and_real_gui_persistence_gate(self):
+        self.assertIn('lexer = "logos"', (ROOT / 'defaults/settings.toml').read_text())
+        self.assertIn('default        = ["vendored-fonts", "logos-php"]', (ROOT / 'lapce-app/Cargo.toml').read_text())
+        script=(ROOT / 'scripts/qa/composer-hosted.py').read_text()
+        for name in ['17g-lexer-setting-default','17h-lexer-setting-options','17i-lexer-setting-lexilla','17j-lexer-setting-logos-restored']:
+            self.assertIn("shot('"+name+"')",script)
+        self.assertIn('Lexer dropdown did not persist Lexilla',script)
+        self.assertIn('Lexer dropdown did not persist Logos',script)
+
     def test_dark_theme_default_and_compact_composer_footer(self):
         self.assertIn('color-theme = "Lapce Dark"', (ROOT / 'defaults/settings.toml').read_text())
         script = (ROOT / 'scripts/qa/composer-hosted.py').read_text()

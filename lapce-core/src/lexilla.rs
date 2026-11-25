@@ -152,14 +152,6 @@ fn highlight_logos(language:LapceLanguage,source:&str,project:&crate::project_pr
     None
 }
 
-#[cfg(feature = "logos-php")]
-pub(crate) fn highlight_incremental(
-    language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile,
-    cache:&mut Option<Arc<gravity_lex::incremental::Cache>>,cancel:&Arc<std::sync::atomic::AtomicUsize>,
-)->Option<Arc<Snapshot>> {
-    let backend=std::env::var("GRAVITY_LEXER").ok();
-    highlight_incremental_backend(language,text,project,cache,cancel,backend.as_deref())
-}
 #[cfg(feature="logos-php")]
 pub(crate) fn highlight_incremental_backend(language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile,
 cache:&mut Option<Arc<gravity_lex::incremental::Cache>>,cancel:&Arc<std::sync::atomic::AtomicUsize>,backend:Option<&str>)->Option<Arc<Snapshot>> {
@@ -186,13 +178,14 @@ cache:&mut Option<Arc<gravity_lex::incremental::Cache>>,cancel:&Arc<std::sync::a
         }
     };
     if cancel.load(std::sync::atomic::Ordering::Acquire)!=0{return None;}
-    let snapshot=highlight_logos(language,&source,project,Some(output),Some(cancel))?;
+    let mut snapshot=highlight_logos(language,&source,project,Some(output),Some(cancel))?;
+    crate::web_templates::embed_web(&source,Arc::make_mut(&mut snapshot));
     Some(snapshot)
 }
 
 #[cfg(feature="logos-php")]
 pub(crate) fn native_folding_snapshot(language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile)->Option<Arc<Snapshot>> {
-    highlight_profile_backend(language,text,project,None)
+    highlight_profile_backend(language,text,project,Some("lexilla"))
 }
 
 pub fn highlight_profile(
@@ -205,9 +198,9 @@ pub fn highlight_profile(
 }
 
 #[cfg(any(feature = "logos-php", test))]
-fn logos_requested(value:Option<&str>)->bool { value.is_some_and(|value|value.eq_ignore_ascii_case("logos")) }
+fn logos_requested(value:Option<&str>)->bool { value.is_none_or(|value|value.is_empty() || value.eq_ignore_ascii_case("logos")) }
 
-fn highlight_profile_backend(
+pub(crate) fn highlight_profile_backend(
     language:LapceLanguage,
     text:&Rope,
     project:&crate::project_profile::ProjectProfile,
@@ -222,9 +215,10 @@ fn highlight_profile_backend(
     #[cfg(feature = "logos-php")]
     if logos_requested(backend) {
         if let Some(mut snapshot)=highlight_logos(language,&source,project,None,None) {
+            crate::web_templates::embed_web(&source,Arc::make_mut(&mut snapshot));
             // This flag changes colouring only. Preserve native folding until
             // the experimental driver has its own equivalent fold producer.
-            if let Some(native)=highlight_profile_backend(language,text,project,None) {
+            if let Some(native)=highlight_profile_backend(language,text,project,Some("lexilla")) {
                 if Arc::make_mut(&mut snapshot).preserve_folding_from(&native) {return Some(snapshot);}
             }
         }
@@ -384,6 +378,9 @@ pub fn line_styles(snapshot: &Snapshot, text: &Rope, line: usize) -> Vec<LineSty
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn highlight(language:LapceLanguage,text:&Rope)->Option<Arc<Snapshot>> {
+        highlight_profile_backend(language,text,&Default::default(),Some("lexilla"))
+    }
     #[test]
     fn line_conversion_uses_theme_scopes_and_utf8_byte_offsets() {
         let text = Rope::from("/* λ\n🙂 */\r\nint value = 42;\n");
@@ -405,16 +402,14 @@ mod tests {
         assert!(line_styles(&snapshot, &text, 999).is_empty());
     }
     #[test]
-    fn logos_routing_default_and_unknown_values_use_native_backend() {
-        assert!(logos_requested(Some("logos")));assert!(logos_requested(Some("LOGOS")));
-        for value in [None,Some(""),Some("lexilla"),Some("true"),Some("automatic"),Some(" logos")] {
+    fn logos_routing_default_and_explicit_recovery() {
+        for value in [None,Some(""),Some("logos"),Some("LOGOS")] {assert!(logos_requested(value));}
+        for value in [Some("lexilla"),Some("LEXILLA"),Some("true"),Some(" logos")] {
             assert!(!logos_requested(value));
-            let source=Rope::from("<?php echo 1;");
-            let snapshot=highlight_profile_backend(LapceLanguage::Php,&source,&Default::default(),value).unwrap();
-            assert_eq!(snapshot.lexer(),"php");
+            assert_eq!(highlight_profile_backend(LapceLanguage::Php,&Rope::from("<?php echo 1;"),&Default::default(),value).unwrap().lexer(),"php");
         }
-        #[cfg(not(feature = "logos-php"))]
-        assert_eq!(highlight_profile_backend(LapceLanguage::Php,&Rope::from("<?php echo 1;"),&Default::default(),Some("logos")).unwrap().lexer(),"php");
+        let default=highlight_profile_backend(LapceLanguage::Php,&Rope::from("<?php echo 1;"),&Default::default(),None).unwrap();
+        assert_eq!(default.lexer(),if cfg!(feature="logos-php"){"php-logos"}else{"php"});
     }
 
     #[test]
@@ -614,6 +609,7 @@ mod tests {
     #[test]
     fn lexilla_fold_levels_drive_ranges_for_zero_indented_php() {
         let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Php);
+        syntax.lexer_backend=Some("lexilla".into());
         syntax.parse(
             11,
             Rope::from("<?php\nfunction a() {\nreturn 1;\n}\nfunction b() {\nreturn 2;\n}\n"),
@@ -652,6 +648,7 @@ mod tests {
     #[test]
     fn syntax_worker_publishes_local_folds_and_rejects_cancelled_folds() {
         let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Php);
+        syntax.lexer_backend=Some("lexilla".into());
         syntax.parse(
             9,
             Rope::from("<?php\nfunction f() {\n    run();\n}\n"),
@@ -672,6 +669,7 @@ mod tests {
     #[test]
     fn php_comment_folds_merge_with_zero_indent_code_folds() {
         let mut syntax = crate::syntax::Syntax::from_language(LapceLanguage::Php);
+        syntax.lexer_backend=Some("lexilla".into());
         let text = "<?php\n/** Docs\n * detail\n */\nfunction a() {\nreturn 1;\n}\n// first\n// second\n# third\n# fourth\n$x = '/* fake\ncomment */';\n/* block\nmore\n*/\n";
         syntax.parse(1, Rope::from(text), None);
         for (start,end) in [(1,4),(4,6),(7,11),(13,16)] {
@@ -1533,9 +1531,9 @@ mod logos_import_tests {
         assert_eq!(cache.as_ref().unwrap().output().styles,before);
     }
     #[test]
-    fn logos_import_runtime_opt_in_does_not_change_native_defaults_or_unsupported_languages() {
+    fn logos_import_default_and_native_recovery_preserve_unsupported_languages() {
         for (language,source) in [(LapceLanguage::Php,"<?php echo 1;"),(LapceLanguage::Blade,"{{ $x }}"),(LapceLanguage::Javascript,"let x=1;")] {
-            let native=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),None).unwrap();
+            let native=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),Some("lexilla")).unwrap();
             let disabled=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),Some("lexilla")).unwrap();
             assert_eq!(native.styles(),disabled.styles());assert!(!native.lexer().ends_with("logos"));
             let selected=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),Some("logos")).unwrap();
@@ -1544,6 +1542,19 @@ mod logos_import_tests {
         let js=super::highlight_profile_backend(LapceLanguage::Javascript,&Rope::from("let x=1;"),&Default::default(),Some("logos")).unwrap();assert_eq!(js.lexer(),"cpp");
         let project=crate::project_profile::ProjectProfile{wordpress:true,..Default::default()};
         let wp=super::highlight_profile_backend(LapceLanguage::Php,&Rope::from("<?php echo 1;"),&project,Some("logos")).unwrap();assert_eq!(wp.lexer(),"php");
+    }
+    #[test]
+    fn logos_default_preserves_web_embeds_without_swallowing_php_islands() {
+        for language in [LapceLanguage::Php,LapceLanguage::Blade] {
+            let source="<script>const value=42;</script><style>.x {color:red}</style>";
+            let mut cache=None;let cancel=Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let snapshot=super::highlight_incremental_backend(language,&Rope::from(source),&Default::default(),&mut cache,&cancel,None).unwrap();
+            assert_eq!(snapshot.embed_at(source.find("const").unwrap()),Some(lexilla_rs::Embed::Script));
+            assert_eq!(snapshot.embed_at(source.find("color").unwrap()),Some(lexilla_rs::Embed::Style));
+            let mixed="<script>let value=<?php echo $x; ?>;</script>";
+            let snapshot=super::highlight_profile_backend(language,&Rope::from(mixed),&Default::default(),None).unwrap();
+            let at=mixed.find("$x").unwrap();assert_eq!(snapshot.scope(snapshot.styles()[at]),Some("variable"));
+        }
     }
     #[test]
     fn logos_import_symfony_profile_attributes_and_twig() {

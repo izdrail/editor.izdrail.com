@@ -1260,6 +1260,7 @@ impl Doc {
             syntax.cancel_flag = Arc::new(AtomicUsize::new(0));
         });
         let mut syntax = self.syntax.get_untracked();
+        syntax.lexer_backend=Some(self.common.config.get_untracked().editor.lexer.as_str().into());
         rayon::spawn(move || {
             syntax.parse(rev, text, edits.as_deref());
             send(syntax);

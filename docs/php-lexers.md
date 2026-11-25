@@ -1,8 +1,9 @@
 # PHP and Laravel lexers
 
-This page describes native routing, which remains the default. For the opt-in
-Rust path, architecture, supported syntax and extension guide, see
-[Experimental Logos highlighting](logos-lexer.md).
+This page describes native routing, available through Editor > Lexer > lexilla.
+Standard builds now default to Logos for supported PHP/Blade routes. For its
+architecture, settings, supported syntax and extension guide, see
+[Logos highlighting](logos-lexer.md).
 
 Two Lexilla lexers were added next to the stock ones (`lexilla-rs/vendor/lexilla/lexers/LexPHP.cxx`
 and `LexLaravel.cxx`, registered in `vendor/lexilla/src/Lexilla.cxx`, ids `SCLEX_PHP` 143 and

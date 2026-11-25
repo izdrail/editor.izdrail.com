@@ -180,7 +180,8 @@ fn embed_web_mode(source: &str, host: &mut Snapshot, vue: bool) {
                 continue;
             }
             // Reject tag-like text inside comments/strings/code regions.
-            if host.scope(host.styles()[start]) != Some("tag") {
+            if host.scope(host.styles()[start]) != Some("tag")
+                && !(host.lexer().ends_with("logos") && host.styles().get(start)==Some(&36) && host.styles().get(start+1)==Some(&32)) {
                 cursor = after;
                 continue;
             }

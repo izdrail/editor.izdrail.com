@@ -910,6 +910,10 @@ impl LapceConfig {
     /// update the dropdown items.
     pub fn get_dropdown_info(&self, kind: &str, key: &str) -> Option<DropdownInfo> {
         match (kind, key) {
+            ("editor", "lexer") => Some(DropdownInfo {
+                active_index: usize::from(self.editor.lexer == editor::Lexer::Lexilla),
+                items: im::vector!["logos".into(), "lexilla".into()],
+            }),
             ("ai autocomplete" | "ai-autocomplete", "backend") => Some(DropdownInfo {
                 active_index: usize::from(self.ai_autocomplete.backend == "ollama"),
                 items: im::vector!["local".into(), "ollama".into()],
@@ -1324,5 +1328,23 @@ mod compact_font_defaults_tests {
         assert_eq!(c.editor.font_size(), 12);
         assert_eq!(c.ui.font_size(), 12);
         assert_eq!(c.terminal.font_size, 0); // inherit the editor size
+    }
+}
+
+#[cfg(test)]
+mod lexer_setting_tests {
+    use super::*;
+    #[test]
+    fn lexer_dropdown_defaults_and_roundtrips_both_choices() {
+        let mut config=LapceConfig::default();
+        let initial=config.get_dropdown_info("editor","lexer").unwrap();
+        assert_eq!(initial.active_index,0);
+        assert_eq!(initial.items.iter().map(String::as_str).collect::<Vec<_>>(),vec!["logos","lexilla"]);
+        for (index,value) in ["logos","lexilla"].iter().enumerate() {
+            config.editor.lexer=if index==0 {editor::Lexer::Logos}else{editor::Lexer::Lexilla};
+            assert_eq!(config.get_dropdown_info("editor","lexer").unwrap().active_index,index);
+            let encoded=serde_json::to_string(&config.editor).unwrap();
+            let restored:editor::EditorConfig=serde_json::from_str(&encoded).unwrap();assert_eq!(restored.lexer.as_str(),*value);
+        }
     }
 }

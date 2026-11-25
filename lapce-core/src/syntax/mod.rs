@@ -891,6 +891,8 @@ impl SyntaxLayers {
 
 #[derive(Clone)]
 pub struct Syntax {
+    /// Optional document setting. Process environment takes precedence.
+    pub lexer_backend: Option<String>,
     #[cfg(feature="logos-php")]
     pub logos_cache:Option<Arc<gravity_lex::incremental::Cache>>,
     pub folding_pending:bool,
@@ -929,6 +931,10 @@ impl std::fmt::Debug for Syntax {
     }
 }
 
+fn effective_lexer_backend<'a>(environment:Option<&'a str>,setting:Option<&'a str>)->Option<&'a str> {
+    environment.filter(|value|!value.is_empty()).or(setting)
+}
+
 impl Syntax {
     pub fn init(path: &Path) -> Syntax {
         let language = LapceLanguage::from_path(path);
@@ -945,6 +951,7 @@ impl Syntax {
 
     pub fn from_language(language: LapceLanguage) -> Syntax {
         Syntax {
+            lexer_backend:None,
             #[cfg(feature="logos-php")]
             logos_cache:None,
             folding_pending:false,
@@ -985,7 +992,7 @@ impl Syntax {
             self.project = crate::project_profile::detect(path);
         }
         #[cfg(feature="logos-php")]
-        let snapshot = crate::lexilla::highlight_incremental(self.language,&new_text,&self.project,&mut self.logos_cache,&self.cancel_flag);
+        let snapshot = crate::lexilla::highlight_incremental_backend(self.language,&new_text,&self.project,&mut self.logos_cache,&self.cancel_flag,effective_lexer_backend(std::env::var("GRAVITY_LEXER").ok().as_deref(),self.lexer_backend.as_deref()));
         #[cfg(not(feature="logos-php"))]
         let snapshot = crate::lexilla::highlight_profile(self.language, &new_text, &self.project);
         let textmate = match (&snapshot, &self.textmate_scope) {
@@ -1305,6 +1312,26 @@ mod tests {
 #[cfg(test)]
 mod cancellation_entry_tests {
     use super::*;
+    #[test]
+    fn lexer_setting_is_used_unless_nonempty_environment_overrides_it() {
+        for environment in [None,Some("")] {assert_eq!(effective_lexer_backend(environment,Some("lexilla")),Some("lexilla"));}
+        assert_eq!(effective_lexer_backend(Some("logos"),Some("lexilla")),Some("logos"));
+        assert_eq!(effective_lexer_backend(Some("lexilla"),Some("logos")),Some("lexilla"));
+        assert_eq!(effective_lexer_backend(None,None),None);
+    }
+    #[cfg(feature="logos-php")]
+    #[test]
+    fn document_setting_switches_backend_and_native_folding_stays_native() {
+        let mut syntax=Syntax::from_language(LapceLanguage::Php);
+        let text=Rope::from("<?php\nfunction f() {\nreturn 1;\n}\n");
+        syntax.parse(1,text.clone(),None);
+        assert_eq!(syntax.lexilla.as_ref().unwrap().lexer(),"php-logos");assert!(syntax.folding_pending);
+        syntax.refresh_native_folding();assert!(!syntax.folding_pending);assert!(!syntax.folding_ranges.is_empty());
+        syntax.lexer_backend=Some("lexilla".into());syntax.parse(2,text.clone(),None);
+        assert_eq!(syntax.lexilla.as_ref().unwrap().lexer(),"php");assert!(!syntax.folding_pending);assert!(syntax.logos_cache.is_none());
+        syntax.lexer_backend=Some("logos".into());syntax.parse(3,text,None);
+        assert_eq!(syntax.lexilla.as_ref().unwrap().lexer(),"php-logos");
+    }
     #[cfg(feature="logos-php")]
     #[test]
     fn cancelled_native_fold_refresh_keeps_previous_ranges_pending() {

@@ -1,5 +1,7 @@
 # Experimental Laravel conventions overlay (L5)
 
+Current selection: standard builds default to Logos on supported routes. Settings > Editor > Lexer chooses Logos or Lexilla; an environment override is available. See [the current guide](logos-lexer.md). The phase notes below describe the implementation at that checkpoint.
+
 Both the `logos-php` build feature and runtime `GRAVITY_LEXER=logos` opt-in are required. See [the current guide](logos-lexer.md).
 
 The existing `ProjectProfile.laravel` evidence and `logos-php` build flag select a separate overlay on PHP/HTML or Blade tokens. Default builds still use Lexilla. Symfony/WordPress-only profiles are unchanged. Detection itself is reused, not duplicated or replaced.

@@ -1,5 +1,7 @@
 # Experimental incremental highlighting (L8)
 
+Current selection: standard builds default to Logos on supported routes. Settings > Editor > Lexer chooses Logos or Lexilla; an environment override is available. See [the current guide](logos-lexer.md). The phase notes below describe the implementation at that checkpoint.
+
 The Logos path reuses the document's existing background parse worker and revision/cancellation gate. No lexing or native-fold work is added to the UI callback. The UI clones only an Arc to the incremental cache, not document-sized style/checkpoint vectors.
 
 Per-line checkpoints preserve PHP mode and HTML host state. A line inside a multiline token records the token opener as its safe restart. Edits reuse the unchanged prefix and re-lex from that safe point. Incomplete strings/comments/heredocs and Blade islands remain lexical, not parsed or executed.

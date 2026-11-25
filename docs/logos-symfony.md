@@ -1,5 +1,7 @@
 # Experimental Symfony conventions (L6)
 
+Current selection: standard builds default to Logos on supported routes. Settings > Editor > Lexer chooses Logos or Lexilla; an environment override is available. See [the current guide](logos-lexer.md). The phase notes below describe the implementation at that checkpoint.
+
 Both the `logos-php` build feature and runtime `GRAVITY_LEXER=logos` opt-in are required. See [the current guide](logos-lexer.md).
 
 Existing `ProjectProfile.symfony_app` evidence plus the `logos-php` flag selects a Symfony conventions overlay over PHP/HTML byte tokens. Lexilla stays default. Laravel retains its explicit precedence when both profiles apply; WordPress-only projects are unchanged.

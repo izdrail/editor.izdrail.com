@@ -84,7 +84,7 @@ features  = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndM
 
 [features]
 logos-php      = ["lapce-core/logos-php"]
-default        = ["vendored-fonts"]
+default        = ["vendored-fonts", "logos-php"]
 portable       = ["lapce-core/portable"]
 vendored-fonts = []
 

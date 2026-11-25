@@ -2,6 +2,11 @@ use floem::views::editor::text::RenderWhitespace;
 use serde::{Deserialize, Serialize};
 use structdesc::FieldNames;
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all="lowercase")]
+pub enum Lexer { #[default] Logos, Lexilla }
+impl Lexer { pub fn as_str(self)-> &'static str {match self {Self::Logos=>"logos",Self::Lexilla=>"lexilla"}} }
+
 fn enabled_by_default() -> bool { true }
 
 pub const SCALE_OR_SIZE_LIMIT: f64 = 5.0;
@@ -62,6 +67,9 @@ impl std::fmt::Display for WrapStyle {
 #[derive(FieldNames, Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub struct EditorConfig {
+    #[serde(default)]
+    #[field_names(desc = "PHP/Blade lexer: logos or lexilla. Applies on the next edit or file reopen. GRAVITY_LEXER overrides this setting.")]
+    pub lexer: Lexer,
     #[field_names(desc = "Set the editor font family")]
     pub font_family: String,
     #[field_names(desc = "Set the editor font size")]

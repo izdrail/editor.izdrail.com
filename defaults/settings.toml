@@ -10,6 +10,7 @@ file-explorer-double-click = false
 auto-reload-plugin = false
 
 [editor]
+lexer = "logos"
 font-family = "monospace"
 font-size = 12
 code-glance-font-size = 2

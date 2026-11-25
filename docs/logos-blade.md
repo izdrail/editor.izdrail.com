@@ -1,5 +1,7 @@
 # Experimental Logos Blade mode (L4)
 
+Current selection: standard builds default to Logos on supported routes. Settings > Editor > Lexer chooses Logos or Lexilla; an environment override is available. See [the current guide](logos-lexer.md). The phase notes below describe the implementation at that checkpoint.
+
 `gravity_lex::lex_blade` is a separate lexical entry point. `lex` remains PHP/HTML only. Both the `logos-php` build feature and `GRAVITY_LEXER=logos` are required; default builds and feature-enabled builds without runtime opt-in continue to use Lexilla. See [the current guide](logos-lexer.md).
 
 Coverage:
