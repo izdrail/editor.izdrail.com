@@ -222,3 +222,11 @@ UI-034, owner17:19: comment blocks need folding. Merge lexer-scoped block commen
 `45458065396` verifies UI-033 visibility: pointer00b shows actual modes,00c actual models,03 keyboard opening shows modes. Full gates green. Explicit dismissal works; outside-click dismissal remains unverified after removing focus-loss close. Owner17:45 Tab completion request: default keymap already binds completion_focus Tab to list.select. Add real Laravel snippet popup+Tab capture before changing dispatch semantics, as native form focus or custom bindings can bypass that route.
 
 `45464204006` actual51/51a shows Tab does accept the snippet, not cycle, under defaults. But PHP completion range starts after the last hyphen, leaving lw- before the expanded class. Extend known lv-/lw- PHP snippet prefixes to their whole hyphenated word, while ordinary subtraction boundaries stay unchanged. New prefix runtime recapture required. This does not establish behavior of the user's custom keymaps.
+
+25 November continuation: UI-033 outside-pointer dismissal accepted in
+620aa9b/45561788170 after cd0cd64 adds a full-window pointer backdrop behind
+the menu. Actual mode and model open/outside-dismissed screenshots inspected.
+Row event handling remains isolated; no backend/model selection performed.
+UI-001 remains open: added direct existing Match Pairs palette invocation and
+result captures to separate command behavior from accelerator/layout translation.
+No new editing command or keybinding added before that evidence.

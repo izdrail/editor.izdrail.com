@@ -352,6 +352,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'End', 'Left'); shot('14b-bracket-closing-highlight')
         run('key', 'Right'); shot('14c-bracket-after-closing-highlight')
         run('key', 'ctrl+shift+backslash'); shot('14d-bracket-jump-from-adjacent')
+        # The palette invokes the same existing movement without relying on
+        # keyboard-layout translation of the backslash accelerator.
+        run('key', 'F1'); time.sleep(1)
+        run('type', '--clearmodifiers', 'match pairs'); shot('14e-match-pairs-command')
+        run('key', 'Return'); time.sleep(1); shot('14f-match-pairs-command-result')
         run('key', 'ctrl+shift+backslash'); shot('14e-bracket-jump-back')
         run('key', 'End', 'shift+Left'); shot('14f-shift-arrow-still-selects')
         run('key', 'ctrl+comma'); time.sleep(3); shot('16-settings-dark-wide')
