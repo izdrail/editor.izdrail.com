@@ -86,3 +86,10 @@ keyword is marked, while PHP interpolation remains PHP. PHPDoc is currently
 one whole-comment region; annotation/type parsing belongs to P4 (#21).
 Comment/bracket/formatting/diagnostic consumers remain painter/LSP based;
 context-driven provider integration belongs to P3/P6.
+
+Editor integration uses the mixed PHP grammar for all PHP documents in Phase 1,
+including pure PHP files with opening tags. The library exposes php_only for
+explicit tagless inputs; automatic editor grammar selection is not implemented.
+Paint snapshots and folds publish before structural parsing; the separate context
+publication is cancellation- and revision-gated. Non-cancellation incremental
+errors log at debug level and retry a full parse.

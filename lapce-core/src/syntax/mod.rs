@@ -982,6 +982,13 @@ impl Syntax {
         new_text: Rope,
         edits: Option<&[SyntaxEdit]>,
     ) {
+        let previous_rev=self.rev;
+        self.parse_paint(new_rev,new_text,edits);
+        if self.rev==new_rev {self.refresh_php_context(previous_rev,edits);}
+    }
+
+    /// Paint publication must not wait for structural intelligence.
+    pub fn parse_paint(&mut self,new_rev:u64,new_text:Rope,_edits:Option<&[SyntaxEdit]>) {
         // Snapshot lexing preserves multiline context without migrating stale line
         // states. The UI accepts only the matching revision, then extracts runs
         // per painted line. Structural PHP parsing below is separate from paint.
@@ -1011,18 +1018,6 @@ impl Syntax {
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }
-        let php_context=if self.language==LapceLanguage::Php {
-            // Async parsing can lag more than one buffer revision. A last-edit
-            // delta is valid only when it immediately follows this snapshot.
-            let contiguous=self.rev.checked_add(1)==Some(new_rev);
-            let input_edits=if contiguous {edits.unwrap_or(&[]).iter().flat_map(|edit|edit.0.iter().copied()).collect::<Vec<_>>()}else{Vec::new()};
-            let parsed=if let Some(previous)=&self.php_context {
-                previous.update(new_text.clone(),&input_edits,&self.cancel_flag)
-            }else{lapce_php::Document::new(new_text.clone(),false,&self.cancel_flag)};
-            match parsed {Ok(context)=>Some(Arc::new(context)),Err(lapce_php::Error::Cancelled)=>return,Err(_)=>None}
-        }else{None};
-        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
-        self.php_context=php_context;
         self.rev = new_rev;
         self.folding_ranges = folding_ranges;
         self.lexilla = snapshot;
@@ -1036,6 +1031,21 @@ impl Syntax {
             &[],
         );
         self.text = new_text;
+    }
+
+    pub fn refresh_php_context(&mut self,previous_rev:u64,edits:Option<&[SyntaxEdit]>) {
+        let php_context=if self.language==LapceLanguage::Php {
+            // Async parsing can lag more than one buffer revision. A last-edit
+            // delta is valid only when it immediately follows this snapshot.
+            let contiguous=previous_rev.checked_add(1)==Some(self.rev);
+            let input_edits=if contiguous {edits.unwrap_or(&[]).iter().flat_map(|edit|edit.0.iter().copied()).collect::<Vec<_>>()}else{Vec::new()};
+            let parsed=if let Some(previous)=&self.php_context {
+                previous.update(self.text.clone(),&input_edits,&self.cancel_flag)
+            }else{lapce_php::Document::new(self.text.clone(),false,&self.cancel_flag)};
+            match parsed {Ok(context)=>Some(Arc::new(context)),Err(lapce_php::Error::Cancelled)=>return,Err(error)=>{tracing::debug!(?error,"PHP incremental parse failed, retrying full parse"); match lapce_php::Document::new(self.text.clone(),false,&self.cancel_flag) {Ok(context)=>Some(Arc::new(context)),Err(error)=>{tracing::debug!(?error,"PHP full parse failed");None}}}}
+        }else{None};
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
+        self.php_context=php_context;
     }
 
     fn fold_ranges(text:&Rope,snapshot:Option<&lexilla_rs::Snapshot>)->Vec<crate::folding::FoldRange> {
@@ -1337,10 +1347,16 @@ mod cancellation_entry_tests {
         let edit=SyntaxEdit::new(vec![edit::create_insert_edit(&old,at,&inserted)]);
         syntax.parse(2,Rope::from("<?php $sql='SELECT 1';\n$x=2;"),Some(&[edit]));
         assert_eq!(syntax.php_context.as_ref().unwrap().text().len(),syntax.text.len());
+        let fresh=lapce_php::Document::new(syntax.text.clone(),false,&AtomicUsize::new(0)).unwrap();
+        assert_eq!(syntax.php_context.as_ref().unwrap().index(),fresh.index());
+        let invalid=tree_sitter::InputEdit{start_byte:usize::MAX,old_end_byte:0,new_end_byte:0,start_position:tree_sitter::Point::new(0,0),old_end_position:tree_sitter::Point::new(0,0),new_end_position:tree_sitter::Point::new(0,0)};
+        syntax.parse(3,syntax.text.clone(),Some(&[SyntaxEdit::new(vec![invalid])]));
+        assert_eq!(syntax.php_context.as_ref().unwrap().index(),fresh.index());
+
         assert_eq!(first.text().len(),old.len());
         // This delta does not cover skipped revision 3. Full parse is safer.
         let final_text="<p>λ</p><?php $x=3;";
-        syntax.parse(4,Rope::from(final_text),Some(&[SyntaxEdit::new(Vec::new())]));
+        syntax.parse(5,Rope::from(final_text),Some(&[SyntaxEdit::new(Vec::new())]));
         assert_eq!(syntax.php_context.as_ref().unwrap().index().at(3),Some(lapce_php::Context::Html));
         assert_eq!(syntax.php_context.as_ref().unwrap().text().len(),final_text.len());
     }
