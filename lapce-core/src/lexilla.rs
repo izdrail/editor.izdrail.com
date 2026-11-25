@@ -127,6 +127,12 @@ pub fn highlight_profile(
     let source = text.to_string();
     // Opt-in build only. Lexilla remains the default and framework-aware path.
     #[cfg(feature = "logos-php")]
+    if language == Blade {
+        if let Some(snapshot) = Snapshot::from_blade_styles(&source, gravity_lex::lex_blade(&source).styles) {
+            return Some(Arc::new(snapshot));
+        }
+    }
+    #[cfg(feature = "logos-php")]
     if language == Php && !project.laravel && !project.symfony_app && !project.wordpress {
         if let Some(snapshot) = Snapshot::from_mixed_php_styles(&source, gravity_lex::lex(&source).styles) {
             return Some(Arc::new(snapshot));
@@ -1042,6 +1048,21 @@ mod tests {
         assert!(!is_pure_php("<?phpx echo 1;"));
     }
 
+    #[cfg(feature = "logos-php")]
+    #[test]
+    fn logos_import_blade_route_is_explicit_and_framework_independent() {
+        assert_eq!(LapceLanguage::from_path(std::path::Path::new("resources/views/home.blade.php")), LapceLanguage::Blade);
+        let source = "<x-card title=\"{{ $title }}\">@custom($value)@endcustom</x-card>";
+        for laravel in [false, true] {
+            let snapshot = highlight_in(LapceLanguage::Blade, &Rope::from(source), laravel).unwrap();
+            for (needle, scope) in [("x-card", "tag"), ("title=", "attribute"), ("$title", "variable"), ("@custom", "keyword")] {
+                assert_eq!(snapshot.lexer(), "blade-logos");
+                let at = source.find(needle).unwrap();
+                assert_eq!(snapshot.scope(snapshot.styles()[at]), Some(scope), "{needle}");
+            }
+        }
+    }
+
     #[test]
     fn php_routing_is_content_based() {
         assert!(is_pure_php("<?php\necho 1;"));
@@ -1416,7 +1437,7 @@ mod logos_import_tests {
             let snap = highlight_profile(LapceLanguage::Php, &Rope::from("<?php $x = 1;"), &project).unwrap();
             assert_ne!(snap.lexer(), "php-logos", "framework {framework}");
         }
-        for language in [LapceLanguage::Blade, LapceLanguage::Html, LapceLanguage::Twig] {
+        for language in [LapceLanguage::Html, LapceLanguage::Twig] {
             let snap = highlight_profile(language, &Rope::from("<p>text</p>"), &Default::default()).unwrap();
             assert_ne!(snap.lexer(), "php-logos", "language {language:?}");
         }

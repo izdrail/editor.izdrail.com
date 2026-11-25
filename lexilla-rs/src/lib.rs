@@ -129,6 +129,13 @@ impl Snapshot {
         Some(snapshot)
     }
 
+    /// Experimental Blade imports share the PHP/HTML style ABI, not its routing identity.
+    pub fn from_blade_styles(text: &str, styles: Vec<u8>) -> Option<Self> {
+        let mut snapshot = Self::from_mixed_php_styles(text, styles)?;
+        snapshot.lexer = "blade-logos".into();
+        Some(snapshot)
+    }
+
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
         Self::lex_with_properties(name, text, keywords, &[])
     }
@@ -648,6 +655,14 @@ mod php_member_comment_tests {
 #[cfg(test)]
 mod imported_php_tests {
     use super::*;
+    #[test]
+    fn blade_import_is_explicit_and_preserves_the_shared_abi() {
+        let snapshot = Snapshot::from_blade_styles("<x>", vec![36,32,36]).unwrap();
+        assert_eq!(snapshot.lexer(), "blade-logos");
+        assert_eq!(snapshot.scope(32), Some("tag"));
+        assert!(Snapshot::from_blade_styles("x", vec![255]).is_none());
+        assert!(Snapshot::from_blade_styles("λ", vec![32]).is_none());
+    }
     #[test]
     fn mixed_php_import_preserves_host_scopes_and_checks_ids() {
         let s=Snapshot::from_mixed_php_styles("<p>",vec![36,32,36]).unwrap();

@@ -95,8 +95,14 @@ pub struct Output {
     pub checkpoints: Vec<Checkpoint>,
 }
 
-pub fn lex(source: &str) -> Output {
+pub fn lex(source: &str) -> Output { lex_mode(source, false) }
+
+/// Blade is an explicit opt-in host mode. Never executes templates or PHP.
+pub fn lex_blade(source: &str) -> Output { lex_mode(source, true) }
+
+fn lex_mode(source: &str, blade: bool) -> Output {
     Driver {
+        blade,
         source,
         styles: vec![style::HTML; source.len()],
         checkpoints: vec![],
@@ -113,6 +119,7 @@ pub enum HtmlContext {
     Comment,
 }
 struct Driver<'a> {
+    blade: bool,
     source: &'a str,
     styles: Vec<u8>,
     checkpoints: Vec<Checkpoint>,
@@ -128,6 +135,9 @@ impl Driver<'_> {
         self.checkpoints.push(Checkpoint { offset, mode, host: self.html });
         while offset < self.source.len() {
             if mode == Mode::Html {
+                if self.blade {
+                    if let Some(end) = self.blade_token(offset) { offset=end; continue; }
+                }
                 if self.source[offset..].eq_ignore_ascii_case("<?php") {
                     self.paint(offset..self.source.len(), style::OPEN);
                     self.checkpoints.push(Checkpoint {
@@ -186,7 +196,7 @@ impl Driver<'_> {
                 (start + 1, style::HTML_DELIMITER)
             }
             HtmlContext::Text => {
-                let end = bytes[start+1..].iter().position(|b| *b==b'<').map_or(bytes.len(), |n| start+1+n);
+                let end = bytes[start+1..].iter().position(|b| *b==b'<' || (self.blade && matches!(*b,b'@'|b'{'))).map_or(bytes.len(), |n| start+1+n);
                 // Search byte-wise for ASCII delimiters, never slice UTF-8 at1.
                 (end, style::HTML)
             }
@@ -198,6 +208,7 @@ impl Driver<'_> {
                 let mut end=start+1;
                 while end<bytes.len() && !self.source.is_char_boundary(end) { end+=1; }
                 while end<bytes.len() && !self.source[end..].starts_with("-->")
+                    && !(self.blade && matches!(bytes[end], b'@'|b'{'))
                     && !self.source[end..].starts_with("<?") {
                     end+=self.source[end..].chars().next().unwrap().len_utf8();
                 }
@@ -208,6 +219,7 @@ impl Driver<'_> {
                 if bytes[end]==quote { end+=1; self.html=HtmlContext::Tag(false); }
                 else {
                     while end<bytes.len() && bytes[end]!=quote
+                        && !(self.blade && matches!(bytes[end],b'@'|b'{'))
                         && !(bytes[end]==b'<' && bytes.get(end+1)==Some(&b'?')) { end+=1; }
                 }
                 if end==start { end+=1; } // Invalid <? prefix, still host text.
@@ -225,6 +237,7 @@ impl Driver<'_> {
                 } else {
                     let mut end=start+1;
                     while end<bytes.len() && !bytes[end].is_ascii_whitespace()
+                        && !(self.blade && matches!(bytes[end],b'@'|b'{'))
                         && !matches!(bytes[end], b'<'|b'>'|b'/'|b'='|b'\''|b'"') { end+=1; }
                     self.html=HtmlContext::Tag(false);
                     (end,if name {style::HTML_TAG} else {style::HTML_ATTRIBUTE})
@@ -233,6 +246,77 @@ impl Driver<'_> {
         };
         self.paint(start..end,scope);
         end
+    }
+    fn blade_token(&mut self, start: usize) -> Option<usize> {
+        let rest=&self.source[start..];
+        if rest.starts_with("{{--") {
+            let end=rest[4..].find("--}}").map_or(self.source.len(),|n|start+4+n+4);
+            self.paint(start..end,style::COMMENT); return Some(end);
+        }
+        // Escaped Blade constructs are literal output, including escaped echos.
+        if rest.starts_with("@@") || rest.starts_with("@{{") || rest.starts_with("@{!!") {
+            let mut end=start+2;
+            if rest.starts_with("@{{") || rest.starts_with("@{!!") {
+                let close=if rest.starts_with("@{{") {"}}"} else {"!!}"};
+                end=self.source[start+3..].find(close).map_or(self.source.len(),|n|start+3+n+close.len());
+            } else {
+                while end<self.source.len() && self.source.as_bytes()[end].is_ascii_alphabetic() {end+=1;}
+            }
+            let scope=if matches!(self.html,HtmlContext::Quoted(_)) {style::HTML_STRING} else {style::HTML};
+            self.paint(start..end,scope); return Some(end);
+        }
+        let echo=if rest.starts_with("{!!") {Some((3,"!!}"))} else if rest.starts_with("{{") {Some((2,"}}"))} else {None};
+        if let Some((len,close))=echo {
+            self.paint(start..start+len,style::OPEN);
+            let end=self.blade_php(start+len,close,false);
+            return Some(end);
+        }
+        if rest.starts_with('@') && rest.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic) {
+            let mut end=start+2;
+            while end<self.source.len() && (self.source.as_bytes()[end].is_ascii_alphanumeric() || self.source.as_bytes()[end]==b'_') {end+=1;}
+            let name=&self.source[start+1..end];
+            // Avoid treating email addresses as directives.
+            if start>0 && self.source.as_bytes()[start-1].is_ascii_alphanumeric() && self.source.as_bytes().get(end)==Some(&b'.') {return None;}
+            self.paint(start..end,style::KEYWORD);
+            if name=="verbatim" {
+                let close="@endverbatim";
+                let stop=self.source[end..].find(close).map_or(self.source.len(),|n|end+n);
+                self.paint(end..stop,style::HTML);
+                let finish=(stop+close.len()).min(self.source.len());
+                self.paint(stop..finish,style::KEYWORD);return Some(finish);
+            }
+            let mut args=end;
+            while args<self.source.len() && self.source.as_bytes()[args].is_ascii_whitespace() {args+=1;}
+            if self.source.as_bytes().get(args)==Some(&b'(') {
+                self.paint(end..args,style::DEFAULT);
+                return Some(self.blade_php(args,"",true));
+            }
+            if name=="php" { return Some(self.blade_php(end,"@endphp",false)); }
+            return Some(end);
+        }
+        None
+    }
+    // PHP token scanners consume strings/comments/heredocs atomically, so Blade
+    // terminators inside those tokens never end an island. Brackets are counted
+    // lexically, without attempting to parse expressions or evaluate directives.
+    fn blade_php(&mut self, mut at: usize, close: &str, parentheses: bool) -> usize {
+        let mut depth=0usize;
+        while at<self.source.len() {
+            if !parentheses && depth==0 && self.source[at..].starts_with(close) {
+                let end=at+close.len();self.paint(at..end,style::CLOSE);return end;
+            }
+            let byte=self.source.as_bytes()[at];
+            let end=self.php_token(at);
+            if self.styles[at]==style::OPERATOR {
+                if matches!(byte,b'('|b'['|b'{') {depth+=1;}
+                if matches!(byte,b')'|b']'|b'}') {
+                    depth=depth.saturating_sub(1);
+                    if parentheses && depth==0 {return end;}
+                }
+            }
+            at=end;
+        }
+        at
     }
     fn php_token(&mut self, start: usize) -> usize {
         let mut lexer = Php::lexer(&self.source[start..]);

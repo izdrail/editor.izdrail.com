@@ -34,6 +34,7 @@ python3 scripts/lint-laravel-expansions.py target/acceptance-logs/laravel-expans
 LAPCE_BLADE_EXPORT="$PWD/target/acceptance-logs/blade-expansions.json" cargo test --locked -p lapce-app export_blade_expansions_for_compile -- --ignored --exact builtin_snippets::tests::export_blade_expansions_for_compile 2>&1 | tee target/acceptance-logs/blade-export.log
 php scripts/compile-blade-fixtures.php target/acceptance-logs/blade-expansions.json 2>&1 | tee target/acceptance-logs/blade-compile.log
 php scripts/runtime-laravel-fixtures.php target/acceptance-logs/laravel-expansions.json 2>&1 | tee target/acceptance-logs/laravel-runtime.log
+cargo test --locked --manifest-path lexilla-rs/Cargo.toml 2>&1 | tee target/acceptance-logs/logos-style-import.log
 cargo test --locked -p lapce-core --features logos-php logos_import -- --test-threads=1 2>&1 | tee target/acceptance-logs/logos-import.log
 cargo test --locked --workspace -- --test-threads=2 2>&1 | tee target/acceptance-logs/workspace.log
 df -h .
