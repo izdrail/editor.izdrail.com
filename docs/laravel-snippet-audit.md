@@ -211,3 +211,9 @@ PHP harness hardening: empty/malformed export cannot silently pass. Five Python
 regressions check empty exports, failed lint, unchanged parent-member context,
 full-file isolation and php -l-only execution. These test the harness, not PHP
 syntax or Laravel semantics, which remain separate hosted gates.
+
+Confirmed syntax checkpoint:382fee7 hosted acceptance exported all175 Laravel
+default expansions with the actual editor parser and passed php -l for175/175.
+Full workspace, optional llama.cpp CPU, isolated Mistral CPU and Linux release
+also passed. This does not validate framework symbols or runtime behavior.
+Evidence: https://github.com/izdrail/editor.izdrail.com/actions/runs/45552792538

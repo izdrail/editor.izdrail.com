@@ -32,7 +32,10 @@ baseline; it is not claimed to be that missing attachment.
 - Full-class snippets preserve PHP open tags in empty files and avoid duplicating
   an existing opening tag in the accepted PHP insertion context.
 - Automated parser/build success does not establish PHP/Laravel runtime correctness.
-  No fixture Laravel application or all-template PHP lint pass has run here yet.
+  All175 default Laravel expansions from the actual editor parser passed php -l
+  on hosted acceptance for382fee7. Each was checked unchanged in a legal insertion
+  context. This does not validate edited placeholder values, framework symbols,
+  Blade compilation or runtime behavior. No fixture Laravel application has run.
 - Checklist entries are scoped examples, not a claim that every variation or
   application-specific import/schema/authorization requirement is solved.
 
