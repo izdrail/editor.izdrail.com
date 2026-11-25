@@ -287,6 +287,10 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-notification-mail | Method inside notification; include mail in via() and configure mail transport |
 | lv-notification-slack | Requires laravel/slack-notification-channel, configured Slack app/routing and slack in via() |
 | lv-notification-sms | Requires laravel/vonage-notification-channel, credentials/routing, recipient consent and vonage in via() |
+| lv-verification-handler | Web route; User must implement MustVerifyEmail, configure mail and verification notice route |
+| lv-verification-resend | Authenticated CSRF-protected web POST; requires MustVerifyEmail and mail configuration |
+| lv-verification-notice | Authenticated verification notice view; create the referenced Blade view |
+| lv-route-verified | Require verified authenticated user; User must implement MustVerifyEmail and verification routes must exist |
 
 ## livewire
 

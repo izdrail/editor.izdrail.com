@@ -1708,5 +1708,39 @@
       "\t\t->content('${1:SMS content}');",
       "}"
     ]
+  },
+  "Email verification handler route": {
+    "prefix": "lv-verification-handler",
+    "description": "Web route; User must implement MustVerifyEmail, configure mail and verification notice route",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('/email/verify/{id}/{hash}', function (\\\\Illuminate\\\\Foundation\\\\Auth\\\\EmailVerificationRequest \\$request) {",
+      "\t\\$request->fulfill();",
+      "\treturn redirect('${1:/dashboard}');",
+      "})->middleware(['auth', 'signed'])->name('verification.verify');"
+    ]
+  },
+  "Email verification resend route": {
+    "prefix": "lv-verification-resend",
+    "description": "Authenticated CSRF-protected web POST; requires MustVerifyEmail and mail configuration",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::post('/email/verification-notification', function (\\\\Illuminate\\\\Http\\\\Request \\$request) {",
+      "\t\\$request->user()->sendEmailVerificationNotification();",
+      "\treturn back()->with('message', '${1:Verification link sent.}');",
+      "})->middleware(['auth', 'throttle:6,1'])->name('verification.send');"
+    ]
+  },
+  "Email verification notice route": {
+    "prefix": "lv-verification-notice",
+    "description": "Authenticated verification notice view; create the referenced Blade view",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::view('/email/verify', '${1:auth.verify-email}')->middleware('auth')->name('verification.notice');"
+    ]
+  },
+  "Verified authenticated route": {
+    "prefix": "lv-route-verified",
+    "description": "Require verified authenticated user; User must implement MustVerifyEmail and verification routes must exist",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('${1:/dashboard}', [\\\\App\\\\Http\\\\Controllers\\\\${2:DashboardController}::class, '${3:index}'])->middleware(['auth', 'verified']);"
+    ]
   }
 }

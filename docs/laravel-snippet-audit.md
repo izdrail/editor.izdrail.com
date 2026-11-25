@@ -96,3 +96,9 @@ SlackMessage API and Vonage SMS. Descriptions state package, via(), credentials
 and routing requirements. No service configured, dependency installed or
 notification sent. Source: https://raw.githubusercontent.com/laravel/docs/12.x/notifications.md .
 A-J still partial.
+
+Email verification slice: four entries (Laravel149), signed/authenticated
+verification handler, throttled resend POST, notice view and verified route.
+Descriptions require MustVerifyEmail, configured mail and CSRF-protected web
+routes. No email sent. Source: https://raw.githubusercontent.com/laravel/docs/12.x/verification.md .
+A-J remains partial.

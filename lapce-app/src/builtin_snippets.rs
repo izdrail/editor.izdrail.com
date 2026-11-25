@@ -175,6 +175,22 @@ mod tests {
 
 
 
+
+    #[test]
+    fn email_verification_templates_keep_signed_auth_and_throttle_guards() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let handler = text("lv-verification-handler");
+        assert!(handler.contains("/email/verify/{id}/{hash}"));
+        assert!(handler.contains("$request->fulfill()"));
+        assert!(handler.contains("middleware(['auth', 'signed'])->name('verification.verify')"));
+        assert!(text("lv-verification-resend").contains("middleware(['auth', 'throttle:6,1'])"));
+        assert!(text("lv-verification-notice").contains("name('verification.notice')"));
+        assert!(text("lv-route-verified").contains("middleware(['auth', 'verified'])"));
+    }
+
     #[test]
     fn notification_channel_methods_keep_current_namespaces_and_signatures() {
         let text = |prefix: &str| {
