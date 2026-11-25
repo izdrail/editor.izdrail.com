@@ -197,7 +197,9 @@ mod tests {
         assert!(guard.contains("?\\Illuminate\\Contracts\\Auth\\Authenticatable"));
         assert!(guard.contains("return null;"));
         assert!(text("lv-route-auth").contains("middleware('auth:web')"));
-        assert!(text("lv-route-can").contains("can:update,post"));
+        let authorized = text("lv-route-can");
+        assert!(authorized.contains("can:update,post"));
+        assert!(authorized.contains("'/posts/{post}'"));
     }
 
     #[test]

@@ -2026,7 +2026,7 @@
     "prefix": "lv-route-can",
     "description": "Require authentication and a policy ability on the implicitly bound route model; match route parameter and policy",
     "body": [
-      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::${1:get}('${2:/posts/{post}}', [\\\\App\\\\Http\\\\Controllers\\\\${3:PostController}::class, '${4:edit}'])->middleware(['auth:${5:web}', 'can:${6:update},${7:post}']);"
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::${1:get}('/${2:posts}/{${7:post}}', [\\\\App\\\\Http\\\\Controllers\\\\${3:PostController}::class, '${4:edit}'])->middleware(['auth:${5:web}', 'can:${6:update},${7:post}']);"
     ]
   }
 }
