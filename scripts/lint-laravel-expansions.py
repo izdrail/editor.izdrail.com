@@ -24,8 +24,11 @@ def contexts(text):
 
 
 def main():
-    entries = json.load(open(sys.argv[1], encoding="utf-8"))
-    if not entries or any(not entry.get("prefix") or not isinstance(entry.get("text"), str)
+    with open(sys.argv[1], encoding="utf-8") as source:
+        entries = json.load(source)
+    if not isinstance(entries, list) or not entries or any(
+                          not isinstance(entry, dict) or not entry.get("prefix")
+                          or not isinstance(entry.get("text"), str)
                           for entry in entries):
         raise ValueError("Expected a non-empty list of named snippet expansions")
     failed = []
