@@ -470,6 +470,14 @@ fn file_explorer_view(
                         .on_click_stop({
                             let kind = kind.clone();
                             move |event| {
+                                if let Event::KeyDown(key) = event {
+                                    if !explorer_activation_key(
+                                        &key.key.logical_key,
+                                        key.modifiers,
+                                    ) {
+                                        return;
+                                    }
+                                }
                                 // Enter/Space is explicit activation even when pointer
                                 // single-click preview is disabled in preferences.
                                 if matches!(event, Event::KeyDown(_)) && !is_dir {
@@ -658,8 +666,10 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                 EventPropagation::Continue
             })
             .on_click_stop(move |event| {
-                if matches!(event, Event::KeyDown(_)) {
-                    activate();
+                if let Event::KeyDown(key) = event {
+                    if explorer_activation_key(&key.key.logical_key, key.modifiers) {
+                        activate();
+                    }
                 }
             })
             .on_event_cont(EventListener::PointerDown, move |_| activate())

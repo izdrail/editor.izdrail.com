@@ -244,8 +244,13 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                         EventPropagation::Continue
                     })
                     .on_click_stop(move |event| {
-                        if matches!(event, Event::KeyDown(_)) {
-                            activate();
+                        if let Event::KeyDown(key) = event {
+                            if terminal_tab_activation(
+                                &key.key.logical_key,
+                                key.modifiers,
+                            ) {
+                                activate();
+                            }
                         }
                     })
                     .on_event_cont(EventListener::PointerDown, move |_| {
