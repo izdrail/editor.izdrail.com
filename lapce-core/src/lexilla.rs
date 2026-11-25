@@ -125,6 +125,13 @@ pub fn highlight_profile(
     use LapceLanguage::*;
     let laravel = project.laravel;
     let source = text.to_string();
+    // Opt-in build only. Lexilla remains the default and framework-aware path.
+    #[cfg(feature = "logos-php")]
+    if language == Php && !project.laravel && !project.symfony_app && !project.wordpress {
+        if let Some(snapshot) = Snapshot::from_php_styles(&source, gravity_lex::lex(&source).styles) {
+            return Some(Arc::new(snapshot));
+        }
+    }
     if language == Twig {
         return crate::web_templates::twig(&source).map(Arc::new);
     }
@@ -1376,5 +1383,24 @@ mod catalogue_routing_tests {
             assert_eq!(snapshot.len(), 20);
         }
         eprintln!("CSS_100_HIGHLIGHTS={:?}", start.elapsed());
+    }
+}
+
+#[cfg(all(test, feature = "logos-php"))]
+mod logos_import_tests {
+    use super::*;
+    #[test]
+    fn logos_import_routing_and_scopes() {
+        let source = "<p>λ</p><?php readonly class Café { public int $x = 12; } ?>";
+        let snapshot = highlight_profile(LapceLanguage::Php, &Rope::from(source), &Default::default()).unwrap();
+        assert_eq!(snapshot.lexer(), "php-logos");
+        for (needle, id, scope) in [("readonly",13,Some("keyword")),("$x",4,Some("variable")),("12",12,Some("constant")),("<?php",19,Some("operator"))] {
+            assert_eq!(snapshot.styles()[source.find(needle).unwrap()],id);
+            assert_eq!(snapshot.scope(id),scope);
+        }
+        let native = Snapshot::lex("php", "", &[]).unwrap();
+        for id in 0..=21 { assert_eq!(snapshot.scope(id),native.scope(id), "style {id}"); }
+        assert!(Snapshot::from_php_styles("λ",vec![0]).is_none());
+        assert!(Snapshot::from_php_styles("x",vec![255]).is_none());
     }
 }

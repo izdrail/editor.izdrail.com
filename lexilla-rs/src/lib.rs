@@ -99,6 +99,25 @@ pub enum Embed {
     Style,
 }
 impl Snapshot {
+    /// Import experimental PHP byte styles. IDs and scopes match LexPHP.
+    /// Reject invalid lengths/IDs; no native lexer or PHP code is executed.
+    /// Folding levels are intentionally unavailable for imported snapshots.
+    pub fn from_php_styles(text: &str, styles: Vec<u8>) -> Option<Self> {
+        if styles.len() != text.len() || styles.iter().any(|s| *s > 21) {
+            return None;
+        }
+        let mut scopes = vec![None; 256];
+        for (id, tags) in [(1,"comment"),(2,"comment"),(3,"comment documentation"),
+            (4,"identifier variable"),(5,"literal string"),(6,"identifier variable"),
+            (7,"literal string"),(8,"literal string"),(9,"literal string"),
+            (10,"literal string character"),(11,"operator"),(12,"literal numeric"),
+            (13,"keyword"),(14,"function"),(15,"identifier type"),(16,"identifier"),
+            (17,"identifier"),(18,"error"),(19,"operator"),(20,"operator")] {
+            scopes[id] = scope_from_tags(tags);
+        }
+        Some(Self { styles, scopes, embeds: Vec::new(), lexer: "php-logos".into(), levels: None })
+    }
+
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
         Self::lex_with_properties(name, text, keywords, &[])
     }

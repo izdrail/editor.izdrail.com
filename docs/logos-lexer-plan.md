@@ -34,3 +34,31 @@ L1 skeleton and PHP tokens, L2 PHP syntax depth, L3 HTML and mode driver, L4 Bla
 25 November2026: L1-L3 approved in the authenticated conversation. Lexilla
 remains default. Initial Rust PHP/HTML tokens are lexical, not semantic PHP
 analysis. Accuracy/performance and framework overlays remain separate gates.
+
+## L1-L3 implementation checkpoint
+
+The `gravity-lex` crate pins Logos 0.16.1 (MIT OR Apache-2.0, minimum Rust
+1.80, compatible with this workspace's Rust1.98). Source/API inspected from
+https://crates.io/api/v1/crates/logos/0.16.1/download before implementation.
+The crate uses PHP and HTML Logos enums and a bounded hand driver for quoted
+strings, interpolation, comments and heredoc/nowdoc. Returned byte styles reuse
+LexPHP IDs0-21. Safe import validates length/IDs and reuses the adapter's scope
+mapping. Checkpoints currently record only safe HTML/PHP transitions; they do
+not implement incremental invalidation, reuse or folding.
+
+Build the experimental routing path with `lapce-core` feature `logos-php`.
+There is one hook, for PHP only and excluding detected Laravel/Symfony/WordPress projects.
+Default builds, Blade, Twig and framework-aware native routing remain unchanged.
+No UI setting or persisted configuration was added. This opt-in prototype does
+not preserve native folding levels or embedded CSS/JS overlays and must not be
+promoted to default on these tests alone.
+
+Current tests cover modern lexical words, UTF-8 variables/offsets, numeric forms,
+PHP tags/mixed HTML, comments, quotes, braced/simple interpolation, indented
+heredoc/nowdoc and incomplete typing prefixes. Whole interpolation expressions
+share the existing variable style; their internal semantic tokens are not
+parsed. PHPDoc remains documentation-comment style, not annotation semantics.
+Context-sensitive names/types, malformed heredoc indentation diagnostics,
+framework overlays, full accuracy corpora, incremental reuse, parity and all
+performance claims remain separate open gates. L1-L3 are an initial implementation,
+not a claim of exhaustive PHP grammar coverage or a completed engine replacement.
