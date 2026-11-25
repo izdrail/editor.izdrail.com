@@ -138,3 +138,8 @@ password with Password::defaults(), delegates credential checks to broker, hashe
 password, rotates remember token and emits PasswordReset after save. Description
 requires guest/CSRF/throttle/broker setup. No real password or account changed.
 Source: https://raw.githubusercontent.com/laravel/docs/12.x/passwords.md .
+
+Controller follow-up (Laravel159): seven-action HTML resource and empty abstract
+application base Controller. Resource actions remain explicit501 stubs; the
+base template warns against overwriting an existing application class.
+Source: https://laravel.com/docs/12.x/controllers . Runtime CRUD not claimed.

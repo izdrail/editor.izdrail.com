@@ -181,6 +181,21 @@ mod tests {
 
 
 
+
+    #[test]
+    fn html_resource_and_base_controller_templates_keep_distinct_roles() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let resource = text("lv-controller-resource");
+        for method in ["index", "create", "store", "show", "edit", "update", "destroy"] { assert!(resource.contains(&format!("function {method}("))); }
+        assert_eq!(resource.matches("abort(501,").count(), 7);
+        assert!(resource.contains("\\Symfony\\Component\\HttpFoundation\\Response"));
+        assert!(text("lv-controller-base").contains("abstract class Controller"));
+        assert!(!text("lv-controller-base").contains("extends Controller"));
+    }
+
     #[test]
     fn password_reset_template_uses_broker_validation_hash_and_token_rotation() {
         let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == "lv-password-reset")).unwrap();

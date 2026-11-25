@@ -1845,5 +1845,66 @@
       "\t? redirect()->route('login')->with('status', __(\\$status))",
       "\t: back()->withErrors(['email' => [__(\\$status)]]);"
     ]
+  },
+  "HTML resource controller class": {
+    "prefix": "lv-controller-resource",
+    "description": "Seven-action HTML resource scaffold with model binding; replace 501 stubs with authorized validated view/redirect logic",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Controllers;",
+      "",
+      "class ${1:PostController} extends Controller",
+      "{",
+      "\tpublic function index(\\\\Illuminate\\\\Http\\\\Request \\$request): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function store(\\\\Illuminate\\\\Http\\\\Request \\$request): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function show(\\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function update(\\\\Illuminate\\\\Http\\\\Request \\$request, \\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function destroy(\\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function create(): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function edit(\\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Symfony\\\\Component\\\\HttpFoundation\\\\Response",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "}"
+    ]
+  },
+  "Application base controller class": {
+    "prefix": "lv-controller-base",
+    "description": "Base application Controller class; only create if absent, do not overwrite application traits/methods",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Controllers;",
+      "",
+      "abstract class Controller",
+      "{",
+      "\t$0",
+      "}"
+    ]
   }
 }

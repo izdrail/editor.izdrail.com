@@ -299,6 +299,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-guarded | Inside model; deny all mass assignment until an explicit fillable/guarded policy replaces this |
 | lv-model-boot | Inside model; merge with any existing boot method, preserve parent boot for traits |
 | lv-password-reset | Guest CSRF-protected controller body; configure broker, reset token table and login route, add throttling |
+| lv-controller-resource | Seven-action HTML resource scaffold with model binding; replace 501 stubs with authorized validated view/redirect logic |
+| lv-controller-base | Base application Controller class; only create if absent, do not overwrite application traits/methods |
 
 ## livewire
 
