@@ -1035,6 +1035,11 @@ impl Syntax {
         self.text = new_text;
     }
 
+    /// Never expose intelligence for an older painted revision.
+    pub fn current_php_context(&self)->Option<&lapce_php::Document> {
+        (self.php_context_rev==Some(self.rev)).then(||self.php_context.as_deref()).flatten()
+    }
+
     pub fn refresh_php_context(&mut self,_previous_rev:u64,edits:Option<&[SyntaxEdit]>) {
         let php_context=if self.language==LapceLanguage::Php {
             // Async parsing can lag more than one buffer revision. A last-edit
@@ -1371,6 +1376,7 @@ mod cancellation_entry_tests {
         assert_eq!(rev2.len(),syntax.text.len());
         syntax.parse_paint(2,rev2.clone(),None);
         assert_eq!(syntax.php_context_rev,Some(1));
+        assert!(syntax.current_php_context().is_none());
         let at=rev2.len();let add=Rope::from("$b=2;");
         syntax.parse(3,Rope::from(format!("{}$b=2;",rev2)),Some(&[SyntaxEdit::new(vec![edit::create_insert_edit(&rev2,at,&add)])]));
         let fresh=lapce_php::Document::new(syntax.text.clone(),false,&AtomicUsize::new(0)).unwrap();
