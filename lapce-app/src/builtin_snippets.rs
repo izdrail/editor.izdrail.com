@@ -179,6 +179,19 @@ mod tests {
 
 
 
+
+    #[test]
+    fn bulk_update_and_model_safety_templates_have_explicit_guards() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-query-update").contains("if ($ids === [])"));
+        assert!(text("lv-query-update").contains("->whereIn('id', $ids)"));
+        assert!(text("lv-model-guarded").contains("protected $guarded = ['*'];"));
+        assert!(text("lv-model-boot").contains("parent::boot();"));
+    }
+
     #[test]
     fn event_discovery_and_synchronous_broadcast_templates_keep_distinct_contracts() {
         let text = |prefix: &str| {

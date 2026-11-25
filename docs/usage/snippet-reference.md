@@ -295,6 +295,9 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-middleware-global | Inside existing bootstrap/app.php withMiddleware callback, Laravel11+; merge, do not replace stack |
 | lv-event-broadcast-now | Synchronous private-channel broadcast; configure broadcaster and channel authorization, blocks current request |
 | lv-event-discovery | Application builder chain in bootstrap/app.php; listener directory must exist |
+| lv-query-update | Bulk query update with explicit nonempty key list; bypasses Eloquent model events, authorize affected rows |
+| lv-model-guarded | Inside model; deny all mass assignment until an explicit fillable/guarded policy replaces this |
+| lv-model-boot | Inside model; merge with any existing boot method, preserve parent boot for traits |
 
 ## livewire
 

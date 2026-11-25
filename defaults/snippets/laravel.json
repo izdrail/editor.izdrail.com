@@ -1791,5 +1791,36 @@
       "\t__DIR__.'/../app/${1:Listeners}',",
       "])"
     ]
+  },
+  "Bounded bulk update": {
+    "prefix": "lv-query-update",
+    "description": "Bulk query update with explicit nonempty key list; bypasses Eloquent model events, authorize affected rows",
+    "body": [
+      "\\$ids = ${1:[]};",
+      "if (\\$ids === []) {",
+      "\tthrow new \\\\InvalidArgumentException('Select explicit IDs before bulk update.');",
+      "}",
+      "\\$affected = \\\\Illuminate\\\\Support\\\\Facades\\\\DB::table('${2:posts}')",
+      "\t->whereIn('${3:id}', \\$ids)",
+      "\t->update(['${4:published}' => ${5:true}]);"
+    ]
+  },
+  "Model guarded attributes": {
+    "prefix": "lv-model-guarded",
+    "description": "Inside model; deny all mass assignment until an explicit fillable/guarded policy replaces this",
+    "body": [
+      "protected \\$guarded = ['*'];"
+    ]
+  },
+  "Model boot override": {
+    "prefix": "lv-model-boot",
+    "description": "Inside model; merge with any existing boot method, preserve parent boot for traits",
+    "body": [
+      "protected static function boot(): void",
+      "{",
+      "\tparent::boot();",
+      "\t$0",
+      "}"
+    ]
   }
 }

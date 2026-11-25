@@ -125,3 +125,10 @@ Event follow-up: discovery-path builder and synchronous ShouldBroadcastNow class
 https://raw.githubusercontent.com/laravel/docs/12.x/events.md ,
 https://raw.githubusercontent.com/laravel/docs/12.x/broadcasting.md .
 Runtime broadcaster/channel authorization remains unverified.
+
+Database/model safety slice (Laravel156): explicit-key bulk query update rejects
+an empty ID list and states Eloquent events are bypassed. Guarded model defaults
+to all attributes, and boot override preserves parent boot for model traits.
+Source for query update: https://raw.githubusercontent.com/laravel/docs/12.x/queries.md .
+Model lifecycle source was verified in Laravel12 Model.php in the prior slice.
+No database queries run; runtime fixtures remain pending.

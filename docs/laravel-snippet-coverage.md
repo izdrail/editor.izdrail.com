@@ -1,7 +1,7 @@
 # Laravel snippet coverage checkpoint
 
 25 November 2026. This maps the recorded A-J request to implemented examples and
-remaining gaps. It is not full acceptance. Laravel153, Livewire17, Blade108.
+remaining gaps. It is not full acceptance. Laravel156, Livewire17, Blade108.
 The original supplied configuration attachment and the rest of the message after
 SMS notifications were not available. The repository inventory is the audited
 baseline; it is not claimed to be that missing attachment.
@@ -10,8 +10,8 @@ baseline; it is not claimed to be that missing attachment.
 | --- | --- | --- |
 | A Routing | HTTP verbs, resource/API resource, groups, name/prefix/domain, binding, numeric/UUID constraints, fallback/redirect/view, limiter/throttle, invokable, signed/expiring URL | Review original route templates for imports and editable controller defaults; runtime fixture project not run |
 | B Controllers/HTTP | Basic controller, invokable class, five-action API resource class, typed request examples, JSON/redirect/download/file/stream responses, uploads, HTTP client | Seven-action HTML resource controller and base controller; scaffold methods are explicit501, not working CRUD |
-| C Eloquent | Model, UUID/ULID, fillable, casts, accessor/mutator, requested relation families with return types, local/global scopes, observer method, creating/booted, collection/pivot classes, soft deletes, factories, hidden attributes | Explicit guarded configuration, boot method, broader model-event/observer registration, serialization patterns beyond hidden attributes, runtime schema fixtures |
-| D Database | Create/modify migration, foreign/unique/composite indexes, transaction/raw/builder, chunk/lazy/pagination, seeder/factory, upsert/insert, named connection | Explicit drop-table migration, bulk update, Eloquent Builder-specific patterns, migration rollback/runtime verification |
+| C Eloquent | Model, UUID/ULID, fillable/guarded, casts, accessor/mutator, requested relation families with return types, local/global scopes, observer method, creating/boot/booted, collection/pivot classes, soft deletes, factories, hidden attributes | Broader model-event/observer registration, serialization patterns beyond hidden attributes, runtime schema fixtures |
+| D Database | Create/modify migration, foreign/unique/composite indexes, transaction/raw/builder, chunk/lazy/pagination, seeder/factory, upsert/insert/key-bounded bulk update, named connection | Explicit drop-table migration and Eloquent Builder-specific patterns, migration rollback/runtime verification |
 | E Validation | Inline/FormRequest/rule classes, nested arrays, file upload validation, custom messages, requiredIf condition, after hooks, explicit authorization placeholder | Further conditional/Rule-object examples and executable request tests |
 | F Auth | Session login/logout, guard lookup, gates/policy, password hashing/reset-link, verification routes, Sanctum scoped token/revocation | Custom guard and user-provider implementation, full password reset handler, auth/authorization middleware examples and runtime security tests |
 | G Middleware | Standard/terminable/parameter/alias/global append/response-header templates | Explicit request inspection patterns and runtime ordering checks |
