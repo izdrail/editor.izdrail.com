@@ -2600,7 +2600,7 @@ fn composer_dropdown_overlay<V: View + 'static>(
         // click at the very bottom must not clip the overlay.
         let x = x.clamp(5.0, (window.width - list.width - 5.0).max(5.0));
         let y = y.clamp(5.0, (window.height - list.height - 5.0).max(5.0));
-        s.width(width as f32)
+        s.absolute().width(width as f32)
             .font_size(config.ui.font_size() as f32)
             .font_family(config.ui.font_family.clone())
             .color(config.color(LapceColor::EDITOR_FOREGROUND))
@@ -2619,7 +2619,22 @@ fn composer_dropdown_overlay<V: View + 'static>(
     floem::action::exec_after(std::time::Duration::from_millis(10), move |_| {
         if expanded.get_untracked() { id.request_focus(); }
     });
-    menu
+    // FocusLost is not a reliable outside-click signal: the workbench can
+    // reassign focus while mounting the menu. A window-sized pointer surface
+    // behind the menu gives every outside click an explicit dismissal path.
+    // The menu stops pointer-down propagation, so row selection is untouched.
+    floem::views::stack((
+        empty()
+            .style(|s| s.absolute().size_full())
+            .on_event_stop(EventListener::PointerDown, move |_| {
+                expanded.set(false);
+            }),
+        menu,
+    ))
+    .style(move |s| {
+        let window = window_size.get();
+        s.width(window.width).height(window.height)
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

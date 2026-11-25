@@ -71,8 +71,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('00-initial')
         # Pointer opening must survive the composer help footer changing height.
         run('mousemove', '1195', '727', 'click', '1'); time.sleep(2); shot('00b-pointer-mode-menu')
+        run('mousemove', '600', '220', 'click', '1'); shot('00b1-mode-outside-dismissed')
         run('key', 'Escape'); time.sleep(1)
         run('mousemove', '1290', '715', 'click', '1'); time.sleep(2); shot('00c-pointer-model-menu')
+        run('mousemove', '600', '220', 'click', '1'); shot('00c1-model-outside-dismissed')
         run('key', 'Escape'); time.sleep(1)
         run('mousemove', '1250', '640', 'click', '1')
         shot('00a-empty-focused')
