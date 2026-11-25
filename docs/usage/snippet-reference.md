@@ -269,6 +269,11 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-password-send-reset-link | Controller body; configure password broker, reset routes, guest middleware and throttling |
 | lv-sanctum-create-token | Authenticated authorized token handler; requires Sanctum/HasApiTokens, approved ability and expiry |
 | lv-sanctum-revoke-token | Authenticated handler; deletes only a token belonging to current user after validation |
+| lv-route-name-group | Route-name prefix group; nested routes still need names |
+| lv-rate-limiter | Register in service provider boot; attach matching throttle middleware to routes |
+| lv-route-throttled | GET route using a previously registered named limiter |
+| lv-route-signed | Signed named route; signature is not a substitute for application authorization |
+| lv-url-signed | Expiring URL for an existing signed named route; validate recipient authorization separately |
 
 ## livewire
 

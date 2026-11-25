@@ -170,6 +170,21 @@ mod tests {
 
 
 
+
+    #[test]
+    fn routing_followup_preserves_closing_braces_and_qualified_api_calls() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-route-name-group").contains("Route::name('admin.')->group"));
+        assert!(text("lv-rate-limiter").contains("$request->user()?->id ?: $request->ip()"));
+        assert!(text("lv-route-throttled").contains("middleware('throttle:api')"));
+        assert!(text("lv-route-signed").contains("Route::get('/action/{id}'"));
+        assert!(text("lv-route-signed").contains("middleware('signed')->name('action')"));
+        assert!(text("lv-url-signed").contains("['id' => $model->getKey()]"));
+    }
+
     #[test]
     fn auth_snippets_preserve_session_safety_and_user_scoped_token_revocation() {
         let text = |prefix: &str| {

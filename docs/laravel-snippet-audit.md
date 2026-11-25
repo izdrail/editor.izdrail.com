@@ -64,3 +64,8 @@ middleware, authorization and throttling as appropriate. These are insertion
 templates, not complete secure authentication scaffolding. A-J remains partial.
 Sources checked: https://laravel.com/docs/12.x/authentication ,
 https://laravel.com/docs/12.x/passwords , https://laravel.com/docs/12.x/sanctum .
+
+Routing follow-up: five entries (Laravel132), route-name groups, limiter
+registration, throttled routes, signed routes and temporary signed URLs.
+Descriptions require matching registration and separate authorization.
+Sources: https://laravel.com/docs/12.x/routing , https://laravel.com/docs/12.x/urls .

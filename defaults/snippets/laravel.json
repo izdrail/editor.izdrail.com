@@ -1489,5 +1489,45 @@
       "\\$request->user()->tokens()->where('id', \\$validated['token_id'])->delete();",
       "return response()->noContent();"
     ]
+  },
+  "Route name group": {
+    "prefix": "lv-route-name-group",
+    "description": "Route-name prefix group; nested routes still need names",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::name('${1:admin}.')->group(function (): void {",
+      "\t$0",
+      "});"
+    ]
+  },
+  "Named rate limiter": {
+    "prefix": "lv-rate-limiter",
+    "description": "Register in service provider boot; attach matching throttle middleware to routes",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\RateLimiter::for('${1:api}', function (\\\\Illuminate\\\\Http\\\\Request \\$request) {",
+      "\treturn \\\\Illuminate\\\\Cache\\\\RateLimiting\\\\Limit::perMinute(${2:60})",
+      "\t\t->by(\\$request->user()?->id ?: \\$request->ip());",
+      "});"
+    ]
+  },
+  "Throttled route": {
+    "prefix": "lv-route-throttled",
+    "description": "GET route using a previously registered named limiter",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('${1:/endpoint}', [\\\\App\\\\Http\\\\Controllers\\\\${2:Controller}::class, '${3:index}'])->middleware('throttle:${4:api}');"
+    ]
+  },
+  "Signed route": {
+    "prefix": "lv-route-signed",
+    "description": "Signed named route; signature is not a substitute for application authorization",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('${1:/action/{id\\}}', [\\\\App\\\\Http\\\\Controllers\\\\${2:Controller}::class, '${3:show}'])->middleware('signed')->name('${4:action}');"
+    ]
+  },
+  "Temporary signed URL": {
+    "prefix": "lv-url-signed",
+    "description": "Expiring URL for an existing signed named route; validate recipient authorization separately",
+    "body": [
+      "\\$url = \\\\Illuminate\\\\Support\\\\Facades\\\\URL::temporarySignedRoute('${1:action}', now()->addMinutes(${2:15}), ['${3:id}' => ${4:\\$model->getKey()}]);"
+    ]
   }
 }
