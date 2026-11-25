@@ -3047,6 +3047,7 @@ name = "gravity-lex"
 version = "0.1.0"
 dependencies = [
  "logos",
+ "serde_json",
 ]
 
 [[package]]
