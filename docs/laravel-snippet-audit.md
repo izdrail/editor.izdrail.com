@@ -217,3 +217,11 @@ default expansions with the actual editor parser and passed php -l for175/175.
 Full workspace, optional llama.cpp CPU, isolated Mistral CPU and Linux release
 also passed. This does not validate framework symbols or runtime behavior.
 Evidence: https://github.com/izdrail/editor.izdrail.com/actions/runs/45552792538
+
+Blade fixture aeaffd3:108/108 real editor expansions compiled with Laravel12.74.0
+and Livewire3.8.12 and passed compiled PHP syntax in the workspace job. Resolved
+Composer lock recovered from its artifact and checked in. Added selected runtime
+fixtures for migrations/rollback, safe serialization, request booleans, validation
+and deny-by-default provider contract, using unchanged expanded defaults and a
+disposable SQLite-memory database. Runtime results pending; not all-template
+acceptance. Evidence: https://github.com/izdrail/editor.izdrail.com/actions/runs/45564358770
