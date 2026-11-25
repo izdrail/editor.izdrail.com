@@ -143,3 +143,8 @@ Controller follow-up (Laravel159): seven-action HTML resource and empty abstract
 application base Controller. Resource actions remain explicit501 stubs; the
 base template warns against overwriting an existing application class.
 Source: https://laravel.com/docs/12.x/controllers . Runtime CRUD not claimed.
+
+Resource binding correction: API/HTML scaffold model arguments now use an editable
+post placeholder matching the default Post model, rather than the unrelated model
+argument. Description requires matching the actual resource route parameter.
+Source: https://raw.githubusercontent.com/laravel/docs/12.x/controllers.md

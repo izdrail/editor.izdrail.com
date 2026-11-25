@@ -283,7 +283,7 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-global-scope | Register inside booted(); qualify column and review effects on all queries |
 | lv-model-scope-class | Eloquent Scope class; register on model explicitly |
 | lv-controller-invokable | Single-action controller class; replace explicit 501 stub, add validation and authorization |
-| lv-controller-api-resource | Five-action API resource scaffold with model binding; explicit 501 stubs require validation and authorization |
+| lv-controller-api-resource | Five-action API resource scaffold with model binding; explicit 501 stubs require validation and authorization; match the editable post argument to the resource route parameter |
 | lv-notification-mail | Method inside notification; include mail in via() and configure mail transport |
 | lv-notification-slack | Requires laravel/slack-notification-channel, configured Slack app/routing and slack in via() |
 | lv-notification-sms | Requires laravel/vonage-notification-channel, credentials/routing, recipient consent and vonage in via() |
@@ -299,7 +299,7 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-guarded | Inside model; deny all mass assignment until an explicit fillable/guarded policy replaces this |
 | lv-model-boot | Inside model; merge with any existing boot method, preserve parent boot for traits |
 | lv-password-reset | Guest CSRF-protected controller body; configure broker, reset token table and login route, add throttling |
-| lv-controller-resource | Seven-action HTML resource scaffold with model binding; replace 501 stubs with authorized validated view/redirect logic |
+| lv-controller-resource | Seven-action HTML resource scaffold with model binding; replace 501 stubs with authorized validated view/redirect logic; match the editable post argument to the resource route parameter |
 | lv-controller-base | Base application Controller class; only create if absent, do not overwrite application traits/methods |
 
 ## livewire

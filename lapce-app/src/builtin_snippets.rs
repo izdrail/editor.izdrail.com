@@ -185,12 +185,20 @@ mod tests {
     #[test]
     fn html_resource_and_base_controller_templates_keep_distinct_roles() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         let resource = text("lv-controller-resource");
-        for method in ["index", "create", "store", "show", "edit", "update", "destroy"] { assert!(resource.contains(&format!("function {method}("))); }
+        for method in ["index", "create", "store", "show", "edit", "update", "destroy"] {
+            assert!(resource.contains(&format!("function {method}(")));
+        }
         assert_eq!(resource.matches("abort(501,").count(), 7);
+        assert!(resource.contains("Post $post"));
+        assert!(!resource.contains("$model"));
         assert!(resource.contains("\\Symfony\\Component\\HttpFoundation\\Response"));
         assert!(text("lv-controller-base").contains("abstract class Controller"));
         assert!(!text("lv-controller-base").contains("extends Controller"));
@@ -210,7 +218,11 @@ mod tests {
     #[test]
     fn bulk_update_and_model_safety_templates_have_explicit_guards() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-query-update").contains("if ($ids === [])"));
@@ -222,7 +234,11 @@ mod tests {
     #[test]
     fn event_discovery_and_synchronous_broadcast_templates_keep_distinct_contracts() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-event-discovery").contains("->withEvents(discover: ["));
@@ -234,7 +250,11 @@ mod tests {
     #[test]
     fn conditional_validation_and_global_middleware_have_explicit_insertion_context() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-validation-required-if").contains("\\Illuminate\\Validation\\Rule::requiredIf(false)"));
@@ -244,7 +264,11 @@ mod tests {
     #[test]
     fn existing_policy_and_cast_templates_have_safe_complete_defaults() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         let policy = text("lv-policy");
@@ -259,7 +283,11 @@ mod tests {
     #[test]
     fn email_verification_templates_keep_signed_auth_and_throttle_guards() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         let handler = text("lv-verification-handler");
@@ -274,7 +302,11 @@ mod tests {
     #[test]
     fn notification_channel_methods_keep_current_namespaces_and_signatures() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-notification-mail").contains("toMail(object $notifiable): \\Illuminate\\Notifications\\Messages\\MailMessage"));
@@ -286,7 +318,11 @@ mod tests {
     #[test]
     fn controller_class_templates_fail_closed_until_application_logic_is_supplied() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         let invoke = text("lv-controller-invokable");
@@ -302,7 +338,11 @@ mod tests {
     #[test]
     fn model_lifecycle_snippets_preserve_callback_scope_and_column_qualification() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-model-booted").contains("protected static function booted(): void"));
@@ -315,7 +355,11 @@ mod tests {
     #[test]
     fn advanced_model_snippets_keep_collection_and_pivot_types() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-model-ulid").contains("\\Illuminate\\Database\\Eloquent\\Concerns\\HasUlids"));
@@ -328,7 +372,11 @@ mod tests {
     #[test]
     fn routing_followup_preserves_closing_braces_and_qualified_api_calls() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-route-name-group").contains("Route::name('admin.')->group"));
@@ -342,7 +390,11 @@ mod tests {
     #[test]
     fn auth_snippets_preserve_session_safety_and_user_scoped_token_revocation() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-auth-attempt").contains("$request->session()->regenerate();"));
@@ -358,7 +410,11 @@ mod tests {
     #[test]
     fn mailable_snippets_preserve_types_variables_and_after_commit_dispatch() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-mail-envelope").contains("function envelope(): \\Illuminate\\Mail\\Mailables\\Envelope"));
@@ -373,7 +429,11 @@ mod tests {
     #[test]
     fn model_and_factory_snippets_keep_variables_types_and_namespace_separators() {
         let text = |prefix: &str| {
-            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
             Parsed::from_str(&item.body).unwrap().text()
         };
         assert!(text("lv-model-casts").contains("protected function casts(): array"));
