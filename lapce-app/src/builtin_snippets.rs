@@ -176,6 +176,22 @@ mod tests {
 
 
 
+
+    #[test]
+    fn existing_policy_and_cast_templates_have_safe_complete_defaults() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let policy = text("lv-policy");
+        assert_eq!(policy.matches("return false;").count(), 2);
+        assert!(!policy.contains("user_id"));
+        assert!(policy.contains("function view(User $user, Post $post): bool"));
+        let cast = text("lv-cast");
+        assert!(cast.contains("function get(\\Illuminate\\Database\\Eloquent\\Model $model"));
+        assert!(cast.contains("function set(\\Illuminate\\Database\\Eloquent\\Model $model"));
+    }
+
     #[test]
     fn email_verification_templates_keep_signed_auth_and_throttle_guards() {
         let text = |prefix: &str| {

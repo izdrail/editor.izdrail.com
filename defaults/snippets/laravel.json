@@ -285,16 +285,16 @@
       "{",
       "\tpublic function view(User \\$user, ${1:Post} \\$${2:post}): bool",
       "\t{",
-      "\t\t$0",
+      "\t\treturn ${3:false}; // Replace with the application view rule.",
       "\t}",
       "",
       "\tpublic function update(User \\$user, ${1:Post} \\$${2:post}): bool",
       "\t{",
-      "\t\treturn \\$user->id === \\$${2:post}->user_id;",
+      "\t\treturn ${4:false}; // Replace with the application update rule.",
       "\t}",
       "}"
     ],
-    "description": "Policy class"
+    "description": "Policy class with deny-by-default editable rules; no ownership schema assumed"
   },
   "Artisan command": {
     "prefix": "lv-command",
@@ -486,17 +486,17 @@
   "Custom cast": {
     "prefix": "lv-cast",
     "body": [
-      "public function get(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
+      "public function get(\\\\Illuminate\\\\Database\\\\Eloquent\\\\Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
       "{",
       "\treturn \\$value;",
       "}",
       "",
-      "public function set(Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
+      "public function set(\\\\Illuminate\\\\Database\\\\Eloquent\\\\Model \\$model, string \\$key, mixed \\$value, array \\$attributes): mixed",
       "{",
       "\treturn \\$value;",
       "}"
     ],
-    "description": "Custom Eloquent cast get/set methods"
+    "description": "Identity custom cast get/set methods inside a CastsAttributes implementation"
   },
   "Morph many relation": {
     "prefix": "lv-morphmany",

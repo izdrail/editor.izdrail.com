@@ -102,3 +102,10 @@ verification handler, throttled resend POST, notice view and verified route.
 Descriptions require MustVerifyEmail, configured mail and CSRF-protected web
 routes. No email sent. Source: https://raw.githubusercontent.com/laravel/docs/12.x/verification.md .
 A-J remains partial.
+
+Existing-template corrections: lv-policy now returns editable false defaults
+for view/update, fixing the empty bool method and removing an ungrounded user_id
+ownership assumption. Both permissions must be implemented for the application.
+lv-cast method parameters now fully qualify Eloquent Model instead of assuming
+an import. Identity behavior is explicit; these methods alone are not a cast
+class. Entry count unchanged. Expansion regressions added.

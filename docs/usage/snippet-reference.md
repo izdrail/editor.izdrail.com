@@ -160,7 +160,7 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-listener | Event listener |
 | lv-middleware | HTTP middleware |
 | lv-resource | JsonResource |
-| lv-policy | Policy class |
+| lv-policy | Policy class with deny-by-default editable rules; no ownership schema assumed |
 | lv-command | Console command |
 | lv-scope | Eloquent local scope |
 | lv-accessor | Eloquent attribute accessor/mutator |
@@ -179,7 +179,7 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-observer | Eloquent observer method |
 | lv-notification | Notification mail channel message |
 | lv-mail | Mailable envelope and content methods |
-| lv-cast | Custom Eloquent cast get/set methods |
+| lv-cast | Identity custom cast get/set methods inside a CastsAttributes implementation |
 | lv-morphmany | Polymorphic one-to-many relation with fully qualified return type |
 | lv-schedule | Scheduled artisan command (routes/console.php) |
 | lv-cache | Cache::remember with a callback |
