@@ -162,6 +162,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1)
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Composer traversal changed the disposable source buffer')
+        # Keep the source tab so the Open Editors scenario has two real rows.
+        run('mousemove', '410', '51', 'click', '--repeat', '2', '--delay', '100', '1')
         # Explorer file row: pointer focus, then native Tab to the next file.
         # Activate only the disposable fixture, never create/rename/delete.
         run('mousemove', '95', '375', 'click', '1'); shot('00-explorer-row-focused')
@@ -174,6 +176,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); shot('00-open-editors-keyboard-activate')
         # Existing terminal tab header, never the PTY content area.
         run('mousemove', '350', '490', 'click', '1'); shot('00-terminal-header-focus')
+        # Pointer activation may focus a nested title child. Traverse into
+        # the close icon and back to the header without pressing the icon.
+        run('key', 'Tab'); shot('00-terminal-header-next-focus')
+        run('key', 'shift+Tab'); shot('00-terminal-header-return-focus')
         run('key', 'Return'); shot('00-terminal-header-keyboard-activate')
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
