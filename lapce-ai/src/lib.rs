@@ -81,6 +81,26 @@ pub fn parse_wire(line: &str) -> Result<Wire> {
     }
     Ok(Wire::Request(serde_json::from_str(line)?))
 }
+pub(crate) const MAX_WORKER_LINE: usize = 8 * 1024 * 1024;
+/// Bound allocation before accepting a JSON-lines frame, including newline.
+/// EOF without a newline is an incomplete frame, not a valid response.
+pub(crate) fn read_worker_line(reader: &mut impl BufRead) -> Result<Option<String>> {
+    let mut line = Vec::new();
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            ensure!(line.is_empty(), "Incomplete worker frame");
+            return Ok(None);
+        }
+        let end = available.iter().position(|&b| b == b'\n');
+        let count = end.map_or(available.len(), |n| n + 1);
+        ensure!(line.len().checked_add(count).is_some_and(|n| n <= MAX_WORKER_LINE), "Worker frame exceeds 8 MiB limit");
+        line.extend_from_slice(&available[..count]);
+        reader.consume(count);
+        if end.is_some() { return Ok(Some(String::from_utf8(line)?)); }
+    }
+}
+
 /// Parent side of the cancellation line. Requests and cancellations share one
 /// stdin, so a cancel is only ever meaningful for the request id it names.
 pub fn cancel_line(request_id: u64) -> String {
@@ -549,8 +569,13 @@ pub fn run() -> i32 {
             let cancel_for = cancel_for.clone();
             move || {
                 let stdin = std::io::stdin();
-                for line in stdin.lock().lines() {
-                    let Ok(line) = line else { return };
+                let mut input = stdin.lock();
+                loop {
+                    let line = match read_worker_line(&mut input) {
+                        Ok(Some(line)) => line,
+                        Ok(None) => return,
+                        Err(_) => { eprintln!("AI worker: invalid or oversized input frame"); return; }
+                    };
                     match parse_wire(&line) {
                         Ok(Wire::Cancel(id)) => {
                             cancel_for.store(id, Ordering::Release);
@@ -706,6 +731,20 @@ pub fn run() -> i32 {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn worker_frames_are_bounded_complete_and_utf8() {
+        use std::io::{BufReader, Cursor};
+        let mut input = BufReader::with_capacity(2, Cursor::new(b"{}\n[]\n"));
+        assert_eq!(super::read_worker_line(&mut input).unwrap().unwrap(), "{}\n");
+        assert_eq!(super::read_worker_line(&mut input).unwrap().unwrap(), "[]\n");
+        assert!(super::read_worker_line(&mut input).unwrap().is_none());
+        for bytes in [b"{}".to_vec(), vec![255,10], vec![b'x'; super::MAX_WORKER_LINE+1]] {
+            assert!(super::read_worker_line(&mut Cursor::new(bytes)).is_err());
+        }
+        let mut exact = vec![b'x'; super::MAX_WORKER_LINE-1]; exact.push(b'\n');
+        assert_eq!(super::read_worker_line(&mut Cursor::new(exact)).unwrap().unwrap().len(), super::MAX_WORKER_LINE);
+    }
+
     #[test]
     fn device_selection_parses_explicit_indices_without_claiming_gpu_availability() {
         use super::{parse_device, DeviceChoice};

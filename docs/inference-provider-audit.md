@@ -145,3 +145,10 @@ only Linux errno26 up to five attempts,10ms apart (40ms maximum delay).
 Other launch errors fail immediately. Deterministic tests cover transient,
 exhausted and permission-error cases. No test/inference timeout increased.
 Source evidence: https://github.com/izdrail/editor.izdrail.com/actions/runs/45522375880 .
+
+Worker framing follow-up: stdin and parent response parsing now cap each frame
+at8MiB before allocation grows beyond the bound. Invalid UTF-8 and partial EOF
+frames fail explicitly. Oversized stdin closes the control reader, rather than
+attempting to recover inside an ambiguous frame. Tests cover adjacent frames,
+small input buffers, exact limit, overflow, invalid encoding and partial EOF.
+JSON shapes and the one-response-per-valid-request contract are unchanged.

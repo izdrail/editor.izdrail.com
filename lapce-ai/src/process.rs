@@ -13,7 +13,7 @@
 use crate::{Completion, Request, cancel_line};
 use std::{
     collections::VecDeque,
-    io::{BufRead, BufReader, Write},
+    io::{BufReader, Write},
     path::PathBuf,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::{
@@ -191,14 +191,11 @@ fn serve(executable: PathBuf, shared: Arc<Shared>) {
                 writeln!(stdin, "{}", serde_json::to_string(&job.request)?)?;
                 stdin.flush()?;
             }
-            let mut line = String::new();
             let Some(output) = stdout.as_mut() else {
                 anyhow::bail!("Worker stdout closed");
             };
-            output.read_line(&mut line)?;
-            if line.is_empty() {
-                anyhow::bail!("Worker exited without answering");
-            }
+            let line = crate::read_worker_line(output)?
+                .ok_or_else(|| anyhow::anyhow!("Worker exited without answering"))?;
             let value: serde_json::Value = serde_json::from_str(&line)?;
             if value.get("state").and_then(|v| v.as_str()) == Some("error") {
                 anyhow::bail!(
