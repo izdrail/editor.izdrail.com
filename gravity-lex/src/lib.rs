@@ -1,6 +1,7 @@
 //! Experimental PHP/HTML byte styling. No parser, I/O, PHP execution or UI state.
 //! Style IDs match LexPHP. Checkpoints currently support inspection, not incremental reuse.
 pub mod laravel;
+pub mod symfony;
 
 use logos::Logos;
 use std::ops::Range;

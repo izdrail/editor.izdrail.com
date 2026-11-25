@@ -17,14 +17,11 @@ pub struct Vocabulary<'a> {
     pub eloquent: &'a str,
 }
 #[derive(Clone)]
-struct Token { range: Range<usize>, kind: u8 }
+pub(crate) struct Token { pub(crate) range: Range<usize>, pub(crate) kind: u8 }
 fn member(s: &str, list: &str) -> bool { list.split_ascii_whitespace().any(|word|word==s) }
-fn code_identifier(s:u8) -> bool { matches!(s,style::IDENTIFIER|style::CONSTANT|style::FUNCTION|style::TYPE|style::KEYWORD) }
+pub(crate) fn code_identifier(s:u8) -> bool { matches!(s,style::IDENTIFIER|style::CONSTANT|style::FUNCTION|style::TYPE|style::KEYWORD) }
 
-/// The caller owns project detection and supplies existing framework word lists.
-/// Reject a mismatched byte buffer rather than creating partial highlighting.
-pub fn overlay(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>) -> bool {
-    if source.len()!=styles.len() {return false;}
+pub(crate) fn tokens(source:&str, styles:&[u8]) -> Vec<Token> {
     let mut tokens=Vec::new();
     let mut start=0;
     while start<styles.len() {
@@ -42,6 +39,14 @@ pub fn overlay(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>) -> bool {
         }
         start=end;
     }
+    tokens
+}
+
+/// The caller owns project detection and supplies existing framework word lists.
+/// Reject a mismatched byte buffer rather than creating partial highlighting.
+pub fn overlay(source:&str, styles:&mut [u8], vocab:&Vocabulary<'_>) -> bool {
+    if source.len()!=styles.len() {return false;}
+    let tokens=tokens(source,styles);
     let text=|index:usize| -> &str { &source[tokens[index].range.clone()] };
     let conventions="Model Authenticatable ServiceProvider Controller FormRequest Middleware Job ShouldQueue Dispatchable InteractsWithQueue Queueable SerializesModels Event Listener Notification Notifiable Policy Gate HasFactory SoftDeletes HasMany HasOne BelongsTo BelongsToMany MorphTo MorphMany MorphOne HasManyThrough HasOneThrough";
     let methods="dispatch dispatchSync dispatchAfterResponse listen subscribe fire notify notifyNow via toMail toDatabase toArray authorize authorizeForUser allows denies check before after forUser policy define bind singleton scoped instance make makeWith resolve boot register provides when needs give commands loadRoutesFrom loadViewsFrom publishes hasMany hasOne belongsTo belongsToMany morphTo morphMany morphOne hasManyThrough hasOneThrough";

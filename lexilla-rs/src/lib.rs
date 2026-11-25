@@ -146,6 +146,14 @@ impl Snapshot {
         Some(snapshot)
     }
 
+    pub fn from_symfony_styles(text:&str, styles:Vec<u8>) -> Option<Self> {
+        if styles.len()!=text.len() || styles.iter().any(|s| *s>21 && !(32..=36).contains(s) && !(45..=47).contains(s)) {return None;}
+        let mut snapshot=Self::from_mixed_php_styles("",vec![])?;
+        snapshot.styles=styles;
+        for (id,scope) in [(45,"type"),(46,"type"),(47,"function")] {snapshot.scopes[id]=Some(scope);}
+        snapshot.lexer="symfony-logos".into();Some(snapshot)
+    }
+
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
         Self::lex_with_properties(name, text, keywords, &[])
     }
@@ -665,6 +673,11 @@ mod php_member_comment_tests {
 #[cfg(test)]
 mod imported_php_tests {
     use super::*;
+    #[test]
+    fn symfony_overlay_import_is_validated() {
+        let snapshot=Snapshot::from_symfony_styles("X",vec![46]).unwrap();assert_eq!(snapshot.lexer(),"symfony-logos");assert_eq!(snapshot.scope(46),Some("type"));
+        assert!(Snapshot::from_symfony_styles("X",vec![44]).is_none());assert!(Snapshot::from_symfony_styles("λ",vec![46]).is_none());
+    }
     #[test]
     fn laravel_overlay_import_validates_ids_and_keeps_scopes() {
         let snapshot=Snapshot::from_laravel_styles("X",vec![40],false).unwrap();

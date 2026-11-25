@@ -136,6 +136,14 @@ pub fn highlight_profile(
             if let Some(snapshot)=Snapshot::from_laravel_styles(&source,output.styles,language==Blade) {return Some(Arc::new(snapshot));}
         }
     }
+    #[cfg(feature = "logos-php")]
+    if language==Php && project.symfony_app && !project.laravel {
+        let mut output=gravity_lex::lex(&source);
+        let types=crate::web_metadata::php_symbols(project).filter(|symbol|symbol.framework=="symfony" && symbol.kind=="class").map(|symbol|symbol.name.as_str()).collect::<Vec<_>>().join(" ");
+        if gravity_lex::symfony::overlay(&source,&mut output.styles,&types) {
+            if let Some(snapshot)=Snapshot::from_symfony_styles(&source,output.styles) {return Some(Arc::new(snapshot));}
+        }
+    }
     // Opt-in build only. Lexilla remains the default and framework-aware path.
     #[cfg(feature = "logos-php")]
     if language == Blade {
@@ -150,6 +158,8 @@ pub fn highlight_profile(
         }
     }
     if language == Twig {
+        #[cfg(feature = "logos-php")]
+        if project.symfony_app {return crate::web_templates::twig_profile(&source,true).map(Arc::new);}
         return crate::web_templates::twig(&source).map(Arc::new);
     }
     if language == Jsx || language == Tsx {
@@ -1421,6 +1431,19 @@ mod catalogue_routing_tests {
 #[cfg(all(test, feature = "logos-php"))]
 mod logos_import_tests {
     use super::*;
+    #[test]
+    fn logos_import_symfony_profile_attributes_and_twig() {
+        let source="<?php #[Route('/x')] class Home extends AbstractController { public function index(Request $request): Response { return $this->render('x'); } }";
+        let mut project=crate::project_profile::ProjectProfile::default();project.symfony_app=true;
+        let snapshot=highlight_profile(LapceLanguage::Php,&Rope::from(source),&project).unwrap();
+        assert_eq!(snapshot.lexer(),"symfony-logos");
+        for (needle,scope) in [("Route","type"),("AbstractController","type"),("render","function")] {let at=source.find(needle).unwrap();assert_eq!(snapshot.scope(snapshot.styles()[at]),Some(scope));}
+        assert_eq!(LapceLanguage::Php.comment_tokens_at(Some(&snapshot),source.find("Route").unwrap()),("//",""));
+        let template="<p>{{ path('home') }} {{ form_start(form) }}</p>";
+        let twig=highlight_profile(LapceLanguage::Twig,&Rope::from(template),&project).unwrap();
+        for needle in ["path","form_start"] {let at=template.find(needle).unwrap();assert_eq!(twig.scope(twig.styles()[at]),Some("function"));}
+        let plain=highlight_profile(LapceLanguage::Php,&Rope::from(source),&Default::default()).unwrap();assert_eq!(plain.lexer(),"php-logos");
+    }
     #[test]
     fn logos_import_laravel_profile_overlay_and_plain_opt_out() {
         let source="<?php Route::get('/x', fn()=>view('x')); $this->hasMany(Post::class); class X extends ServiceProvider {}";

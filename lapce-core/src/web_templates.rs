@@ -23,8 +23,11 @@ pub fn twig_lists() -> &'static [String] {
     })
 }
 
-pub fn twig(source: &str) -> Option<Snapshot> {
-    let lists = twig_lists();
+pub fn twig(source: &str) -> Option<Snapshot> { twig_profile(source, false) }
+
+pub fn twig_profile(source: &str, symfony: bool) -> Option<Snapshot> {
+    let mut lists = twig_lists().to_vec();
+    if symfony {lists[2].push_str(" path url asset absolute_url relative_path csrf_token is_granted logout_path logout_url impersonation_exit_path impersonation_exit_url form form_start form_end form_row form_widget form_label form_errors form_help field_name field_value field_label field_errors field_choices render controller");}
     let words: Vec<&str> = lists.iter().map(String::as_str).collect();
     let template = Snapshot::lex("twig", source, &words).ok()?;
     // Preserve newlines and byte offsets while hiding Twig regions from HTML.
