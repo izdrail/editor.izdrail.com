@@ -138,7 +138,7 @@ jobs:
         run: bash scripts/build-linux-hosted.sh
 
       - name: Install synthetic GUI capture dependencies
-        run: sudo apt-get install -y -qq xvfb xdotool scrot libgl1-mesa-dri mesa-vulkan-drivers
+        run: sudo apt-get install -y -qq xvfb xdotool scrot xclip libgl1-mesa-dri mesa-vulkan-drivers
 
       - name: Capture composer keyboard states
         env:

@@ -256,3 +256,14 @@ activation. Add native keyboard traversal/activation and visible focus using the
 same ownership as Explorer rows. Explorer keyboard Enter/Space must explicitly
 open even when pointer single-click opening is disabled by preference. Preserve
 pointer preview behavior, close buttons and tab reuse. Runtime acceptance open.
+
+
+c99fc5c/45575481981 actual Explorer Tab/Enter opens the focused
+multi_647_00.php in a separate tab. Those pixels also expose UI-037 high/P0:
+composer draft traversal is NOT accepted,01 has no draft and later captures
+show supposed composer text in a dirty source buffer. Disk-only checks missed
+this. Reacquire draft at an interior point after resize settling, require exact
+clipboard roundtrip of the initial draft, and save/recheck only the disposable
+source to catch in-memory corruption. Do not infer a product fix until the
+correct pointer target and actual focus route are established. Native build
+and upload success alone do not close this issue.

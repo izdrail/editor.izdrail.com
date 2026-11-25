@@ -86,10 +86,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '350', '180', 'click', '1'); shot('00b3-mode-narrow-dismissed')
         run('windowsize', window, '1443', '796'); time.sleep(2)
         run('key', 'Escape'); time.sleep(1)
-        run('mousemove', '1250', '640', 'click', '1')
+        run('mousemove', '1250', '675', 'click', '1'); time.sleep(1)
         shot('00a-empty-focused')
         run('type', '--clearmodifiers', 'Hosted synthetic draft, never send')
         shot('01-draft')
+        run('key', 'ctrl+a', 'ctrl+c'); time.sleep(0.3)
+        copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+        if copied != 'Hosted synthetic draft, never send':
+            raise RuntimeError('Composer draft focus/copy mismatch; inspect01 and preserved logs')
+        run('key', 'End')
         run('key', 'Tab'); shot('02-mode')
         run('key', 'Down'); shot('03-mode-list')
         run('key', 'Page_Down'); shot('03a-mode-page')
@@ -143,8 +148,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
+        # Save only this disposable fixture to expose accidental *buffer* edits,
+        # which a disk-only unchanged assertion cannot see.
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'example.php'); run('key', 'Return'); time.sleep(1)
+        run('key', 'ctrl+s'); time.sleep(1)
         if (project / 'example.php').read_text() != source:
-            raise RuntimeError('Synthetic source changed')
+            raise RuntimeError('Composer traversal changed the disposable source buffer')
         # Core editing acceptance uses a separate disposable source file.
         # Explorer file row: pointer focus, then native Tab to the next file.
         # Activate only the disposable fixture, never create/rename/delete.
