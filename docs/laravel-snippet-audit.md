@@ -84,3 +84,9 @@ https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database
 https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Concerns/HasGlobalScopes.php ,
 https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Scope.php .
 A-J remains partial.
+
+Controller slice: two class templates (Laravel142), single-action invokable and
+five-action API resource controller. These intentionally return explicit501
+until validation, authorization and application logic are supplied. No permissive
+CRUD or invented validation rules. Seven-action HTML resource/base-controller
+coverage remains open. Source: https://laravel.com/docs/12.x/controllers .

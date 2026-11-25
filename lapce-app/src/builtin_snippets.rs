@@ -173,6 +173,23 @@ mod tests {
 
 
 
+
+    #[test]
+    fn controller_class_templates_fail_closed_until_application_logic_is_supplied() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let invoke = text("lv-controller-invokable");
+        assert!(invoke.contains("function __invoke(\\Illuminate\\Http\\Request $request): \\Illuminate\\Http\\JsonResponse"));
+        assert!(invoke.contains("abort(501,"));
+        let api = text("lv-controller-api-resource");
+        for method in ["index", "store", "show", "update", "destroy"] { assert!(api.contains(&format!("function {method}("))); }
+        assert!(!api.contains("function create("));
+        assert!(api.contains("\\App\\Models\\Post $model"));
+        assert_eq!(api.matches("abort(501,").count(), 5);
+    }
+
     #[test]
     fn model_lifecycle_snippets_preserve_callback_scope_and_column_qualification() {
         let text = |prefix: &str| {

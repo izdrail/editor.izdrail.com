@@ -1619,5 +1619,59 @@
       "\t}",
       "}"
     ]
+  },
+  "Invokable controller class": {
+    "prefix": "lv-controller-invokable",
+    "description": "Single-action controller class; replace explicit 501 stub, add validation and authorization",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Controllers;",
+      "",
+      "class ${1:ActionController} extends Controller",
+      "{",
+      "\tpublic function __invoke(\\\\Illuminate\\\\Http\\\\Request \\$request): \\\\Illuminate\\\\Http\\\\JsonResponse",
+      "\t{",
+      "\t\t${2:abort(501, 'Implement validation, authorization and action.');}",
+      "\t}",
+      "}"
+    ]
+  },
+  "API resource controller class": {
+    "prefix": "lv-controller-api-resource",
+    "description": "Five-action API resource scaffold with model binding; explicit 501 stubs require validation and authorization",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Http\\\\Controllers;",
+      "",
+      "class ${1:PostController} extends Controller",
+      "{",
+      "\tpublic function index(\\\\Illuminate\\\\Http\\\\Request \\$request): \\\\Illuminate\\\\Http\\\\JsonResponse",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function store(\\\\Illuminate\\\\Http\\\\Request \\$request): \\\\Illuminate\\\\Http\\\\JsonResponse",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function show(\\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Illuminate\\\\Http\\\\JsonResponse",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function update(\\\\Illuminate\\\\Http\\\\Request \\$request, \\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Illuminate\\\\Http\\\\JsonResponse",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "",
+      "\tpublic function destroy(\\\\App\\\\Models\\\\${2:Post} \\$model): \\\\Illuminate\\\\Http\\\\JsonResponse",
+      "\t{",
+      "\t\tabort(501, 'Implement validation, authorization and action.');",
+      "\t}",
+      "}"
+    ]
   }
 }

@@ -282,6 +282,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-creating | Register inside booted(); runs before insert, not on bulk query updates |
 | lv-model-global-scope | Register inside booted(); qualify column and review effects on all queries |
 | lv-model-scope-class | Eloquent Scope class; register on model explicitly |
+| lv-controller-invokable | Single-action controller class; replace explicit 501 stub, add validation and authorization |
+| lv-controller-api-resource | Five-action API resource scaffold with model binding; explicit 501 stubs require validation and authorization |
 
 ## livewire
 
