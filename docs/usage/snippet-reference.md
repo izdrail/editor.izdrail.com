@@ -306,6 +306,9 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-migration-drop | Destructive drop-table migration; rollback explicitly fails until the original schema is supplied, data needs a separate backup |
 | lv-model-to-array | Serialize a cloned model with an explicit attribute allowlist, extend deliberately before sharing |
 | lv-model-to-json | Serialize a cloned model with an explicit attribute allowlist, extend deliberately before sharing |
+| lv-request-is-method | Inspect HTTP method in request-aware code; not an authentication or authorization check |
+| lv-request-boolean | Read a boolean request input; validate and authorize any resulting action separately |
+| lv-eloquent-builder-group | Group predicates using a typed Eloquent Builder callback; choose model, fields and authorization scope |
 
 ## livewire
 

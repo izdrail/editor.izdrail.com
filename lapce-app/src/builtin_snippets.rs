@@ -183,6 +183,25 @@ mod tests {
 
 
     #[test]
+    fn request_inspection_and_eloquent_group_keep_distinct_semantics() {
+        let text = |prefix: &str| {
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-request-is-method").contains("$request->isMethod('post')"));
+        assert_eq!(text("lv-request-boolean"), "$archived = $request->boolean('archived');");
+        let group = text("lv-eloquent-builder-group");
+        assert!(group.contains("\\App\\Models\\Post::query()"));
+        assert!(group.contains("\\Illuminate\\Database\\Eloquent\\Builder $query"));
+        assert!(group.contains("$query->where('status', 'published')"));
+        assert!(group.ends_with("->get();"));
+    }
+
+    #[test]
     fn destructive_migration_and_serialization_templates_expose_safety_limits() {
         let text = |prefix: &str| {
             let item = packs()

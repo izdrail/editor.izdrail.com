@@ -1956,5 +1956,32 @@
     "body": [
       "\\$${1:json} = (clone \\$${2:model})->setVisible(['${3:id}'])->toJson(JSON_THROW_ON_ERROR);"
     ]
+  },
+  "Request method inspection": {
+    "prefix": "lv-request-is-method",
+    "description": "Inspect HTTP method in request-aware code; not an authentication or authorization check",
+    "body": [
+      "if (\\$request->isMethod('${1:post}')) {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "Request boolean input": {
+    "prefix": "lv-request-boolean",
+    "description": "Read a boolean request input; validate and authorize any resulting action separately",
+    "body": [
+      "\\$${1:archived} = \\$request->boolean('${2:archived}');"
+    ]
+  },
+  "Eloquent typed builder group": {
+    "prefix": "lv-eloquent-builder-group",
+    "description": "Group predicates using a typed Eloquent Builder callback; choose model, fields and authorization scope",
+    "body": [
+      "\\$${1:posts} = \\\\App\\\\Models\\\\${2:Post}::query()",
+      "\t->where(function (\\\\Illuminate\\\\Database\\\\Eloquent\\\\Builder \\$query): void {",
+      "\t\t\\$query->where('${3:status}', '${4:published}');",
+      "\t})",
+      "\t->get();"
+    ]
   }
 }

@@ -163,3 +163,11 @@ attribute/relationship exposure; developers must choose any additional fields.
 JSON uses JSON_THROW_ON_ERROR. No migration or model runtime fixture claimed.
 Sources: https://raw.githubusercontent.com/laravel/docs/12.x/migrations.md
 https://raw.githubusercontent.com/laravel/docs/12.x/eloquent-serialization.md
+
+Request/Builder follow-up (Laravel167): HTTP-method and boolean-input inspection
+explicitly do not replace validation or authorization. A typed Eloquent Builder
+closure groups a selectable model predicate. Expansion tests distinguish the
+Eloquent Builder from the base Query Builder. No database/request runtime claimed.
+Sources: https://raw.githubusercontent.com/laravel/docs/12.x/requests.md
+https://raw.githubusercontent.com/laravel/docs/12.x/eloquent.md
+https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Builder.php
