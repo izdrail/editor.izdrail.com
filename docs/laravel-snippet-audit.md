@@ -171,3 +171,9 @@ Eloquent Builder from the base Query Builder. No database/request runtime claime
 Sources: https://raw.githubusercontent.com/laravel/docs/12.x/requests.md
 https://raw.githubusercontent.com/laravel/docs/12.x/eloquent.md
 https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Database/Eloquent/Builder.php
+
+Queue dispatch follow-up (Laravel170): after-commit, synchronous and conditional
+dispatch templates. Descriptions distinguish current-process work from background
+execution and condition checks from authorization. Expansion regressions cover
+arguments and transaction method. No live queue/rollback acceptance claimed.
+Source: https://raw.githubusercontent.com/laravel/docs/12.x/queues.md

@@ -183,6 +183,21 @@ mod tests {
 
 
     #[test]
+    fn queue_dispatch_variants_keep_transaction_and_sync_semantics_explicit() {
+        let text = |prefix: &str| {
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert_eq!(text("lv-queue-after-commit"), "\\App\\Jobs\\ProcessItem::dispatch($item)->afterCommit();");
+        assert_eq!(text("lv-queue-sync"), "\\App\\Jobs\\ProcessItem::dispatchSync($item);");
+        assert_eq!(text("lv-queue-dispatch-if"), "\\App\\Jobs\\ProcessItem::dispatchIf($shouldDispatch, $item);");
+    }
+
+    #[test]
     fn request_inspection_and_eloquent_group_keep_distinct_semantics() {
         let text = |prefix: &str| {
             let item = packs()

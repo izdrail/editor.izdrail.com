@@ -309,6 +309,9 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-request-is-method | Inspect HTTP method in request-aware code; not an authentication or authorization check |
 | lv-request-boolean | Read a boolean request input; validate and authorize any resulting action separately |
 | lv-eloquent-builder-group | Group predicates using a typed Eloquent Builder callback; choose model, fields and authorization scope |
+| lv-queue-after-commit | Dispatch only after open transactions commit; choose an async queue connection for background execution |
+| lv-queue-sync | Run a job immediately in this process, not in a background queue |
+| lv-queue-dispatch-if | Dispatch a job when the explicit condition is true; a condition is not authorization |
 
 ## livewire
 

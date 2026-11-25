@@ -1983,5 +1983,26 @@
       "\t})",
       "\t->get();"
     ]
+  },
+  "Dispatch job after commit": {
+    "prefix": "lv-queue-after-commit",
+    "description": "Dispatch only after open transactions commit; choose an async queue connection for background execution",
+    "body": [
+      "\\\\App\\\\Jobs\\\\${1:ProcessItem}::dispatch(\\$${2:item})->afterCommit();"
+    ]
+  },
+  "Dispatch job synchronously": {
+    "prefix": "lv-queue-sync",
+    "description": "Run a job immediately in this process, not in a background queue",
+    "body": [
+      "\\\\App\\\\Jobs\\\\${1:ProcessItem}::dispatchSync(\\$${2:item});"
+    ]
+  },
+  "Conditionally dispatch job": {
+    "prefix": "lv-queue-dispatch-if",
+    "description": "Dispatch a job when the explicit condition is true; a condition is not authorization",
+    "body": [
+      "\\\\App\\\\Jobs\\\\${1:ProcessItem}::dispatchIf(\\$${2:shouldDispatch}, \\$${3:item});"
+    ]
   }
 }

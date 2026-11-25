@@ -1,7 +1,7 @@
 # Laravel snippet coverage checkpoint
 
 25 November 2026. This maps the recorded A-J request to implemented examples and
-remaining gaps. It is not full acceptance. Laravel167, Livewire17, Blade108.
+remaining gaps. It is not full acceptance. Laravel170, Livewire17, Blade108.
 The original supplied configuration attachment and the rest of the message after
 SMS notifications were not available. The repository inventory is the audited
 baseline; it is not claimed to be that missing attachment.
@@ -16,7 +16,7 @@ baseline; it is not claimed to be that missing attachment.
 | F Auth | Session login/logout, guard lookup, gates/policy, password hashing/reset-link/reset broker handler, verification routes, Sanctum scoped token/revocation | Custom guard and user-provider implementation, auth/authorization middleware examples and runtime security tests |
 | G Middleware | Standard/terminable/parameter/alias/global append/response-header templates, method/boolean request inspection | Runtime ordering checks; input inspection does not replace validation/authorization |
 | H Events | Event/listener/queued listener/subscriber/discovery/dispatch/ShouldBroadcast/ShouldBroadcastNow | Channel authorization and event-discovery runtime checks |
-| I Queues | Job/unique/batchable, middleware, retry/backoff/failure hooks, chains/batches, after-response and queueable notification | Explicit dispatch variants and coverage review against every requested item; no live queue worker run |
+| I Queues | Job/unique/batchable, middleware, retry/backoff/failure hooks, chains/batches, after-response/after-commit/synchronous/conditional dispatch and queueable notification | Coverage review against every requested item; no live queue worker/transaction rollback test run |
 | J Notifications/mail | Notification, mail/database/Slack/Vonage methods, queued notification, mailable envelope/content/Markdown/attachment, queue/later | Package/channel integration fixtures, any omitted requirements beyond the truncated request |
 
 ## Quality gates and limits
