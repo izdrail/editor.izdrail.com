@@ -1,5 +1,7 @@
 # Experimental Laravel conventions overlay (L5)
 
+Both the `logos-php` build feature and runtime `GRAVITY_LEXER=logos` opt-in are required. See [the current guide](logos-lexer.md).
+
 The existing `ProjectProfile.laravel` evidence and `logos-php` build flag select a separate overlay on PHP/HTML or Blade tokens. Default builds still use Lexilla. Symfony/WordPress-only profiles are unchanged. Detection itself is reused, not duplicated or replaced.
 
 The overlay consumes byte styles from the base lexer, never reparses or executes PHP. It uses the editor's existing facade, route-method, Artisan, helper and Eloquent vocabularies from web metadata, plus conservative provider, middleware, jobs/events/listeners/notifications, policy/gate and container conventions.

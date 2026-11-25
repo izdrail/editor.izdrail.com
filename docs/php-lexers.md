@@ -1,5 +1,9 @@
 # PHP and Laravel lexers
 
+This page describes native routing, which remains the default. For the opt-in
+Rust path, architecture, supported syntax and extension guide, see
+[Experimental Logos highlighting](logos-lexer.md).
+
 Two Lexilla lexers were added next to the stock ones (`lexilla-rs/vendor/lexilla/lexers/LexPHP.cxx`
 and `LexLaravel.cxx`, registered in `vendor/lexilla/src/Lexilla.cxx`, ids `SCLEX_PHP` 143 and
 `SCLEX_LARAVEL` 144; lexers are looked up by name, `php` and `laravel`).
@@ -8,9 +12,10 @@ and `LexLaravel.cxx`, registered in `vendor/lexilla/src/Lexilla.cxx`, ids `SCLEX
 
 | File | Lexer |
 | --- | --- |
-| Starts with `<?php` (after optional BOM and whitespace), inside a Laravel project | `laravel` |
-| Starts with `<?php`, any other project | `php` |
+| Pure PHP after optional BOM/whitespace, inside a Laravel project | `laravel` |
+| Pure PHP after optional BOM/whitespace, any other project | `php` |
 | Anything else (HTML first, `<?=` first, mixed templates) | `hypertext` as before |
+| `.blade.php` | `blade`, with Laravel vocabulary only in a Laravel project |
 
 Routing is by content on every highlight, so a file moves between lexers as it is edited.
 A Laravel project is the nearest ancestor holding an `artisan` file, or a `composer.json`
@@ -31,8 +36,8 @@ that mentions `laravel/framework`. Project evidence is read at the nearest root 
 
 * Nested `${...}` / `{$expr}` interpolation in double-quoted strings is only partly handled.
 * The standalone lexers colour inline HTML as one style, which is why mixed templates stay on `hypertext`.
-  Blade directives therefore only show in a `.php` file that starts with `<?php`.
-* Folding: Lexilla fold levels are not used by the editor (it folds by indentation).
+  Dedicated `.blade.php` files use the separate Blade route.
+* Folding uses native fold levels where available, plus comment folds, with indentation as fallback. Experimental document colouring refreshes native folds separately.
 * The `laravel` word lists are a starting set, not exhaustive.
 
 Keywords, builtin functions, types and constants of the PHP lists also feed the completion popup
