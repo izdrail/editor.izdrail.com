@@ -331,7 +331,7 @@ mod tests {
         let api = text("lv-controller-api-resource");
         for method in ["index", "store", "show", "update", "destroy"] { assert!(api.contains(&format!("function {method}("))); }
         assert!(!api.contains("function create("));
-        assert!(api.contains("\\App\\Models\\Post $model"));
+        assert!(api.contains("\\App\\Models\\Post $post"));
         assert_eq!(api.matches("abort(501,").count(), 5);
     }
 
