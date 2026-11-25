@@ -37,6 +37,13 @@ for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
 def run(*args):
     subprocess.run(['xdotool', *args], env=env, check=True, timeout=10)
 
+def assert_composer_text(expected):
+    # Read, never paste; clipboard belongs to this disposable X server only.
+    run('key', 'ctrl+a', 'ctrl+c'); time.sleep(0.3)
+    copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+    if copied != expected:
+        raise RuntimeError('Composer draft focus/copy mismatch; inspect preserved PNGs and logs')
+
 def shot(name):
     time.sleep(1)
     subprocess.run(['scrot', '-o', str(out / (name + '.png'))], env=env, check=True, timeout=10)
@@ -90,10 +97,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('00a-empty-focused')
         run('type', '--clearmodifiers', 'Hosted synthetic draft, never send')
         shot('01-draft')
-        run('key', 'ctrl+a', 'ctrl+c'); time.sleep(0.3)
-        copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
-        if copied != 'Hosted synthetic draft, never send':
-            raise RuntimeError('Composer draft focus/copy mismatch; inspect01 and preserved logs')
+        assert_composer_text('Hosted synthetic draft, never send')
         run('key', 'End')
         run('key', 'Tab'); shot('02-mode')
         run('key', 'Down'); shot('03-mode-list')
@@ -147,6 +151,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); run('type', '--clearmodifiers', 'caret after inserted path'); shot('07zb-mention-caret-after-insert')
         run('key', 'Escape')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
+        assert_composer_text('Final unsent synthetic draft')
+        run('key', 'End')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
         # Core editing acceptance uses a separate disposable source file.
         # Save only this disposable fixture to expose accidental *buffer* edits,
