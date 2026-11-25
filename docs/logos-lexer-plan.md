@@ -1,6 +1,6 @@
 # Logos lexer for Gravity Editor: feasibility report and plan
 
-Status: investigation only. No code changed. Implementation waits for Stefan's approval of this plan.
+Status: implementation in progress. This document is a technical work register, not an authorization record.
 
 ## Current architecture (read from the repo)
 - Highlighting is Lexilla (C++ lexers statically linked by `lexilla-rs`). The safe Rust `Snapshot` API (`lex`, `runs`, `overlay`, embed ranges, fold levels) returns one u8 style per byte. Tree-sitter is not used for painting.
@@ -31,8 +31,7 @@ L1 skeleton and PHP tokens, L2 PHP syntax depth, L3 HTML and mode driver, L4 Bla
 
 ## Approved implementation scope
 
-25 November2026: L1-L3 approved in the authenticated conversation. Lexilla
-remains default. Initial Rust PHP/HTML tokens are lexical, not semantic PHP
+25 November2026: initial L1-L3 prototype checkpoint. Lexilla remains default. Initial Rust PHP/HTML tokens are lexical, not semantic PHP
 analysis. Accuracy/performance and framework overlays remain separate gates.
 
 ## L1-L3 implementation checkpoint
@@ -69,3 +68,14 @@ Rust workspace pass in run45577917298. Seven focused crate tests and native
 style-scope parity pass locally after751a0aa. No throughput, incremental,
 memory, GUI responsiveness or highlighting-accuracy win has been measured.
 https://github.com/izdrail/editor.izdrail.com/actions/runs/45577917298
+
+
+## Issue6, L1 completion gate
+
+L1 is limited to the crate skeleton, basic lexical tokens and style/byte contract.
+The integration suite compares every public style ID0-21 against the native
+LexPHP definitions, checks basic token categories and visits every Unicode scalar
+under the public UTF-8 input contract. Existing malformed-prefix/noise tests
+check termination and byte alignment across mixed strings. Full PHP depth,
+HTML mode coverage, framework overlays and performance are later issues.
+No claim of universal panic-freedom is inferred from a finite test suite.

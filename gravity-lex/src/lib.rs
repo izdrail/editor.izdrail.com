@@ -4,6 +4,10 @@ use logos::Logos;
 use std::ops::Range;
 
 pub mod style {
+    pub const DEFAULT: u8 = 0;
+    pub const CHARACTER: u8 = 10;
+    pub const FUNCTION: u8 = 14;
+    pub const ERROR: u8 = 18;
     pub const HTML: u8 = 21;
     pub const COMMENT: u8 = 1;
     pub const LINE_COMMENT: u8 = 2;
@@ -153,7 +157,7 @@ impl Driver<'_> {
         let token = lexer.next();
         let end = start + lexer.span().end;
         let (end, style) = match token {
-            Some(Ok(Php::Whitespace)) => (end, 0),
+            Some(Ok(Php::Whitespace)) => (end, style::DEFAULT),
             Some(Ok(Php::Variable)) => (end, style::VARIABLE),
             Some(Ok(Php::Identifier)) => (end, word_style(&self.source[start..end])),
             Some(Ok(Php::Number)) => (end, style::NUMBER),
@@ -187,7 +191,7 @@ impl Driver<'_> {
                 (end, style::OPERATOR)
             }
             Some(Ok(Php::Attribute | Php::Operator)) => (end, style::OPERATOR),
-            _ => (end, 18),
+            _ => (end, style::ERROR),
         };
         self.paint(start..end, style);
         end
