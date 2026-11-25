@@ -236,3 +236,11 @@ vertical severity sections, readable wrapping and unchanged assistant width.
 Narrow composer dropdown live-resize and outside-dismiss captures added next,
 checking window-bound overlay placement instead of assuming wide acceptance
 covers narrow windows. Acceptance remains pending actual images.
+
+309d2de/45570895627 verifies UI-001 direct Match Pairs: palette command moves
+line2 column1 to matching closer column6 without selection or source edit.
+UI-035 medium/P0: Explorer file/directory rows were pointer-only. Add native
+keyboard traversal, visible focus and keyboard-focus ownership so Tab does not
+indent the source. Plain Enter/Space activation stops propagation, modified
+shortcuts continue. Add disposable explorer row/tab/open captures; actual runtime
+acceptance pending. No create/rename/delete or filesystem mutation is added.

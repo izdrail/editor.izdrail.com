@@ -2,7 +2,7 @@ use std::{path::Path, rc::Rc, sync::Arc};
 
 use floem::{
     View,
-    event::{Event, EventListener},
+    event::{Event, EventListener, EventPropagation},
     kurbo::Rect,
     peniko::Color,
     reactive::{
@@ -319,6 +319,7 @@ fn file_explorer_view(
     let secondary_click_data = data.clone();
     let scroll_rect = create_rw_signal(Rect::ZERO);
     let focus = data.common.focus;
+    let keyboard_focus = data.common.keyboard_focus;
 
     scroll(
         virtual_stack(
@@ -435,7 +436,27 @@ fn file_explorer_view(
                     let double_click_path = path.clone();
                     let secondary_click_path = path.clone();
                     let aux_click_path = path.clone();
-                    view.on_click_stop({
+                    let row_id = view.id();
+                    view.keyboard_navigable()
+                    .style(move |s| s.focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND))))
+                    .on_event_stop(EventListener::FocusGained, move |_| {
+                        keyboard_focus.set(Some(row_id));
+                        focus.set(Focus::Panel(PanelKind::FileExplorer));
+                    })
+                    .on_event_stop(EventListener::FocusLost, move |_| {
+                        if keyboard_focus.get_untracked() == Some(row_id) {
+                            keyboard_focus.set(None);
+                        }
+                    })
+                    .on_event(EventListener::KeyDown, move |event| {
+                        if let Event::KeyDown(key) = event {
+                            if explorer_activation_key(&key.key.logical_key, key.modifiers) {
+                                return EventPropagation::Stop;
+                            }
+                        }
+                        EventPropagation::Continue
+                    })
+                    .on_click_stop({
                         let kind = kind.clone();
                         move |_| {
                             click_data.click(&click_path, config);
@@ -621,4 +642,25 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
     )
     .style(|s| s.absolute().size_full().line_height(1.8))
     .debug_name("Open Editors")
+}
+
+// Native keyboard Click handles activation; do not also insert into the editor.
+fn explorer_activation_key(key: &floem::keyboard::Key, modifiers: floem::keyboard::Modifiers) -> bool {
+    modifiers.is_empty() && matches!(key, floem::keyboard::Key::Named(
+        floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+    ))
+}
+#[cfg(test)]
+mod keyboard_explorer_tests {
+    use super::explorer_activation_key;
+    use floem::keyboard::{Key, Modifiers, NamedKey};
+    #[test]
+    fn plain_activation_isolated_but_modified_shortcuts_continue() {
+        for key in [NamedKey::Enter, NamedKey::Space] {
+            assert!(explorer_activation_key(&Key::Named(key.clone()), Modifiers::empty()));
+            assert!(!explorer_activation_key(&Key::Named(key), Modifiers::CONTROL));
+        }
+        assert!(!explorer_activation_key(&Key::Named(NamedKey::Tab), Modifiers::empty()));
+        assert!(!explorer_activation_key(&Key::Named(NamedKey::ArrowDown), Modifiers::empty()));
+    }
 }
