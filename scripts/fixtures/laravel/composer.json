@@ -9,5 +9,10 @@
   "config": {
     "allow-plugins": {},
     "sort-packages": true
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/"
+    }
   }
 }
