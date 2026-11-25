@@ -69,9 +69,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('type', '--clearmodifiers', '--delay', '40', 'toggle ai chat')
         run('key', 'Return'); time.sleep(2)
         shot('00-initial')
-        # Explorer directory row: pointer focus, then native Tab to a file.
+        # Explorer file row: pointer focus, then native Tab to the next file.
         # Activate only the disposable fixture, never create/rename/delete.
-        run('mousemove', '95', '351', 'click', '1'); shot('00-explorer-row-focused')
+        run('mousemove', '95', '375', 'click', '1'); shot('00-explorer-row-focused')
         run('key', 'Tab'); shot('00-explorer-next-row-keyboard')
         run('key', 'Return'); shot('00-explorer-keyboard-open')
         # Pointer opening must survive the composer help footer changing height.
