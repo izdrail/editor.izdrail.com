@@ -108,10 +108,16 @@ chmod +x "$CARGO_TARGET_DIR/release/$name"
                     self.assertIn(str(Path(d, 'builds', backend + '-' + device, 'release')), result.stdout)
             self.assertEqual(len(list(Path(d, 'builds').glob('*/release/*'))), 6)
 
+    def test_resource_snapshot_includes_worker_grandchildren_not_unrelated_processes(self):
+        runner = module('run')
+        sample = '10 1 100 1.5\n20 10 200 2.5\n30 20 300 3.5\n40 1 999 99\nbad row\n'
+        self.assertEqual(runner.process_tree_usage(10, sample), (600, 7.5, 3))
+        self.assertEqual(runner.process_tree_usage(99, sample), (None, None, 0))
+
     def test_aggregate_excludes_failed_metrics_and_rejects_mixed_config(self):
         collector = module('collect')
         with tempfile.TemporaryDirectory() as d:
-            value = dict(state='complete', model_sha256='a' * 64, host={'node':'fixture'}, gpu=None, config='same', provider='candle', scenario='short', exit_code=0, reported={'gen_tps':10})
+            value = dict(measurement_scope='fixture', state='complete', model_sha256='a' * 64, host={'node':'fixture'}, gpu=None, config='same', provider='candle', scenario='short', exit_code=0, reported={'gen_tps':10})
             # A CPU run has no GPU; explicit null is a valid hardware identity.
             p = Path(d, 'one.json');p.write_text(json.dumps(value))
             bad = dict(value, exit_code=1, reported={'gen_tps':999})

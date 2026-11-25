@@ -9,7 +9,7 @@ from pathlib import Path
 import statistics
 
 METRICS = ('load_ms', 'ttft_ms', 'prompt_tps', 'gen_tps', 'tokens', 'cancel_ms')
-IDENTITY = ('model_sha256', 'host', 'gpu', 'config')
+IDENTITY = ('model_sha256', 'host', 'gpu', 'config', 'measurement_scope')
 
 
 def stats(values):

@@ -20,6 +20,31 @@ def capture(argv):
         return None
 
 
+def process_tree_usage(root_pid, snapshot):
+    """Sum root and live descendants. RSS may double count shared pages."""
+    rows = {}
+    for line in (snapshot or '').splitlines():
+        fields = line.split()
+        if len(fields) != 4:
+            continue
+        try:
+            pid, parent = map(int, fields[:2])
+            rss, cpu = map(float, fields[2:])
+        except ValueError:
+            continue
+        rows[pid] = (parent, rss, cpu)
+    included = {root_pid}
+    while True:
+        children = {pid for pid, (parent, _, _) in rows.items() if parent in included}
+        if children <= included:
+            break
+        included.update(children)
+    measured = [rows[pid] for pid in included if pid in rows]
+    if not measured:
+        return None, None, 0
+    return sum(row[1] for row in measured), sum(row[2] for row in measured), len(measured)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('provider', choices=['candle', 'llamacpp', 'mistralrs', 'ollama'])
@@ -62,27 +87,20 @@ def main():
         'config': os.environ.get('CONFIG'), 'cargo_features': os.environ.get('CARGO_FEATURES'),
         'build_cmd': os.environ.get('BUILD_CMD'), 'provider_version': os.environ.get('PROVIDER_VERSION'),
         'cold_cache_verified': False, 'reported': None,
-        'measurement_scope': 'RSS/CPU are command process only; GPU samples are device-wide, not proof of this process using CUDA',
+        'measurement_scope': 'RSS/CPU sum command and live descendants; RSS may double count shared pages; ps CPU is lifetime average. GPU is device-wide, not proof of this process using CUDA',
     }
     start = time.monotonic()
     with base.with_suffix('.out').open('x') as stdout, base.with_suffix('.err').open('x') as stderr, base.with_suffix('.samples.csv').open('x', newline='') as samples:
         writer = csv.writer(samples)
-        writer.writerow(['t', 'rss_kb', 'cpu_pct', 'gpu_util', 'vram_mib'])
+        writer.writerow(['t', 'rss_kb', 'cpu_pct', 'gpu_util', 'vram_mib', 'process_count'])
         proc = subprocess.Popen(command, stdout=stdout, stderr=stderr, start_new_session=True)
         try:
             while proc.poll() is None:
-                rss = None
-                try:
-                    for line in Path(f'/proc/{proc.pid}/status').read_text().splitlines():
-                        if line.startswith('VmRSS:'):
-                            rss = int(line.split()[1])
-                except (FileNotFoundError, ProcessLookupError):
-                    pass
-                cpu = capture(['ps', '-o', '%cpu=', '-p', str(proc.pid)])
+                rss, cpu, count = process_tree_usage(proc.pid, capture(['ps', '-eo', 'pid=,ppid=,rss=,pcpu=']))
                 gpu = capture(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader,nounits'])
                 # Never attribute a random GPU when multiple devices exist.
                 pair = gpu.split(',') if gpu and '\n' not in gpu else ['', '']
-                writer.writerow([time.monotonic() - start, rss, cpu, *[p.strip() for p in pair]])
+                writer.writerow([time.monotonic() - start, rss, cpu, *[p.strip() for p in pair], count])
                 samples.flush()
                 time.sleep(interval)
             record['exit_code'] = proc.wait()

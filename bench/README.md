@@ -148,3 +148,11 @@ printed by each invocation; older target/release examples are not helper output.
 This prevents a later CPU build replacing the CUDA binary before comparison.
 For Mistral, separately build the editor bridge and set LAPCE_AI_MISTRAL_WORKER
 to the isolated Mistral worker path, with LAPCE_AI_BACKEND=mistral-rs.
+
+Resource telemetry now sums the command and its live descendants, including
+model workers launched by the Python driver and isolated Mistral bridge.
+process_count is recorded per sample. Summed RSS can double count shared pages,
+and ps CPU percentages are lifetime averages, not per-interval utilization.
+Short-lived or already-reparented children may be missed. Device-wide GPU
+samples still do not establish process-specific CUDA inference. Earlier results
+labelled command-process-only must not be compared as equivalent memory scope.
