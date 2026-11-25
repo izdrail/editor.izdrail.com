@@ -79,3 +79,21 @@ under the public UTF-8 input contract. Existing malformed-prefix/noise tests
 check termination and byte alignment across mixed strings. Full PHP depth,
 HTML mode coverage, framework overlays and performance are later issues.
 No claim of universal panic-freedom is inferred from a finite test suite.
+
+## Issue7, PHP lexical depth
+
+The PHP mode handles single/double/backtick strings and escapes, simple variables
+with array offsets/object properties, balanced braced interpolation, heredoc and
+nowdoc including indented labels and CRLF, PHP numeric spellings and PHP8.4
+lexical constructs. Backticks use the native character-string style. Empty /**/
+is an ordinary block comment; PHPDoc including annotations remains the native
+documentation-comment scope. Attribute names, namespaces/imports and user-defined
+types use the existing identifier/constant scopes, while built-in types use type
+scope. This is lexical highlighting, not symbol resolution or PHPDoc type parsing.
+
+The depth corpus covers hooks, asymmetric visibility, readonly, enums, imports,
+attributes, nullable/union/intersection types, annotations containing fake PHP
+close tags, numeric spellings, nested/simple interpolation and incomplete input.
+Malformed syntax is styled conservatively; no PHP diagnostic/AST validation is
+claimed. Tokenizer-ground-truth comparison belongs to issue14 and is not inferred
+from these hand-labelled cases. Native rendering scopes/IDs remain unchanged.

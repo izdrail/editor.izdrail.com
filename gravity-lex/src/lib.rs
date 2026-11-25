@@ -170,7 +170,8 @@ impl Driver<'_> {
                 let end = self.source[end..]
                     .find("*/")
                     .map_or(self.source.len(), |n| end + n + 2);
-                let style = if self.source[start..].starts_with("/**") {
+                let style = if self.source[start..].starts_with("/**")
+                    && !self.source[start..].starts_with("/**/") {
                     style::DOC
                 } else {
                     style::COMMENT
@@ -218,10 +219,10 @@ impl Driver<'_> {
             at += 1;
         }
         // ASCII terminators cannot split UTF-8 characters.
-        let style = if quote == b'\'' {
-            style::SINGLE
-        } else {
-            style::DOUBLE
+        let style = match quote {
+            b'\'' => style::SINGLE,
+            b'`' => style::CHARACTER,
+            _ => style::DOUBLE,
         };
         self.paint(start..at, style);
         if quote != b'\'' {
@@ -247,7 +248,25 @@ impl Driver<'_> {
             } else if bytes[at] == b'$' && self.source.is_char_boundary(at) {
                 let mut lexer = Php::lexer(&self.source[at..end]);
                 if lexer.next() == Some(Ok(Php::Variable)) {
-                    let stop = at + lexer.span().end;
+                    let mut stop = at + lexer.span().end;
+                    // PHP's simple interpolation can include one array offset
+                    // or an object property. Complex expressions need braces.
+                    if bytes.get(stop) == Some(&b'[') {
+                        let mut cursor = stop + 1;
+                        if bytes.get(cursor) == Some(&b'-') { cursor += 1; }
+                        while cursor < end && (bytes[cursor].is_ascii_alphanumeric()
+                            || bytes[cursor] == b'_' || bytes[cursor] == b'$'
+                            || bytes[cursor] >= 0x80) { cursor += 1; }
+                        if cursor > stop + 1 && bytes.get(cursor) == Some(&b']') {
+                            stop = cursor + 1;
+                        }
+                    } else if self.source[stop..end].starts_with("->") {
+                        let begin = stop + 2;
+                        let mut property = Php::lexer(&self.source[begin..end]);
+                        if property.next() == Some(Ok(Php::Identifier)) {
+                            stop = begin + property.span().end;
+                        }
+                    }
                     self.paint(at..stop, style::INTERPOLATED);
                     at = stop;
                 } else {
