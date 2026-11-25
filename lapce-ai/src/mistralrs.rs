@@ -1,6 +1,6 @@
 //! Local process boundary isolates Mistral.rs dependencies from the editor.
 use anyhow::{Result, anyhow, bail, ensure};
-use std::{io::{BufRead, BufReader, Write}, path::{Path, PathBuf}, process::{Child, ChildStdin, Command, Stdio},
+use std::{io::{BufReader, Write}, path::{Path, PathBuf}, process::{Child, ChildStdin, Command, Stdio},
     sync::mpsc::{self, Receiver, RecvTimeoutError}, time::{Duration, Instant}};
 use crate::{Completion, Provider, Request};
 
@@ -31,12 +31,10 @@ impl MistralRsProvider {
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
             loop {
-                let mut line = String::new();
-                let result = match std::io::Read::take(&mut reader, 8 * 1024 * 1024 + 1).read_line(&mut line) {
-                    Ok(0) => Err("Mistral worker closed stdout".into()),
-                    Ok(n) if n > 8 * 1024 * 1024 => Err("Mistral completion exceeds limit".into()),
-                    Ok(_) => serde_json::from_str::<Completion>(&line).map_err(|_| "Mistral worker returned invalid completion JSON".into()),
-                    Err(_) => Err("Mistral worker response read failed".into()),
+                let result = match crate::read_worker_line(&mut reader) {
+                    Ok(Some(line)) => serde_json::from_str::<Completion>(&line).map_err(|_| "Mistral worker returned invalid completion JSON".into()),
+                    Ok(None) => Err("Mistral worker closed stdout".into()),
+                    Err(error) => Err(format!("Mistral worker response framing failed: {error}")),
                 };
                 let failed = result.is_err();
                 if tx.send(result).is_err() || failed { break; }

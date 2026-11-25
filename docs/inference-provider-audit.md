@@ -162,3 +162,9 @@ semantics apply, not Candle generated-output-only penalty semantics. No Request
 or RemoteFim wire changes, and no cross-provider equivalence is claimed. Unknown
 options, token IDs and invalid ranges fail before network execution.
 Source: https://raw.githubusercontent.com/ollama/ollama/main/api/types.go
+
+Mistral lifecycle/framing follow-up: isolated-worker requests and parent responses
+require newline-complete bounded8MiB UTF-8 frames. Switching local models drops
+old weights before loading replacements, avoiding a two-model allocation peak.
+No cooperative SDK cancellation or raw FIM support is claimed by these changes.
+CPU framing fixtures added; model/GPU execution remains separate acceptance.
