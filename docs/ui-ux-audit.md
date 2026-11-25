@@ -244,3 +244,15 @@ keyboard traversal, visible focus and keyboard-focus ownership so Tab does not
 indent the source. Plain Enter/Space activation stops propagation, modified
 shortcuts continue. Add disposable explorer row/tab/open captures; actual runtime
 acceptance pending. No create/rename/delete or filesystem mutation is added.
+
+
+3bb6500/45572508772 actual narrow open/model/mode and outside-dismiss frames
+verified: readable choices remain within the reduced window and both overlays
+dismiss. Full Rust/release/upload gates green. This closes that bounded resize
+check, not the entire assistant inventory.
+
+UI-036 medium/P0 source audit: Open Editors rows have only pointer-down
+activation. Add native keyboard traversal/activation and visible focus using the
+same ownership as Explorer rows. Explorer keyboard Enter/Space must explicitly
+open even when pointer single-click opening is disabled by preference. Preserve
+pointer preview behavior, close buttons and tab reuse. Runtime acceptance open.

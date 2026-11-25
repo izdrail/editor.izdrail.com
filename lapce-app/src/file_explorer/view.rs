@@ -438,51 +438,70 @@ fn file_explorer_view(
                     let aux_click_path = path.clone();
                     let row_id = view.id();
                     view.keyboard_navigable()
-                    .style(move |s| s.focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND))))
-                    .on_event_stop(EventListener::FocusGained, move |_| {
-                        keyboard_focus.set(Some(row_id));
-                        focus.set(Focus::Panel(PanelKind::FileExplorer));
-                    })
-                    .on_event_stop(EventListener::FocusLost, move |_| {
-                        if keyboard_focus.get_untracked() == Some(row_id) {
-                            keyboard_focus.set(None);
-                        }
-                    })
-                    .on_event(EventListener::KeyDown, move |event| {
-                        if let Event::KeyDown(key) = event {
-                            if explorer_activation_key(&key.key.logical_key, key.modifiers) {
-                                return EventPropagation::Stop;
-                            }
-                        }
-                        EventPropagation::Continue
-                    })
-                    .on_click_stop({
-                        let kind = kind.clone();
-                        move |_| {
-                            click_data.click(&click_path, config);
-                            select.update(|x| *x = Some(kind.clone()));
+                        .style(move |s| {
+                            s.focus_visible(|s| {
+                                s.background(
+                                    config
+                                        .get()
+                                        .color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                                )
+                            })
+                        })
+                        .on_event_stop(EventListener::FocusGained, move |_| {
+                            keyboard_focus.set(Some(row_id));
                             focus.set(Focus::Panel(PanelKind::FileExplorer));
-                        }
-                    })
-                    .on_double_click({
-                        move |_| {
-                            double_click_data
-                                .double_click(&double_click_path, config)
-                        }
-                    })
-                    .on_secondary_click_stop(move |_| {
-                        secondary_click_data.secondary_click(&secondary_click_path);
-                    })
-                    .on_event_stop(
-                        EventListener::PointerDown,
-                        move |event| {
+                        })
+                        .on_event_stop(EventListener::FocusLost, move |_| {
+                            if keyboard_focus.get_untracked() == Some(row_id) {
+                                keyboard_focus.set(None);
+                            }
+                        })
+                        .on_event(EventListener::KeyDown, move |event| {
+                            if let Event::KeyDown(key) = event {
+                                if explorer_activation_key(
+                                    &key.key.logical_key,
+                                    key.modifiers,
+                                ) {
+                                    return EventPropagation::Stop;
+                                }
+                            }
+                            EventPropagation::Continue
+                        })
+                        .on_click_stop({
+                            let kind = kind.clone();
+                            move |event| {
+                                // Enter/Space is explicit activation even when pointer
+                                // single-click preview is disabled in preferences.
+                                if matches!(event, Event::KeyDown(_)) && !is_dir {
+                                    click_data.common.internal_command.send(
+                                        InternalCommand::OpenAndConfirmedFile {
+                                            path: click_path.clone(),
+                                        },
+                                    );
+                                } else {
+                                    click_data.click(&click_path, config);
+                                }
+                                select.update(|x| *x = Some(kind.clone()));
+                                focus.set(Focus::Panel(PanelKind::FileExplorer));
+                            }
+                        })
+                        .on_double_click({
+                            move |_| {
+                                double_click_data
+                                    .double_click(&double_click_path, config)
+                            }
+                        })
+                        .on_secondary_click_stop(move |_| {
+                            secondary_click_data
+                                .secondary_click(&secondary_click_path);
+                        })
+                        .on_event_stop(EventListener::PointerDown, move |event| {
                             if let Event::PointerDown(pointer_event) = event {
                                 if pointer_event.button.is_auxiliary() {
                                     aux_click_data.middle_click(&aux_click_path);
                                 }
                             }
-                        },
-                    )
+                        })
                 } else {
                     view
                 }
@@ -526,6 +545,8 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
     let internal_command = window_tab_data.common.internal_command;
     let active_editor_tab = window_tab_data.main_split.active_editor_tab;
     let plugin = window_tab_data.plugin.clone();
+    let keyboard_focus = window_tab_data.common.keyboard_focus;
+    let focus = window_tab_data.common.focus;
 
     let child_view = move |plugin: PluginData,
                            editor_tab: RwSignal<EditorTabData>,
@@ -537,7 +558,7 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
         let info = child.view_info(editors, diff_editors, plugin, config);
         let hovered = create_rw_signal(false);
 
-        stack((
+        let row = stack((
             clickable_icon(
                 move || {
                     if hovered.get() || info.with(|info| info.is_pristine) {
@@ -603,13 +624,45 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                 .hover(|s| {
                     s.background(config.color(LapceColor::PANEL_HOVERED_BACKGROUND))
                 })
-        })
-        .on_event_cont(EventListener::PointerDown, move |_| {
+        });
+        let row_id = row.id();
+        let activate = move || {
             editor_tab.update(|editor_tab| {
                 editor_tab.active = child_index.get_untracked();
             });
             active_editor_tab.set(Some(editor_tab_id));
-        })
+        };
+        row.keyboard_navigable()
+            .style(move |s| {
+                s.focus_visible(|s| {
+                    s.background(
+                        config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                    )
+                })
+            })
+            .on_event_stop(EventListener::FocusGained, move |_| {
+                keyboard_focus.set(Some(row_id));
+                focus.set(Focus::Panel(PanelKind::FileExplorer));
+            })
+            .on_event_stop(EventListener::FocusLost, move |_| {
+                if keyboard_focus.get_untracked() == Some(row_id) {
+                    keyboard_focus.set(None);
+                }
+            })
+            .on_event(EventListener::KeyDown, move |event| {
+                if let Event::KeyDown(key) = event {
+                    if explorer_activation_key(&key.key.logical_key, key.modifiers) {
+                        return EventPropagation::Stop;
+                    }
+                }
+                EventPropagation::Continue
+            })
+            .on_click_stop(move |event| {
+                if matches!(event, Event::KeyDown(_)) {
+                    activate();
+                }
+            })
+            .on_event_cont(EventListener::PointerDown, move |_| activate())
     };
 
     scroll(
@@ -645,10 +698,17 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
 }
 
 // Native keyboard Click handles activation; do not also insert into the editor.
-fn explorer_activation_key(key: &floem::keyboard::Key, modifiers: floem::keyboard::Modifiers) -> bool {
-    modifiers.is_empty() && matches!(key, floem::keyboard::Key::Named(
-        floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
-    ))
+fn explorer_activation_key(
+    key: &floem::keyboard::Key,
+    modifiers: floem::keyboard::Modifiers,
+) -> bool {
+    modifiers.is_empty()
+        && matches!(
+            key,
+            floem::keyboard::Key::Named(
+                floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+            )
+        )
 }
 #[cfg(test)]
 mod keyboard_explorer_tests {
@@ -657,10 +717,22 @@ mod keyboard_explorer_tests {
     #[test]
     fn plain_activation_isolated_but_modified_shortcuts_continue() {
         for key in [NamedKey::Enter, NamedKey::Space] {
-            assert!(explorer_activation_key(&Key::Named(key.clone()), Modifiers::empty()));
-            assert!(!explorer_activation_key(&Key::Named(key), Modifiers::CONTROL));
+            assert!(explorer_activation_key(
+                &Key::Named(key.clone()),
+                Modifiers::empty()
+            ));
+            assert!(!explorer_activation_key(
+                &Key::Named(key),
+                Modifiers::CONTROL
+            ));
         }
-        assert!(!explorer_activation_key(&Key::Named(NamedKey::Tab), Modifiers::empty()));
-        assert!(!explorer_activation_key(&Key::Named(NamedKey::ArrowDown), Modifiers::empty()));
+        assert!(!explorer_activation_key(
+            &Key::Named(NamedKey::Tab),
+            Modifiers::empty()
+        ));
+        assert!(!explorer_activation_key(
+            &Key::Named(NamedKey::ArrowDown),
+            Modifiers::empty()
+        ));
     }
 }
