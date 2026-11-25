@@ -1362,5 +1362,70 @@
       "\t});",
       "}"
     ]
+  },
+  "Mailable envelope method": {
+    "prefix": "lv-mail-envelope",
+    "description": "Mailable envelope method with fully qualified type",
+    "body": [
+      "public function envelope(): \\\\Illuminate\\\\Mail\\\\Mailables\\\\Envelope",
+      "{",
+      "\treturn new \\\\Illuminate\\\\Mail\\\\Mailables\\\\Envelope(subject: '${1:Subject}');",
+      "}"
+    ]
+  },
+  "Mailable content method": {
+    "prefix": "lv-mail-content",
+    "description": "Mailable view content; referenced Blade view must exist",
+    "body": [
+      "public function content(): \\\\Illuminate\\\\Mail\\\\Mailables\\\\Content",
+      "{",
+      "\treturn new \\\\Illuminate\\\\Mail\\\\Mailables\\\\Content(",
+      "\t\tview: '${1:mail.message}',",
+      "\t\twith: ['${2:name}' => ${3:\\$this->name}],",
+      "\t);",
+      "}"
+    ]
+  },
+  "Mailable markdown content": {
+    "prefix": "lv-mail-markdown",
+    "description": "Mailable Markdown content; referenced Markdown view must exist",
+    "body": [
+      "public function content(): \\\\Illuminate\\\\Mail\\\\Mailables\\\\Content",
+      "{",
+      "\treturn new \\\\Illuminate\\\\Mail\\\\Mailables\\\\Content(markdown: '${1:mail.message}');",
+      "}"
+    ]
+  },
+  "Mailable disk attachment": {
+    "prefix": "lv-mail-attachments",
+    "description": "Mailable attachment from configured storage disk; authorize the selected file",
+    "body": [
+      "public function attachments(): array",
+      "{",
+      "\treturn [",
+      "\t\t\\\\Illuminate\\\\Mail\\\\Mailables\\\\Attachment::fromStorageDisk('${1:local}', '${2:reports/report.pdf}')",
+      "\t\t\t->as('${3:report.pdf}')->withMime('${4:application/pdf}'),",
+      "\t];",
+      "}"
+    ]
+  },
+  "Queue mailable": {
+    "prefix": "lv-mail-queue",
+    "description": "Queue a mailable after transaction commit; requires configured mail and queue workers",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Mail::to(${1:\\$recipient})->queue(",
+      "\t(new \\\\App\\\\Mail\\\\${2:OrderShipped}(${3:\\$order}))->afterCommit()",
+      ");"
+    ]
+  },
+  "Schedule mailable": {
+    "prefix": "lv-mail-later",
+    "description": "Schedule queued mailable after commit; requires mail and queue configuration",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Mail::to(${1:\\$recipient})->later(",
+      "\tnow()->addMinutes(${2:10}),",
+      "\t(new \\\\App\\\\Mail\\\\${3:OrderShipped}(${4:\\$order}))->afterCommit()",
+      ");"
+    ]
   }
 }

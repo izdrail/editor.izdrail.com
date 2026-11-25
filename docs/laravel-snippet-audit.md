@@ -49,3 +49,9 @@ partial A-J coverage, not complete acceptance. Sources checked:
 https://laravel.com/docs/12.x/eloquent ,
 https://laravel.com/docs/12.x/eloquent-mutators ,
 https://laravel.com/docs/12.x/eloquent-factories .
+
+Mail slice: six entries (Laravel121), typed envelope/view/Markdown methods,
+storage-disk attachment method and queued/delayed dispatch after transaction
+commit. Descriptions state view, storage, authorization and worker prerequisites.
+These are editor templates, no messages were sent. A-J still partial.
+Source checked: https://laravel.com/docs/12.x/mail .

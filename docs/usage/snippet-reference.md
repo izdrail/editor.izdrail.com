@@ -257,6 +257,12 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-scope | Typed conventional local scope inside a model |
 | lv-factory-state | State method inside a model factory |
 | lv-factory-configure | Factory callbacks; replace model placeholder and callback bodies |
+| lv-mail-envelope | Mailable envelope method with fully qualified type |
+| lv-mail-content | Mailable view content; referenced Blade view must exist |
+| lv-mail-markdown | Mailable Markdown content; referenced Markdown view must exist |
+| lv-mail-attachments | Mailable attachment from configured storage disk; authorize the selected file |
+| lv-mail-queue | Queue a mailable after transaction commit; requires configured mail and queue workers |
+| lv-mail-later | Schedule queued mailable after commit; requires mail and queue configuration |
 
 ## livewire
 

@@ -168,6 +168,22 @@ mod tests {
     use crate::snippet::Snippet as Parsed;
 
 
+
+    #[test]
+    fn mailable_snippets_preserve_types_variables_and_after_commit_dispatch() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-mail-envelope").contains("function envelope(): \\Illuminate\\Mail\\Mailables\\Envelope"));
+        assert!(text("lv-mail-content").contains("with: ['name' => $this->name]"));
+        assert!(text("lv-mail-markdown").contains("markdown: 'mail.message'"));
+        assert!(text("lv-mail-attachments").contains("Attachment::fromStorageDisk('local', 'reports/report.pdf')"));
+        assert!(text("lv-mail-queue").contains("Mail::to($recipient)->queue("));
+        assert!(text("lv-mail-queue").contains("OrderShipped($order))->afterCommit()"));
+        assert!(text("lv-mail-later").contains("now()->addMinutes(10)"));
+    }
+
     #[test]
     fn model_and_factory_snippets_keep_variables_types_and_namespace_separators() {
         let text = |prefix: &str| {
