@@ -93,3 +93,8 @@ explicit tagless inputs; automatic editor grammar selection is not implemented.
 Paint snapshots and folds publish before structural parsing; the separate context
 publication is cancellation- and revision-gated. Non-cancellation incremental
 errors log at debug level and retry a full parse.
+
+Paint and context revisions are independent. current_php_context() returns
+intelligence only when php_context_rev matches the painted document revision.
+The library supports explicit tagless php_only inputs; automatic editor grammar
+selection remains open for a later phase. Markdown highlighting is paint-only.
