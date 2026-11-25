@@ -284,6 +284,9 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-model-scope-class | Eloquent Scope class; register on model explicitly |
 | lv-controller-invokable | Single-action controller class; replace explicit 501 stub, add validation and authorization |
 | lv-controller-api-resource | Five-action API resource scaffold with model binding; explicit 501 stubs require validation and authorization |
+| lv-notification-mail | Method inside notification; include mail in via() and configure mail transport |
+| lv-notification-slack | Requires laravel/slack-notification-channel, configured Slack app/routing and slack in via() |
+| lv-notification-sms | Requires laravel/vonage-notification-channel, credentials/routing, recipient consent and vonage in via() |
 
 ## livewire
 

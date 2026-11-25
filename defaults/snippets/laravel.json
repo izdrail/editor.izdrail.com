@@ -1673,5 +1673,40 @@
       "\t}",
       "}"
     ]
+  },
+  "Notification mail representation": {
+    "prefix": "lv-notification-mail",
+    "description": "Method inside notification; include mail in via() and configure mail transport",
+    "body": [
+      "public function toMail(object \\$notifiable): \\\\Illuminate\\\\Notifications\\\\Messages\\\\MailMessage",
+      "{",
+      "\treturn (new \\\\Illuminate\\\\Notifications\\\\Messages\\\\MailMessage)",
+      "\t\t->subject('${1:Notification}')",
+      "\t\t->line('${2:Message content}');",
+      "}"
+    ]
+  },
+  "Notification Slack representation": {
+    "prefix": "lv-notification-slack",
+    "description": "Requires laravel/slack-notification-channel, configured Slack app/routing and slack in via()",
+    "body": [
+      "public function toSlack(object \\$notifiable): \\\\Illuminate\\\\Notifications\\\\Slack\\\\SlackMessage",
+      "{",
+      "\treturn (new \\\\Illuminate\\\\Notifications\\\\Slack\\\\SlackMessage)",
+      "\t\t->text('${1:Notification content}')",
+      "\t\t->headerBlock('${2:Notification}');",
+      "}"
+    ]
+  },
+  "Notification SMS representation": {
+    "prefix": "lv-notification-sms",
+    "description": "Requires laravel/vonage-notification-channel, credentials/routing, recipient consent and vonage in via()",
+    "body": [
+      "public function toVonage(object \\$notifiable): \\\\Illuminate\\\\Notifications\\\\Messages\\\\VonageMessage",
+      "{",
+      "\treturn (new \\\\Illuminate\\\\Notifications\\\\Messages\\\\VonageMessage)",
+      "\t\t->content('${1:SMS content}');",
+      "}"
+    ]
   }
 }

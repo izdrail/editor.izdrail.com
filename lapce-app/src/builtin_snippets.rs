@@ -174,6 +174,19 @@ mod tests {
 
 
 
+
+    #[test]
+    fn notification_channel_methods_keep_current_namespaces_and_signatures() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-notification-mail").contains("toMail(object $notifiable): \\Illuminate\\Notifications\\Messages\\MailMessage"));
+        assert!(text("lv-notification-slack").contains("toSlack(object $notifiable): \\Illuminate\\Notifications\\Slack\\SlackMessage"));
+        assert!(text("lv-notification-slack").contains("->headerBlock('Notification')"));
+        assert!(text("lv-notification-sms").contains("toVonage(object $notifiable): \\Illuminate\\Notifications\\Messages\\VonageMessage"));
+    }
+
     #[test]
     fn controller_class_templates_fail_closed_until_application_logic_is_supplied() {
         let text = |prefix: &str| {

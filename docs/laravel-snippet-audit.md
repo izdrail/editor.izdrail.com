@@ -90,3 +90,9 @@ five-action API resource controller. These intentionally return explicit501
 until validation, authorization and application logic are supplied. No permissive
 CRUD or invented validation rules. Seven-action HTML resource/base-controller
 coverage remains open. Source: https://laravel.com/docs/12.x/controllers .
+
+Notification channels: three methods (Laravel145), mail, current Slack
+SlackMessage API and Vonage SMS. Descriptions state package, via(), credentials
+and routing requirements. No service configured, dependency installed or
+notification sent. Source: https://raw.githubusercontent.com/laravel/docs/12.x/notifications.md .
+A-J still partial.
