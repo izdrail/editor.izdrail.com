@@ -1,0 +1,11 @@
+[package]
+name = "lapce-php"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tree-sitter = "=0.22.6"
+tree-sitter-php = "=0.23.11"
+lapce-xi-rope.workspace = true

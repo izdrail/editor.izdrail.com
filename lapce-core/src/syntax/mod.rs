@@ -891,6 +891,7 @@ impl SyntaxLayers {
 
 #[derive(Clone)]
 pub struct Syntax {
+    pub php_context:Option<Arc<lapce_php::Document>>,
     /// Optional document setting. Process environment takes precedence.
     pub lexer_backend: Option<String>,
     #[cfg(feature="logos-php")]
@@ -951,6 +952,7 @@ impl Syntax {
 
     pub fn from_language(language: LapceLanguage) -> Syntax {
         Syntax {
+            php_context:None,
             lexer_backend:None,
             #[cfg(feature="logos-php")]
             logos_cache:None,
@@ -982,8 +984,9 @@ impl Syntax {
     ) {
         // Snapshot lexing preserves multiline context without migrating stale line
         // states. The UI accepts only the matching revision, then extracts runs
-        // per painted line. No tree-sitter grammar loading or full-file spans.
-        let _ = edits;
+        // per painted line. Structural PHP parsing below is separate from paint.
+        // Structural PHP context shares this existing cancellable background
+        // job. It is independent of whichever lexer paints the document.
         // Superseded jobs need no filesystem scan or full-document lexing.
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
@@ -1008,6 +1011,18 @@ impl Syntax {
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire) != 0 {
             return;
         }
+        let php_context=if self.language==LapceLanguage::Php {
+            // Async parsing can lag more than one buffer revision. A last-edit
+            // delta is valid only when it immediately follows this snapshot.
+            let contiguous=self.rev.checked_add(1)==Some(new_rev);
+            let input_edits=if contiguous {edits.unwrap_or(&[]).iter().flat_map(|edit|edit.0.iter().copied()).collect::<Vec<_>>()}else{Vec::new()};
+            let parsed=if let Some(previous)=&self.php_context {
+                previous.update(new_text.clone(),&input_edits,&self.cancel_flag)
+            }else{lapce_php::Document::new(new_text.clone(),false,&self.cancel_flag)};
+            match parsed {Ok(context)=>Some(Arc::new(context)),Err(lapce_php::Error::Cancelled)=>return,Err(_)=>None}
+        }else{None};
+        if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
+        self.php_context=php_context;
         self.rev = new_rev;
         self.folding_ranges = folding_ranges;
         self.lexilla = snapshot;
@@ -1312,6 +1327,23 @@ mod tests {
 #[cfg(test)]
 mod cancellation_entry_tests {
     use super::*;
+    #[test]
+    fn php_context_tracks_edits_and_lagged_revisions_without_touching_painting() {
+        let mut syntax=Syntax::from_language(LapceLanguage::Php);
+        syntax.parse(1,Rope::from("<?php $sql='SELECT 1';"),None);
+        let first=syntax.php_context.clone().unwrap();
+        let old=syntax.text.clone();
+        let at=old.len();let inserted=Rope::from("\n$x=2;");
+        let edit=SyntaxEdit::new(vec![edit::create_insert_edit(&old,at,&inserted)]);
+        syntax.parse(2,Rope::from("<?php $sql='SELECT 1';\n$x=2;"),Some(&[edit]));
+        assert_eq!(syntax.php_context.as_ref().unwrap().text().len(),syntax.text.len());
+        assert_eq!(first.text().len(),old.len());
+        // This delta does not cover skipped revision 3. Full parse is safer.
+        let final_text="<p>λ</p><?php $x=3;";
+        syntax.parse(4,Rope::from(final_text),Some(&[SyntaxEdit::new(Vec::new())]));
+        assert_eq!(syntax.php_context.as_ref().unwrap().index().at(3),Some(lapce_php::Context::Html));
+        assert_eq!(syntax.php_context.as_ref().unwrap().text().len(),final_text.len());
+    }
     #[test]
     fn lexer_setting_is_used_unless_nonempty_environment_overrides_it() {
         for environment in [None,Some("")] {assert_eq!(effective_lexer_backend(environment,Some("lexilla")),Some("lexilla"));}

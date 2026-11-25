@@ -3996,6 +3996,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "include_dir",
  "itertools 0.12.1",
+ "lapce-php",
  "lapce-rpc",
  "lapce-vsix",
  "lapce-xi-rope",
@@ -4020,12 +4021,21 @@ name = "lapce-index"
 version = "0.4.6"
 dependencies = [
  "ignore",
+ "lapce-php",
  "tantivy",
  "thiserror 1.0.69",
  "tree-sitter",
  "tree-sitter-javascript",
- "tree-sitter-php",
  "tree-sitter-typescript",
+]
+
+[[package]]
+name = "lapce-php"
+version = "0.4.6"
+dependencies = [
+ "lapce-xi-rope",
+ "tree-sitter",
+ "tree-sitter-php",
 ]
 
 [[package]]

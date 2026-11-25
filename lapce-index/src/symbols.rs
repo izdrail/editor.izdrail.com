@@ -44,16 +44,7 @@ pub fn php_definitions(path: &str, source: &str) -> Result<Vec<IndexEntry>> {
     extract_definitions(path, source, "php", php_language())
 }
 
-fn php_language() -> tree_sitter::Language {
-    // SAFETY: pinned generated static PHP grammar is non-null ABI 14,
-    // accepted by the single workspace runtime (13..=14).
-    let language = unsafe {
-        let pointer = (tree_sitter_php::LANGUAGE_PHP.into_raw())();
-        assert!(!pointer.is_null(), "PHP grammar returned null");
-        tree_sitter::Language::from_raw(pointer.cast())
-    };
-    language
-}
+fn php_language() -> tree_sitter::Language {lapce_php::language(false)}
 
 /// Syntax ranges used by static migration reconstruction. Byte offsets refer
 /// to the original source; method bodies include their braces.

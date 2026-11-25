@@ -58,7 +58,7 @@ impl SyntaxEdit {
 fn point_at_offset(text: &Rope, offset: usize) -> Point {
     let text = RopeTextRef::new(text);
     let line = text.line_of_offset(offset);
-    let col = text.offset_of_line(line + 1).saturating_sub(offset);
+    let col = offset.saturating_sub(text.offset_of_line(line));
     Point::new(line, col)
 }
 
@@ -73,7 +73,7 @@ fn traverse(point: Point, text: &str) -> Point {
             row += 1;
             column = 0;
         } else {
-            column += 1;
+            column += ch.len_utf8();
         }
     }
     Point { row, column }
@@ -115,5 +115,20 @@ pub fn create_delete_edit(
         start_position,
         old_end_position: end_position,
         new_end_position: start_position,
+    }
+}
+
+#[cfg(test)]
+mod utf8_point_tests {
+    use super::*;
+    #[test]
+    fn input_edits_use_byte_columns_and_line_start_offsets() {
+        let text=Rope::from("λ🙂\n$x=1;\n");
+        let edit=create_insert_edit(&text,6,&Rope::from("é\n🙂"));
+        assert_eq!(edit.start_position,Point::new(0,6));
+        assert_eq!(edit.new_end_position,Point::new(1,4));
+        let delete=create_delete_edit(&text,7,9);
+        assert_eq!(delete.start_position,Point::new(1,0));
+        assert_eq!(delete.old_end_position,Point::new(1,2));
     }
 }
