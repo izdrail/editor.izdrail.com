@@ -18,7 +18,7 @@ use lapce_rpc::terminal::TermId;
 
 use super::kind::PanelKind;
 use crate::{
-    app::clickable_icon,
+    app::{clickable_icon, clickable_icon_base, tooltip_label},
     command::{InternalCommand, LapceWorkbenchCommand},
     config::{color::LapceColor, icon::LapceIcons},
     debug::RunDebugMode,
@@ -151,17 +151,26 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                                     .text_ellipsis()
                                     .selectable(false)
                             }),
-                            clickable_icon(
-                                || LapceIcons::CLOSE,
-                                move || {
-                                    terminal.close_tab(Some(terminal_tab_id));
-                                },
-                                || false,
-                                || false,
-                                || "Close",
-                                config,
-                            )
-                            .style(|s| s.margin_horiz(6.0)),
+                            {
+                                let close = clickable_icon_base(
+                                    || LapceIcons::CLOSE,
+                                    Some(move || terminal.close_tab(Some(terminal_tab_id))),
+                                    || false,
+                                    || false,
+                                    config,
+                                );
+                                let close_id = close.id();
+                                tooltip_label(config, close
+                                    .on_event_stop(EventListener::FocusGained, move |_| {
+                                        keyboard_focus.set(Some(close_id));
+                                    })
+                                    .on_event_stop(EventListener::FocusLost, move |_| {
+                                        if keyboard_focus.get_untracked() == Some(close_id) {
+                                            keyboard_focus.set(None);
+                                        }
+                                    }), || "Close")
+                                    .style(|s| s.margin_horiz(6.0))
+                            },
                             empty().style(move |s| {
                                 s.absolute()
                                     .width_full()

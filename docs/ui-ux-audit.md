@@ -283,3 +283,13 @@ focus, visible focus and Enter/Space switching using the existing tab activation
 consume plain activation keys so they cannot enter the PTY. Tab remains native
 traversal, modified shortcuts unchanged. Add header-only captures; shell content
 is not an activation target. Actual runtime acceptance still pending.
+
+
+25 November e583b73/45584162152 full green: actual Open Editors next-focus
+and Enter captures switch from example.php to multi_647_00.php with both tabs
+preserved. Bounded UI-036 activation accepted. Terminal UI-038 remains OPEN:
+Tab reaches the close icon but Shift+Tab is sent to the PTY because that nested
+icon had no application keyboard-focus ownership. Enter then reaches the shell.
+Give the close icon the same focus-owner bookkeeping as its header so native
+reverse traversal can return to the header. Recheck actual shell output and
+header activation before acceptance. No artifact upload failed.
