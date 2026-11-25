@@ -291,6 +291,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-verification-resend | Authenticated CSRF-protected web POST; requires MustVerifyEmail and mail configuration |
 | lv-verification-notice | Authenticated verification notice view; create the referenced Blade view |
 | lv-route-verified | Require verified authenticated user; User must implement MustVerifyEmail and verification routes must exist |
+| lv-validation-required-if | Entry in rules array; replace condition with an explicit application boolean |
+| lv-middleware-global | Inside existing bootstrap/app.php withMiddleware callback, Laravel11+; merge, do not replace stack |
 
 ## livewire
 

@@ -1742,5 +1742,19 @@
     "body": [
       "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::get('${1:/dashboard}', [\\\\App\\\\Http\\\\Controllers\\\\${2:DashboardController}::class, '${3:index}'])->middleware(['auth', 'verified']);"
     ]
+  },
+  "Conditional required validation": {
+    "prefix": "lv-validation-required-if",
+    "description": "Entry in rules array; replace condition with an explicit application boolean",
+    "body": [
+      "'${1:field}' => [\\\\Illuminate\\\\Validation\\\\Rule::requiredIf(${2:false}), '${3:string}'],"
+    ]
+  },
+  "Global middleware registration": {
+    "prefix": "lv-middleware-global",
+    "description": "Inside existing bootstrap/app.php withMiddleware callback, Laravel11+; merge, do not replace stack",
+    "body": [
+      "\\$middleware->append(\\\\App\\\\Http\\\\Middleware\\\\${1:InspectRequest}::class);"
+    ]
   }
 }

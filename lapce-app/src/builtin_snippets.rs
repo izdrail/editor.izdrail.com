@@ -177,6 +177,17 @@ mod tests {
 
 
 
+
+    #[test]
+    fn conditional_validation_and_global_middleware_have_explicit_insertion_context() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-validation-required-if").contains("\\Illuminate\\Validation\\Rule::requiredIf(false)"));
+        assert!(text("lv-middleware-global").contains("$middleware->append(\\App\\Http\\Middleware\\InspectRequest::class)"));
+    }
+
     #[test]
     fn existing_policy_and_cast_templates_have_safe_complete_defaults() {
         let text = |prefix: &str| {

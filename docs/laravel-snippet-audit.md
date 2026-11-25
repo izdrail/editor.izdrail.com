@@ -113,3 +113,9 @@ class. Entry count unchanged. Expansion regressions added.
 A-J acceptance checkpoint now tracked in laravel-snippet-coverage.md. Entry
 counts alone are not completion. The checkpoint separates missing templates,
 missing original attachment/tail and runtime validation not performed.
+
+Conditional/global middleware slice: two entries (Laravel151), Rule::requiredIf
+array entry with explicit editable condition and global append inside an existing
+bootstrap callback. No replacement of the default middleware stack.
+Sources: https://raw.githubusercontent.com/laravel/docs/12.x/validation.md ,
+https://raw.githubusercontent.com/laravel/docs/12.x/middleware.md .
