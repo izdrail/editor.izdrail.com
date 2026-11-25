@@ -281,6 +281,12 @@ impl Snapshot {
         }
     }
 
+    /// Preserve the native folding contract when switching only highlight bytes.
+    pub fn preserve_folding_from(&mut self, native:&Self) -> bool {
+        if self.styles.len()!=native.styles.len() {return false;}
+        self.levels=native.levels.clone();true
+    }
+
     pub fn scope(&self, style: u8) -> Option<&'static str> {
         self.scopes[style as usize]
     }
@@ -673,6 +679,14 @@ mod php_member_comment_tests {
 #[cfg(test)]
 mod imported_php_tests {
     use super::*;
+    #[test]
+    fn imported_highlighting_can_preserve_native_folding() {
+        let text="<?php if ($x) {\n echo 1;\n}\n";
+        let native=Snapshot::lex("php",text,&[]).unwrap();
+        let mut imported=Snapshot::from_php_styles(text,vec![0;text.len()]).unwrap();
+        assert!(imported.levels().is_none());assert!(imported.preserve_folding_from(&native));assert_eq!(imported.levels(),native.levels());
+        let wrong=Snapshot::from_php_styles("x",vec![0]).unwrap();assert!(!imported.preserve_folding_from(&wrong));
+    }
     #[test]
     fn symfony_overlay_import_is_validated() {
         let snapshot=Snapshot::from_symfony_styles("X",vec![46]).unwrap();assert_eq!(snapshot.lexer(),"symfony-logos");assert_eq!(snapshot.scope(46),Some("type"));

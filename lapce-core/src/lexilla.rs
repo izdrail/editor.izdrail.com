@@ -117,49 +117,76 @@ fn profile_php_lists(
         .then(|| crate::web_metadata::php_lists(project))
 }
 
+#[cfg(feature = "logos-php")]
+fn highlight_logos(language:LapceLanguage,source:&str,project:&crate::project_profile::ProjectProfile)->Option<Arc<Snapshot>> {
+    use LapceLanguage::*;
+    if matches!(language, Php | Blade) && project.laravel {
+        let mut output = if language==Blade {gravity_lex::lex_blade(source)} else {gravity_lex::lex(source)};
+        let lists=crate::web_metadata::php_lists(project);
+        let vocab=gravity_lex::laravel::Vocabulary {
+            facades: &lists[4], route_methods: &lists[5], artisan: &lists[6], helpers: &lists[7], eloquent: &lists[8],
+        };
+        if gravity_lex::laravel::overlay(source,&mut output.styles,&vocab) {
+            if let Some(snapshot)=Snapshot::from_laravel_styles(source,output.styles,language==Blade) {return Some(Arc::new(snapshot));}
+        }
+    }
+    if language==Php && project.symfony_app && !project.laravel {
+        let mut output=gravity_lex::lex(source);
+        let types=crate::web_metadata::php_symbols(project).filter(|symbol|symbol.framework=="symfony" && symbol.kind=="class").map(|symbol|symbol.name.as_str()).collect::<Vec<_>>().join(" ");
+        if gravity_lex::symfony::overlay(source,&mut output.styles,&types) {
+            if let Some(snapshot)=Snapshot::from_symfony_styles(source,output.styles) {return Some(Arc::new(snapshot));}
+        }
+    }
+    // Unsupported profiles fall through to native Lexilla.
+    if language == Blade {
+        if let Some(snapshot) = Snapshot::from_blade_styles(source, gravity_lex::lex_blade(source).styles) {
+            return Some(Arc::new(snapshot));
+        }
+    }
+    if language == Php && !project.laravel && !project.symfony_app && !project.wordpress {
+        if let Some(snapshot) = Snapshot::from_mixed_php_styles(source, gravity_lex::lex(source).styles) {
+            return Some(Arc::new(snapshot));
+        }
+    }
+    if language == Twig && project.symfony_app {return crate::web_templates::twig_profile(source,true).map(Arc::new);}
+    None
+}
+
 pub fn highlight_profile(
     language: LapceLanguage,
     text: &Rope,
     project: &crate::project_profile::ProjectProfile,
 ) -> Option<Arc<Snapshot>> {
+    let backend=std::env::var("GRAVITY_LEXER").ok();
+    highlight_profile_backend(language,text,project,backend.as_deref())
+}
+
+#[cfg(any(feature = "logos-php", test))]
+fn logos_requested(value:Option<&str>)->bool { value.is_some_and(|value|value.eq_ignore_ascii_case("logos")) }
+
+fn highlight_profile_backend(
+    language:LapceLanguage,
+    text:&Rope,
+    project:&crate::project_profile::ProjectProfile,
+    _backend:Option<&str>,
+)->Option<Arc<Snapshot>> {
+    #[cfg(feature = "logos-php")]
+    let backend=_backend;
     use LapceLanguage::*;
     let laravel = project.laravel;
     let source = text.to_string();
+    // The only backend-selection hook. Compiling support never changes default.
     #[cfg(feature = "logos-php")]
-    if matches!(language, Php | Blade) && project.laravel {
-        let mut output = if language==Blade {gravity_lex::lex_blade(&source)} else {gravity_lex::lex(&source)};
-        let lists=crate::web_metadata::php_lists(project);
-        let vocab=gravity_lex::laravel::Vocabulary {
-            facades: &lists[4], route_methods: &lists[5], artisan: &lists[6], helpers: &lists[7], eloquent: &lists[8],
-        };
-        if gravity_lex::laravel::overlay(&source,&mut output.styles,&vocab) {
-            if let Some(snapshot)=Snapshot::from_laravel_styles(&source,output.styles,language==Blade) {return Some(Arc::new(snapshot));}
-        }
-    }
-    #[cfg(feature = "logos-php")]
-    if language==Php && project.symfony_app && !project.laravel {
-        let mut output=gravity_lex::lex(&source);
-        let types=crate::web_metadata::php_symbols(project).filter(|symbol|symbol.framework=="symfony" && symbol.kind=="class").map(|symbol|symbol.name.as_str()).collect::<Vec<_>>().join(" ");
-        if gravity_lex::symfony::overlay(&source,&mut output.styles,&types) {
-            if let Some(snapshot)=Snapshot::from_symfony_styles(&source,output.styles) {return Some(Arc::new(snapshot));}
-        }
-    }
-    // Opt-in build only. Lexilla remains the default and framework-aware path.
-    #[cfg(feature = "logos-php")]
-    if language == Blade {
-        if let Some(snapshot) = Snapshot::from_blade_styles(&source, gravity_lex::lex_blade(&source).styles) {
-            return Some(Arc::new(snapshot));
-        }
-    }
-    #[cfg(feature = "logos-php")]
-    if language == Php && !project.laravel && !project.symfony_app && !project.wordpress {
-        if let Some(snapshot) = Snapshot::from_mixed_php_styles(&source, gravity_lex::lex(&source).styles) {
-            return Some(Arc::new(snapshot));
+    if logos_requested(backend) {
+        if let Some(mut snapshot)=highlight_logos(language,&source,project) {
+            // This flag changes colouring only. Preserve native folding until
+            // the experimental driver has its own equivalent fold producer.
+            if let Some(native)=highlight_profile_backend(language,text,project,None) {
+                if Arc::make_mut(&mut snapshot).preserve_folding_from(&native) {return Some(snapshot);}
+            }
         }
     }
     if language == Twig {
-        #[cfg(feature = "logos-php")]
-        if project.symfony_app {return crate::web_templates::twig_profile(&source,true).map(Arc::new);}
         return crate::web_templates::twig(&source).map(Arc::new);
     }
     if language == Jsx || language == Tsx {
@@ -334,6 +361,19 @@ mod tests {
         );
         assert!(line_styles(&snapshot, &text, 999).is_empty());
     }
+    #[test]
+    fn logos_routing_default_and_unknown_values_use_native_backend() {
+        assert!(logos_requested(Some("logos")));assert!(logos_requested(Some("LOGOS")));
+        for value in [None,Some(""),Some("lexilla"),Some("true"),Some("automatic"),Some(" logos")] {
+            assert!(!logos_requested(value));
+            let source=Rope::from("<?php echo 1;");
+            let snapshot=highlight_profile_backend(LapceLanguage::Php,&source,&Default::default(),value).unwrap();
+            assert_eq!(snapshot.lexer(),"php");
+        }
+        #[cfg(not(feature = "logos-php"))]
+        assert_eq!(highlight_profile_backend(LapceLanguage::Php,&Rope::from("<?php echo 1;"),&Default::default(),Some("logos")).unwrap().lexer(),"php");
+    }
+
     #[test]
     fn configured_catalogue_modes_are_available() {
         use LapceLanguage::*;
@@ -1075,7 +1115,8 @@ mod tests {
         assert_eq!(LapceLanguage::from_path(std::path::Path::new("resources/views/home.blade.php")), LapceLanguage::Blade);
         let source = "<x-card title=\"{{ $title }}\">@custom($value)@endcustom</x-card>";
         for laravel in [false, true] {
-            let snapshot = highlight_in(LapceLanguage::Blade, &Rope::from(source), laravel).unwrap();
+            let project=crate::project_profile::ProjectProfile{laravel,..Default::default()};
+            let snapshot = highlight_profile_backend(LapceLanguage::Blade, &Rope::from(source), &project,Some("logos")).unwrap();
             for (needle, scope) in [("x-card", "tag"), ("title=", "attribute"), ("$title", "variable"), ("@custom", "keyword")] {
                 assert_eq!(snapshot.lexer(), if laravel {"blade-laravel-logos"} else {"blade-logos"});
                 let at = source.find(needle).unwrap();
@@ -1431,6 +1472,23 @@ mod catalogue_routing_tests {
 #[cfg(all(test, feature = "logos-php"))]
 mod logos_import_tests {
     use super::*;
+    fn highlight_profile(language:LapceLanguage,text:&Rope,project:&crate::project_profile::ProjectProfile)->Option<Arc<Snapshot>> {
+        super::highlight_profile_backend(language,text,project,Some("logos"))
+    }
+
+    #[test]
+    fn logos_import_runtime_opt_in_does_not_change_native_defaults_or_unsupported_languages() {
+        for (language,source) in [(LapceLanguage::Php,"<?php echo 1;"),(LapceLanguage::Blade,"{{ $x }}"),(LapceLanguage::Javascript,"let x=1;")] {
+            let native=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),None).unwrap();
+            let disabled=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),Some("lexilla")).unwrap();
+            assert_eq!(native.styles(),disabled.styles());assert!(!native.lexer().ends_with("logos"));
+            let selected=super::highlight_profile_backend(language,&Rope::from(source),&Default::default(),Some("logos")).unwrap();
+            assert_eq!(selected.levels(),native.levels());
+        }
+        let js=super::highlight_profile_backend(LapceLanguage::Javascript,&Rope::from("let x=1;"),&Default::default(),Some("logos")).unwrap();assert_eq!(js.lexer(),"cpp");
+        let project=crate::project_profile::ProjectProfile{wordpress:true,..Default::default()};
+        let wp=super::highlight_profile_backend(LapceLanguage::Php,&Rope::from("<?php echo 1;"),&project,Some("logos")).unwrap();assert_eq!(wp.lexer(),"php");
+    }
     #[test]
     fn logos_import_symfony_profile_attributes_and_twig() {
         let source="<?php #[Route('/x')] class Home extends AbstractController { public function index(Request $request): Response { return $this->render('x'); } }";

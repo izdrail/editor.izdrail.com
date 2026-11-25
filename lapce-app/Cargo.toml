@@ -83,6 +83,7 @@ workspace = true
 features  = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"]
 
 [features]
+logos-php      = ["lapce-core/logos-php"]
 default        = ["vendored-fonts"]
 portable       = ["lapce-core/portable"]
 vendored-fonts = []
