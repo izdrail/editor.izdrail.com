@@ -69,11 +69,6 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('type', '--clearmodifiers', '--delay', '40', 'toggle ai chat')
         run('key', 'Return'); time.sleep(2)
         shot('00-initial')
-        # Explorer file row: pointer focus, then native Tab to the next file.
-        # Activate only the disposable fixture, never create/rename/delete.
-        run('mousemove', '95', '375', 'click', '1'); shot('00-explorer-row-focused')
-        run('key', 'Tab'); shot('00-explorer-next-row-keyboard')
-        run('key', 'Return'); shot('00-explorer-keyboard-open')
         # Pointer opening must survive the composer help footer changing height.
         run('mousemove', '1195', '727', 'click', '1'); time.sleep(2); shot('00b-pointer-mode-menu')
         run('mousemove', '600', '220', 'click', '1'); shot('00b1-mode-outside-dismissed')
@@ -151,6 +146,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Synthetic source changed')
         # Core editing acceptance uses a separate disposable source file.
+        # Explorer file row: pointer focus, then native Tab to the next file.
+        # Activate only the disposable fixture, never create/rename/delete.
+        run('mousemove', '95', '375', 'click', '1'); shot('00-explorer-row-focused')
+        run('key', 'Tab'); shot('00-explorer-next-row-keyboard')
+        run('key', 'Return'); shot('00-explorer-keyboard-open')
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'
