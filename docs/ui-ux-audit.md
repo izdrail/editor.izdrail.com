@@ -267,3 +267,12 @@ clipboard roundtrip of the initial draft, and save/recheck only the disposable
 source to catch in-memory corruption. Do not infer a product fix until the
 correct pointer target and actual focus route are established. Native build
 and upload success alone do not close this issue.
+
+
+Local c99 release replay25 November08:45-08:47 with corrected interior click:
+actual01 shows the draft in composer,07 shows draft text after keyboard focus
+return,08 shows final draft in composer and pristine example.php. Exact initial
+draft clipboard roundtrip and post-traversal saved disposable source both pass.
+This establishes the previous capture target was wrong; no application typing
+fix is claimed. Hosted corrected capture remains the reproducible acceptance
+gate. Preserve that gate and inspect actual images before closing UI-037.
