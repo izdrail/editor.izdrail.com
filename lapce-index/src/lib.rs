@@ -5,6 +5,7 @@
 //! local-first completion cascade all read from a single structure.
 //! The schema and the build plan live in docs/project-index.md.
 
+pub mod php;
 pub mod walker;
 pub mod symbols;
 
@@ -212,6 +213,9 @@ impl ProjectIndex {
         self.reader.reload()?;
         Ok(())
     }
+
+    /// Discard an uncommitted failed batch, retaining the last reader snapshot.
+    pub fn rollback(&self)->Result<()> {self.writer().rollback()?;Ok(())}
 
     /// Search symbol names and file bodies, best matches first.
     pub fn search(&self, query_text: &str, limit: usize) -> Result<Vec<SearchHit>> {

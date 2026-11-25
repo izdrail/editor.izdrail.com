@@ -66,10 +66,19 @@ pub enum PathRequest {
     Path(PathBuf),
 }
 
+#[derive(Clone,Debug,serde::Serialize,serde::Deserialize)]
+pub struct PhpIndexSymbol {
+    pub path:PathBuf,pub name:String,pub qualified:String,pub kind:String,pub namespace:String,
+    pub container:Option<String>,pub visibility:Option<String>,pub is_static:bool,
+    pub alias:Option<String>,pub target:Option<String>,pub attributes:Vec<String>,
+    pub byte:usize,pub end:usize,pub line:usize,pub column:usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "method", content = "params")]
 pub enum ProxyRequest {
+    PhpIndexQuery {prefix:String,limit:usize},
     NewBuffer {
         buffer_id: BufferId,
         path: PathBuf,
@@ -383,6 +392,7 @@ pub enum ProxyNotification {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "method", content = "params")]
 pub enum ProxyResponse {
+    PhpIndexQuery {state:String,symbols:Vec<PhpIndexSymbol>},
     GitGetRemoteFileUrl {
         file_url: String,
     },

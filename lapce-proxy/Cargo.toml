@@ -41,6 +41,7 @@ psp-types = { workspace = true }
 
 lapce-xi-rope     = { workspace = true }
 lapce-core        = { workspace = true }
+lapce-index       = { path = "../lapce-index" }
 lapce-vsix        = { workspace = true }
 lapce-rpc         = { workspace = true }
 floem-editor-core = { workspace = true }

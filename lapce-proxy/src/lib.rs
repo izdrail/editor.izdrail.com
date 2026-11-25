@@ -7,6 +7,7 @@ pub mod dispatch;
 pub mod external_format;
 pub mod lsp;
 pub mod php_debug;
+pub mod php;
 pub mod plugin;
 pub mod terminal;
 pub mod watcher;

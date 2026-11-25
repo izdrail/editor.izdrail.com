@@ -573,7 +573,8 @@ impl WindowTabData {
             crate::chat_session::workspace_directory(&root, &format!("{}:{:?}", workspace.kind, workspace.path))
         });
         let chat = crate::panel::chat_view::ChatData::new(cx, chat_storage, common.config.get_untracked().ai_chat.save_history, agent_runs);
-        let project_index = crate::project_index::start(cx, &workspace);
+        // Project indexing is proxy-owned. Do not acquire a second Tantivy writer.
+        let project_index = None;
         let window_tab_data = Self {
             scope: cx,
             window_tab_id: WindowTabId::next(),

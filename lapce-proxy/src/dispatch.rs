@@ -60,6 +60,7 @@ pub struct Dispatcher {
     lsp: Option<crate::lsp::Manager>,
     dap: crate::dap::Manager,
     ai: lapce_ai::process::Worker,
+    php_index:Option<crate::php::Manager>,
 }
 
 impl ProxyHandler for Dispatcher {
@@ -78,7 +79,9 @@ impl ProxyHandler for Dispatcher {
                 self.window_id = window_id;
                 self.tab_id = tab_id;
                 self.dap.shutdown_all();
+                self.php_index=None;
                 self.workspace = workspace;
+                self.php_index=self.workspace.clone().and_then(|root|lapce_core::directory::Directory::cache_directory().map(|cache|crate::php::Manager::start(root,cache)));
                 // Workspace is known here, not in `new`: install the
                 // PHP-aware adapter resolver over a fresh manager.
                 self.dap = crate::dap::Manager::with_resolver(
@@ -95,10 +98,12 @@ impl ProxyHandler for Dispatcher {
                     self.workspace.clone(),
                     self.core_rpc.clone(),
                 ));
+                self.file_watcher=FileWatcher::new();
                 self.file_watcher.notify(FileWatchNotifier::new(
                     self.workspace.clone(),
                     self.core_rpc.clone(),
                     self.proxy_rpc.clone(),
+                    self.php_index.as_ref().map(|index|index.changes()),
                 ));
                 if let Some(workspace) = self.workspace.as_ref() {
                     self.file_watcher
@@ -168,6 +173,7 @@ impl ProxyHandler for Dispatcher {
                 }
             }
             Shutdown {} => {
+                self.php_index=None;
                 self.dap.shutdown_all();
                 self.ai.cancel();
                 self.catalog_rpc.shutdown();
@@ -433,6 +439,13 @@ impl ProxyHandler for Dispatcher {
     fn handle_request(&mut self, id: RequestId, rpc: ProxyRequest) {
         use ProxyRequest::*;
         match rpc {
+            PhpIndexQuery {prefix,limit}=>{
+                let index=self.php_index.clone();let proxy=self.proxy_rpc.clone();
+                std::thread::spawn(move|| {
+                    let (state,symbols)=index.map(|index|index.query(&prefix,limit)).unwrap_or_else(||("unavailable".into(),vec![]));
+                    proxy.handle_response(id,Ok(ProxyResponse::PhpIndexQuery{state,symbols}));
+                });
+            }
             GitDiffForCommit { diffs } => {
                 let proxy = self.proxy_rpc.clone();
                 let workspace = self.workspace.clone();
@@ -1703,6 +1716,7 @@ impl Dispatcher {
 
         Self {
             workspace: None,
+            php_index:None,
             catalog_rpc,
             proxy_rpc,
             core_rpc,
@@ -1777,6 +1791,7 @@ impl Dispatcher {
 }
 
 struct FileWatchNotifier {
+    php_index:Option<crate::php::Changes>,
     core_rpc: CoreRpcHandler,
     proxy_rpc: ProxyRpcHandler,
     workspace: Option<PathBuf>,
@@ -1795,8 +1810,10 @@ impl FileWatchNotifier {
         workspace: Option<PathBuf>,
         core_rpc: CoreRpcHandler,
         proxy_rpc: ProxyRpcHandler,
+        php_index:Option<crate::php::Changes>,
     ) -> Self {
         let notifier = Self {
+            php_index,
             workspace,
             core_rpc,
             proxy_rpc,
@@ -1849,6 +1866,9 @@ impl FileWatchNotifier {
     }
 
     fn handle_workspace_fs_event(&self, event: notify::Event) {
+        if (event.kind.is_modify()||event.kind.is_remove()||event.kind.is_create()) && !event.paths.is_empty() {
+            if let Some(index)=&self.php_index {index.changed(event.paths.clone());}
+        }
         let explorer_change = match &event.kind {
             notify::EventKind::Create(_)
             | notify::EventKind::Remove(_)

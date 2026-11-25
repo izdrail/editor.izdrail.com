@@ -1,3 +1,6 @@
+//! Legacy, currently dormant app-side worker kept for compatibility tests.
+//! Runtime ownership moved to lapce-proxy::php in PHP Phase2. Do not call start:
+//! a second writer would conflict with the proxy-owned workspace store.
 //! Background project indexing: on workspace open, walk every file into
 //! the embedded lapce-index store (docs/project-index.md, build plan
 //! patch 2). The walk itself lives in lapce-index::walker; this module

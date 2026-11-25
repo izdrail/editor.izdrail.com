@@ -4020,9 +4020,15 @@ dependencies = [
 name = "lapce-index"
 version = "0.4.6"
 dependencies = [
+ "globset",
+ "gravity-lex",
  "ignore",
  "lapce-php",
+ "serde",
+ "serde_json",
+ "sha2",
  "tantivy",
+ "tempfile",
  "thiserror 1.0.69",
  "tree-sitter",
  "tree-sitter-javascript",
@@ -4061,6 +4067,7 @@ dependencies = [
  "jsonrpc-lite",
  "lapce-ai",
  "lapce-core",
+ "lapce-index",
  "lapce-rpc",
  "lapce-vsix",
  "lapce-xi-rope",
