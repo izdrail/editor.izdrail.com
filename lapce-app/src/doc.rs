@@ -1243,7 +1243,7 @@ impl Doc {
             self.buffer.with_untracked(|b| (b.rev(), b.text().clone()));
 
         let doc = self.clone();
-        let send = create_ext_action(self.scope, move |syntax| {
+        let send = create_ext_action(self.scope, move |syntax:Syntax| {
             if doc.buffer.with_untracked(|b| b.rev()) == rev {
                 let mut syntax=syntax;
                 doc.syntax.with_untracked(|current| {
