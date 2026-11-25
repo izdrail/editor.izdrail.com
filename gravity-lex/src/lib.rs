@@ -9,6 +9,12 @@ pub mod style {
     pub const FUNCTION: u8 = 14;
     pub const ERROR: u8 = 18;
     pub const HTML: u8 = 21;
+    // Host-only IDs never overlap the native PHP0-21 ABI.
+    pub const HTML_TAG: u8 = 32;
+    pub const HTML_ATTRIBUTE: u8 = 33;
+    pub const HTML_STRING: u8 = 34;
+    pub const HTML_COMMENT: u8 = 35;
+    pub const HTML_DELIMITER: u8 = 36;
     pub const COMMENT: u8 = 1;
     pub const LINE_COMMENT: u8 = 2;
     pub const DOC: u8 = 3;
@@ -64,9 +70,9 @@ enum Php {
 enum Html {
     #[token("<?=")]
     Echo,
-    #[regex(r"<\?[pP][hH][pP][ \t\r\n\x0C]")]
+    #[regex(r"<\?[pP][hH][pP][ \t\r\n]")]
     Open,
-    #[regex(r"[^<]+")]
+    #[regex(r"[^<]")]
     Text,
     #[token("<")]
     Less,
@@ -81,6 +87,7 @@ pub enum Mode {
 pub struct Checkpoint {
     pub offset: usize,
     pub mode: Mode,
+    pub host: HtmlContext,
 }
 #[derive(Debug, Clone)]
 pub struct Output {
@@ -93,14 +100,23 @@ pub fn lex(source: &str) -> Output {
         source,
         styles: vec![style::HTML; source.len()],
         checkpoints: vec![],
+        html: HtmlContext::Text,
     }
     .run()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HtmlContext {
+    Text,
+    Tag(bool), // true before the element name
+    Quoted(u8),
+    Comment,
+}
 struct Driver<'a> {
     source: &'a str,
     styles: Vec<u8>,
     checkpoints: Vec<Checkpoint>,
+    html: HtmlContext,
 }
 impl Driver<'_> {
     fn paint(&mut self, r: Range<usize>, style: u8) {
@@ -109,7 +125,7 @@ impl Driver<'_> {
     fn run(mut self) -> Output {
         let mut offset = 0;
         let mut mode = Mode::Html;
-        self.checkpoints.push(Checkpoint { offset, mode });
+        self.checkpoints.push(Checkpoint { offset, mode, host: self.html });
         while offset < self.source.len() {
             if mode == Mode::Html {
                 if self.source[offset..].eq_ignore_ascii_case("<?php") {
@@ -117,6 +133,7 @@ impl Driver<'_> {
                     self.checkpoints.push(Checkpoint {
                         offset: self.source.len(),
                         mode: Mode::Php,
+                        host: self.html,
                     });
                     break;
                 }
@@ -134,15 +151,15 @@ impl Driver<'_> {
                     self.paint(offset..tag_end, style::OPEN);
                     offset = tag_end;
                     mode = Mode::Php;
-                    self.checkpoints.push(Checkpoint { offset, mode });
+                    self.checkpoints.push(Checkpoint { offset, mode, host: self.html });
                 } else {
-                    offset = end;
+                    offset = self.html_token(offset);
                 }
             } else {
                 let end = self.php_token(offset);
                 if self.styles[offset] == style::CLOSE {
                     mode = Mode::Html;
-                    self.checkpoints.push(Checkpoint { offset: end, mode });
+                    self.checkpoints.push(Checkpoint { offset: end, mode, host: self.html });
                 }
                 offset = end;
             }
@@ -151,6 +168,71 @@ impl Driver<'_> {
             styles: self.styles,
             checkpoints: self.checkpoints,
         }
+    }
+    // Host syntax survives PHP islands, including islands inside quoted
+    // attribute values and HTML comments. PHP tags are recognized before this
+    // scanner in every host context, just as PHP's inline-HTML mode requires.
+    fn html_token(&mut self, start: usize) -> usize {
+        let bytes = self.source.as_bytes();
+        let rest = &self.source[start..];
+        let (end, scope) = match self.html {
+            HtmlContext::Text if rest.starts_with("<!--") => {
+                self.html = HtmlContext::Comment;
+                (start + 4, style::HTML_COMMENT)
+            }
+            HtmlContext::Text if bytes[start] == b'<' && bytes.get(start+1)
+                .is_some_and(|b| b.is_ascii_alphabetic() || matches!(b,b'/'|b'!'|b'?')) => {
+                self.html = HtmlContext::Tag(true);
+                (start + 1, style::HTML_DELIMITER)
+            }
+            HtmlContext::Text => {
+                let end = bytes[start+1..].iter().position(|b| *b==b'<').map_or(bytes.len(), |n| start+1+n);
+                // Search byte-wise for ASCII delimiters, never slice UTF-8 at1.
+                (end, style::HTML)
+            }
+            HtmlContext::Comment if rest.starts_with("-->") => {
+                self.html = HtmlContext::Text;
+                (start+3, style::HTML_COMMENT)
+            }
+            HtmlContext::Comment => {
+                let mut end=start+1;
+                while end<bytes.len() && !self.source.is_char_boundary(end) { end+=1; }
+                while end<bytes.len() && !self.source[end..].starts_with("-->")
+                    && !self.source[end..].starts_with("<?") {
+                    end+=self.source[end..].chars().next().unwrap().len_utf8();
+                }
+                (end,style::HTML_COMMENT)
+            }
+            HtmlContext::Quoted(quote) => {
+                let mut end=start;
+                if bytes[end]==quote { end+=1; self.html=HtmlContext::Tag(false); }
+                else {
+                    while end<bytes.len() && bytes[end]!=quote
+                        && !(bytes[end]==b'<' && bytes.get(end+1)==Some(&b'?')) { end+=1; }
+                }
+                if end==start { end+=1; } // Invalid <? prefix, still host text.
+                (end,style::HTML_STRING)
+            }
+            HtmlContext::Tag(name) => {
+                if bytes[start]==b'>' {
+                    self.html=HtmlContext::Text;
+                    (start+1,style::HTML_DELIMITER)
+                } else if matches!(bytes[start], b'\''|b'"') {
+                    self.html=HtmlContext::Quoted(bytes[start]);
+                    (start+1,style::HTML_STRING)
+                } else if bytes[start].is_ascii_whitespace() || matches!(bytes[start],b'/'|b'='|b'!'|b'?') {
+                    (start+1,style::HTML_DELIMITER)
+                } else {
+                    let mut end=start+1;
+                    while end<bytes.len() && !bytes[end].is_ascii_whitespace()
+                        && !matches!(bytes[end], b'<'|b'>'|b'/'|b'='|b'\''|b'"') { end+=1; }
+                    self.html=HtmlContext::Tag(false);
+                    (end,if name {style::HTML_TAG} else {style::HTML_ATTRIBUTE})
+                }
+            }
+        };
+        self.paint(start..end,scope);
+        end
     }
     fn php_token(&mut self, start: usize) -> usize {
         let mut lexer = Php::lexer(&self.source[start..]);
@@ -381,10 +463,10 @@ mod tests {
     #[test]
     fn php_basics() {
         check("<?php", "<?php", 19);
-        check("<?phpx", "<?phpx", 21);
+        assert!(!lex("<?phpx").styles.contains(&style::OPEN));
         let s = "<p>λ</p><?php namespace App; readonly class Café { public private(set) int $âge = 0xFF; } ?>✓";
         for (n, st) in [
-            ("<p>λ</p>", 21),
+            ("λ", 21),
             ("<?php", 19),
             ("namespace", 13),
             ("readonly", 13),

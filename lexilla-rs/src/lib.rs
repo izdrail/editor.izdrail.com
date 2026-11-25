@@ -118,6 +118,17 @@ impl Snapshot {
         Some(Self { styles, scopes, embeds: Vec::new(), lexer: "php-logos".into(), levels: None })
     }
 
+    /// PHP ABI plus explicit host HTML scopes from the experimental mode driver.
+    pub fn from_mixed_php_styles(text: &str, styles: Vec<u8>) -> Option<Self> {
+        if styles.len()!=text.len() || styles.iter().any(|s| *s>21 && !(32..=36).contains(s)) { return None; }
+        let mut snapshot=Self::from_php_styles("",vec![])?;
+        snapshot.styles=styles;
+        for (id,scope) in [(32,"tag"),(33,"attribute"),(34,"string"),(35,"comment"),(36,"operator")] {
+            snapshot.scopes[id]=Some(scope);
+        }
+        Some(snapshot)
+    }
+
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
         Self::lex_with_properties(name, text, keywords, &[])
     }
@@ -637,6 +648,15 @@ mod php_member_comment_tests {
 #[cfg(test)]
 mod imported_php_tests {
     use super::*;
+    #[test]
+    fn mixed_php_import_preserves_host_scopes_and_checks_ids() {
+        let s=Snapshot::from_mixed_php_styles("<p>",vec![36,32,36]).unwrap();
+        assert_eq!(s.scope(32),Some("tag"));assert_eq!(s.scope(33),Some("attribute"));
+        assert_eq!(s.scope(34),Some("string"));assert_eq!(s.scope(35),Some("comment"));
+        assert!(Snapshot::from_mixed_php_styles("x",vec![22]).is_none());
+        assert!(Snapshot::from_mixed_php_styles("x",vec![37]).is_none());
+        assert!(Snapshot::from_mixed_php_styles("λ",vec![32]).is_none());
+    }
     #[test]
     fn imported_php_scopes_match_native_and_reject_bad_styles() {
         let native = Snapshot::lex("php", "", &[]).unwrap();

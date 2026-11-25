@@ -1919,6 +1919,15 @@ impl LapceLanguage {
         if matches!(snapshot.map(|s| s.lexer()), Some("php" | "laravel")) {
             return ("//", "");
         }
+        // Logos preserves PHP0-21 and reserves32-36 for host HTML. Do not
+        // interpret these bytes using hypertext's unrelated style numbers.
+        if let Some(snapshot)=snapshot.filter(|s| s.lexer()=="php-logos") {
+            return match snapshot.styles().get(offset) {
+                Some(21 | 32..=36) => ("<!--", "-->"),
+                Some(0..=20) => ("//", ""),
+                _ => ("", ""),
+            };
+        }
         // Embedded regions recorded while building the snapshot are the
         // reliable signal: overlay() remaps sub-lexer styles into the
         // host's shared theme-scope slots, so raw style bytes cannot

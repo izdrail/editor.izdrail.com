@@ -128,7 +128,7 @@ pub fn highlight_profile(
     // Opt-in build only. Lexilla remains the default and framework-aware path.
     #[cfg(feature = "logos-php")]
     if language == Php && !project.laravel && !project.symfony_app && !project.wordpress {
-        if let Some(snapshot) = Snapshot::from_php_styles(&source, gravity_lex::lex(&source).styles) {
+        if let Some(snapshot) = Snapshot::from_mixed_php_styles(&source, gravity_lex::lex(&source).styles) {
             return Some(Arc::new(snapshot));
         }
     }
@@ -1398,6 +1398,12 @@ mod logos_import_tests {
             assert_eq!(snapshot.styles()[source.find(needle).unwrap()],id);
             assert_eq!(snapshot.scope(id),scope);
         }
+        let tag=source.find('p').unwrap();
+        assert_eq!(snapshot.scope(snapshot.styles()[tag]),Some("tag"));
+        assert_eq!(LapceLanguage::Php.comment_tokens_at(Some(&snapshot),tag),("<!--","-->"));
+        let variable=source.find("$x").unwrap();
+        assert_eq!(LapceLanguage::Php.comment_tokens_at(Some(&snapshot),variable),("//",""));
+        assert_eq!(LapceLanguage::Php.comment_tokens_at(Some(&snapshot),source.len()),("",""));
         let native = Snapshot::lex("php", "", &[]).unwrap();
         for id in 0..=21 { assert_eq!(snapshot.scope(id),native.scope(id), "style {id}"); }
         for framework in ["laravel", "symfony", "wordpress"] {

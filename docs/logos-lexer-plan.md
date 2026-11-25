@@ -97,3 +97,23 @@ close tags, numeric spellings, nested/simple interpolation and incomplete input.
 Malformed syntax is styled conservatively; no PHP diagnostic/AST validation is
 claimed. Tokenizer-ground-truth comparison belongs to issue14 and is not inferred
 from these hand-labelled cases. Native rendering scopes/IDs remain unchanged.
+
+
+## Issue8, host HTML and PHP islands
+
+Mixed PHP files now use explicit host text/tag/attribute/quoted-value/comment
+scopes through the opt-in adapter, not the hypertext fallback. PHP IDs0-21 are
+unchanged; host-only IDs32-36 map to tag, attribute, string, comment and operator.
+PHP islands can interrupt quoted attributes and HTML comments and resume the
+same host context. Mode checkpoints include that host context and record safe
+PHP transition boundaries, not arbitrary restart points or incremental reuse.
+Long PHP tags require PHP whitespace or EOF; short echo tags work independently
+of short_open_tag. Ambiguous short <? tags are deliberately not enabled.
+
+Tests exercise real versus quoted/commented/heredoc close tags, line-comment
+close behavior, repeated islands, host-context resumption, CRLF, non-ASCII and
+every typing prefix of mixed fixtures. The comment-toggle consumer distinguishes
+these style IDs from hypertext IDs so it does not put HTML delimiters into PHP.
+Styles are lexical, not DOM parsing. CSS/JS raw-text overlays, HTML diagnostics,
+native folds and incremental reuse remain outside this checkpoint. Lexilla is
+still the default; this is not parity or performance evidence for changing it.
