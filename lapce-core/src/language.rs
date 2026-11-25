@@ -1921,10 +1921,10 @@ impl LapceLanguage {
         }
         // Logos preserves PHP0-21 and reserves32-36 for host HTML. Do not
         // interpret these bytes using hypertext's unrelated style numbers.
-        if let Some(snapshot)=snapshot.filter(|s| s.lexer()=="php-logos") {
+        if let Some(snapshot)=snapshot.filter(|s| matches!(s.lexer(), "php-logos" | "laravel-logos")) {
             return match snapshot.styles().get(offset) {
                 Some(21 | 32..=36) => ("<!--", "-->"),
-                Some(0..=20) => ("//", ""),
+                Some(0..=20 | 40..=44) => ("//", ""),
                 _ => ("", ""),
             };
         }

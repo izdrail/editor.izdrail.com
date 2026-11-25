@@ -136,6 +136,16 @@ impl Snapshot {
         Some(snapshot)
     }
 
+    /// Framework conventions overlay uses separate IDs, preserving PHP and HTML.
+    pub fn from_laravel_styles(text: &str, styles: Vec<u8>, blade: bool) -> Option<Self> {
+        if styles.len()!=text.len() || styles.iter().any(|s| *s>21 && !(32..=36).contains(s) && !(40..=44).contains(s)) { return None; }
+        let mut snapshot=Self::from_mixed_php_styles("",vec![])?;
+        snapshot.styles=styles;
+        for (id,scope) in [(40,"type"),(41,"function"),(42,"function"),(43,"type"),(44,"keyword")] {snapshot.scopes[id]=Some(scope);}
+        snapshot.lexer=if blade {"blade-laravel-logos"} else {"laravel-logos"}.into();
+        Some(snapshot)
+    }
+
     pub fn lex(name: &str, text: &str, keywords: &[&str]) -> Result<Self, Error> {
         Self::lex_with_properties(name, text, keywords, &[])
     }
@@ -655,6 +665,14 @@ mod php_member_comment_tests {
 #[cfg(test)]
 mod imported_php_tests {
     use super::*;
+    #[test]
+    fn laravel_overlay_import_validates_ids_and_keeps_scopes() {
+        let snapshot=Snapshot::from_laravel_styles("X",vec![40],false).unwrap();
+        assert_eq!(snapshot.lexer(),"laravel-logos");assert_eq!(snapshot.scope(40),Some("type"));
+        assert_eq!(snapshot.scope(41),Some("function"));assert_eq!(snapshot.scope(44),Some("keyword"));
+        assert!(Snapshot::from_laravel_styles("X",vec![39],false).is_none());
+        assert!(Snapshot::from_laravel_styles("λ",vec![40],true).is_none());
+    }
     #[test]
     fn blade_import_is_explicit_and_preserves_the_shared_abi() {
         let snapshot = Snapshot::from_blade_styles("<x>", vec![36,32,36]).unwrap();

@@ -125,6 +125,17 @@ pub fn highlight_profile(
     use LapceLanguage::*;
     let laravel = project.laravel;
     let source = text.to_string();
+    #[cfg(feature = "logos-php")]
+    if matches!(language, Php | Blade) && project.laravel {
+        let mut output = if language==Blade {gravity_lex::lex_blade(&source)} else {gravity_lex::lex(&source)};
+        let lists=crate::web_metadata::php_lists(project);
+        let vocab=gravity_lex::laravel::Vocabulary {
+            facades: &lists[4], route_methods: &lists[5], artisan: &lists[6], helpers: &lists[7], eloquent: &lists[8],
+        };
+        if gravity_lex::laravel::overlay(&source,&mut output.styles,&vocab) {
+            if let Some(snapshot)=Snapshot::from_laravel_styles(&source,output.styles,language==Blade) {return Some(Arc::new(snapshot));}
+        }
+    }
     // Opt-in build only. Lexilla remains the default and framework-aware path.
     #[cfg(feature = "logos-php")]
     if language == Blade {
@@ -1056,7 +1067,7 @@ mod tests {
         for laravel in [false, true] {
             let snapshot = highlight_in(LapceLanguage::Blade, &Rope::from(source), laravel).unwrap();
             for (needle, scope) in [("x-card", "tag"), ("title=", "attribute"), ("$title", "variable"), ("@custom", "keyword")] {
-                assert_eq!(snapshot.lexer(), "blade-logos");
+                assert_eq!(snapshot.lexer(), if laravel {"blade-laravel-logos"} else {"blade-logos"});
                 let at = source.find(needle).unwrap();
                 assert_eq!(snapshot.scope(snapshot.styles()[at]), Some(scope), "{needle}");
             }
@@ -1410,6 +1421,21 @@ mod catalogue_routing_tests {
 #[cfg(all(test, feature = "logos-php"))]
 mod logos_import_tests {
     use super::*;
+    #[test]
+    fn logos_import_laravel_profile_overlay_and_plain_opt_out() {
+        let source="<?php Route::get('/x', fn()=>view('x')); $this->hasMany(Post::class); class X extends ServiceProvider {}";
+        let mut project=crate::project_profile::ProjectProfile::default();
+        project.laravel=true;
+        let snapshot=highlight_profile(LapceLanguage::Php,&Rope::from(source),&project).unwrap();
+        assert_eq!(snapshot.lexer(),"laravel-logos");
+        assert_eq!(LapceLanguage::Php.comment_tokens_at(Some(&snapshot),source.find("Route").unwrap()),("//",""));
+        for (needle,scope) in [("Route","type"),("get","function"),("view","function"),("hasMany","function"),("ServiceProvider","type")] {
+            let at=source.find(needle).unwrap();assert_eq!(snapshot.scope(snapshot.styles()[at]),Some(scope),"{needle}");
+        }
+        let plain=highlight_profile(LapceLanguage::Php,&Rope::from(source),&Default::default()).unwrap();
+        assert_eq!(plain.lexer(),"php-logos");
+        let at=source.find("Route").unwrap();assert_ne!(plain.styles()[at],40);
+    }
     #[test]
     fn logos_import_routing_and_scopes() {
         let source = "<p>λ</p><?php readonly class Café { public int $x = 12; } ?>";
