@@ -1,0 +1,4 @@
+/vendor/
+/bootstrap/cache/*
+/storage/*
+!/storage/.gitkeep

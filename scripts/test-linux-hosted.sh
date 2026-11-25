@@ -31,5 +31,7 @@ cargo test --locked -p lapce-app editor_review_binding -- --test-threads=1 2>&1 
 cargo test --locked -p lapce-app quiet_conversation_tests -- --test-threads=1 2>&1 | tee target/acceptance-logs/focused.log
 LAPCE_SNIPPET_EXPORT="$PWD/target/acceptance-logs/laravel-expansions.json" cargo test --locked -p lapce-app export_laravel_expansions_for_php_lint -- --ignored --exact builtin_snippets::tests::export_laravel_expansions_for_php_lint 2>&1 | tee target/acceptance-logs/snippet-export.log
 python3 scripts/lint-laravel-expansions.py target/acceptance-logs/laravel-expansions.json 2>&1 | tee target/acceptance-logs/php-snippets.log
+LAPCE_BLADE_EXPORT="$PWD/target/acceptance-logs/blade-expansions.json" cargo test --locked -p lapce-app export_blade_expansions_for_compile -- --ignored --exact builtin_snippets::tests::export_blade_expansions_for_compile 2>&1 | tee target/acceptance-logs/blade-export.log
+php scripts/compile-blade-fixtures.php target/acceptance-logs/blade-expansions.json 2>&1 | tee target/acceptance-logs/blade-compile.log
 cargo test --locked --workspace -- --test-threads=2 2>&1 | tee target/acceptance-logs/workspace.log
 df -h .

@@ -41,6 +41,17 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
         with:
           key: hosted-tests-ubuntu-22.04-rust-1.98.0-debug0
+      - name: PHP and Composer for framework fixtures
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, sqlite3
+          tools: composer:v2
+          coverage: none
+      - name: Install pinned framework fixture dependencies
+        run: |
+          mkdir -p scripts/fixtures/laravel/bootstrap/cache scripts/fixtures/laravel/storage/framework/{views,cache,sessions} scripts/fixtures/laravel/storage/logs
+          composer install --working-dir=scripts/fixtures/laravel --no-interaction --prefer-dist --no-progress
       - name: Lexer, focused and full workspace tests
         run: bash scripts/test-linux-hosted.sh
       - name: Upload test logs

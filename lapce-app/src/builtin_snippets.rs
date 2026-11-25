@@ -183,6 +183,23 @@ mod tests {
 
 
     #[test]
+    #[ignore = "explicit export for Blade compiler acceptance"]
+    fn export_blade_expansions_for_compile() {
+        let destination = std::env::var("LAPCE_BLADE_EXPORT").expect("export path required");
+        let entries: Vec<_> = packs()
+            .blade
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "prefix": item.prefix,
+                    "text": Parsed::from_str(&item.body).unwrap().text(),
+                })
+            })
+            .collect();
+        std::fs::write(destination, serde_json::to_vec_pretty(&entries).unwrap()).unwrap();
+    }
+
+    #[test]
     fn legacy_accessor_has_a_valid_default_arrow_expression() {
         let item = packs()
             .laravel

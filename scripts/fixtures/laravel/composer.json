@@ -1,0 +1,13 @@
+{
+  "name": "gravity/snippet-fixtures",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "laravel/framework": "12.74.0",
+    "livewire/livewire": "3.8.12"
+  },
+  "config": {
+    "allow-plugins": {},
+    "sort-packages": true
+  }
+}
