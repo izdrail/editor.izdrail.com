@@ -152,3 +152,13 @@ frames fail explicitly. Oversized stdin closes the control reader, rather than
 attempting to recover inside an ambiguous frame. Tests cover adjacent frames,
 small input buffers, exact limit, overflow, invalid encoding and partial EOF.
 JSON shapes and the one-response-per-valid-request contract are unchanged.
+
+Optional Ollama profiles: LAPCE_AI_OLLAMA_FIM_SAMPLING and
+LAPCE_AI_OLLAMA_CHAT_SAMPLING accept JSON temperature/top_k/top_p/min_p/seed/
+repeat_penalty/frequency_penalty/presence_penalty. Absent config preserves the
+existing request body, including temperature0.2. Profiles merge only listed
+options; token budgets and FIM stops cannot be overridden. Native server sampling
+semantics apply, not Candle generated-output-only penalty semantics. No Request
+or RemoteFim wire changes, and no cross-provider equivalence is claimed. Unknown
+options, token IDs and invalid ranges fail before network execution.
+Source: https://raw.githubusercontent.com/ollama/ollama/main/api/types.go

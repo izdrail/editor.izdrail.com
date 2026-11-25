@@ -235,12 +235,13 @@ impl Provider for OllamaProvider {
         );
         let timeout =
             Duration::from_millis(self.remote.timeout_ms.clamp(1_000, 120_000));
-        let body = fim_body(
+        let mut body = fim_body(
             &self.remote.model,
             &request.prefix,
             &request.suffix,
             request.max_tokens,
         );
+        crate::ollama_sampling::apply_environment(false, &mut body)?;
         if cancelled() {
             bail!("Cancelled");
         }
@@ -284,7 +285,8 @@ impl OllamaProvider {
         }
         let start = Instant::now();
         ensure!(!self.remote.model.trim().is_empty(), "Ollama model name is empty");
-        let body = chat_body(&self.remote.model, messages, request.max_tokens);
+        let mut body = chat_body(&self.remote.model, messages, request.max_tokens);
+        crate::ollama_sampling::apply_environment(true, &mut body)?;
         ensure!(serde_json::to_vec(&body)?.len() <= MAX_STREAM_BYTES, "Ollama request exceeds size limit");
         let response = self.agent.post(&url)
             .timeout(timeout)

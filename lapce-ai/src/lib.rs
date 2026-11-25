@@ -10,6 +10,7 @@ pub mod ollama;
 pub mod llamacpp;
 pub mod process;
 pub mod sampling;
+pub mod ollama_sampling;
 pub mod mistralrs;
 use anyhow::{Result, anyhow, bail, ensure};
 use candle_core::{Device, Tensor, quantized::gguf_file};
