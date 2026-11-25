@@ -263,6 +263,12 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-mail-attachments | Mailable attachment from configured storage disk; authorize the selected file |
 | lv-mail-queue | Queue a mailable after transaction commit; requires configured mail and queue workers |
 | lv-mail-later | Schedule queued mailable after commit; requires mail and queue configuration |
+| lv-auth-attempt | Validated session login in controller; add route throttling and guest middleware |
+| lv-auth-logout | Logout authenticated session in POST handler with web/CSRF middleware |
+| lv-auth-guard | Read authenticated user from an existing configured guard |
+| lv-password-send-reset-link | Controller body; configure password broker, reset routes, guest middleware and throttling |
+| lv-sanctum-create-token | Authenticated authorized token handler; requires Sanctum/HasApiTokens, approved ability and expiry |
+| lv-sanctum-revoke-token | Authenticated handler; deletes only a token belonging to current user after validation |
 
 ## livewire
 

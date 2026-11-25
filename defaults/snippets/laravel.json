@@ -1427,5 +1427,67 @@
       "\t(new \\\\App\\\\Mail\\\\${3:OrderShipped}(${4:\\$order}))->afterCommit()",
       ");"
     ]
+  },
+  "Session login attempt": {
+    "prefix": "lv-auth-attempt",
+    "description": "Validated session login in controller; add route throttling and guest middleware",
+    "body": [
+      "\\$credentials = \\$request->validate([",
+      "\t'email' => ['required', 'email'],",
+      "\t'password' => ['required', 'string'],",
+      "]);",
+      "if (\\\\Illuminate\\\\Support\\\\Facades\\\\Auth::attempt(\\$credentials)) {",
+      "\t\\$request->session()->regenerate();",
+      "\treturn redirect()->intended('${1:/dashboard}');",
+      "}",
+      "return back()->withErrors(['email' => '${2:Invalid credentials.}'])->onlyInput('email');"
+    ]
+  },
+  "Session logout": {
+    "prefix": "lv-auth-logout",
+    "description": "Logout authenticated session in POST handler with web/CSRF middleware",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Auth::logout();",
+      "\\$request->session()->invalidate();",
+      "\\$request->session()->regenerateToken();",
+      "return redirect('${1:/}');"
+    ]
+  },
+  "Explicit auth guard": {
+    "prefix": "lv-auth-guard",
+    "description": "Read authenticated user from an existing configured guard",
+    "body": [
+      "\\$user = \\\\Illuminate\\\\Support\\\\Facades\\\\Auth::guard('${1:web}')->user();"
+    ]
+  },
+  "Password reset email": {
+    "prefix": "lv-password-send-reset-link",
+    "description": "Controller body; configure password broker, reset routes, guest middleware and throttling",
+    "body": [
+      "\\$request->validate(['email' => ['required', 'email']]);",
+      "\\$status = \\\\Illuminate\\\\Support\\\\Facades\\\\Password::sendResetLink(\\$request->only('email'));",
+      "return \\$status === \\\\Illuminate\\\\Support\\\\Facades\\\\Password::ResetLinkSent",
+      "\t? back()->with(['status' => __(\\$status)])",
+      "\t: back()->withErrors(['email' => __(\\$status)]);"
+    ]
+  },
+  "Sanctum scoped token": {
+    "prefix": "lv-sanctum-create-token",
+    "description": "Authenticated authorized token handler; requires Sanctum/HasApiTokens, approved ability and expiry",
+    "body": [
+      "\\$token = \\$request->user()->createToken(",
+      "\t'${1:device}', ['${2:posts:read}'], now()->addHours(${3:1})",
+      ");",
+      "return response()->json(['token' => \\$token->plainTextToken]);"
+    ]
+  },
+  "Sanctum revoke selected token": {
+    "prefix": "lv-sanctum-revoke-token",
+    "description": "Authenticated handler; deletes only a token belonging to current user after validation",
+    "body": [
+      "\\$validated = \\$request->validate(['token_id' => ['required', 'integer']]);",
+      "\\$request->user()->tokens()->where('id', \\$validated['token_id'])->delete();",
+      "return response()->noContent();"
+    ]
   }
 }

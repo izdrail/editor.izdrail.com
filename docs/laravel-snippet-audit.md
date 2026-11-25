@@ -55,3 +55,12 @@ storage-disk attachment method and queued/delayed dispatch after transaction
 commit. Descriptions state view, storage, authorization and worker prerequisites.
 These are editor templates, no messages were sent. A-J still partial.
 Source checked: https://laravel.com/docs/12.x/mail .
+
+Auth slice: six entries (Laravel127), session login with regeneration, logout
+with session invalidation/CSRF regeneration, explicit guard lookup, password
+reset-link handler, limited-expiry scoped Sanctum token and user-owned selected
+token revocation. Descriptions require configured guards/brokers, auth/CSRF
+middleware, authorization and throttling as appropriate. These are insertion
+templates, not complete secure authentication scaffolding. A-J remains partial.
+Sources checked: https://laravel.com/docs/12.x/authentication ,
+https://laravel.com/docs/12.x/passwords , https://laravel.com/docs/12.x/sanctum .

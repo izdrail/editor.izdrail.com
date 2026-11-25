@@ -169,6 +169,23 @@ mod tests {
 
 
 
+
+    #[test]
+    fn auth_snippets_preserve_session_safety_and_user_scoped_token_revocation() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-auth-attempt").contains("$request->session()->regenerate();"));
+        assert!(text("lv-auth-attempt").contains("->onlyInput('email')"));
+        assert!(text("lv-auth-logout").contains("$request->session()->invalidate();"));
+        assert!(text("lv-auth-logout").contains("$request->session()->regenerateToken();"));
+        assert!(text("lv-auth-guard").contains("Auth::guard('web')->user()"));
+        assert!(text("lv-password-send-reset-link").contains("Password::sendResetLink($request->only('email'))"));
+        assert!(text("lv-sanctum-create-token").contains("['posts:read'], now()->addHours(1)"));
+        assert!(text("lv-sanctum-revoke-token").contains("$request->user()->tokens()->where('id', $validated['token_id'])->delete()"));
+    }
+
     #[test]
     fn mailable_snippets_preserve_types_variables_and_after_commit_dispatch() {
         let text = |prefix: &str| {
