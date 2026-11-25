@@ -154,3 +154,12 @@ a provider boot method and ObservedBy attribute for placement above a model clas
 Expansion tests preserve class names and attribute punctuation. Observer business
 logic and event dispatch remain application-specific and not runtime-verified.
 Source: https://raw.githubusercontent.com/laravel/docs/12.x/eloquent.md
+
+Drop/serialization follow-up (Laravel164): drop-table migration marks destruction
+and refuses rollback until the developer supplies the original schema. It does
+not pretend an empty table restores dropped data. Model array/JSON snippets clone
+the instance and explicitly allowlist id by default, avoiding accidental broad
+attribute/relationship exposure; developers must choose any additional fields.
+JSON uses JSON_THROW_ON_ERROR. No migration or model runtime fixture claimed.
+Sources: https://raw.githubusercontent.com/laravel/docs/12.x/migrations.md
+https://raw.githubusercontent.com/laravel/docs/12.x/eloquent-serialization.md

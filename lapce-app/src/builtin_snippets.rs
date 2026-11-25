@@ -183,6 +183,24 @@ mod tests {
 
 
     #[test]
+    fn destructive_migration_and_serialization_templates_expose_safety_limits() {
+        let text = |prefix: &str| {
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let drop_table = text("lv-migration-drop");
+        assert!(drop_table.contains("Schema::dropIfExists('table')"));
+        assert!(drop_table.contains("throw new \\LogicException("));
+        assert!(!drop_table.contains("Schema::create("));
+        assert_eq!(text("lv-model-to-array"), "$attributes = (clone $model)->setVisible(['id'])->toArray();");
+        assert_eq!(text("lv-model-to-json"), "$json = (clone $model)->setVisible(['id'])->toJson(JSON_THROW_ON_ERROR);");
+    }
+
+    #[test]
     fn observer_registration_templates_preserve_qualified_names() {
         let text = |prefix: &str| {
             let item = packs()

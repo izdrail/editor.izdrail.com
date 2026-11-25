@@ -303,6 +303,9 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-controller-base | Base application Controller class; only create if absent, do not overwrite application traits/methods |
 | lv-observer-register | Register an observer inside a service provider boot method |
 | lv-model-observed-by | ObservedBy attribute directly above a model class, requires Laravel observer class |
+| lv-migration-drop | Destructive drop-table migration; rollback explicitly fails until the original schema is supplied, data needs a separate backup |
+| lv-model-to-array | Serialize a cloned model with an explicit attribute allowlist, extend deliberately before sharing |
+| lv-model-to-json | Serialize a cloned model with an explicit attribute allowlist, extend deliberately before sharing |
 
 ## livewire
 

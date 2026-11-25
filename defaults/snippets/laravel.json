@@ -1920,5 +1920,41 @@
     "body": [
       "#[\\\\Illuminate\\\\Database\\\\Eloquent\\\\Attributes\\\\ObservedBy([\\\\App\\\\Observers\\\\${1:PostObserver}::class])]"
     ]
+  },
+  "Drop-table migration": {
+    "prefix": "lv-migration-drop",
+    "description": "Destructive drop-table migration; rollback explicitly fails until the original schema is supplied, data needs a separate backup",
+    "body": [
+      "use Illuminate\\\\Database\\\\Migrations\\\\Migration;",
+      "use Illuminate\\\\Support\\\\Facades\\\\Schema;",
+      "",
+      "return new class extends Migration",
+      "{",
+      "\tpublic function up(): void",
+      "\t{",
+      "\t\t// Destructive: verify backups, dependencies and the exact table before running.",
+      "\t\tSchema::dropIfExists('${1:table}');",
+      "\t}",
+      "",
+      "\tpublic function down(): void",
+      "\t{",
+      "\t\tthrow new \\\\LogicException('Define the original schema before rollback; dropped data requires a backup.');",
+      "\t}",
+      "};"
+    ]
+  },
+  "Serialize model allowlisted array": {
+    "prefix": "lv-model-to-array",
+    "description": "Serialize a cloned model with an explicit attribute allowlist, extend deliberately before sharing",
+    "body": [
+      "\\$${1:attributes} = (clone \\$${2:model})->setVisible(['${3:id}'])->toArray();"
+    ]
+  },
+  "Serialize model allowlisted JSON": {
+    "prefix": "lv-model-to-json",
+    "description": "Serialize a cloned model with an explicit attribute allowlist, extend deliberately before sharing",
+    "body": [
+      "\\$${1:json} = (clone \\$${2:model})->setVisible(['${3:id}'])->toJson(JSON_THROW_ON_ERROR);"
+    ]
   }
 }
