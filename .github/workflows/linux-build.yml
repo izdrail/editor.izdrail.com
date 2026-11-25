@@ -104,7 +104,7 @@ jobs:
           CARGO_BUILD_JOBS: 2
           CARGO_PROFILE_DEV_DEBUG: 0
           HF_HUB_OFFLINE: 1
-        run: cargo check --locked --manifest-path inference/mistral-worker/Cargo.toml
+        run: cargo test --locked --manifest-path inference/mistral-worker/Cargo.toml
 
   linux:
     name: Linux x86_64 release binary
