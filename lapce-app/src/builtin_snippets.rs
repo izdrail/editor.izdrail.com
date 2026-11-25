@@ -183,6 +183,27 @@ mod tests {
 
 
     #[test]
+    fn custom_user_provider_covers_current_contract_without_accepting_credentials() {
+        let text = |prefix: &str| {
+            let item = packs()
+                .laravel
+                .iter()
+                .find(|s| s.prefix.iter().any(|p| p == prefix))
+                .unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        let provider = text("lv-auth-user-provider");
+        for method in ["retrieveById", "retrieveByToken", "updateRememberToken", "retrieveByCredentials", "validateCredentials", "rehashPasswordIfRequired"] {
+            assert!(provider.contains(&format!("function {method}(")));
+        }
+        assert_eq!(provider.matches("return null;").count(), 3);
+        assert!(provider.contains("return false;"));
+        assert_eq!(provider.matches("throw new \\LogicException(").count(), 2);
+        assert!(provider.contains("bool $force = false"));
+        assert!(text("lv-auth-provider-register").contains("new \\App\\Auth\\CustomUserProvider()"));
+    }
+
+    #[test]
     fn auth_registration_and_route_templates_do_not_grant_implicit_access() {
         let text = |prefix: &str| {
             let item = packs()

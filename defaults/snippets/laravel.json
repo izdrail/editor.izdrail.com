@@ -2028,5 +2028,56 @@
     "body": [
       "\\\\Illuminate\\\\Support\\\\Facades\\\\Route::${1:get}('/${2:posts}/{${7:post}}', [\\\\App\\\\Http\\\\Controllers\\\\${3:PostController}::class, '${4:edit}'])->middleware(['auth:${5:web}', 'can:${6:update},${7:post}']);"
     ]
+  },
+  "Custom user provider class": {
+    "prefix": "lv-auth-user-provider",
+    "description": "Laravel 12 UserProvider scaffold, denies retrieval/validation and refuses token writes/rehashing until implemented; wire auth.php explicitly",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Auth;",
+      "",
+      "class ${1:CustomUserProvider} implements \\\\Illuminate\\\\Contracts\\\\Auth\\\\UserProvider",
+      "{",
+      "\tpublic function retrieveById(\\$identifier): ?\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable",
+      "\t{",
+      "\t\treturn null;",
+      "\t}",
+      "",
+      "\tpublic function retrieveByToken(\\$identifier, #[\\\\SensitiveParameter] \\$token): ?\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable",
+      "\t{",
+      "\t\treturn null;",
+      "\t}",
+      "",
+      "\tpublic function updateRememberToken(\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable \\$user, #[\\\\SensitiveParameter] \\$token): void",
+      "\t{",
+      "\t\tthrow new \\\\LogicException('Implement secure remember-token persistence.');",
+      "\t}",
+      "",
+      "\tpublic function retrieveByCredentials(#[\\\\SensitiveParameter] array \\$credentials): ?\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable",
+      "\t{",
+      "\t\treturn null;",
+      "\t}",
+      "",
+      "\tpublic function validateCredentials(\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable \\$user, #[\\\\SensitiveParameter] array \\$credentials): bool",
+      "\t{",
+      "\t\treturn false;",
+      "\t}",
+      "",
+      "\tpublic function rehashPasswordIfRequired(\\\\Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable \\$user, #[\\\\SensitiveParameter] array \\$credentials, bool \\$force = false): void",
+      "\t{",
+      "\t\tthrow new \\\\LogicException('Implement password rehashing for the backing store.');",
+      "\t}",
+      "}"
+    ]
+  },
+  "Custom user provider registration": {
+    "prefix": "lv-auth-provider-register",
+    "description": "Register custom provider in service provider boot, then select driver in auth.php; add required backing-store dependencies",
+    "body": [
+      "\\\\Illuminate\\\\Support\\\\Facades\\\\Auth::provider('${1:custom}', function (\\\\Illuminate\\\\Contracts\\\\Foundation\\\\Application \\$app, array \\$config): \\\\Illuminate\\\\Contracts\\\\Auth\\\\UserProvider {",
+      "\treturn new \\\\App\\\\Auth\\\\${2:CustomUserProvider}();",
+      "});"
+    ]
   }
 }

@@ -184,3 +184,11 @@ Route examples select a guard and pair authentication with policy middleware.
 These do not implement a credential verifier or custom user provider, and no
 runtime security acceptance is claimed.
 Source: https://raw.githubusercontent.com/laravel/docs/12.x/authentication.md
+
+User-provider follow-up (Laravel175): all six methods of the current Laravel 12
+UserProvider contract, including rehashPasswordIfRequired and sensitive parameter
+attributes. Retrieval returns null, validation false, persistence/rehash operations
+throw until implemented. Registration requires auth.php wiring and backing-store
+dependencies. This is not a working authentication backend or security acceptance.
+Sources: https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Contracts/Auth/UserProvider.php
+https://raw.githubusercontent.com/laravel/docs/12.x/authentication.md

@@ -315,6 +315,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-auth-via-request | Register in provider boot; configure matching auth.php driver; denies all until real credential verification is implemented |
 | lv-route-auth | Protect a route using an explicitly selected configured guard |
 | lv-route-can | Require authentication and a policy ability on the implicitly bound route model; match route parameter and policy |
+| lv-auth-user-provider | Laravel 12 UserProvider scaffold, denies retrieval/validation and refuses token writes/rehashing until implemented; wire auth.php explicitly |
+| lv-auth-provider-register | Register custom provider in service provider boot, then select driver in auth.php; add required backing-store dependencies |
 
 ## livewire
 
