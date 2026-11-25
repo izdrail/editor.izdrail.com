@@ -336,7 +336,7 @@
       "protected function ${1:name}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute",
       "{",
       "\treturn \\\\Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\Attribute::make(",
-      "\t\tget: fn (string \\$value) => $0,",
+      "\t\tget: fn (string \\$value) => \\$value,",
       "\t);",
       "}"
     ],

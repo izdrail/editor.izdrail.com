@@ -183,6 +183,17 @@ mod tests {
 
 
     #[test]
+    fn legacy_accessor_has_a_valid_default_arrow_expression() {
+        let item = packs()
+            .laravel
+            .iter()
+            .find(|s| s.prefix.iter().any(|p| p == "lv-accessor"))
+            .unwrap();
+        let expanded = Parsed::from_str(&item.body).unwrap().text();
+        assert!(expanded.contains("get: fn (string $value) => $value,"));
+    }
+
+    #[test]
     #[ignore = "explicit export for PHP syntax acceptance"]
     fn export_laravel_expansions_for_php_lint() {
         let destination = std::env::var("LAPCE_SNIPPET_EXPORT").expect("export path required");

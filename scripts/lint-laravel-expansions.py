@@ -15,7 +15,7 @@ def contexts(text):
         return {"file": text}
     return {
         "statements": "<?php\n" + text,
-        "class-members": "<?php\nclass SnippetFixture {\n" + text + "\n}",
+        "class-members": "<?php\nclass SnippetParent { protected static function boot(): void {} }\nclass SnippetFixture extends SnippetParent {\n" + text + "\n}",
         "function-body": "<?php\nfunction snippetFixture() {\n" + text + "\n}",
         "array-entry": "<?php\n$value = [\n" + text + "\n];",
         "attribute": "<?php\n" + text + "\nclass SnippetFixture {}",

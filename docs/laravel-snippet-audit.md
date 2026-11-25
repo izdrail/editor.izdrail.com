@@ -199,3 +199,10 @@ file/member/body/array/attribute/chain contexts without executing snippets. Blad
 is excluded pending compilation fixtures. This is syntax only, not symbol or
 runtime acceptance. Inspection also caught and removed an old duplicate MorphMany
 return type from the original collection. Gate results pending hosted run.
+
+First actual PHP gate result:173/175 default Laravel expansions parsed. It caught
+the old accessor's empty arrow-function result; changed to a valid identity
+expression with expansion regression. The model boot template itself was valid,
+but the generic member fixture needed a parent class for parent::boot. That
+context is now supplied, without changing the model boot template. Updated
+gate acceptance pending.
