@@ -427,6 +427,33 @@ mod tests {
         }
     }
     #[test]
+    fn deterministic_noise_keeps_every_utf8_byte_and_terminates() {
+        let alphabet = [
+            'λ', '😀', 'a', '0', '\0', '\n', '\r', '\t', '<', '>', '?', '$', '{',
+            '}', '\\', '\'', '"', '/', '*', '#', '[', ']',
+        ];
+        let mut state = 47u64;
+        for len in 0..512 {
+            let mut source = String::from("<?php ");
+            for _ in 0..len {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                source.push(alphabet[(state >> 32) as usize % alphabet.len()]);
+            }
+            let out = lex(&source);
+            assert_eq!(out.styles.len(), source.len());
+            for point in out.checkpoints {
+                assert!(source.is_char_boundary(point.offset));
+            }
+            for (i, ch) in source.char_indices() {
+                assert!(
+                    out.styles[i..i + ch.len_utf8()]
+                        .iter()
+                        .all(|s| *s == out.styles[i])
+                );
+            }
+        }
+    }
+    #[test]
     fn arbitrary_utf8_and_typing_prefixes() {
         let s = "<div>λ<?= \"{$café['✓']}\" ?><?php /* unterminated 世界";
         for (end, _) in s.char_indices().chain(std::iter::once((s.len(), '\0'))) {

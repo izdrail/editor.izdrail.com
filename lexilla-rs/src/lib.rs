@@ -633,3 +633,17 @@ mod php_member_comment_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod imported_php_tests {
+    use super::*;
+    #[test]
+    fn imported_php_scopes_match_native_and_reject_bad_styles() {
+        let native = Snapshot::lex("php", "", &[]).unwrap();
+        let imported = Snapshot::from_php_styles("λ", vec![4,4]).unwrap();
+        assert_eq!(imported.styles(), &[4,4]);
+        for id in 0..=21 { assert_eq!(imported.scope(id), native.scope(id), "style {id}"); }
+        assert!(Snapshot::from_php_styles("λ", vec![4]).is_none());
+        assert!(Snapshot::from_php_styles("x", vec![22]).is_none());
+    }
+}
