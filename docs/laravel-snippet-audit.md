@@ -119,3 +119,9 @@ array entry with explicit editable condition and global append inside an existin
 bootstrap callback. No replacement of the default middleware stack.
 Sources: https://raw.githubusercontent.com/laravel/docs/12.x/validation.md ,
 https://raw.githubusercontent.com/laravel/docs/12.x/middleware.md .
+
+Event follow-up: discovery-path builder and synchronous ShouldBroadcastNow class
+(Laravel153). Synchronous delivery is explicitly labelled as blocking. Sources:
+https://raw.githubusercontent.com/laravel/docs/12.x/events.md ,
+https://raw.githubusercontent.com/laravel/docs/12.x/broadcasting.md .
+Runtime broadcaster/channel authorization remains unverified.

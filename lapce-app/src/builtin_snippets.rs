@@ -178,6 +178,19 @@ mod tests {
 
 
 
+
+    #[test]
+    fn event_discovery_and_synchronous_broadcast_templates_keep_distinct_contracts() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-event-discovery").contains("->withEvents(discover: ["));
+        assert!(text("lv-event-discovery").contains("__DIR__.'/../app/Listeners'"));
+        assert!(text("lv-event-broadcast-now").contains("implements ShouldBroadcastNow"));
+        assert!(text("lv-event-broadcast-now").contains("new PrivateChannel('orders.'.$this->orderId)"));
+    }
+
     #[test]
     fn conditional_validation_and_global_middleware_have_explicit_insertion_context() {
         let text = |prefix: &str| {

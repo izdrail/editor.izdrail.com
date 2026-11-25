@@ -1756,5 +1756,40 @@
     "body": [
       "\\$middleware->append(\\\\App\\\\Http\\\\Middleware\\\\${1:InspectRequest}::class);"
     ]
+  },
+  "Synchronous broadcast event class": {
+    "prefix": "lv-event-broadcast-now",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Events;",
+      "",
+      "use Illuminate\\\\Broadcasting\\\\PrivateChannel;",
+      "use Illuminate\\\\Contracts\\\\Broadcasting\\\\ShouldBroadcastNow;",
+      "use Illuminate\\\\Foundation\\\\Events\\\\Dispatchable;",
+      "use Illuminate\\\\Queue\\\\SerializesModels;",
+      "",
+      "class ${1:OrderUpdated} implements ShouldBroadcastNow",
+      "{",
+      "\tuse Dispatchable, SerializesModels;",
+      "",
+      "\tpublic function __construct(public string \\$orderId) {}",
+      "",
+      "\tpublic function broadcastOn(): array",
+      "\t{",
+      "\t\treturn [new PrivateChannel('orders.'.\\$this->orderId)];",
+      "\t}",
+      "}"
+    ],
+    "description": "Synchronous private-channel broadcast; configure broadcaster and channel authorization, blocks current request"
+  },
+  "Event discovery paths": {
+    "prefix": "lv-event-discovery",
+    "description": "Application builder chain in bootstrap/app.php; listener directory must exist",
+    "body": [
+      "->withEvents(discover: [",
+      "\t__DIR__.'/../app/${1:Listeners}',",
+      "])"
+    ]
   }
 }

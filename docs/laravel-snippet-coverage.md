@@ -1,7 +1,7 @@
 # Laravel snippet coverage checkpoint
 
 25 November 2026. This maps the recorded A-J request to implemented examples and
-remaining gaps. It is not full acceptance. Laravel151, Livewire17, Blade108.
+remaining gaps. It is not full acceptance. Laravel153, Livewire17, Blade108.
 The original supplied configuration attachment and the rest of the message after
 SMS notifications were not available. The repository inventory is the audited
 baseline; it is not claimed to be that missing attachment.
@@ -15,7 +15,7 @@ baseline; it is not claimed to be that missing attachment.
 | E Validation | Inline/FormRequest/rule classes, nested arrays, file upload validation, custom messages, requiredIf condition, after hooks, explicit authorization placeholder | Further conditional/Rule-object examples and executable request tests |
 | F Auth | Session login/logout, guard lookup, gates/policy, password hashing/reset-link, verification routes, Sanctum scoped token/revocation | Custom guard and user-provider implementation, full password reset handler, auth/authorization middleware examples and runtime security tests |
 | G Middleware | Standard/terminable/parameter/alias/global append/response-header templates | Explicit request inspection patterns and runtime ordering checks |
-| H Events | Event/listener/queued listener/subscriber/dispatch/ShouldBroadcast | Event discovery configuration and ShouldBroadcastNow example; channel authorization runtime checks |
+| H Events | Event/listener/queued listener/subscriber/discovery/dispatch/ShouldBroadcast/ShouldBroadcastNow | Channel authorization and event-discovery runtime checks |
 | I Queues | Job/unique/batchable, middleware, retry/backoff/failure hooks, chains/batches, after-response and queueable notification | Explicit dispatch variants and coverage review against every requested item; no live queue worker run |
 | J Notifications/mail | Notification, mail/database/Slack/Vonage methods, queued notification, mailable envelope/content/Markdown/attachment, queue/later | Package/channel integration fixtures, any omitted requirements beyond the truncated request |
 

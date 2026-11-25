@@ -293,6 +293,8 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-route-verified | Require verified authenticated user; User must implement MustVerifyEmail and verification routes must exist |
 | lv-validation-required-if | Entry in rules array; replace condition with an explicit application boolean |
 | lv-middleware-global | Inside existing bootstrap/app.php withMiddleware callback, Laravel11+; merge, do not replace stack |
+| lv-event-broadcast-now | Synchronous private-channel broadcast; configure broadcaster and channel authorization, blocks current request |
+| lv-event-discovery | Application builder chain in bootstrap/app.php; listener directory must exist |
 
 ## livewire
 
