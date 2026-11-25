@@ -169,8 +169,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); shot('00-explorer-keyboard-open')
         # Open Editors row uses a disposable target already opened above.
         run('mousemove', '105', '145', 'click', '1'); shot('00-open-editors-row-focused')
-        run('key', 'Tab'); shot('00-open-editors-next-focus')
-        run('key', 'shift+Tab'); shot('00-open-editors-return-focus')
+        run('key', 'Tab', 'Tab'); shot('00-open-editors-next-focus')
+        run('key', 'shift+Tab', 'Tab'); shot('00-open-editors-return-focus')
         run('key', 'Return'); shot('00-open-editors-keyboard-activate')
         # Existing terminal tab header, never the PTY content area.
         run('mousemove', '350', '490', 'click', '1'); shot('00-terminal-header-focus')
