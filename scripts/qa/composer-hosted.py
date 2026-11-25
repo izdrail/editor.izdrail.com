@@ -148,6 +148,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape')
         run('key', 'ctrl+a'); run('type', '--clearmodifiers', 'Final unsent synthetic draft')
         run('mousemove', '600', '220', 'click', '1'); shot('08-outside')
+        # Core editing acceptance uses a separate disposable source file.
         # Save only this disposable fixture to expose accidental *buffer* edits,
         # which a disk-only unchanged assertion cannot see.
         run('key', 'ctrl+p'); time.sleep(1)
@@ -155,7 +156,6 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1)
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Composer traversal changed the disposable source buffer')
-        # Core editing acceptance uses a separate disposable source file.
         # Explorer file row: pointer focus, then native Tab to the next file.
         # Activate only the disposable fixture, never create/rename/delete.
         run('mousemove', '95', '375', 'click', '1'); shot('00-explorer-row-focused')
