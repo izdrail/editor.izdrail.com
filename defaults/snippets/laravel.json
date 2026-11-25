@@ -501,7 +501,7 @@
   "Morph many relation": {
     "prefix": "lv-morphmany",
     "body": [
-      "public function ${1:comments}(): MorphMany: \\\\Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\MorphMany",
+      "public function ${1:comments}(): \\\\Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\MorphMany",
       "{",
       "\treturn \\$this->morphMany(${2:Comment}::class, '${3:commentable}');",
       "}"

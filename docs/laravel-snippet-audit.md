@@ -192,3 +192,10 @@ throw until implemented. Registration requires auth.php wiring and backing-store
 dependencies. This is not a working authentication backend or security acceptance.
 Sources: https://raw.githubusercontent.com/laravel/framework/12.x/src/Illuminate/Contracts/Auth/UserProvider.php
 https://raw.githubusercontent.com/laravel/docs/12.x/authentication.md
+
+PHP syntax gate: explicit ignored Rust export test uses the editor Parsed type
+to write all Laravel default expansions. Hosted acceptance runs php -l in legal
+file/member/body/array/attribute/chain contexts without executing snippets. Blade
+is excluded pending compilation fixtures. This is syntax only, not symbol or
+runtime acceptance. Inspection also caught and removed an old duplicate MorphMany
+return type from the original collection. Gate results pending hosted run.

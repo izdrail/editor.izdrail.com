@@ -183,6 +183,23 @@ mod tests {
 
 
     #[test]
+    #[ignore = "explicit export for PHP syntax acceptance"]
+    fn export_laravel_expansions_for_php_lint() {
+        let destination = std::env::var("LAPCE_SNIPPET_EXPORT").expect("export path required");
+        let entries: Vec<_> = packs()
+            .laravel
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "prefix": item.prefix,
+                    "text": Parsed::from_str(&item.body).unwrap().text(),
+                })
+            })
+            .collect();
+        std::fs::write(destination, serde_json::to_vec_pretty(&entries).unwrap()).unwrap();
+    }
+
+    #[test]
     fn custom_user_provider_covers_current_contract_without_accepting_credentials() {
         let text = |prefix: &str| {
             let item = packs()
