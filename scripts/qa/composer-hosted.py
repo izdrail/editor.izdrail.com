@@ -179,6 +179,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'
         core_file.write_text(core_original)
+        # Terminal owns ordinary typing after header activation. Reacquire
+        # the editor before invoking its file palette, never type a path at PTY.
+        run('mousemove', '600', '220', 'click', '1'); time.sleep(0.5)
         run('key', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'core_pairs.php')
         run('key', 'Return'); time.sleep(2)
