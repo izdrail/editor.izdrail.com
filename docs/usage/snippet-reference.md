@@ -274,6 +274,10 @@ Type a prefix in a matching file, request completion and choose the snippet. Tab
 | lv-route-throttled | GET route using a previously registered named limiter |
 | lv-route-signed | Signed named route; signature is not a substitute for application authorization |
 | lv-url-signed | Expiring URL for an existing signed named route; validate recipient authorization separately |
+| lv-model-ulid | Trait inside a model; requires ULID-compatible primary key |
+| lv-model-pivot | Pivot model class; attach with relationship using(), configure guarded attributes explicitly |
+| lv-model-collection-class | Eloquent collection subclass; register with model CollectedBy or newCollection |
+| lv-model-collected-by | Attribute above model class, Laravel 12; custom collection class must exist |
 
 ## livewire
 

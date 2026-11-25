@@ -1529,5 +1529,50 @@
     "body": [
       "\\$url = \\\\Illuminate\\\\Support\\\\Facades\\\\URL::temporarySignedRoute('${1:action}', now()->addMinutes(${2:15}), ['${3:id}' => ${4:\\$model->getKey()}]);"
     ]
+  },
+  "Model ULID identifiers": {
+    "prefix": "lv-model-ulid",
+    "description": "Trait inside a model; requires ULID-compatible primary key",
+    "body": [
+      "use \\\\Illuminate\\\\Database\\\\Eloquent\\\\Concerns\\\\HasUlids;"
+    ]
+  },
+  "Custom pivot model class": {
+    "prefix": "lv-model-pivot",
+    "description": "Pivot model class; attach with relationship using(), configure guarded attributes explicitly",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Models;",
+      "",
+      "class ${1:RoleUser} extends \\\\Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\Pivot",
+      "{",
+      "\tprotected \\$fillable = [${2:'active'}];",
+      "",
+      "\t$0",
+      "}"
+    ]
+  },
+  "Custom collection class": {
+    "prefix": "lv-model-collection-class",
+    "description": "Eloquent collection subclass; register with model CollectedBy or newCollection",
+    "body": [
+      "<?php",
+      "",
+      "namespace App\\\\Collections;",
+      "",
+      "/** @extends \\\\Illuminate\\\\Database\\\\Eloquent\\\\Collection<int, \\\\App\\\\Models\\\\${1:Post}> */",
+      "class ${2:PostCollection} extends \\\\Illuminate\\\\Database\\\\Eloquent\\\\Collection",
+      "{",
+      "\t$0",
+      "}"
+    ]
+  },
+  "Model custom collection attribute": {
+    "prefix": "lv-model-collected-by",
+    "description": "Attribute above model class, Laravel 12; custom collection class must exist",
+    "body": [
+      "#[\\\\Illuminate\\\\Database\\\\Eloquent\\\\Attributes\\\\CollectedBy(\\\\App\\\\Collections\\\\${1:PostCollection}::class)]"
+    ]
   }
 }

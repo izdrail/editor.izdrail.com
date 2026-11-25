@@ -171,6 +171,20 @@ mod tests {
 
 
 
+
+    #[test]
+    fn advanced_model_snippets_keep_collection_and_pivot_types() {
+        let text = |prefix: &str| {
+            let item = packs().laravel.iter().find(|s| s.prefix.iter().any(|p| p == prefix)).unwrap();
+            Parsed::from_str(&item.body).unwrap().text()
+        };
+        assert!(text("lv-model-ulid").contains("\\Illuminate\\Database\\Eloquent\\Concerns\\HasUlids"));
+        assert!(text("lv-model-pivot").contains("class RoleUser extends \\Illuminate\\Database\\Eloquent\\Relations\\Pivot"));
+        assert!(text("lv-model-pivot").contains("protected $fillable = ['active'];"));
+        assert!(text("lv-model-collection-class").contains("namespace App\\Collections;"));
+        assert!(text("lv-model-collected-by").contains("CollectedBy(\\App\\Collections\\PostCollection::class)"));
+    }
+
     #[test]
     fn routing_followup_preserves_closing_braces_and_qualified_api_calls() {
         let text = |prefix: &str| {

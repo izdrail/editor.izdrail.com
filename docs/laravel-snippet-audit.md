@@ -69,3 +69,9 @@ Routing follow-up: five entries (Laravel132), route-name groups, limiter
 registration, throttled routes, signed routes and temporary signed URLs.
 Descriptions require matching registration and separate authorization.
 Sources: https://laravel.com/docs/12.x/routing , https://laravel.com/docs/12.x/urls .
+
+Model follow-up: four entries (Laravel136), ULID trait with schema prerequisite,
+custom pivot class, Eloquent collection class and CollectedBy model attribute.
+Source checked: https://laravel.com/docs/12.x/eloquent ,
+https://laravel.com/docs/12.x/eloquent-collections ,
+https://laravel.com/docs/12.x/eloquent-relationships . A-J still partial.
