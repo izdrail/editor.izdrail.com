@@ -230,3 +230,9 @@ Row event handling remains isolated; no backend/model selection performed.
 UI-001 remains open: added direct existing Match Pairs palette invocation and
 result captures to separate command behavior from accelerator/layout translation.
 No new editing command or keybinding added before that evidence.
+
+620aa9b/45561788170 actual43/43a verifies UI-030 narrow dark/light Problems:
+vertical severity sections, readable wrapping and unchanged assistant width.
+Narrow composer dropdown live-resize and outside-dismiss captures added next,
+checking window-bound overlay placement instead of assuming wide acceptance
+covers narrow windows. Acceptance remains pending actual images.

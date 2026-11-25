@@ -75,6 +75,16 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Escape'); time.sleep(1)
         run('mousemove', '1290', '727', 'click', '1'); time.sleep(2); shot('00c-pointer-model-menu')
         run('mousemove', '600', '220', 'click', '1'); shot('00c1-model-outside-dismissed')
+        # Keep an already-open overlay visible while resizing: this tests
+        # live window-bound clamping, not a guessed narrow trigger position.
+        run('mousemove', '1290', '727', 'click', '1'); time.sleep(1)
+        run('windowsize', window, '850', '640'); shot('00c2-model-menu-narrow')
+        run('mousemove', '350', '180', 'click', '1'); shot('00c3-model-narrow-dismissed')
+        run('windowsize', window, '1443', '796'); time.sleep(2)
+        run('mousemove', '1195', '727', 'click', '1'); time.sleep(1)
+        run('windowsize', window, '850', '640'); shot('00b2-mode-menu-narrow')
+        run('mousemove', '350', '180', 'click', '1'); shot('00b3-mode-narrow-dismissed')
+        run('windowsize', window, '1443', '796'); time.sleep(2)
         run('key', 'Escape'); time.sleep(1)
         run('mousemove', '1250', '640', 'click', '1')
         shot('00a-empty-focused')
