@@ -11,6 +11,7 @@ if [ "$free_kb" -lt 15728640 ]; then
   exit 1
 fi
 python3 bench/test_bench.py
+python3 scripts/test-laravel-lint.py
 ulimit -n 65536
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 mkdir -p target/acceptance-logs

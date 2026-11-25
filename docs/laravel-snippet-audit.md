@@ -206,3 +206,8 @@ expression with expansion regression. The model boot template itself was valid,
 but the generic member fixture needed a parent class for parent::boot. That
 context is now supplied, without changing the model boot template. Updated
 gate acceptance pending.
+
+PHP harness hardening: empty/malformed export cannot silently pass. Five Python
+regressions check empty exports, failed lint, unchanged parent-member context,
+full-file isolation and php -l-only execution. These test the harness, not PHP
+syntax or Laravel semantics, which remain separate hosted gates.
