@@ -62,3 +62,10 @@ Context-sensitive names/types, malformed heredoc indentation diagnostics,
 framework overlays, full accuracy corpora, incremental reuse, parity and all
 performance claims remain separate open gates. L1-L3 are an initial implementation,
 not a claim of exhaustive PHP grammar coverage or a completed engine replacement.
+
+
+Hosted checkpoint cd579c9: feature-enabled import routing/scope test and full
+Rust workspace pass in run45577917298. Seven focused crate tests and native
+style-scope parity pass locally after751a0aa. No throughput, incremental,
+memory, GUI responsiveness or highlighting-accuracy win has been measured.
+https://github.com/izdrail/editor.izdrail.com/actions/runs/45577917298

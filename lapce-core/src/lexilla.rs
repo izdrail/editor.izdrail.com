@@ -1400,6 +1400,20 @@ mod logos_import_tests {
         }
         let native = Snapshot::lex("php", "", &[]).unwrap();
         for id in 0..=21 { assert_eq!(snapshot.scope(id),native.scope(id), "style {id}"); }
+        for framework in ["laravel", "symfony", "wordpress"] {
+            let mut project = crate::project_profile::ProjectProfile::default();
+            match framework {
+                "laravel" => project.laravel = true,
+                "symfony" => project.symfony_app = true,
+                _ => project.wordpress = true,
+            }
+            let snap = highlight_profile(LapceLanguage::Php, &Rope::from("<?php $x = 1;"), &project).unwrap();
+            assert_ne!(snap.lexer(), "php-logos", "framework {framework}");
+        }
+        for language in [LapceLanguage::Blade, LapceLanguage::Html, LapceLanguage::Twig] {
+            let snap = highlight_profile(language, &Rope::from("<p>text</p>"), &Default::default()).unwrap();
+            assert_ne!(snap.lexer(), "php-logos", "language {language:?}");
+        }
         assert!(Snapshot::from_php_styles("λ",vec![0]).is_none());
         assert!(Snapshot::from_php_styles("x",vec![255]).is_none());
     }
