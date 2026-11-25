@@ -5,8 +5,8 @@ select a faster quantization, clear the machine's page cache, or prove CUDA exec
 The alternative providers and exact-model inference are not yet accepted.
 
 Requirements: Linux, POSIX sh, Python 3, sha256sum. GPU telemetry requires
-nvidia-smi. Build commands and feature combinations are still under implementation;
-do not interpret this collector as a finished CUDA build package.
+nvidia-smi. Explicit build commands are supplied below. CUDA compilation and inference
+remain unverified; this is not an accepted GPU package.
 
 Set MODEL to the exact target GGUF and EXPECT_SHA256 to its independently verified
 SHA256. Set CONFIG to a JSON string describing prompt, context, output count, sampling,
@@ -24,8 +24,8 @@ command performed that scenario. Cold-cache verification is always false here.
 
 Use three or more runs for each identical workload. Keep raw stdout, stderr, samples
 and JSON. Existing run paths are not overwritten. Run nothing else on the GPU.
-RSS and CPU cover only the launched process, not children. GPU readings cover the
-whole device and cannot establish CUDA PASS. Actual process allocation, inference
+RSS and CPU sum the launched process and live descendants, with the limitations
+listed below. GPU readings cover the whole device and cannot establish CUDA PASS. Actual process allocation, inference
 logs and correct output must independently corroborate GPU use. Multiple GPUs leave
 samples blank rather than silently selecting one. Do not run pressure tests on the
 laptop without explicit limits in the benchmark command.
@@ -58,7 +58,7 @@ stderr; worker JSON stays on stdout. This is full-device Candle placement,
 not partial MoE offload. It still rejects the qwen35moe target architecture.
 CUDA compilation and actual GPU inference are NOT yet verified.
 
-## Optional llama.cpp candidate (build/runtime verification pending)
+## Optional llama.cpp candidate (CPU build passed, target runtime pending)
 
 Build CPU: `cargo build --release -p lapce-ai --features llama-cpp`.
 Build CUDA with local toolkit: `cargo build --release -p lapce-ai --features llama-cpp-cuda`.
@@ -80,7 +80,7 @@ The request file is private input and is not bundled into uploaded results by de
 
     MODEL=/path/to/exact.gguf EXPECT_SHA256=verified_hash CONFIG='same-workload' \
       LAPCE_AI_BACKEND=llama-cpp sh bench/run.sh llamacpp short 1 -- \
-      python3 bench/worker.py --worker target/release/lapce-ai --request request.json
+      python3 bench/worker.py --worker target/bench-builds/llamacpp-cpu/release/lapce-ai --request request.json
 
 Use --repeat 3 for sequential warm requests in one loaded process. Separate process
 invocations give load-inclusive runs, not verified cold-page-cache measurements.
@@ -108,8 +108,8 @@ verified hash for one file while benchmarking a different file.
 It can fetch source dependencies through Cargo, but never downloads model weights
 or installs a toolkit. Save stdout/stderr as build provenance. GPU prerequisites
 are checked only for requested CUDA builds. No model execution happens during build.
-Build one backend/device at a time and record its binary and feature settings,
-since subsequent builds may replace target/release/lapce-ai. See ACCEPTANCE.md
+Each backend/device gets a distinct build directory. Record the printed binary
+path and feature settings, and use that exact path in the driver. See ACCEPTANCE.md
 for the current unverified and unimplemented areas before running comparisons.
 
 Candle optional sampling profiles: LAPCE_AI_CANDLE_FIM_SAMPLING and
@@ -156,3 +156,18 @@ and ps CPU percentages are lifetime averages, not per-interval utilization.
 Short-lived or already-reparented children may be missed. Device-wide GPU
 samples still do not establish process-specific CUDA inference. Earlier results
 labelled command-process-only must not be compared as equivalent memory scope.
+
+## Before recording a comparison
+
+Read ACCEPTANCE.md first. A repeat count is not three independent cold runs.
+worker.py reports the final request at the top level and keeps every repeated
+request in results; repeated load_ms values describe the retained model load,
+not a fresh load for each request. TTFT and cancellation latency remain unknown.
+
+The benchmark tools do not choose context, GPU layers or CPU expert placement.
+Supply bounded settings explicitly and keep MODEL, quantization, prompts, output
+budgets and generation settings identical. Record the full command and profile in
+CONFIG. Do not compare an unsupported Candle load against a successful runtime
+as though that were a speed comparison. The exact qwen35moe target cannot be a
+Candle CPU/CUDA benchmark until a compatible loader exists. A smaller compatible
+Candle model would be a separate experiment, never a replacement target result.
