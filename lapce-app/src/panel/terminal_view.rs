@@ -222,6 +222,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                         local_terminal.update_debug_active_term();
                     }
                 };
+                let pointer_activate = activate.clone();
                 row.keyboard_navigable()
                     .on_event_stop(EventListener::FocusGained, move |_| {
                         keyboard_focus.set(Some(row_id));
@@ -247,7 +248,9 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                             activate();
                         }
                     })
-                    .on_event_cont(EventListener::PointerDown, move |_| activate())
+                    .on_event_cont(EventListener::PointerDown, move |_| {
+                        pointer_activate()
+                    })
             },
         ))
         .on_resize(move |rect| {
