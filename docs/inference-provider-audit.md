@@ -168,3 +168,12 @@ require newline-complete bounded8MiB UTF-8 frames. Switching local models drops
 old weights before loading replacements, avoiding a two-model allocation peak.
 No cooperative SDK cancellation or raw FIM support is claimed by these changes.
 CPU framing fixtures added; model/GPU execution remains separate acceptance.
+
+llama.cpp sampling profiles: LAPCE_AI_LLAMA_FIM_SAMPLING and
+LAPCE_AI_LLAMA_CHAT_SAMPLING JSON accept temperature/top_k/top_p/seed via pinned
+llama-cpp-2 native sampler chain APIs. Order: top-k, top-p, temperature, seeded
+distribution. Absent config/empty object preserves greedy. Unknown keys and invalid
+greedy combinations fail before context creation. Min-p/penalties/token-ID overrides
+remain unsupported rather than ignored. No wire changes or model-output/performance
+acceptance claimed by synthetic profile validation.
+Source inspected: https://crates.io/api/v1/crates/llama-cpp-2/0.1.161/download

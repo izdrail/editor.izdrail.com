@@ -14,6 +14,45 @@ fn backend() -> Result<&'static LlamaBackend> {
     BACKEND.get().ok_or_else(|| anyhow!("llama.cpp backend initialization failed"))
 }
 
+/// Explicit per-lane native sampling. Absent config keeps legacy greedy.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SamplingConfig {
+    #[serde(default)]
+    temperature: f32,
+    top_k: Option<i32>,
+    top_p: Option<f32>,
+    #[serde(default)]
+    seed: u32,
+}
+impl SamplingConfig {
+    fn parse(value: &str) -> Result<Self> {
+        let config: Self = serde_json::from_str(value)?;
+        ensure!(config.temperature.is_finite() && (0.0..=5.0).contains(&config.temperature), "llama.cpp temperature must be 0..5");
+        ensure!(config.top_k.is_none_or(|k| (1..=1_000_000).contains(&k)), "llama.cpp top_k must be positive");
+        ensure!(config.top_p.is_none_or(|p| p.is_finite() && p > 0.0 && p <= 1.0), "llama.cpp top_p must be >0 and <=1");
+        ensure!(config.temperature > 0.0 || (config.top_k.is_none() && config.top_p.is_none()), "llama.cpp greedy does not accept top_k/top_p");
+        Ok(config)
+    }
+    fn sampler(&self) -> LlamaSampler {
+        if self.temperature == 0.0 { return LlamaSampler::greedy(); }
+        let mut chain = Vec::new();
+        if let Some(k) = self.top_k { chain.push(LlamaSampler::top_k(k)); }
+        if let Some(p) = self.top_p { chain.push(LlamaSampler::top_p(p, 1)); }
+        chain.push(LlamaSampler::temp(self.temperature));
+        chain.push(LlamaSampler::dist(self.seed));
+        LlamaSampler::chain_simple(chain)
+    }
+}
+fn sampler_for_lane(chat: bool) -> Result<LlamaSampler> {
+    let name = if chat { "LAPCE_AI_LLAMA_CHAT_SAMPLING" } else { "LAPCE_AI_LLAMA_FIM_SAMPLING" };
+    match std::env::var(name) {
+        Ok(value) => Ok(SamplingConfig::parse(&value)?.sampler()),
+        Err(std::env::VarError::NotPresent) => Ok(LlamaSampler::greedy()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub struct LlamaCppProvider {
     model: LlamaModel,
     load_ms: u128,
@@ -36,6 +75,7 @@ impl Provider for LlamaCppProvider {
     fn complete(&mut self, request: &Request, cancelled: &dyn Fn() -> bool) -> Result<Completion> {
         ensure!(request.remote.is_none(), "llama.cpp is a local-only provider");
         let chat = request.messages.is_some();
+        let mut sampler = sampler_for_lane(chat)?;
         ensure!((1..=if chat {512} else {128}).contains(&request.max_tokens), "Invalid output token limit");
         ensure!(!cancelled(), "Cancelled");
         let vocab = self.model.vocab();
@@ -88,7 +128,6 @@ impl Provider for LlamaCppProvider {
             context.decode(&mut batch)?;
         }
         let prefill_ms = start.elapsed().as_millis();
-        let mut sampler = LlamaSampler::greedy();
         let mut generated = Vec::new();
         for _ in 0..request.max_tokens {
             ensure!(!cancelled(), "Cancelled");
@@ -112,6 +151,15 @@ impl Provider for LlamaCppProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sampling_profiles_validate_without_loading_weights() {
+        for input in [r#"{"min_p":0.1}"#, r#"{"temperature":-1}"#, r#"{"top_k":0}"#, r#"{"temperature":0,"top_p":0.9}"#, r#"{"temperature":1,"top_p":2}"#] {
+            assert!(SamplingConfig::parse(input).is_err(), "{input}");
+        }
+        let _greedy = SamplingConfig::parse("{}").unwrap().sampler();
+        let _sampled = SamplingConfig::parse(r#"{"temperature":0.7,"top_k":20,"top_p":0.9,"seed":42}"#).unwrap().sampler();
+    }
 
     #[test]
     #[ignore = "requires exact local GGUF via AI_MODEL; no implicit download"]

@@ -35,7 +35,12 @@ baseline; it is not claimed to be that missing attachment.
   All175 default Laravel expansions from the actual editor parser passed php -l
   on hosted acceptance for382fee7. Each was checked unchanged in a legal insertion
   context. This does not validate edited placeholder values, framework symbols,
-  Blade compilation or runtime behavior. No fixture Laravel application has run.
+  edited placeholder values or arbitrary application behavior. All108 Blade defaults
+  now compile in Laravel12.74.0/Livewire3.8.12 and pass generated PHP syntax. Selected
+  unchanged Laravel expansions execute in the locked real fixture app with SQLite
+  memory: create/modify/drop/rollback, serialization, request input, conditional
+  validation and deny-by-default UserProvider.73e14b2 acceptance is green. This is
+  not all-template runtime acceptance or live channel/provider integration.
 - Checklist entries are scoped examples, not a claim that every variation or
   application-specific import/schema/authorization requirement is solved.
 
