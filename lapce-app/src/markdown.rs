@@ -311,7 +311,7 @@ pub fn highlight_as_code(
 
     let styles = syntax
         .map(|mut syntax| {
-            syntax.parse(0, Rope::from(text), None);
+            syntax.parse_paint(0, Rope::from(text), None);
             syntax.styles
         })
         .unwrap_or(None);

@@ -892,6 +892,7 @@ impl SyntaxLayers {
 #[derive(Clone)]
 pub struct Syntax {
     pub php_context:Option<Arc<lapce_php::Document>>,
+    pub php_context_rev:Option<u64>,
     /// Optional document setting. Process environment takes precedence.
     pub lexer_backend: Option<String>,
     #[cfg(feature="logos-php")]
@@ -953,6 +954,7 @@ impl Syntax {
     pub fn from_language(language: LapceLanguage) -> Syntax {
         Syntax {
             php_context:None,
+            php_context_rev:None,
             lexer_backend:None,
             #[cfg(feature="logos-php")]
             logos_cache:None,
@@ -1033,11 +1035,11 @@ impl Syntax {
         self.text = new_text;
     }
 
-    pub fn refresh_php_context(&mut self,previous_rev:u64,edits:Option<&[SyntaxEdit]>) {
+    pub fn refresh_php_context(&mut self,_previous_rev:u64,edits:Option<&[SyntaxEdit]>) {
         let php_context=if self.language==LapceLanguage::Php {
             // Async parsing can lag more than one buffer revision. A last-edit
             // delta is valid only when it immediately follows this snapshot.
-            let contiguous=previous_rev.checked_add(1)==Some(self.rev);
+            let contiguous=self.php_context_rev.and_then(|rev|rev.checked_add(1))==Some(self.rev);
             let input_edits=if contiguous {edits.unwrap_or(&[]).iter().flat_map(|edit|edit.0.iter().copied()).collect::<Vec<_>>()}else{Vec::new()};
             let parsed=if let Some(previous)=&self.php_context {
                 previous.update(self.text.clone(),&input_edits,&self.cancel_flag)
@@ -1045,6 +1047,7 @@ impl Syntax {
             match parsed {Ok(context)=>Some(Arc::new(context)),Err(lapce_php::Error::Cancelled)=>return,Err(error)=>{tracing::debug!(?error,"PHP incremental parse failed, retrying full parse"); match lapce_php::Document::new(self.text.clone(),false,&self.cancel_flag) {Ok(context)=>Some(Arc::new(context)),Err(error)=>{tracing::debug!(?error,"PHP full parse failed");None}}}}
         }else{None};
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
+        self.php_context_rev=php_context.as_ref().map(|_|self.rev);
         self.php_context=php_context;
     }
 
@@ -1359,6 +1362,29 @@ mod cancellation_entry_tests {
         syntax.parse(5,Rope::from(final_text),Some(&[SyntaxEdit::new(Vec::new())]));
         assert_eq!(syntax.php_context.as_ref().unwrap().index().at(3),Some(lapce_php::Context::Html));
         assert_eq!(syntax.php_context.as_ref().unwrap().text().len(),final_text.len());
+    }
+    #[test]
+    fn lagged_context_equal_width_paint_then_replace_delete_matches_fresh() {
+        let mut syntax=Syntax::from_language(LapceLanguage::Php);
+        syntax.parse(1,Rope::from("<script>one</script><?php $a=1;"),None);
+        let rev2=Rope::from("<style >one</style ><?php $a=1;");
+        assert_eq!(rev2.len(),syntax.text.len());
+        syntax.parse_paint(2,rev2.clone(),None);
+        assert_eq!(syntax.php_context_rev,Some(1));
+        let at=rev2.len();let add=Rope::from("$b=2;");
+        syntax.parse(3,Rope::from(format!("{}$b=2;",rev2)),Some(&[SyntaxEdit::new(vec![edit::create_insert_edit(&rev2,at,&add)])]));
+        let fresh=lapce_php::Document::new(syntax.text.clone(),false,&AtomicUsize::new(0)).unwrap();
+        assert_eq!(syntax.php_context.as_ref().unwrap().index(),fresh.index());
+        // Replace then delete via real rope deltas to exercise byte edits.
+        for (rev,start,end,insert) in [(4,0,8,"<script>"),(5,8,11,"")] {
+            let old=syntax.text.clone();
+            let mut builder=lapce_xi_rope::delta::Builder::new(old.len());
+            builder.replace(start..end,Rope::from(insert));let delta=builder.build();
+            let new=delta.apply(&old);let edit=SyntaxEdit::from_delta(&old,delta);
+            syntax.parse(rev,new,Some(&[edit]));
+            let fresh=lapce_php::Document::new(syntax.text.clone(),false,&AtomicUsize::new(0)).unwrap();
+            assert_eq!(syntax.php_context.as_ref().unwrap().index(),fresh.index());
+        }
     }
     #[test]
     fn lexer_setting_is_used_unless_nonempty_environment_overrides_it() {

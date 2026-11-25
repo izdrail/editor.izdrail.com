@@ -1245,6 +1245,12 @@ impl Doc {
         let doc = self.clone();
         let send = create_ext_action(self.scope, move |syntax| {
             if doc.buffer.with_untracked(|b| b.rev()) == rev {
+                let mut syntax=syntax;
+                doc.syntax.with_untracked(|current| {
+                    if current.php_context_rev>syntax.php_context_rev {
+                        syntax.php_context=current.php_context.clone();syntax.php_context_rev=current.php_context_rev;
+                    }
+                });
                 doc.syntax.set(syntax);
                 if !doc.syntax.with_untracked(|syntax|syntax.folding_pending) {doc.get_folding_range();}
                 #[cfg(feature="logos-php")]
@@ -1265,16 +1271,15 @@ impl Doc {
         let send_context=create_ext_action(self.scope,move |syntax:Syntax| {
             if context_doc.rev()==rev && syntax.rev==rev {
                 context_doc.syntax.update(|current| {
-                    if current.rev==rev {current.php_context=syntax.php_context;}
+                    if current.rev==rev {current.php_context=syntax.php_context;current.php_context_rev=syntax.php_context_rev;}
                 });
             }
         });
         rayon::spawn(move || {
             let previous_rev=syntax.rev;
             syntax.parse_paint(rev,text,edits.as_deref());
-            let mut painted=syntax.clone();
-            painted.php_context=None; // Never expose previous-revision intelligence.
-            send(painted);
+            send(syntax.clone());
+            if syntax.rev!=rev {return;}
             syntax.refresh_php_context(previous_rev,edits.as_deref());
             if syntax.cancel_flag.load(atomic::Ordering::Acquire)==0 {send_context(syntax);}
         });
