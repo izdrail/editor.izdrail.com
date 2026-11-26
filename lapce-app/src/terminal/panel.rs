@@ -181,6 +181,9 @@ impl TerminalPanelData {
         profile: Option<TerminalProfile>,
     ) -> TerminalTabData {
         self.keyboard_last_close.set(false);
+        if std::env::var("LAPCE_TERMINAL_UI_TRACE").ok().as_deref() == Some("1") {
+            eprintln!("TERMINAL_UI event=create:tab");
+        }
         let terminal_tab = TerminalTabData::new_run_debug(
             self.workspace.clone(),
             run_debug,

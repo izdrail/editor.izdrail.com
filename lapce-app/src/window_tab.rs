@@ -2755,7 +2755,16 @@ impl WindowTabData {
             }
             Focus::AboutPopup => Some(keypress.key_down(event, &self.about_data)),
             Focus::Panel(PanelKind::Terminal) => {
-                self.terminal.key_down(event, &keypress)
+                // Native controls in an empty panel must not pass keys through
+                // the PTY path, which eagerly creates an unprofiled shell.
+                // None uses the normal workbench shortcut fallback below.
+                if self.common.keyboard_focus.get_untracked().is_some()
+                    && self.terminal.tab_info.with_untracked(|info| info.tabs.is_empty())
+                {
+                    None
+                } else {
+                    self.terminal.key_down(event, &keypress)
+                }
             }
             Focus::Panel(PanelKind::Search) => {
                 Some(keypress.key_down(event, &self.global_search))

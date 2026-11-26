@@ -303,12 +303,25 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('windowfocus', '--sync', window); time.sleep(1)
         shot('00-terminal-empty-after-window-blur')
         final_inputs = {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}
+        def terminal_tab_count(name):
+            from PIL import Image
+            Image.open(out / (name + '.png')).crop((290, 470, 1140, 512)).resize((1700, 84)).save(out / 'terminal-count-crop.png')
+            text = subprocess.run(['tesseract', str(out / 'terminal-count-crop.png'), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout.lower()
+            return text.count('linux') + text.count('default')
         new_actions = terminal_events().count('event=activate:new')
+        creations = terminal_events().count('event=create:tab')
+        run('key', 'x'); time.sleep(0.5)
+        if terminal_events().count('event=create:tab') != creations:
+            raise RuntimeError('Letter on empty New created a shell')
         run('key', 'ctrl+Return'); time.sleep(1)
-        if len(list(pty_audit.glob('*.input'))) != len(final_inputs) or terminal_events().count('event=activate:new') != new_actions:
+        shot('00-terminal-empty-after-ctrl-enter')
+        empty_pixels = subprocess.run(['tesseract', str(out / '00-terminal-empty-after-ctrl-enter.png'), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout
+        if terminal_tab_count('00-terminal-empty-after-ctrl-enter') != 0 or 'Default' in empty_pixels or 'SYNTHETIC_PTY' in empty_pixels:
+            raise RuntimeError('Ctrl+Enter created an unexpected profiled or default shell')
+        if terminal_events().count('event=create:tab') != creations or len(list(pty_audit.glob('*.input'))) != len(final_inputs) or terminal_events().count('event=activate:new') != new_actions:
             raise RuntimeError('Ctrl+Enter incorrectly created terminal')
         run('key', 'Return'); time.sleep(3); shot('00-terminal-new-enter-recovered')
-        if len(list(pty_audit.glob('*.input'))) != len(final_inputs) + 1 or any(f.read_bytes() for f in pty_audit.glob('*.input')):
+        if terminal_tab_count('00-terminal-new-enter-recovered') != 1 or terminal_events().count('event=create:tab') != creations + 1 or len(list(pty_audit.glob('*.input'))) != len(final_inputs) + 1 or any(f.read_bytes() for f in pty_audit.glob('*.input')):
             raise RuntimeError('New Enter failed or leaked input')
         close_last_keyboard('space')
         run('key', 'space'); time.sleep(3); shot('00-terminal-new-space-recovered')
@@ -322,6 +335,16 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '600', '600', 'click', '1')
         run('type', '--clearmodifiers', 'exit'); run('key', 'Return'); time.sleep(3)
         shot('00-terminal-shell-exit-hidden')
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        close_last_keyboard('palette')
+        palette_creations = terminal_events().count('event=create:tab')
+        run('key', 'F1'); time.sleep(1); shot('00-terminal-empty-palette-shortcut')
+        palette_text = subprocess.run(['tesseract', str(out / '00-terminal-empty-palette-shortcut.png'), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout.lower()
+        if not any(word in palette_text for word in ['toggle', 'command', 'open folder']):
+            raise RuntimeError('Empty New shortcut did not visibly open command palette')
+        if terminal_tab_count('00-terminal-empty-palette-shortcut') != 0 or terminal_events().count('event=create:tab') != palette_creations:
+            raise RuntimeError('Empty-panel palette shortcut created a shell')
+        run('key', 'Escape'); time.sleep(1)
         run('key', 'ctrl+shift+F8'); time.sleep(3)
         close_last_keyboard('tab')
         final_inputs = {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}
