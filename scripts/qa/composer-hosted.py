@@ -383,6 +383,40 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Empty terminal body click plus typing did not create exactly one shell')
 
         (out / 'terminal-second-tab-assertions.log').write_text('enter_space_close_once=true\nmodified_no_close=true\noriginal_pty_unchanged=true\npost_close_tab_no_input=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
+        # UI041: open configuration palette only. Never select a config.
+        run('key', 'F1'); time.sleep(1)
+        run('type', '--clearmodifiers', 'toggle debug'); run('key', 'Return'); time.sleep(2)
+        shot('00-debug-panel-initial')
+        from PIL import Image
+        Image.open(out / '00-debug-panel-initial.png').resize((3000, 2000)).save(out / 'debug-label-ocr.png')
+        tsv = subprocess.run(['tesseract', str(out / 'debug-label-ocr.png'), 'stdout', '--psm', '11', 'tsv'], text=True, capture_output=True, check=True).stdout
+        import csv, io
+        words = list(csv.DictReader(io.StringIO(tsv), delimiter='\t'))
+        target = next((w for w in words if w.get('text', '').lower() == 'configuration...'), None)
+        if target is None:
+            target = next((w for w in words if w.get('text', '').lower().startswith('configuration')), None)
+        if target is None:
+            raise RuntimeError('Cannot find visible debug configuration control')
+        debug_x = int((int(target['left']) + int(target['width']) / 2) / 2)
+        debug_y = int((int(target['top']) + int(target['height']) / 2) / 2)
+        run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
+        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        shot('00-debug-configuration-focus')
+        creates_before_debug = terminal_events().count('event=create:tab')
+        run('key', 'ctrl+Return'); shot('00-debug-configuration-modified')
+        run('keydown', 'Return'); time.sleep(1.5); shot('00-debug-configuration-held')
+        run('keyup', 'Return'); time.sleep(2); shot('00-debug-configuration-palette')
+        run('key', 'Escape'); time.sleep(1)
+        # Reacquire the same label for a light-theme focus capture only.
+        debug_settings = (config / 'settings.toml').read_text()
+        (config / 'settings.toml').write_text(debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1))
+        time.sleep(3)
+        run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
+        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        shot('00-debug-configuration-light')
+        (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        if terminal_events().count('event=create:tab') != creates_before_debug:
+            raise RuntimeError('Debug configuration UI created a terminal/process')
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'

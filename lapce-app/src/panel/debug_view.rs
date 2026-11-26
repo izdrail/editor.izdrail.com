@@ -1,8 +1,8 @@
-use std::{rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use floem::{
     View,
-    event::EventListener,
+    event::{Event, EventListener, EventPropagation},
     peniko::Color,
     reactive::{
         ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal,
@@ -40,23 +40,79 @@ pub fn debug_panel(
     let terminal = window_tab_data.terminal.clone();
     let internal_command = window_tab_data.common.internal_command;
     let workbench_command = window_tab_data.common.workbench_command;
+    let keyboard_focus = window_tab_data.common.keyboard_focus;
+    let configure = label(|| "Run / Debug configuration...");
+    let configure_id = configure.id();
+    let activation = Rc::new(RefCell::new(DebugConfigurationActivation::default()));
+    let lost_activation = activation.clone();
+    let cleanup_activation = activation.clone();
+    let down_activation = activation.clone();
+    let configure = configure
+        .keyboard_navigable()
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(configure_id));
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            lost_activation.borrow_mut().armed = None;
+            if keyboard_focus.get_untracked() == Some(configure_id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_cleanup(move || {
+            cleanup_activation.borrow_mut().armed = None;
+            if keyboard_focus.get_untracked() == Some(configure_id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_event(EventListener::KeyDown, move |event| {
+            if let Event::KeyDown(key) = event {
+                down_activation.borrow_mut().down(
+                    &key.key.logical_key, key.modifiers, key.key.repeat,
+                );
+                if debug_configuration_activation(&key.key.logical_key, key.modifiers)
+                    || (matches!(key.key.logical_key, floem::keyboard::Key::Character(_))
+                        && (key.modifiers.is_empty()
+                            || key.modifiers == floem::keyboard::Modifiers::SHIFT))
+                {
+                    // Consume repeats too, while the configuration label still
+                    // owns focus. Open only on release, never while held down.
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
+        .on_click_stop(move |event| {
+            if !matches!(event, Event::KeyDown(_)) {
+                workbench_command.send(LapceWorkbenchCommand::PaletteRunAndDebug);
+            }
+        })
+        .on_event(EventListener::KeyUp, move |event| {
+            if let Event::KeyUp(key) = event {
+                if activation.borrow_mut().up(&key.key.logical_key, key.modifiers) {
+                    workbench_command.send(LapceWorkbenchCommand::PaletteRunAndDebug);
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
+        .style(move |s| {
+            s.padding_horiz(10.0)
+                .padding_vert(6.0)
+                .border(1.0)
+                .border_color(Color::TRANSPARENT)
+                .cursor(CursorStyle::Pointer)
+                .color(config.get().color(LapceColor::LAPCE_ICON_ACTIVE))
+                .focus_visible(|s| {
+                    s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))
+                })
+        });
 
     PanelBuilder::new(config, position)
         .add_height(
             "Processes",
             150.0,
             stack((
-                label(|| "Run / Debug configuration...")
-                    .on_click_stop(move |_| {
-                        workbench_command
-                            .send(LapceWorkbenchCommand::PaletteRunAndDebug);
-                    })
-                    .style(move |s| {
-                        s.padding_horiz(10.0)
-                            .padding_vert(6.0)
-                            .cursor(CursorStyle::Pointer)
-                            .color(config.get().color(LapceColor::LAPCE_ICON_ACTIVE))
-                    }),
+                configure,
                 label(|| "No debug session. Choose a configuration to start.")
                     .style({
                         let terminal = terminal.clone();
@@ -865,4 +921,65 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
         .style(|s| s.size_full()),
     )
     .style(|s| s.size_pct(100.0, 100.0))
+}
+
+fn debug_configuration_activation(
+    key: &floem::keyboard::Key,
+    modifiers: floem::keyboard::Modifiers,
+) -> bool {
+    modifiers.is_empty()
+        && matches!(key, floem::keyboard::Key::Named(
+            floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+        ))
+}
+
+#[derive(Default)]
+struct DebugConfigurationActivation {
+    armed: Option<floem::keyboard::Key>,
+}
+
+impl DebugConfigurationActivation {
+    fn down(&mut self, key: &floem::keyboard::Key, mods: floem::keyboard::Modifiers, repeat: bool) {
+        if !repeat {
+            self.armed = debug_configuration_activation(key, mods).then(|| key.clone());
+        }
+    }
+
+    fn up(&mut self, key: &floem::keyboard::Key, mods: floem::keyboard::Modifiers) -> bool {
+        self.armed.take().as_ref() == Some(key) && debug_configuration_activation(key, mods)
+    }
+}
+
+#[cfg(test)]
+mod configuration_keyboard_tests {
+    use super::debug_configuration_activation;
+    use floem::keyboard::{Key, Modifiers, NamedKey};
+
+    #[test]
+    fn activation_requires_owned_matching_press_and_release() {
+        let mut state = super::DebugConfigurationActivation::default();
+        let enter = Key::Named(NamedKey::Enter);
+        let space = Key::Named(NamedKey::Space);
+        assert!(!state.up(&enter, Modifiers::empty()));
+        state.down(&enter, Modifiers::empty(), false);
+        state.down(&enter, Modifiers::empty(), true);
+        assert!(state.up(&enter, Modifiers::empty()));
+        assert!(!state.up(&enter, Modifiers::empty()));
+        state.down(&enter, Modifiers::empty(), false);
+        state.armed = None; // FocusLost / cleanup.
+        assert!(!state.up(&enter, Modifiers::empty()));
+        state.down(&enter, Modifiers::CONTROL, false);
+        assert!(!state.up(&enter, Modifiers::empty()));
+        state.down(&enter, Modifiers::empty(), false);
+        assert!(!state.up(&space, Modifiers::empty()));
+    }
+
+    #[test]
+    fn only_plain_enter_space_activate_configuration() {
+        for key in [NamedKey::Enter, NamedKey::Space] {
+            assert!(debug_configuration_activation(&Key::Named(key.clone()), Modifiers::empty()));
+            assert!(!debug_configuration_activation(&Key::Named(key), Modifiers::CONTROL));
+        }
+        assert!(!debug_configuration_activation(&Key::Named(NamedKey::Tab), Modifiers::empty()));
+    }
 }

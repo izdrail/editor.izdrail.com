@@ -383,3 +383,26 @@ changes are needed. No shell text enters the trace.
 header/close/header same-ID traversal and Enter/Space header-only activation
 accepted, actual prompt unchanged with no extra shell line. Close activation
 and multi-tab remain separate QA, not implied by traversal evidence.
+
+26 November terminal keyboard close acceptance, bounded UI-038/#24:
+3b264a3 / 45908906086 all four hosted jobs green. A real Bash forwarding
+PTY fixture records UI input bytes. Original PTY remains byte-empty after
+second-tab Enter/Space close, Ctrl+Enter non-activation and immediate native
+Tab; traces restore a live surviving header. Actual dark/light close rings,
+non-active pointer-close hover and preserved original single prompt inspected.
+Keyboard last-close retains an empty panel with focused New Terminal; plain
+and Shift character keys, Ctrl+X and Ctrl+Enter do not create tabs or steal
+focus. New Enter/Space each create one tab without input leakage. Pointer
+last-close and shell exit hide the panel. F1 opens a focused palette and typed
+probe stays there; editor click and Tab-away preserve source bytes. OS window
+blur/recovery preserves New. Native reverse-empty traversal and body typing
+have a separate QA extension pending. Unknown-ID close is source-audited only.
+IME/dead keys/AltGr, narrow terminal geometry, resize/scroll/links, process
+failure and task cancellation remain unverified. UX-006/Phase1 remain open.
+
+UI-041 medium/P0: Run / Debug configuration label was pointer-only. Native
+focus ownership, matching press/release activation and reserved 1px focus ring
+add 2px to resting dimensions, avoiding focus-time geometry shifts. Release-only
+activation prevents a held key opening the palette before release. No unowned
+release can activate. Runtime dark/light focus and no-process gate pending.
+Real DAP/session controls remain unverified. IME/dead-key behavior not claimed.
