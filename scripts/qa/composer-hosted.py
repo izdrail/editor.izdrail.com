@@ -23,7 +23,7 @@ config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
 (config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
 # Test-only user binding invokes the existing panel command, not an icon coordinate.
-(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+shift+F9\"\ncommand = \"toggle_source_control_focus\"\n')
+(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+shift+F9\"\ncommand = \"toggle_source_control_focus\"\n[[keymaps]]\nkey = \"ctrl+shift+F8\"\ncommand = \"new_terminal_tab\"\n')
 # Only the deterministic local Python fixture runs. PHP and all package
 # downloads remain disabled; the composer never contacts a language service.
 lsp_log = out / 'navigation-lsp.log'
@@ -202,6 +202,28 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         if events != [header_identity, close_identity, header_identity, 'event=activate:header', 'event=activate:header']:
             raise RuntimeError('Terminal header sequence or activation isolation failed')
         (out / 'terminal-keyboard-assertions.log').write_text('same_header_reverse=true\nclose_not_activated=true\nenter_space_header_only=true\n' + '\n'.join(events))
+        # Create and close only one new disposable shell, never the original.
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        start = len(terminal_events())
+        run('mousemove', '570', '490', 'mousedown', '1')
+        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        shot('00-terminal-second-header')
+        headers = [e for e in terminal_events()[start:] if e.startswith('event=focus:header:')]
+        if not headers or headers[-1] == header_identity:
+            raise RuntimeError('New disposable terminal header not focused')
+        second_header = headers[-1]
+        run('key', 'Tab'); shot('00-terminal-second-close-focus')
+        if not terminal_events()[-1].startswith('event=focus:close:') or terminal_events()[-1] == close_identity:
+            raise RuntimeError('New terminal close target is not distinct')
+        run('key', 'Return'); time.sleep(2); shot('00-terminal-second-closed')
+        if terminal_events().count('event=activate:close') != 1:
+            raise RuntimeError('Disposable terminal close must activate exactly once')
+        start = len(terminal_events())
+        run('mousemove', '350', '490', 'mousedown', '1')
+        run('mousemove', '600', '220', 'mouseup', '1'); time.sleep(0.5)
+        if header_identity not in terminal_events()[start:]:
+            raise RuntimeError('Original terminal header not preserved after close')
+        (out / 'terminal-second-tab-assertions.log').write_text('distinct_new_header=true\ndistinct_close_target=true\none_deliberate_close=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'

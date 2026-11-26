@@ -378,3 +378,8 @@ UI-038 terminal close ownership fix exists but reverse/header activation
 pixels remain ambiguous. Add opt-in identity/action traces and assert the
 actual header/close/reverse/activation sequence before deciding more source
 changes are needed. No shell text enters the trace.
+
+75690d9 / 45878561353 all four jobs green. UI-038 bounded dark-wide
+header/close/header same-ID traversal and Enter/Space header-only activation
+accepted, actual prompt unchanged with no extra shell line. Close activation
+and multi-tab remain separate QA, not implied by traversal evidence.
