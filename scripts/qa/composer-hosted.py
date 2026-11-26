@@ -344,7 +344,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         close_last_keyboard('palette')
         palette_creations = terminal_events().count('event=create:tab')
         run('key', 'F1'); time.sleep(1); shot('00-terminal-empty-palette-shortcut')
-        palette_text = subprocess.run(['tesseract', str(out / '00-terminal-empty-palette-shortcut.png'), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout.lower()
+        from PIL import Image
+        Image.open(out / '00-terminal-empty-palette-shortcut.png').crop((470, 0, 980, 365)).resize((1020, 730)).save(out / 'terminal-palette-ocr.png')
+        palette_text = subprocess.run(['tesseract', str(out / 'terminal-palette-ocr.png'), 'stdout', '--psm', '6'], text=True, capture_output=True, check=True).stdout.lower()
         if not any(word in palette_text for word in ['toggle', 'command', 'open folder']):
             raise RuntimeError('Empty New shortcut did not visibly open command palette')
         if terminal_tab_count('00-terminal-empty-palette-shortcut') != 0 or terminal_events().count('event=create:tab') != palette_creations:
