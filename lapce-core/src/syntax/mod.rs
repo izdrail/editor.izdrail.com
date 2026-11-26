@@ -1047,9 +1047,9 @@ impl Syntax {
             let contiguous=self.php_context_rev.and_then(|rev|rev.checked_add(1))==Some(self.rev);
             let input_edits=if contiguous {edits.unwrap_or(&[]).iter().flat_map(|edit|edit.0.iter().copied()).collect::<Vec<_>>()}else{Vec::new()};
             let parsed=if let Some(previous)=&self.php_context {
-                previous.update(self.text.clone(),&input_edits,&self.cancel_flag)
-            }else{lapce_php::Document::new(self.text.clone(),false,&self.cancel_flag)};
-            match parsed {Ok(context)=>Some(Arc::new(context)),Err(lapce_php::Error::Cancelled)=>return,Err(error)=>{tracing::debug!(?error,"PHP incremental parse failed, retrying full parse"); match lapce_php::Document::new(self.text.clone(),false,&self.cancel_flag) {Ok(context)=>Some(Arc::new(context)),Err(error)=>{tracing::debug!(?error,"PHP full parse failed");None}}}}
+                previous.update_context(self.text.clone(),&input_edits,&self.cancel_flag)
+            }else{lapce_php::Document::new_context(self.text.clone(),false,&self.cancel_flag)};
+            match parsed {Ok(context)=>Some(Arc::new(context)),Err(lapce_php::Error::Cancelled)=>return,Err(error)=>{tracing::debug!(?error,"PHP incremental parse failed, retrying full parse"); match lapce_php::Document::new_context(self.text.clone(),false,&self.cancel_flag) {Ok(context)=>Some(Arc::new(context)),Err(error)=>{tracing::debug!(?error,"PHP full parse failed");None}}}}
         }else{None};
         if self.cancel_flag.load(std::sync::atomic::Ordering::Acquire)!=0 {return;}
         self.php_context_rev=php_context.as_ref().map(|_|self.rev);

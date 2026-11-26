@@ -20,7 +20,7 @@ for index in range(10):
     (project / f'multi_647_{index:02}.php').write_text('<?php // Synthetic mention navigation fixture.\n')
 config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
-(config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
+(config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n[editor]\nfont-size = 15\nenable-error-lens = true\nerror-lens-font-size = 15\n')
 # Only the deterministic local Python fixture runs. PHP and all package
 # downloads remain disabled; the composer never contacts a language service.
 lsp_log = out / 'navigation-lsp.log'
@@ -688,6 +688,32 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             run('key', 'Escape')
             if fixture.read_text() != text:
                 raise RuntimeError('Native completion capture changed source without acceptance')
+
+        # P4 typed-receiver and conservative local-diagnostic checks, no PHP LSP.
+        scope_cases = [
+            ('53-typed-parameter', '<?php\nnamespace App; class ScopeUser {public function name(){}} function run(ScopeUser $user) {$user->na;}', 2),
+            ('53a-inferred-new', '<?php\nnamespace App; class ScopeUser {public function name(){}} function run() {$user=new ScopeUser(); $user->na;}', 2),
+            ('53b-phpdoc-var', '<?php\nnamespace App; class ScopeUser {public function name(){}} function run() {/** @var ScopeUser $user */ $user=find(); $user->na;}', 2),
+            ('53c-scope-diagnostics', '<?php\nfunction localCheck() {\n    $unused=1;\n    echo $missing;\n    return;\n    echo 2;\n}\n', 0),
+        ]
+        for capture, text, back in scope_cases:
+            fixture = project / (capture + '.php')
+            fixture.write_text(text)
+            run('key', 'Escape', 'ctrl+p'); time.sleep(0.6)
+            run('type', '--clearmodifiers', fixture.name); run('key', 'Return'); time.sleep(1.5)
+            run('key', 'ctrl+End')
+            if back:
+                run('key', *(['Left'] * back)); run('key', 'ctrl+space')
+            time.sleep(2); shot(capture)
+            # Read rendered pixels, not source labels or successful key dispatch.
+            image = out / (capture + '.png')
+            rendered = subprocess.run(['tesseract', str(image), 'stdout'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+            expected = 'native php' if back else 'undefined local variable'
+            if expected not in rendered:
+                raise RuntimeError('P4 rendered UI assertion failed: ' + capture + ': expected ' + expected)
+            run('key', 'Escape')
+            if fixture.read_text() != text:
+                raise RuntimeError('Scope capture changed source without acceptance')
 
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')

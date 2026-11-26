@@ -1247,7 +1247,7 @@ impl Doc {
             if doc.buffer.with_untracked(|b| b.rev()) == rev {
                 let mut syntax=syntax;
                 doc.syntax.with_untracked(|current| {
-                    if current.php_context_rev>syntax.php_context_rev {
+                    if current.php_context_rev>syntax.php_context_rev || current.php_context_rev==syntax.php_context_rev && current.current_php_context().is_some_and(|p|p.analysis_ready) {
                         syntax.php_context=current.php_context.clone();syntax.php_context_rev=current.php_context_rev;
                     }
                 });
@@ -1275,13 +1275,27 @@ impl Doc {
                 });
             }
         });
+        let analysis_doc=self.clone();
+        let send_analysis=create_ext_action(self.scope,move |syntax:Syntax| {
+            if analysis_doc.rev()==rev && syntax.rev==rev {
+                analysis_doc.syntax.update(|current| {
+                    if current.rev==rev {current.php_context=syntax.php_context;current.php_context_rev=syntax.php_context_rev;}
+                });
+                analysis_doc.init_diagnostics();
+            }
+        });
         rayon::spawn(move || {
             let previous_rev=syntax.rev;
             syntax.parse_paint(rev,text,edits.as_deref());
             send(syntax.clone());
             if syntax.rev!=rev {return;}
             syntax.refresh_php_context(previous_rev,edits.as_deref());
-            if syntax.cancel_flag.load(atomic::Ordering::Acquire)==0 {send_context(syntax);}
+            if syntax.cancel_flag.load(atomic::Ordering::Acquire)!=0 {return;}
+            send_context(syntax.clone()); // Phase 1 context is usable before scope analysis.
+            if let Some(context)=syntax.php_context.as_mut() {
+                if Arc::make_mut(context).refresh_analysis(&syntax.cancel_flag).is_err() {return;}
+            }
+            if syntax.cancel_flag.load(atomic::Ordering::Acquire)==0 {send_analysis(syntax);}
         });
     }
 
@@ -1745,6 +1759,17 @@ impl Doc {
 
     /// Update the diagnostics' positions after an edit so that they appear in the correct place.
     fn update_diagnostics(&self, delta: &RopeDelta) {
+        let had_native = self.diagnostics.diagnostics.with_untracked(|items|items.iter().any(|d|d.source.as_deref()==Some("native-php")));
+        if had_native {
+        self.diagnostics.diagnostics.update(|items| {*items=items.iter().filter(|d|d.source.as_deref()!=Some("native-php")).cloned().collect();});
+        self.diagnostics.diagnostics_span.update(|spans| {
+            let mut builder=SpansBuilder::new(spans.len());
+            for (range, diagnostic) in spans.iter() {
+                if diagnostic.source.as_deref()!=Some("native-php") {builder.add_span(range,diagnostic.clone());}
+            }
+            *spans=builder.build();
+        });
+        }
         if self
             .diagnostics
             .diagnostics
@@ -1761,7 +1786,55 @@ impl Doc {
     /// init diagnostics offset ranges from lsp positions
     pub fn init_diagnostics(&self) {
         let len = self.buffer.with_untracked(|b| b.len());
-        let diagnostics = self.diagnostics.diagnostics.get_untracked();
+        let mut diagnostics: im::Vector<Diagnostic> = self
+            .diagnostics
+            .diagnostics
+            .get_untracked()
+            .into_iter()
+            .filter(|d| d.source.as_deref() != Some("native-php"))
+            .collect();
+        // The same existing diagnostics channel backs Problems and inline ranges.
+        // Rebuild only the native slice; never erase server-owned diagnostics.
+        let native = self.syntax.with_untracked(|syntax| {
+            if syntax.rev != self.rev() {
+                return Vec::new();
+            }
+            syntax
+                .current_php_context()
+                .filter(|context| context.analysis_ready)
+                .map(|context| {
+                    context.analysis.diagnostics().take(200).cloned().collect()
+                })
+                .unwrap_or_default()
+        });
+        let server_ranges=diagnostics.iter().map(|d|d.range).collect::<Vec<_>>();
+        self.buffer.with_untracked(|buffer| {
+            for notice in native {
+                let range = lsp_types::Range::new(
+                    buffer.offset_to_position(notice.range.start),
+                    buffer.offset_to_position(notice.range.end),
+                );
+                // Any authoritative server diagnostic at the same range wins.
+                if server_ranges.iter().any(|r| r.start.line <= range.end.line && range.start.line <= r.end.line) {
+                    continue;
+                }
+                diagnostics.push_back(Diagnostic {
+                    range,
+                    severity: Some(if notice.code == "unused-local" {
+                        DiagnosticSeverity::HINT
+                    } else {
+                        DiagnosticSeverity::WARNING
+                    }),
+                    source: Some("native-php".into()),
+                    code: Some(lsp_types::NumberOrString::String(
+                        notice.code.into(),
+                    )),
+                    message: notice.message,
+                    ..Default::default()
+                });
+            }
+        });
+        self.diagnostics.diagnostics.set(diagnostics.clone());
 
         let span = self.buffer.with_untracked(|buffer| {
             let mut span = SpansBuilder::new(len);

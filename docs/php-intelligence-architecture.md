@@ -256,3 +256,51 @@ This intentionally includes candidate cloning but excludes index lookup, RPC,
 Nucleo/UI and rendering. It is not end-to-end completion latency. A separate
 ignored proxy query fixture `native_50k_proxy_baseline` measures the bounded hot
 query; run it after linking the proxy tests. No release/UI claim until measured.
+
+
+## Phase 4 plan and draft scope
+
+The existing PHP Document owns a cached scope arena produced on the syntax
+worker from its existing AST and Rope chunks. Paint publishes first, Phase 1
+context second, and scope analysis third. Analysis readiness triggers a separate
+completion refresh. The existing same-session CompletionData input-key cache
+prevents duplicate LSP requests for already-requested inputs; the analysis refresh
+uses that existing path rather than a separate LSP request. No new dependency, parser, runtime,
+store or language server. Byte ranges remain the source coordinate system.
+Analysis checks cancellation, caps AST traversal and diagnostics, and reuses
+unchanged function snapshots by range and content fingerprint. Offset-shifted
+functions are rebuilt, not reused with stale absolute ranges.
+
+Parameters, straight-line assignments, direct object construction and variable
+copies carry declared, documented or inferred confidence. PHPDoc @param, @var
+and @return support single named types; unions, intersections and generics remain
+unknown rather than choosing one owner. Explicit closure captures and arrow free
+variables use the lexical parent at creation; ordinary nested function parameters
+do not inherit a same-named outer variable. Completion resolves typed receivers
+through the existing namespace/import map and Phase 3 query, preserving LSP rows.
+
+Diagnostics use the existing Problems and inline diagnostic channel. Native rows
+have source native-php and are replaced separately; server rows overlapping the same lines win, including wider server ranges.
+Native diagnostics are excluded from code-action requests to language servers.
+Edits clear native rows before applying the normal server span delta; the full
+span rebuild occurs only when native rows existed, not every keystroke. Undefined/unused locals and simple post-return unreachable statements are
+limited to parse-clean, straight-line scopes. Dynamic variables, includes,
+extract/compact, control flow, nested scopes and other uncertain constructs
+suppress native diagnostics. Type invalidation is separate: out-params and
+uncertain writes clear only affected bindings; arbitrary dynamic-local writes
+clear known types after that statement. Unrelated types survive control flow.
+Assignments become available after their RHS, not on their LHS. Missing
+diagnostics are preferable to false alarms.
+Types and diagnostics are bounded local hints, not whole-program PHP semantics.
+The draft remains uncompiled locally due disk constraints; hosted CI and targeted
+GUI fixtures are required after reviewer approval and main push.
+
+The 5k-line scope benchmark includes parse, context publication ownership and
+Arc::make_mut Document cloning before analysis, matching the split worker path.
+Loop writes invalidate their targets from the outermost loop entry to avoid
+carrying a pre-loop type into a later iteration. Implicit foreach/catch/global/
+static and destructuring bindings also invalidate old types.
+
+The editor completion effect tracks (php_context_rev, analysis_ready). Its second
+publication calls update_completion(true); CompletionData::request registers the
+input key before the proxy call and the same-session path checks that key.

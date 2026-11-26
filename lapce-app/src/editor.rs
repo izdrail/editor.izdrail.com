@@ -702,9 +702,9 @@ impl EditorData {
         let editor = data.clone();
         cx.create_effect(move |previous| {
             let doc = editor.doc();
-            let context_rev = doc.syntax.with(|s| s.php_context_rev);
+            let context_rev = doc.syntax.with(|s| (s.php_context_rev, s.current_php_context().is_some_and(|p|p.analysis_ready)));
             if previous != Some(context_rev)
-                && context_rev == Some(doc.rev())
+                && context_rev.0 == Some(doc.rev())
                 && editor.common.completion.with_untracked(|c| {
                     c.status != CompletionStatus::Inactive
                         && c.latest_editor_id == Some(editor.id())
@@ -4045,6 +4045,32 @@ impl EditorData {
                 request.owner = match receiver {
                     "$this" | "self" | "static" => scope.class,
                     "parent" => scope.parent,
+                    _ if receiver.starts_with('$') => {
+                        scope.variable_types.get(receiver).and_then(|ty| {
+                            (!matches!(
+                                ty.name.to_ascii_lowercase().as_str(),
+                                "int"
+                                    | "string"
+                                    | "float"
+                                    | "bool"
+                                    | "array"
+                                    | "mixed"
+                                    | "object"
+                                    | "callable"
+                                    | "iterable"
+                                    | "void"
+                                    | "null"
+                                    | "false"
+                                    | "true"
+                                    | "never" | "boolean" | "integer" | "double" | "resource"
+                            ))
+                            .then(|| match ty.name.to_ascii_lowercase().as_str() {
+                                "self" | "static" => scope.class.clone(),
+                                "parent" => scope.parent.clone(),
+                                _ => Some(lapce_php::resolve_completion_name(&ty.name, &scope.namespace, &scope.imports)),
+                            }).flatten()
+                        })
+                    }
                     _ if !receiver.is_empty() && !receiver.starts_with('$') => {
                         Some(lapce_php::resolve_completion_name(
                             receiver,
@@ -4089,7 +4115,7 @@ impl EditorData {
             let members = doc.syntax.with_untracked(|s| {
                 s.current_php_context()
                     .filter(|_| s.rev == doc.rev())
-                    .map(|context| context.completion_members(offset))
+                    .map(|context| request.owner.as_deref().map(|owner|context.completion_members_for(offset,owner)).unwrap_or_default())
                     .unwrap_or_default()
             });
             request.unsaved.extend(
@@ -4989,7 +5015,7 @@ impl EditorData {
             let diagnostics = containing_spans(
                 &doc.diagnostics().diagnostics_span.get_untracked(),
                 offset,
-            );
+            ).into_iter().filter(|d|d.source.as_deref()!=Some("native-php")).collect();
 
             (position, rev, diagnostics)
         });

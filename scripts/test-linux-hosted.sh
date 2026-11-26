@@ -48,3 +48,5 @@ cargo test --locked --workspace -- --test-threads=2 2>&1 | tee target/acceptance
 cargo test --locked -p lapce-proxy native_50k_proxy_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-native-proxy-benchmark.log
 cargo test --locked -p lapce-app native_50k_adapter_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-native-adapter-benchmark.log
 df -h .
+
+cargo test --locked -p lapce-php scope_5k_line_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-scope-benchmark.log

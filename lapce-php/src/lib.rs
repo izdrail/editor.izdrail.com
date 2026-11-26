@@ -1,4 +1,5 @@
 //! Cached PHP structural context. Painting remains in gravity-lex/Lexilla.
+pub mod inference;
 /// One ABI bridge, shared with lapce-index. No second native runtime.
 pub fn language(php_only: bool) -> tree_sitter::Language {
     let grammar = if php_only {
@@ -101,6 +102,8 @@ pub struct Document {
     units: Vec<Unit>,
     php_only: bool,
     pub rescanned_units: usize,
+    pub analysis: std::sync::Arc<inference::Analysis>,
+    pub analysis_ready: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
@@ -162,8 +165,17 @@ impl Document {
         php_only: bool,
         cancel: &AtomicUsize,
     ) -> Result<Self, Error> {
+        let mut result = Self::new_context(text, php_only, cancel)?;
+        result.refresh_analysis(cancel)?;
+        Ok(result)
+    }
+    pub fn new_context(
+        text: Rope,
+        php_only: bool,
+        cancel: &AtomicUsize,
+    ) -> Result<Self, Error> {
         let tree = parse(&text, None, php_only, cancel)?;
-        Self::assemble(tree, text, php_only, &[], None, cancel)
+        Self::assemble(tree, text, php_only, &[], None, None, cancel)
     }
     pub fn text(&self) -> &Rope {
         &self.text
@@ -181,6 +193,16 @@ impl Document {
         edits: &[InputEdit],
         cancel: &AtomicUsize,
     ) -> Result<Self, Error> {
+        let mut result = self.update_context(text, edits, cancel)?;
+        result.refresh_analysis(cancel)?;
+        Ok(result)
+    }
+    pub fn update_context(
+        &self,
+        text: Rope,
+        edits: &[InputEdit],
+        cancel: &AtomicUsize,
+    ) -> Result<Self, Error> {
         cancelled(cancel)?;
         if edits.is_empty() {
             return if self.text.len() == text.len()
@@ -188,7 +210,7 @@ impl Document {
             {
                 Ok(self.clone())
             } else {
-                Self::new(text, self.php_only, cancel)
+                Self::new_context(text, self.php_only, cancel)
             };
         }
         let mut tree = self.tree.clone();
@@ -222,7 +244,15 @@ impl Document {
             return Err(Error::InvalidEdit);
         }
         let tree = parse(&text, Some(&tree), self.php_only, cancel)?;
-        Self::assemble(tree, text, self.php_only, &units, Some(edits), cancel)
+        Self::assemble(
+            tree,
+            text,
+            self.php_only,
+            &units,
+            Some(edits),
+            Some(&self.analysis),
+            cancel,
+        )
     }
     fn assemble(
         tree: Tree,
@@ -230,6 +260,7 @@ impl Document {
         php_only: bool,
         old: &[Unit],
         edits: Option<&[InputEdit]>,
+        old_analysis: Option<&inference::Analysis>,
         cancel: &AtomicUsize,
     ) -> Result<Self, Error> {
         let mut units = Vec::new();
@@ -284,7 +315,13 @@ impl Document {
         drop(cursor);
         cancelled(cancel)?;
         let len = text.len();
+        let analysis = old_analysis
+            .cloned()
+            .map(std::sync::Arc::new)
+            .unwrap_or_default();
         Ok(Self {
+            analysis,
+            analysis_ready: false,
             tree,
             text,
             index: RegionIndex { regions, len },
@@ -292,6 +329,16 @@ impl Document {
             php_only,
             rescanned_units: rescanned,
         })
+    }
+    pub fn refresh_analysis(&mut self, cancel: &AtomicUsize) -> Result<(), Error> {
+        self.analysis = std::sync::Arc::new(inference::Analysis::build(
+            self.tree.root_node(),
+            &self.text,
+            cancel,
+            Some(&self.analysis),
+        )?);
+        self.analysis_ready = true;
+        Ok(())
     }
     pub fn cursor_context(&self, offset: usize) -> Option<CursorContext> {
         if offset > self.text.len() || !self.text.is_codepoint_boundary(offset) {
@@ -945,6 +992,7 @@ pub struct CompletionScope {
     pub imports: std::collections::BTreeMap<String, String>,
     pub parent: Option<String>,
     pub variables: Vec<String>,
+    pub variable_types: std::collections::BTreeMap<String, inference::Type>,
 }
 impl Document {
     /// Current unsaved top-level declarations, bounded AST traversal.
@@ -992,6 +1040,39 @@ impl Document {
             }
         }
         out
+    }
+    /// Unsaved peer class members use the same extractor as the enclosing class.
+    pub fn completion_members_for(
+        &self,
+        offset: usize,
+        owner: &str,
+    ) -> Vec<(String, String, String, bool, Option<String>)> {
+        if self.completion_scope(offset).class.as_deref() == Some(owner) {
+            return self.completion_members(offset);
+        }
+        let mut pending = vec![self.tree.root_node()];
+        let mut visited = 0;
+        while let Some(n) = pending.pop() {
+            visited += 1;
+            if visited > 20_000 {
+                break;
+            }
+            if matches!(
+                n.kind(),
+                "class_declaration" | "trait_declaration" | "enum_declaration"
+            ) {
+                if let Some(name) = n.child_by_field_name("name") {
+                    if self.completion_scope(name.end_byte()).class.as_deref()
+                        == Some(owner)
+                    {
+                        return self.completion_members(name.end_byte());
+                    }
+                }
+            }
+            let mut c = n.walk();
+            pending.extend(n.named_children(&mut c));
+        }
+        Vec::new()
     }
     pub fn completion_members(
         &self,
@@ -1393,6 +1474,14 @@ impl Document {
                 let mut c = n.walk();
                 stack.extend(n.named_children(&mut c));
             }
+        }
+        if self.analysis_ready && self.analysis.scope_at(offset).is_some() {
+            let bindings = self.analysis.bindings_at(offset);
+            result.variables = bindings.keys().cloned().collect();
+            result.variable_types = bindings
+                .into_iter()
+                .filter_map(|(name, b)| b.ty.map(|ty| (name, ty)))
+                .collect();
         }
         if result.class.is_some() && scope.is_some() {
             result.variables.push("$this".into());
