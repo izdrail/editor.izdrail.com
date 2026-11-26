@@ -23,7 +23,7 @@ config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
 (config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
 # Test-only user binding invokes the existing panel command, not an icon coordinate.
-(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+alt+F9\"\ncommand = \"toggle_source_control_focus\"\n')
+(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+shift+F9\"\ncommand = \"toggle_source_control_focus\"\n')
 # Only the deterministic local Python fixture runs. PHP and all package
 # downloads remain disabled; the composer never contacts a language service.
 lsp_log = out / 'navigation-lsp.log'
@@ -826,7 +826,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         git_fixture('add', 'a_scm_staged.php')
         before_status = git_fixture('status', '--porcelain=v1')
         time.sleep(5)
-        run('key', 'ctrl+alt+F9'); time.sleep(2)
+        run('key', 'ctrl+shift+F9'); time.sleep(2)
         shot('56-scm-keyboard-baseline')
         def scm_events():
             log.flush()
