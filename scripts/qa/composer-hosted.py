@@ -287,16 +287,50 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Pointer close also activated header')
         if original_pty.read_bytes() != before_pty:
             raise RuntimeError('Pointer close leaked input into original PTY')
-        # Close the final disposable test shell, then verify native Tab does
-        # not write or create a replacement shell through stale terminal focus.
-        run('mousemove', '350', '490', 'mousedown', '1')
-        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
-        run('key', 'Tab', 'Return'); time.sleep(2)
-        shot('00-terminal-last-closed')
+        def close_last_keyboard(tag):
+            run('mousemove', '350', '490', 'mousedown', '1')
+            run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+            final_close_start = len(terminal_events())
+            run('key', 'Tab', 'Return'); time.sleep(2)
+            shot('00-terminal-last-closed-' + tag)
+            new_focus = [e for e in terminal_events()[final_close_start:] if e.startswith('event=focus:new:')]
+            if not new_focus:
+                raise RuntimeError('Last close did not restore live New Terminal button focus')
+        close_last_keyboard('new')
+        # X focus moves to the root and back, not an in-app control. Empty
+        # New Terminal must survive OS-level blur without FocusLost cleanup.
+        run('windowfocus', '0'); time.sleep(1)
+        run('windowfocus', '--sync', window); time.sleep(1)
+        shot('00-terminal-empty-after-window-blur')
+        final_inputs = {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}
+        new_actions = terminal_events().count('event=activate:new')
+        run('key', 'ctrl+Return'); time.sleep(1)
+        if len(list(pty_audit.glob('*.input'))) != len(final_inputs) or terminal_events().count('event=activate:new') != new_actions:
+            raise RuntimeError('Ctrl+Enter incorrectly created terminal')
+        run('key', 'Return'); time.sleep(3); shot('00-terminal-new-enter-recovered')
+        if len(list(pty_audit.glob('*.input'))) != len(final_inputs) + 1 or any(f.read_bytes() for f in pty_audit.glob('*.input')):
+            raise RuntimeError('New Enter failed or leaked input')
+        close_last_keyboard('space')
+        run('key', 'space'); time.sleep(3); shot('00-terminal-new-space-recovered')
+        if any(f.read_bytes() for f in pty_audit.glob('*.input')):
+            raise RuntimeError('New Space leaked input')
+        # Last pointer close retains the previous hide-panel behavior.
+        run('mousemove', '475', '490', 'click', '1'); time.sleep(2)
+        shot('00-terminal-pointer-last-hidden')
+        # Shell exit, not a close control, must also hide the terminal.
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        run('mousemove', '600', '600', 'click', '1')
+        run('type', '--clearmodifiers', 'exit'); run('key', 'Return'); time.sleep(3)
+        shot('00-terminal-shell-exit-hidden')
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        close_last_keyboard('tab')
         final_inputs = {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}
         run('key', 'Tab'); time.sleep(2); shot('00-terminal-last-closed-tab')
         if final_inputs != {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}:
-            raise RuntimeError('Last-tab close leaves Tab routed to a dead/replacement PTY')
+            raise RuntimeError('Last-tab Tab routed to dead/replacement PTY')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
+            raise RuntimeError('Post-last-close Tab silently changed source buffer')
         (out / 'terminal-second-tab-assertions.log').write_text('enter_space_close_once=true\nmodified_no_close=true\noriginal_pty_unchanged=true\npost_close_tab_no_input=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'

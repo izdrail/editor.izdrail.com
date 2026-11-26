@@ -18,7 +18,7 @@ use lapce_rpc::terminal::TermId;
 
 use super::kind::PanelKind;
 use crate::{
-    app::{clickable_icon, clickable_icon_base, tooltip_label},
+    app::{clickable_icon_base, tooltip_label},
     command::{InternalCommand, LapceWorkbenchCommand},
     config::{color::LapceColor, icon::LapceIcons},
     debug::RunDebugMode,
@@ -72,6 +72,64 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
     let icon_width = create_rw_signal(0.0);
     let scroll_size = create_rw_signal(Size::ZERO);
     let workbench_command = window_tab_data.common.workbench_command;
+    let keyboard_last_close = terminal.keyboard_last_close;
+    let new_focus_terminal = terminal.clone();
+    let new_focus_panel = window_tab_data.panel.clone();
+    let new_terminal = clickable_icon_base(
+        || LapceIcons::ADD,
+        None::<fn()>,
+        || false,
+        || false,
+        config,
+    );
+    let new_terminal_id = new_terminal.id();
+    let new_terminal = new_terminal
+        .keyboard_navigable()
+        .style(move |s| {
+            s.focus_visible(|s| {
+                s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))
+            })
+        })
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(new_terminal_id));
+            terminal_ui_trace(&format!("focus:new:{new_terminal_id:?}"));
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            keyboard_last_close.set(false);
+            if keyboard_focus.get_untracked() == Some(new_terminal_id) {
+                keyboard_focus.set(None);
+            }
+            if new_focus_terminal.tab_info.with_untracked(|info| info.tabs.is_empty()) {
+                new_focus_panel.hide_panel(&PanelKind::Terminal);
+                focus.set(Focus::Workbench);
+            }
+        })
+        .on_cleanup(move || {
+            if keyboard_focus.get_untracked() == Some(new_terminal_id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_click_stop(move |event| {
+            if let Event::KeyDown(key) = event {
+                if !terminal_tab_activation(&key.key.logical_key, key.modifiers) {
+                    return;
+                }
+            }
+            keyboard_last_close.set(false);
+            terminal_ui_trace("activate:new");
+            workbench_command.send(LapceWorkbenchCommand::NewTerminalTab);
+        })
+        .on_event(EventListener::KeyDown, |event| {
+            if let Event::KeyDown(key) = event {
+                if terminal_tab_activation(
+                    &key.key.logical_key,
+                    floem::keyboard::Modifiers::empty(),
+                ) {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        });
 
     stack((
         scroll(dyn_stack(
@@ -179,10 +237,16 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                                             return;
                                         }
                                     }
+                                    let keyboard = matches!(event, Event::KeyDown(_));
+                                    keyboard_last_close.set(keyboard && terminal.tab_info
+                                        .with_untracked(|info| info.tabs.len() == 1));
                                     terminal_ui_trace("activate:close");
                                     terminal.close_tab(Some(terminal_tab_id));
                                     // Keep native traversal owned by a live header
                                     // after removing the focused close control.
+                                    if !keyboard {
+                                        return;
+                                    }
                                     if let Some(tab) = terminal.active_tab(false) {
                                         if let Some(id) = close_header_ids
                                             .borrow()
@@ -192,6 +256,9 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                                             keyboard_focus.set(Some(id));
                                             id.request_focus();
                                         }
+                                    } else if keyboard {
+                                        keyboard_focus.set(Some(new_terminal_id));
+                                        new_terminal_id.request_focus();
                                     }
                                 })
                                 // Do not select a non-active tab while closing it.
@@ -368,16 +435,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
             let size = scroll_size.get();
             s.size(size.width, size.height).pointer_events_none()
         }),
-        container(clickable_icon(
-            || LapceIcons::ADD,
-            move || {
-                workbench_command.send(LapceWorkbenchCommand::NewTerminalTab);
-            },
-            || false,
-            || false,
-            || "New Terminal",
-            config,
-        ))
+        container(tooltip_label(config, new_terminal, || "New Terminal"))
         .on_resize(move |rect| {
             let width = rect.size().width;
             if icon_width.get_untracked() != width {

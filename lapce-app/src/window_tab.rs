@@ -2576,15 +2576,15 @@ impl WindowTabData {
                     tracing::error!("{:?}", err);
                 }
                 self.terminal.terminal_stopped(term_id, *exit_code);
-                if self
-                    .terminal
-                    .tab_info
-                    .with_untracked(|info| info.tabs.is_empty())
-                {
-                    if self.panel.is_panel_visible(&PanelKind::Terminal) {
-                        self.panel.hide_panel(&PanelKind::Terminal);
+                if self.terminal.tab_info.with_untracked(|info| info.tabs.is_empty()) {
+                    let keep_keyboard_target = self.terminal.keyboard_last_close.get_untracked();
+                    self.terminal.keyboard_last_close.set(false);
+                    if !keep_keyboard_target {
+                        if self.panel.is_panel_visible(&PanelKind::Terminal) {
+                            self.panel.hide_panel(&PanelKind::Terminal);
+                        }
+                        self.common.focus.set(Focus::Workbench);
                     }
-                    self.common.focus.set(Focus::Workbench);
                 }
             }
             CoreNotification::TerminalLaunchFailed { term_id, error } => {
@@ -3315,6 +3315,9 @@ impl WindowTabData {
     }
 
     fn hide_panel(&self, kind: PanelKind) {
+        if kind == PanelKind::Terminal {
+            self.terminal.keyboard_last_close.set(false);
+        }
         self.panel.hide_panel(&kind);
         self.common.focus.set(Focus::Workbench);
     }

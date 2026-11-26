@@ -37,6 +37,7 @@ pub struct TerminalPanelData {
     pub cx: Scope,
     pub workspace: Arc<LapceWorkspace>,
     pub tab_info: RwSignal<TerminalTabInfo>,
+    pub keyboard_last_close: RwSignal<bool>,
     pub debug: RunDebugData,
     pub breakline: Memo<Option<(usize, PathBuf)>>,
     pub common: Rc<CommonData>,
@@ -108,6 +109,7 @@ impl TerminalPanelData {
             cx,
             workspace,
             tab_info,
+            keyboard_last_close: cx.create_rw_signal(false),
             debug,
             breakline,
             common,
@@ -178,6 +180,7 @@ impl TerminalPanelData {
         run_debug: Option<RunDebugProcess>,
         profile: Option<TerminalProfile>,
     ) -> TerminalTabData {
+        self.keyboard_last_close.set(false);
         let terminal_tab = TerminalTabData::new_run_debug(
             self.workspace.clone(),
             run_debug,
