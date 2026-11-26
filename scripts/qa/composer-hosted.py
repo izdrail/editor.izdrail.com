@@ -1015,12 +1015,23 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+space'); time.sleep(0.5)
         if any(e.startswith(('event=commit ', 'event=suggest ')) for e in scm_events()[start:]):
             raise RuntimeError('Modified Space activated SCM action')
-        run('key', 'Tab'); time.sleep(0.5)
-        if not scm_events()[-1].startswith('event=focus:row:'):
-            raise RuntimeError('Hidden AI action was not skipped by Tab')
-        run('key', 'shift+Tab'); time.sleep(0.5)
-        if not scm_events()[-1].startswith('event=focus:commit:'):
-            raise RuntimeError('Hidden AI action was not skipped by Shift+Tab')
+        run('key', 'Escape')
+        focus_scm_button('Commit', '59-commit-focus-dark-wide')
+        commit_identity = scm_events()[-1]
+        traversal_start = len(scm_events())
+        for steps in range(1, 13):
+            run('key', 'Tab'); time.sleep(0.2)
+            events = scm_events()[traversal_start:]
+            if any(e.startswith(('event=focus:suggest:', 'event=suggest ')) for e in events):
+                raise RuntimeError('Hidden AI action reached during Tab traversal')
+            if any(e.startswith('event=focus:row:') for e in events):
+                break
+        else:
+            raise RuntimeError('Commit traversal did not reach a visible SCM row')
+        for _ in range(steps):
+            run('key', 'shift+Tab'); time.sleep(0.2)
+        if scm_events()[-1] != commit_identity or any(e.startswith(('event=focus:suggest:', 'event=suggest ')) for e in scm_events()[traversal_start:]):
+            raise RuntimeError('Hidden AI reverse traversal failed')
         start = len(scm_events()); run('key', 'Return', 'space'); time.sleep(1)
         if sum(e.startswith('event=commit ') for e in scm_events()[start:]) != 2:
             raise RuntimeError('Empty Commit Enter/Space did not each activate once')
