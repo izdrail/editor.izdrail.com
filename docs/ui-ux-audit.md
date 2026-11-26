@@ -293,3 +293,15 @@ icon had no application keyboard-focus ownership. Enter then reaches the shell.
 Give the close icon the same focus-owner bookkeeping as its header so native
 reverse traversal can return to the header. Recheck actual shell output and
 header activation before acceptance. No artifact upload failed.
+
+
+26 November: six-phase native PHP intelligence accepted separately. Return to
+the original Phase 1 UI/UX gate, which remains open. UI-039 medium/P0: source
+control change checkboxes and staged/unstaged rows were
+pointer-only. Add native traversal, visible focus and plain Enter/Space isolation,
+preserving existing actions and modified shortcuts. Disposable Git fixture checks
+no worktree/index mutation during navigation. Runtime pixel acceptance pending;
+Commit and AI suggestion remain pointer-only and outside this bounded slice,
+so UX-010 and Phase 1 remain open. They need a separate deliberate-activation
+workflow, not accidental Space-triggered commit acceptance. Opt-in SCM traces
+ship in product builds but contain only control ids/action/state, no file text.

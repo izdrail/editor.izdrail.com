@@ -1,13 +1,16 @@
-use std::{path::PathBuf, rc::Rc};
+use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use floem::{
-    View,
+    View, ViewId,
     action::show_context_menu,
-    event::{Event, EventListener},
+    event::{Event, EventListener, EventPropagation},
     menu::{Menu, MenuItem},
     peniko::kurbo::Rect,
     prelude::SignalTrack,
-    reactive::{SignalGet, SignalUpdate, SignalWith, create_memo, create_rw_signal},
+    reactive::{
+        ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo,
+        create_rw_signal,
+    },
     style::{CursorStyle, Style},
     views::{
         Decorators, container, dyn_stack,
@@ -24,7 +27,7 @@ use super::{
 };
 use crate::{
     command::{CommandKind, InternalCommand, LapceCommand, LapceWorkbenchCommand},
-    config::{color::LapceColor, icon::LapceIcons},
+    config::{LapceConfig, color::LapceColor, icon::LapceIcons},
     editor::view::editor_view,
     settings::checkbox,
     source_control::SourceControlData,
@@ -209,14 +212,15 @@ pub fn source_control_panel(
                         .apply_if(!ai_ready(), |s| s.hide())
                         .hover(|s| {
                             s.cursor(CursorStyle::Pointer).background(
-                                config
-                                    .color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                                config.color(LapceColor::PANEL_HOVERED_BACKGROUND),
                             )
                         })
                         .active(|s| {
-                            s.background(config.color(
-                                LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
-                            ))
+                            s.background(
+                                config.color(
+                                    LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
+                                ),
+                            )
                         })
                         .selectable(false)
                 })
@@ -270,8 +274,9 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
     let panel_width = create_memo(move |_| panel_rect.get().width());
     let lapce_command = source_control.common.lapce_command;
     let internal_command = source_control.common.internal_command;
+    let keyboard_focus = source_control.common.keyboard_focus;
 
-    let view_fn = move |(path, (diff, checked)): (PathBuf, (FileDiff, bool))| {
+    let view_fn = move |(path, (diff, _checked)): (PathBuf, (FileDiff, bool))| {
         let diff_for_style = diff.clone();
         let full_path = path.clone();
         let diff_for_menu = diff.clone();
@@ -298,98 +303,135 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
             .to_string();
         let style_path = path.clone();
         let rel_path = path.to_string_lossy().to_string();
-        stack((
-            checkbox(move || checked, config).on_click_stop(move |_| {
-                file_diffs.update(|diffs| {
-                    if let Some((_, checked)) = diffs.get_mut(&full_path) {
-                        *checked = !*checked;
+        let check_path = full_path.clone();
+        keyboard_scm_action(
+            stack((
+                keyboard_scm_action(
+                    checkbox(
+                        move || {
+                            file_diffs.with(|diffs| {
+                                diffs
+                                    .get(&check_path)
+                                    .is_some_and(|(_, checked)| *checked)
+                            })
+                        },
+                        config,
+                    ),
+                    keyboard_focus,
+                    config,
+                    "checkbox",
+                )
+                .on_click_stop(move |event| {
+                    if let Event::KeyDown(key) = event {
+                        if !scm_activation(&key.key.logical_key, key.modifiers) {
+                            return;
+                        }
                     }
-                });
-            }),
-            svg(move || config.get().file_svg(&path).0).style(move |s| {
-                let config = config.get();
-                let size = config.ui.icon_size() as f32;
-                let color = config.file_svg(&style_path).1;
-                s.min_width(size)
-                    .size(size, size)
-                    .margin(6.0)
-                    .apply_opt(color, Style::color)
-            }),
-            label(move || file_name.clone()).style(move |s| {
-                let config = config.get();
-                let size = config.ui.icon_size() as f32;
-                let max_width = panel_width.get() as f32
-                    - 10.0
-                    - size
-                    - 6.0
-                    - size
-                    - 6.0
-                    - 10.0
-                    - size
-                    - 6.0;
-                s.text_ellipsis()
-                    .margin_right(6.0)
-                    .max_width(max_width)
-                    .selectable(false)
-            }),
-            label(move || folder.clone()).style(move |s| {
-                s.text_ellipsis()
-                    .flex_grow(1.0f32)
-                    .flex_basis(0.0)
-                    .color(config.get().color(LapceColor::EDITOR_DIM))
-                    .min_width(0.0)
-                    .selectable(false)
-            }),
-            label(|| "agent".to_string()).style(move |s| {
-                let config = config.get();
-                let is_agent = agent_touched.get().contains(&rel_path);
-                s.font_size(10.0)
-                    .padding_left(4.0)
-                    .padding_right(4.0)
-                    .margin_right(4.0)
-                    .border(1.0)
-                    .border_radius(4.0)
-                    .color(config.color(LapceColor::EDITOR_DIM))
-                    .border_color(config.color(LapceColor::LAPCE_BORDER))
-                    .apply_if(!is_agent, |s| s.hide())
-                    .selectable(false)
-            }),
-            container({
-                svg(move || {
-                    let svg = match &diff {
-                        FileDiff::Modified(_) => LapceIcons::SCM_DIFF_MODIFIED,
-                        FileDiff::Added(_) => LapceIcons::SCM_DIFF_ADDED,
-                        FileDiff::Deleted(_) => LapceIcons::SCM_DIFF_REMOVED,
-                        FileDiff::Renamed(_, _) => LapceIcons::SCM_DIFF_RENAMED,
-                        FileDiff::Conflicted(_) => LapceIcons::WARNING,
-                    };
-                    config.get().ui_svg(svg)
-                })
-                .style(move |s| {
+                    file_diffs.update(|diffs| {
+                        if let Some((_, checked)) = diffs.get_mut(&full_path) {
+                            *checked = !*checked;
+                            scm_trace("checkbox", Some(*checked));
+                        }
+                    });
+                }),
+                svg(move || config.get().file_svg(&path).0).style(move |s| {
                     let config = config.get();
                     let size = config.ui.icon_size() as f32;
-                    let color = match &diff_for_style {
-                        FileDiff::Modified(_) => LapceColor::SOURCE_CONTROL_MODIFIED,
-                        FileDiff::Added(_) => LapceColor::SOURCE_CONTROL_ADDED,
-                        FileDiff::Deleted(_) => LapceColor::SOURCE_CONTROL_REMOVED,
-                        FileDiff::Renamed(_, _) => {
-                            LapceColor::SOURCE_CONTROL_MODIFIED
-                        }
-                        FileDiff::Conflicted(_) => LapceColor::LAPCE_ERROR,
-                    };
-                    let color = config.color(color);
-                    s.min_width(size).size(size, size).color(color)
+                    let color = config.file_svg(&style_path).1;
+                    s.min_width(size)
+                        .size(size, size)
+                        .margin(6.0)
+                        .apply_opt(color, Style::color)
+                }),
+                label(move || file_name.clone()).style(move |s| {
+                    let config = config.get();
+                    let size = config.ui.icon_size() as f32;
+                    let max_width = panel_width.get() as f32
+                        - 10.0
+                        - size
+                        - 6.0
+                        - size
+                        - 6.0
+                        - 10.0
+                        - size
+                        - 6.0;
+                    s.text_ellipsis()
+                        .margin_right(6.0)
+                        .max_width(max_width)
+                        .selectable(false)
+                }),
+                label(move || folder.clone()).style(move |s| {
+                    s.text_ellipsis()
+                        .flex_grow(1.0f32)
+                        .flex_basis(0.0)
+                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                        .min_width(0.0)
+                        .selectable(false)
+                }),
+                label(|| "agent".to_string()).style(move |s| {
+                    let config = config.get();
+                    let is_agent = agent_touched.get().contains(&rel_path);
+                    s.font_size(10.0)
+                        .padding_left(4.0)
+                        .padding_right(4.0)
+                        .margin_right(4.0)
+                        .border(1.0)
+                        .border_radius(4.0)
+                        .color(config.color(LapceColor::EDITOR_DIM))
+                        .border_color(config.color(LapceColor::LAPCE_BORDER))
+                        .apply_if(!is_agent, |s| s.hide())
+                        .selectable(false)
+                }),
+                container({
+                    svg(move || {
+                        let svg = match &diff {
+                            FileDiff::Modified(_) => LapceIcons::SCM_DIFF_MODIFIED,
+                            FileDiff::Added(_) => LapceIcons::SCM_DIFF_ADDED,
+                            FileDiff::Deleted(_) => LapceIcons::SCM_DIFF_REMOVED,
+                            FileDiff::Renamed(_, _) => LapceIcons::SCM_DIFF_RENAMED,
+                            FileDiff::Conflicted(_) => LapceIcons::WARNING,
+                        };
+                        config.get().ui_svg(svg)
+                    })
+                    .style(move |s| {
+                        let config = config.get();
+                        let size = config.ui.icon_size() as f32;
+                        let color = match &diff_for_style {
+                            FileDiff::Modified(_) => {
+                                LapceColor::SOURCE_CONTROL_MODIFIED
+                            }
+                            FileDiff::Added(_) => LapceColor::SOURCE_CONTROL_ADDED,
+                            FileDiff::Deleted(_) => {
+                                LapceColor::SOURCE_CONTROL_REMOVED
+                            }
+                            FileDiff::Renamed(_, _) => {
+                                LapceColor::SOURCE_CONTROL_MODIFIED
+                            }
+                            FileDiff::Conflicted(_) => LapceColor::LAPCE_ERROR,
+                        };
+                        let color = config.color(color);
+                        s.min_width(size).size(size, size).color(color)
+                    })
                 })
-            })
-            .style(|s| {
-                s.absolute()
-                    .size_pct(100.0, 100.0)
-                    .padding_right(20.0)
-                    .items_center()
-                    .justify_end()
-            }),
-        ))
-        .on_click_stop(move |_| {
+                .style(|s| {
+                    s.absolute()
+                        .size_pct(100.0, 100.0)
+                        .padding_right(20.0)
+                        .items_center()
+                        .justify_end()
+                }),
+            )),
+            keyboard_focus,
+            config,
+            "row",
+        )
+        .on_click_stop(move |event| {
+            if let Event::KeyDown(key) = event {
+                if !scm_activation(&key.key.logical_key, key.modifiers) {
+                    return;
+                }
+            }
+            scm_trace("open-diff", None);
             internal_command.send(InternalCommand::OpenFileChanges {
                 path: path_for_click.clone(),
             });
@@ -442,9 +484,7 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
         scroll({
             dyn_stack(
                 move || file_diffs.get(),
-                |(path, (diff, checked))| {
-                    (path.to_path_buf(), diff.clone(), *checked)
-                },
+                |(path, (diff, _))| (path.to_path_buf(), diff.clone()),
                 view_fn,
             )
             .style(|s| s.line_height(1.6).flex_col().width_pct(100.0))
@@ -472,6 +512,7 @@ fn staged_diffs_view(source_control: SourceControlData) -> impl View {
     let panel_width = create_memo(move |_| panel_rect.get().width());
     let lapce_command = source_control.common.lapce_command;
     let internal_command = source_control.common.internal_command;
+    let keyboard_focus = source_control.common.keyboard_focus;
 
     let view_fn = move |diff: FileDiff| {
         let diff_for_style = diff.clone();
@@ -498,70 +539,85 @@ fn staged_diffs_view(source_control: SourceControlData) -> impl View {
             .unwrap_or("")
             .to_string();
         let style_path = path.clone();
-        stack((
-            svg(move || config.get().file_svg(&path).0).style(move |s| {
-                let config = config.get();
-                let size = config.ui.icon_size() as f32;
-                let color = config.file_svg(&style_path).1;
-                s.min_width(size)
-                    .size(size, size)
-                    .margin(6.0)
-                    .apply_opt(color, Style::color)
-            }),
-            label(move || file_name.clone()).style(move |s| {
-                let config = config.get();
-                let size = config.ui.icon_size() as f32;
-                let max_width =
-                    panel_width.get() as f32 - 10.0 - size - 6.0 - size - 6.0;
-                s.text_ellipsis()
-                    .margin_right(6.0)
-                    .max_width(max_width)
-                    .selectable(false)
-            }),
-            label(move || folder.clone()).style(move |s| {
-                s.text_ellipsis()
-                    .flex_grow(1.0f32)
-                    .flex_basis(0.0)
-                    .color(config.get().color(LapceColor::EDITOR_DIM))
-                    .min_width(0.0)
-                    .selectable(false)
-            }),
-            container({
-                svg(move || {
-                    let svg = match &diff {
-                        FileDiff::Modified(_) => LapceIcons::SCM_DIFF_MODIFIED,
-                        FileDiff::Added(_) => LapceIcons::SCM_DIFF_ADDED,
-                        FileDiff::Deleted(_) => LapceIcons::SCM_DIFF_REMOVED,
-                        FileDiff::Renamed(_, _) => LapceIcons::SCM_DIFF_RENAMED,
-                        FileDiff::Conflicted(_) => LapceIcons::WARNING,
-                    };
-                    config.get().ui_svg(svg)
-                })
-                .style(move |s| {
+        keyboard_scm_action(
+            stack((
+                svg(move || config.get().file_svg(&path).0).style(move |s| {
                     let config = config.get();
                     let size = config.ui.icon_size() as f32;
-                    let color = match &diff_for_style {
-                        FileDiff::Modified(_) => LapceColor::SOURCE_CONTROL_MODIFIED,
-                        FileDiff::Added(_) => LapceColor::SOURCE_CONTROL_ADDED,
-                        FileDiff::Deleted(_) => LapceColor::SOURCE_CONTROL_REMOVED,
-                        FileDiff::Renamed(_, _) => {
-                            LapceColor::SOURCE_CONTROL_MODIFIED
-                        }
-                        FileDiff::Conflicted(_) => LapceColor::LAPCE_ERROR,
-                    };
-                    let color = config.color(color);
-                    s.min_width(size).size(size, size).color(color)
+                    let color = config.file_svg(&style_path).1;
+                    s.min_width(size)
+                        .size(size, size)
+                        .margin(6.0)
+                        .apply_opt(color, Style::color)
+                }),
+                label(move || file_name.clone()).style(move |s| {
+                    let config = config.get();
+                    let size = config.ui.icon_size() as f32;
+                    let max_width =
+                        panel_width.get() as f32 - 10.0 - size - 6.0 - size - 6.0;
+                    s.text_ellipsis()
+                        .margin_right(6.0)
+                        .max_width(max_width)
+                        .selectable(false)
+                }),
+                label(move || folder.clone()).style(move |s| {
+                    s.text_ellipsis()
+                        .flex_grow(1.0f32)
+                        .flex_basis(0.0)
+                        .color(config.get().color(LapceColor::EDITOR_DIM))
+                        .min_width(0.0)
+                        .selectable(false)
+                }),
+                container({
+                    svg(move || {
+                        let svg = match &diff {
+                            FileDiff::Modified(_) => LapceIcons::SCM_DIFF_MODIFIED,
+                            FileDiff::Added(_) => LapceIcons::SCM_DIFF_ADDED,
+                            FileDiff::Deleted(_) => LapceIcons::SCM_DIFF_REMOVED,
+                            FileDiff::Renamed(_, _) => LapceIcons::SCM_DIFF_RENAMED,
+                            FileDiff::Conflicted(_) => LapceIcons::WARNING,
+                        };
+                        config.get().ui_svg(svg)
+                    })
+                    .style(move |s| {
+                        let config = config.get();
+                        let size = config.ui.icon_size() as f32;
+                        let color = match &diff_for_style {
+                            FileDiff::Modified(_) => {
+                                LapceColor::SOURCE_CONTROL_MODIFIED
+                            }
+                            FileDiff::Added(_) => LapceColor::SOURCE_CONTROL_ADDED,
+                            FileDiff::Deleted(_) => {
+                                LapceColor::SOURCE_CONTROL_REMOVED
+                            }
+                            FileDiff::Renamed(_, _) => {
+                                LapceColor::SOURCE_CONTROL_MODIFIED
+                            }
+                            FileDiff::Conflicted(_) => LapceColor::LAPCE_ERROR,
+                        };
+                        let color = config.color(color);
+                        s.min_width(size).size(size, size).color(color)
+                    })
                 })
-            })
-            .style(|s| {
-                s.absolute()
-                    .size_pct(100.0, 100.0)
-                    .padding_right(20.0)
-                    .items_center()
-                    .justify_end()
-            }),
-        ))
-        .on_click_stop(move |_| {
+                .style(|s| {
+                    s.absolute()
+                        .size_pct(100.0, 100.0)
+                        .padding_right(20.0)
+                        .items_center()
+                        .justify_end()
+                }),
+            )),
+            keyboard_focus,
+            config,
+            "row",
+        )
+        .on_click_stop(move |event| {
+            if let Event::KeyDown(key) = event {
+                if !scm_activation(&key.key.logical_key, key.modifiers) {
+                    return;
+                }
+            }
+            scm_trace("open-diff", None);
             internal_command.send(InternalCommand::OpenFileChanges {
                 path: path_for_click.clone(),
             });
@@ -615,4 +671,84 @@ fn staged_diffs_view(source_control: SourceControlData) -> impl View {
         panel_rect.set(rect);
     })
     .style(|s| s.width_pct(100.0))
+}
+
+/// Native keyboard ownership keeps Tab out of the commit editor. Click handlers
+/// remain the single action path, so checkbox activation cannot open the diff.
+fn keyboard_scm_action(
+    view: impl View + 'static,
+    keyboard_focus: RwSignal<Option<ViewId>>,
+    config: ReadSignal<Arc<LapceConfig>>,
+    kind: &'static str,
+) -> impl View {
+    let id = view.id();
+    view.keyboard_navigable()
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(id));
+            scm_trace(&format!("focus:{kind}:{id:?}"), None);
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            if keyboard_focus.get_untracked() == Some(id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_cleanup(move || {
+            if keyboard_focus.get_untracked() == Some(id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_event(EventListener::KeyDown, |event| {
+            if let Event::KeyDown(key) = event {
+                if scm_activation(&key.key.logical_key, key.modifiers) {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
+        .style(move |s| {
+            s.focus_visible(|s| {
+                s.background(
+                    config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                )
+            })
+        })
+}
+
+fn scm_activation(
+    key: &floem::keyboard::Key,
+    modifiers: floem::keyboard::Modifiers,
+) -> bool {
+    modifiers.is_empty()
+        && matches!(
+            key,
+            floem::keyboard::Key::Named(
+                floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
+            )
+        )
+}
+
+#[cfg(test)]
+mod keyboard_tests {
+    use super::scm_activation;
+    use floem::keyboard::{Key, Modifiers, NamedKey};
+    #[test]
+    fn activation_does_not_consume_traversal_or_commit_shortcut() {
+        for key in [NamedKey::Enter, NamedKey::Space] {
+            assert!(scm_activation(&Key::Named(key.clone()), Modifiers::empty()));
+            for mods in [Modifiers::CONTROL, Modifiers::SHIFT, Modifiers::ALT] {
+                assert!(!scm_activation(&Key::Named(key.clone()), mods));
+            }
+        }
+        assert!(!scm_activation(
+            &Key::Named(NamedKey::Tab),
+            Modifiers::empty()
+        ));
+    }
+}
+
+/// Opt-in UI diagnostics contain control identity/state only, never source text.
+fn scm_trace(event: &str, checked: Option<bool>) {
+    if std::env::var("LAPCE_SCM_TRACE").ok().as_deref() == Some("1") {
+        eprintln!("SCM_UI event={event} checked={checked:?}");
+    }
 }

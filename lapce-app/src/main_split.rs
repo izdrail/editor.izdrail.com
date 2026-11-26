@@ -759,6 +759,9 @@ impl MainSplitData {
             false,
             false,
         );
+        if std::env::var("LAPCE_SCM_TRACE").ok().as_deref() == Some("1") {
+            eprintln!("SCM_UI event=diff-tab-opened");
+        }
     }
 
     /// Read-only proposal snapshots, never registered as workspace source docs.

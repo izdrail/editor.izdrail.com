@@ -22,6 +22,8 @@ for index in range(10):
 config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
 (config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
+# Test-only user binding invokes the existing panel command, not an icon coordinate.
+(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+alt+F9\"\ncommand = \"toggle_source_control_focus\"\n')
 # Only the deterministic local Python fixture runs. PHP and all package
 # downloads remain disabled; the composer never contacts a language service.
 lsp_log = out / 'navigation-lsp.log'
@@ -31,7 +33,7 @@ import json
     'enabled = true\nauto-install = false\n[servers.navigation-fixture]\n'
     'languages = ["python"]\ncommand = "python3"\nargs = '
     + json.dumps([str(lsp_fixture), str(lsp_log)]) + '\n')
-env = os.environ | {'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
+env = os.environ | {'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(name, None)
 
@@ -804,6 +806,91 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('P6 UI input lost during index burst')
         run('key', 'Escape')
         (out / 'php-ui-indexing-benchmark.log').write_text('files=2000 event_type_select_copy_ms=' + str(event_ms) + ' burst_to_capture_ms=' + str((time.monotonic()-burst_start)*1000) + ' includes_xdotool_and_300ms_clipboard_wait=true\n')
+
+        # Disposable Git repository. No remote or destructive UI action.
+        def git_fixture(*args):
+            return subprocess.run(['git', '-C', str(project), *args], env=env, check=True, capture_output=True, text=True).stdout
+        git_fixture('init')
+        git_fixture('config', 'user.name', 'Synthetic QA')
+        git_fixture('config', 'user.email', 'qa@example.invalid')
+        scm_file = project / 'a_scm_keyboard.php'
+        scm_file.write_text('<?php // before keyboard diff fixture\n')
+        (project / '.gitignore').write_text('domain/Bulk/\n')
+        git_fixture('add', 'a_scm_keyboard.php', '.gitignore')
+        git_fixture('commit', '-m', 'Synthetic baseline')
+        scm_after = '<?php // after keyboard diff fixture\n'
+        scm_file.write_text(scm_after)
+        staged_file = project / 'a_scm_staged.php'
+        staged_after = '<?php // staged keyboard diff fixture\n'
+        staged_file.write_text(staged_after)
+        git_fixture('add', 'a_scm_staged.php')
+        before_status = git_fixture('status', '--porcelain=v1')
+        time.sleep(5)
+        run('key', 'ctrl+alt+F9'); time.sleep(2)
+        shot('56-scm-keyboard-baseline')
+        def scm_events():
+            log.flush()
+            return [line.split('SCM_UI ', 1)[1].strip() for line in (out / 'editor.log').read_text().splitlines() if 'SCM_UI ' in line]
+        # Locate the actual named row, never guess a position near Commit.
+        import csv, io
+        tsv = subprocess.run(['tesseract', str(out / '56-scm-keyboard-baseline.png'), 'stdout', 'tsv'], check=True, capture_output=True, text=True).stdout
+        targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t')
+                   if 'a_scm_keyboard' in r['text'] and int(r['left']) < 300]
+        if len(targets) != 1:
+            raise RuntimeError('Cannot locate unique SCM fixture row in actual baseline pixels')
+        target = targets[0]
+        row_x = int(target['left']) + int(target['width']) // 2
+        row_y = int(target['top']) + int(target['height']) // 2
+        def focus_scm_row():
+            # PointerDown seeds focus, releasing outside cancels Click, so
+            # it cannot open the diff and transfer focus into its editor.
+            run('mousemove', str(row_x), str(row_y), 'mousedown', '1')
+            run('mousemove', '600', '200', 'mouseup', '1'); time.sleep(1)
+        before_seed = len(scm_events())
+        focus_scm_row()
+        seeded = scm_events()[before_seed:]
+        focused = [e for e in seeded if e.startswith('event=focus:row:')]
+        if not focused:
+            raise RuntimeError('SCM row focus seed missed; inspect56 baseline before adjusting coordinates')
+        row_focus = focused[-1]
+        run('key', 'Tab'); shot('56a-scm-next-focus')
+        if not scm_events()[-1].startswith('event=focus:checkbox:'):
+            raise RuntimeError('SCM Tab did not reach its commit checkbox')
+        run('key', 'shift+Tab'); shot('56b-scm-return-focus')
+        if scm_events()[-1] != row_focus:
+            raise RuntimeError('SCM reverse traversal did not return to same row')
+        before_open = len(scm_events())
+        run('key', 'Return'); time.sleep(2); shot('56c-scm-open-diff')
+        if 'event=diff-tab-opened' not in scm_events()[before_open:]:
+            raise RuntimeError('SCM Return did not open an actual diff tab')
+        # Return moves editor focus, so reacquire and validate row first.
+        focus_scm_row()
+        before_space = len(scm_events())
+        run('key', 'space'); time.sleep(1); shot('56d-scm-space-open-diff')
+        if 'event=diff-tab-opened' not in scm_events()[before_space:]:
+            raise RuntimeError('SCM Space did not open an actual diff tab')
+        focus_scm_row()
+        run('key', 'Tab'); time.sleep(1)
+        if not scm_events()[-1].startswith('event=focus:checkbox:'):
+            raise RuntimeError('SCM checkbox focus missing before Space')
+        checkbox_focus = scm_events()[-1]
+        before_check = len(scm_events())
+        run('key', 'space'); time.sleep(1); shot('56e-scm-checkbox-toggled')
+        check_events = scm_events()[before_check:]
+        if not any(e.startswith('event=checkbox ') for e in check_events) or any('diff-tab' in e for e in check_events):
+            raise RuntimeError('SCM checkbox Space failed or opened a diff')
+        run('key', 'Tab', 'shift+Tab'); time.sleep(1); shot('56f-scm-checkbox-focus-retained')
+        if scm_events()[-1] != checkbox_focus:
+            raise RuntimeError('SCM checkbox toggle destroyed its focus identity')
+        run('key', 'space'); time.sleep(1)
+        checks = [e for e in scm_events()[before_check:] if e.startswith('event=checkbox ')]
+        if len(checks) != 2 or checks[0] == checks[1]:
+            raise RuntimeError('SCM checkbox state did not toggle and restore')
+        if scm_file.read_text() != scm_after or staged_file.read_text() != staged_after:
+            raise RuntimeError('SCM keyboard workflow changed fixture source')
+        if git_fixture('status', '--porcelain=v1') != before_status:
+            raise RuntimeError('SCM keyboard workflow changed Git index or worktree')
+        (out / 'scm-keyboard-assertions.log').write_text('same_row_focus=true\ncheckbox_focus_retained=true\ncheckbox_toggled_restored=true\nreturn_and_space_actual_diff=true\nindex_worktree_unchanged=true\n' + '\n'.join(scm_events()))
 
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
