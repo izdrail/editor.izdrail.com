@@ -913,6 +913,19 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); time.sleep(2); shot('57a-scm-staged-diff')
         if 'event=diff-tab-opened' not in scm_events()[before_staged_open:]:
             raise RuntimeError('SCM staged Enter did not open actual diff')
+        # Long nested names are separate from the keyboard target rows.
+        long_dir = project / 'z_scm_layout_fixture' / ('nested_directory_' * 5)
+        long_dir.mkdir(parents=True, exist_ok=True)
+        long_staged = long_dir / ('staged_filename_' * 6 + '.php')
+        long_unstaged = long_dir / ('unstaged_filename_' * 6 + '.php')
+        long_staged.write_text('<?php // staged layout fixture\n')
+        long_unstaged.write_text('<?php // before layout fixture\n')
+        git_fixture('add', '-f', str(long_unstaged.relative_to(project)))
+        git_fixture('commit', '--only', '-m', 'Synthetic long-name baseline', str(long_unstaged.relative_to(project)))
+        long_unstaged.write_text('<?php // after layout fixture\n')
+        git_fixture('add', '-f', str(long_staged.relative_to(project)))
+        before_status = git_fixture('status', '--porcelain=v1')
+        time.sleep(3)
         # Last visual case. Preserve actual geometry and theme settings.
         original_theme_settings = settings_file.read_text()
         geometry = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', window], env=env, check=True, capture_output=True, text=True).stdout
@@ -957,6 +970,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', str(row_x), str(row_y)); shot('58f-scm-hover-light')
         settings_file.write_text(original_theme_settings)
         time.sleep(3)
+        if long_staged.read_text() != '<?php // staged layout fixture\n' or long_unstaged.read_text() != '<?php // after layout fixture\n':
+            raise RuntimeError('SCM long-name layout changed source')
         if scm_file.read_text() != scm_after or staged_file.read_text() != staged_after:
             raise RuntimeError('SCM keyboard workflow changed fixture source')
         if git_fixture('status', '--porcelain=v1') != before_status:

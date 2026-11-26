@@ -334,3 +334,9 @@ Recheck row edges and checkbox plus both themes/widths.
 but actual56/58 showed a layout regression: wrapping the full row moved the
 status icon beside the filename. Not visually accepted. Wrap only checkbox;
 keep row styles on the original stack to preserve absolute status alignment.
+
+0135269 / 45840716847 accepted bounded focus/layout pixels56-58f: status
+icons restored flush right, checkbox own border intact, ring inside panel edges
+in both themes/widths, hover preserved and no geometry shift on focus. Long
+name/folder runtime coverage remains open. Add separate nested long-name Git
+fixtures before final theme/width captures, preserving keyboard target paths.
