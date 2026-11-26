@@ -509,14 +509,43 @@ fn dedupe_native_lsp(all: Vec<ScoredCompletionItem>) -> Vec<ScoredCompletionItem
         .filter(|i| i.source == CompletionSource::Lsp)
         .map(|i| (i.item.label.clone(), i.item.insert_text.clone()))
         .collect::<Vec<_>>();
+    // Framework packs carry signatures and share the native source tier. Remove
+    // only the same callable insertion, never distinct qualified native classes.
+    let project = all
+        .iter()
+        .filter(|i| i.source == CompletionSource::Project)
+        .map(|i| {
+            (
+                i.item.label.clone(),
+                i.item
+                    .insert_text
+                    .as_deref()
+                    .unwrap_or(&i.item.label)
+                    .to_owned(),
+            )
+        })
+        .collect::<std::collections::HashSet<_>>();
     all.into_iter()
         .filter(|i| {
             i.source != CompletionSource::Native
-                || !lsp.iter().any(|server| {
-                    server.0 == i.item.label
-                        && (count.get(&i.item.label) == Some(&1)
-                            || server.1 == i.item.insert_text)
-                })
+                || (!(i
+                    .item
+                    .additional_text_edits
+                    .as_ref()
+                    .is_none_or(Vec::is_empty)
+                    && project.contains(&(
+                        i.item.label.clone(),
+                        i.item
+                            .insert_text
+                            .as_deref()
+                            .unwrap_or(&i.item.label)
+                            .to_owned(),
+                    )))
+                    && !lsp.iter().any(|server| {
+                        server.0 == i.item.label
+                            && (count.get(&i.item.label) == Some(&1)
+                                || server.1 == i.item.insert_text)
+                    }))
         })
         .collect()
 }
@@ -1270,6 +1299,46 @@ mod native_namespace_dedupe_tests {
             )
             .len(),
             1
+        );
+    }
+    #[test]
+    fn native_distinct_insert_and_import_edit_survive_project_label() {
+        let row = |source, insert: &str| ScoredCompletionItem {
+            item: CompletionItem {
+                label: "User".into(),
+                insert_text: Some(insert.into()),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source,
+            score: 0,
+            label_score: 0,
+            indices: vec![],
+            show_on_empty: true,
+        };
+        assert_eq!(
+            dedupe_keeping_blade_snippets(
+                vec![
+                    row(CompletionSource::Native, "\\Domain\\User"),
+                    row(CompletionSource::Project, "User")
+                ],
+                false
+            )
+            .len(),
+            2
+        );
+        let mut native = row(CompletionSource::Native, "User");
+        native.item.additional_text_edits = Some(vec![lsp_types::TextEdit {
+            range: lsp_types::Range::default(),
+            new_text: "use Domain\\User;".into(),
+        }]);
+        assert_eq!(
+            dedupe_keeping_blade_snippets(
+                vec![native, row(CompletionSource::Project, "User")],
+                false
+            )
+            .len(),
+            2
         );
     }
     #[test]

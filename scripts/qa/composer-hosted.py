@@ -740,8 +740,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         (project / 'domain/Relay.php').write_text(facade_text)
         # A real native facade contract overlaps the bundled Cache pack.
         (project / 'domain/Cache.php').write_text('<?php\nnamespace Illuminate\\Support\\Facades;\n/** @method static mixed get(string $key) */\nclass Cache extends Facade {}\n')
+        (project / 'domain/User.php').write_text('<?php\nnamespace Domain; class User {}\n')
         time.sleep(3)
         laravel_cases = [
+            ('54e-native-qualified-class', '<?php\nnew User', 'user'),
             ('54d-cache-dedupe', '<?php\nuse Illuminate\\Support\\Facades\\Cache;\nCache::ge', 'get'),
             ('54-laravel-scope', '<?php\nuse Domain\\Ledger as Account;\nAccount::sett', 'settled'),
             ('54a-laravel-facade', '<?php\nuse Domain\\Relay as Mailer;\nMailer::deli', 'deliver'),
