@@ -20,6 +20,7 @@ pub struct Snapshot {
     pub generation: u64,
 }
 struct Owner {
+    core: Mutex<Vec<lapce_rpc::core::WeakCoreRpcHandler>>,
     root: PathBuf,
     composer: Mutex<lapce_index::php::composer::Composer>,
     tx: Sender<Vec<PathBuf>>,
@@ -59,6 +60,11 @@ impl Changes {
                 })
             }) {
                 *composer = lapce_index::php::composer::Composer::load(&owner.root);
+                owner.core.lock().unwrap().retain(|core| {
+                    core.notify(lapce_rpc::core::CoreNotification::PhpFramework {
+                        laravel: composer.laravel,
+                    })
+                });
             }
             owner.epoch.fetch_add(1, Ordering::Release);
             let _ = owner.tx.send(paths);
@@ -76,10 +82,28 @@ pub fn index_dir(cache: &Path, root: &Path) -> PathBuf {
 }
 impl Manager {
     pub fn start(root: PathBuf, cache: PathBuf) -> Self {
+        Self::start_with_core(root, cache, None)
+    }
+    pub fn start_with_core(
+        root: PathBuf,
+        cache: PathBuf,
+        core: Option<lapce_rpc::core::CoreRpcHandler>,
+    ) -> Self {
         let original_root = root.clone();
         let root = root.canonicalize().unwrap_or(root);
         let mut owners = OWNERS.get_or_init(Default::default).lock().unwrap();
         if let Some(owner) = owners.get(&root).and_then(Weak::upgrade) {
+            if let Some(core) = core {
+                let laravel = owner.composer.lock().unwrap().laravel;
+                core.notification(lapce_rpc::core::CoreNotification::PhpFramework {
+                    laravel,
+                });
+                let weak = core.downgrade();
+                let mut observers = owner.core.lock().unwrap();
+                if !observers.iter().any(|entry| entry.same(&weak)) {
+                    observers.push(weak);
+                }
+            }
             return Self(owner);
         }
         let (tx, rx) = unbounded::<Vec<PathBuf>>();
@@ -89,8 +113,15 @@ impl Manager {
             state: "opening".into(),
             ..Default::default()
         }));
+        let composer = lapce_index::php::composer::Composer::load(&root);
+        if let Some(core) = &core {
+            core.notification(lapce_rpc::core::CoreNotification::PhpFramework {
+                laravel: composer.laravel,
+            });
+        }
         let owner = Arc::new(Owner {
-            composer: Mutex::new(lapce_index::php::composer::Composer::load(&root)),
+            core: Mutex::new(core.iter().map(|core| core.downgrade()).collect()),
+            composer: Mutex::new(composer),
             root: root.clone(),
             tx,
             cancel: cancel.clone(),
@@ -229,7 +260,9 @@ impl Manager {
                     _ => false,
                 }
                 && static_only.is_none_or(|required| {
-                    s.is_static == required || required && kind == "constant"
+                    s.is_static == required
+                        || required && kind == "constant"
+                        || s.attributes.iter().any(|a| a == "laravel:local-scope")
                 })
                 && (s.visibility.as_deref().is_none_or(|v| v == "public")
                     || allow_nonpublic
@@ -319,6 +352,42 @@ mod tests {
         panic!("worker state: {}", manager.query("", 1).0);
     }
     #[test]
+    fn framework_notifications_refresh_from_composer_and_prune_dead_observers() {
+        use lapce_rpc::core::CoreRpc;
+        use lapce_rpc::core::{CoreNotification, CoreRpcHandler};
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        let core = CoreRpcHandler::new();
+        let manager = Manager::start_with_core(
+            root.clone(),
+            t.path().join("cache"),
+            Some(core.clone()),
+        );
+        let received = core.rx().recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(
+            matches!(received,CoreRpc::Notification(n) if matches!(*n,CoreNotification::PhpFramework {laravel:false}))
+        );
+        std::fs::write(
+            root.join("composer.lock"),
+            r#"{"packages":[{"name":"laravel/framework"}]}"#,
+        )
+        .unwrap();
+        manager.changes().changed(vec![root.join("composer.lock")]);
+        let received = core.rx().recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(
+            matches!(received,CoreRpc::Notification(n) if matches!(*n,CoreNotification::PhpFramework {laravel:true}))
+        );
+        assert!(lapce_index::php::events::relevant(
+            &root,
+            &manager.0.composer.lock().unwrap(),
+            &root.join("vendor/composer/installed.json")
+        ));
+        drop(core);
+        manager.changes().changed(vec![root.join("composer.lock")]);
+        assert!(manager.0.core.lock().unwrap().is_empty());
+    }
+    #[test]
     #[ignore]
     fn native_50k_proxy_baseline() {
         use lapce_index::php::scanner::{Kind, Symbol};
@@ -353,6 +422,7 @@ mod tests {
             )]),
         };
         let owner = Arc::new(Owner {
+            core: Mutex::new(vec![]),
             root: PathBuf::new(),
             composer: Mutex::new(Default::default()),
             tx,

@@ -135,6 +135,7 @@ pub struct WorkProgress {
 #[derive(Clone)]
 pub struct CommonData {
     pub workspace: Arc<LapceWorkspace>,
+    pub php_laravel: RwSignal<bool>,
     pub scope: Scope,
     pub focus: RwSignal<Focus>,
     pub keypress: RwSignal<KeyPressData>,
@@ -376,6 +377,7 @@ impl WindowTabData {
         });
 
         let common = Rc::new(CommonData {
+            php_laravel: cx.create_rw_signal(false),
             workspace: workspace.clone(),
             scope: cx,
             keypress,
@@ -2650,6 +2652,9 @@ impl WindowTabData {
                         }
                     }
                 });
+            }
+            CoreNotification::PhpFramework { laravel } => {
+                self.common.php_laravel.set(laravel);
             }
             CoreNotification::OpenFileChanged { path, content } => {
                 self.main_split.open_file_changed(path, content);

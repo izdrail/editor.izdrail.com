@@ -65,6 +65,7 @@ pub struct Composer {
     pub manifests: Vec<PathBuf>,
     pub excludes: Vec<(PathBuf, String)>,
     pub packages: Vec<String>,
+    pub laravel: bool,
     pub fingerprint: String,
     pub warnings: Vec<String>,
     compiled_excludes: Vec<(PathBuf, globset::GlobMatcher)>,
@@ -213,6 +214,12 @@ impl Composer {
         let manifest = this
             .read(&root.join("composer.json"), &mut hash)
             .unwrap_or(Value::Null);
+        this.laravel = ["require", "require-dev"].iter().any(|section| {
+            manifest
+                .get(section)
+                .and_then(Value::as_object)
+                .is_some_and(|packages| packages.contains_key("laravel/framework"))
+        });
         this.autoload(root, &manifest, true);
         let Some(vendor) = this.safe(
             root,
@@ -240,7 +247,18 @@ impl Composer {
         };
         this.vendor = vendor.clone();
         // Lock participates in cache invalidation. Missing packages are not invented.
-        this.read(&root.join("composer.lock"), &mut hash);
+        if let Some(lock) = this.read(&root.join("composer.lock"), &mut hash) {
+            this.laravel |= ["packages", "packages-dev"].iter().any(|section| {
+                lock.get(section)
+                    .and_then(Value::as_array)
+                    .is_some_and(|packages| {
+                        packages.iter().any(|p| {
+                            p.get("name").and_then(Value::as_str)
+                                == Some("laravel/framework")
+                        })
+                    })
+            });
+        }
         if let Some(installed) =
             this.read(&vendor.join("composer/installed.json"), &mut hash)
         {
@@ -252,6 +270,7 @@ impl Composer {
                     else {
                         continue;
                     };
+                    this.laravel |= name == "laravel/framework";
                     this.packages.push(name.to_owned());
                     let base = if let Some(p) =
                         package.get("install-path").and_then(Value::as_str)
@@ -292,6 +311,7 @@ impl Composer {
                                 if let Some(name) =
                                     json.get("name").and_then(Value::as_str)
                                 {
+                                    this.laravel |= name == "laravel/framework";
                                     this.packages.push(name.to_owned());
                                 }
                                 this.autoload(&base, &json, false);
@@ -341,6 +361,26 @@ impl Composer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn laravel_detection_requires_composer_evidence() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path();
+        std::fs::write(root.join("artisan"), "fixture").unwrap();
+        assert!(!Composer::load(root).laravel);
+        std::fs::write(
+            root.join("composer.json"),
+            r#"{"require":{"laravel/framework":"^12"}}"#,
+        )
+        .unwrap();
+        assert!(Composer::load(root).laravel);
+        std::fs::write(root.join("composer.json"), "{}").unwrap();
+        std::fs::write(
+            root.join("composer.lock"),
+            r#"{"packages":[{"name":"laravel/framework"}]}"#,
+        )
+        .unwrap();
+        assert!(Composer::load(root).laravel);
+    }
     #[test]
     fn mappings_longest_arrays_dev_fallback_files_and_vendor() {
         let temp = tempfile::tempdir().unwrap();

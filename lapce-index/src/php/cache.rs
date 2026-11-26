@@ -16,7 +16,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const MAX_BYTES: u64 = crate::walker::MAX_FILE_BYTES;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CachedFile {
@@ -250,7 +250,7 @@ impl Engine {
             let language = crate::language_for_path(&path);
             let mut entries = Vec::new();
             let symbols = if language == "php" {
-                match scanner::scan(&source, cancel) {
+                match scanner::scan_laravel(&source, cancel, composer.laravel) {
                     Ok(symbols) => {
                         for symbol in &symbols.symbols {
                             if matches!(
@@ -405,6 +405,58 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn laravel_aliases_follow_edits_cache_and_composer_changes() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("project");
+        let dir = t.path().join("index");
+        fs::create_dir(&root).unwrap();
+        let composer = root.join("composer.json");
+        let model = root.join("Invoice.php");
+        fs::write(&composer, r#"{"require":{"laravel/framework":"^12"}}"#).unwrap();
+        fs::write(&model,"<?php class Invoice extends \\Illuminate\\Database\\Eloquent\\Model {public function scopePaid($q){}} ").unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut engine = Engine::open(&dir).unwrap();
+        engine.reconcile(&root, &BTreeSet::new(), &cancel).unwrap();
+        assert!(
+            engine
+                .symbols("paid", 20)
+                .iter()
+                .any(|(_, s)| s.name == "paid"
+                    && s.target.as_deref() == Some("Invoice::scopePaid"))
+        );
+        engine.reconcile(&root, &BTreeSet::new(), &cancel).unwrap();
+        assert!(
+            engine
+                .snapshot()
+                .values()
+                .any(|f| f.symbols.iter().any(|s| s.name == "paid"))
+        );
+        fs::write(&model,"<?php class Invoice extends \\Illuminate\\Database\\Eloquent\\Model {public function scopeDue($q){}} ").unwrap();
+        engine
+            .reconcile(&root, &BTreeSet::from([model]), &cancel)
+            .unwrap();
+        assert!(
+            !engine
+                .snapshot()
+                .values()
+                .any(|f| f.symbols.iter().any(|s| s.name == "paid"))
+        );
+        assert!(
+            engine
+                .snapshot()
+                .values()
+                .any(|f| f.symbols.iter().any(|s| s.name == "due"))
+        );
+        fs::write(&composer, "{}").unwrap();
+        engine.reconcile(&root, &BTreeSet::new(), &cancel).unwrap();
+        assert!(
+            !engine
+                .snapshot()
+                .values()
+                .any(|f| f.symbols.iter().any(|s| s.name == "due"))
+        );
+    }
     #[test]
     fn changes_deletion_rename_cache_reload_and_cancel() {
         let t = tempfile::tempdir().unwrap();

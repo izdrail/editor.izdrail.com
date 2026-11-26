@@ -333,6 +333,13 @@ impl Scan<'_> {
     }
 }
 pub fn scan(source: &str, cancel: &AtomicBool) -> Result<FileSymbols, String> {
+    scan_laravel(source, cancel, false)
+}
+pub fn scan_laravel(
+    source: &str,
+    cancel: &AtomicBool,
+    laravel: bool,
+) -> Result<FileSymbols, String> {
     if cancel.load(Ordering::Relaxed) {
         return Err("cancelled".into());
     }
@@ -354,6 +361,9 @@ pub fn scan(source: &str, cancel: &AtomicBool) -> Result<FileSymbols, String> {
         cancel,
     };
     scanner.walk(tree.root_node(), "", None, 0);
+    if laravel {
+        super::laravel::enrich(tree.root_node(), source, &mut scanner.out, cancel);
+    }
     if cancel.load(Ordering::Relaxed) {
         return Err("cancelled".into());
     }

@@ -106,6 +106,12 @@ pub fn bucket(context: &Option<CursorContext>, kind: Option<K>) -> u8 {
     };
     if preferred { 0 } else { 1 }
 }
+fn symbols_alias_qualified(symbols: &[PhpIndexSymbol], qualified: &str) -> bool {
+    symbols.iter().any(|s| {
+        s.qualified == qualified
+            && s.attributes.iter().any(|a| a == "laravel:local-scope")
+    })
+}
 pub fn candidates(
     request: &Request,
     symbols: Vec<PhpIndexSymbol>,
@@ -128,12 +134,19 @@ pub fn candidates(
     }
     let mut symbols = symbols;
     symbols.retain(|s| {
-        !request
-            .unsaved
-            .iter()
-            .any(|local| local.qualified == s.qualified)
+        s.attributes.iter().any(|a| a == "laravel:local-scope")
+            || !request
+                .unsaved
+                .iter()
+                .any(|local| local.qualified == s.qualified)
     });
-    symbols.extend(request.unsaved.clone());
+    let locals = request
+        .unsaved
+        .iter()
+        .filter(|local| !symbols_alias_qualified(&symbols, &local.qualified))
+        .cloned()
+        .collect::<Vec<_>>();
+    symbols.extend(locals);
     symbols
         .into_iter()
         .filter_map(|s| {
@@ -162,6 +175,7 @@ pub fn candidates(
                 }
                 if matches!(request.context, Some(CursorContext::InstanceMember))
                     && (s.is_static || s.kind == "constant")
+                    && !s.attributes.iter().any(|a| a == "laravel:local-scope")
                 {
                     return None;
                 }
@@ -229,6 +243,33 @@ pub fn candidates(
         })
         .collect()
 }
+/// Bounded line-only lookup. False evidence/context must preserve normal F12.
+pub fn definition_member(
+    laravel: bool,
+    allowed: bool,
+    line: &str,
+    column: usize,
+) -> Option<(String, String)> {
+    if !laravel || !allowed {
+        return None;
+    }
+    let end = line
+        .get(column..)?
+        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .map_or(line.len(), |n| column + n);
+    let prefix = line.get(..end)?;
+    if request(prefix, None, None).context != Some(CursorContext::StaticMember) {
+        return None;
+    }
+    let receiver = receiver(prefix);
+    if receiver.is_empty() || receiver.starts_with('$') {
+        return None;
+    }
+    let name = prefix
+        .rsplit(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .next()?;
+    (!name.is_empty()).then(|| (receiver.into(), name.into()))
+}
 /// Match quality remains Nucleo-owned. These are tie-breakers after its score.
 pub fn boundary_bonus(label: &str, input: &str) -> u8 {
     let mut initials = String::new();
@@ -276,6 +317,80 @@ mod tests {
             end: 1,
             line: 0,
             column: 0,
+        }
+    }
+    #[test]
+    fn native_definition_skips_cached_comment_and_string_regions() {
+        use std::sync::atomic::AtomicUsize;
+        for source in ["<?php // Account::settled", "<?php $s='Account::settled';"] {
+            let document = lapce_php::Document::new_context(
+                lapce_xi_rope::Rope::from(source),
+                false,
+                &AtomicUsize::new(0),
+            )
+            .unwrap();
+            let offset = source.find("settled").unwrap() + 3;
+            assert!(
+                definition_member(
+                    true,
+                    document.completion_allowed(offset),
+                    source,
+                    offset
+                )
+                .is_none()
+            );
+        }
+    }
+    #[test]
+    fn native_definition_gates_and_line_utf8() {
+        for (laravel, allowed) in [(false, true), (true, false)] {
+            assert!(
+                definition_member(laravel, allowed, "Other::save();", 9).is_none()
+            );
+        }
+        assert_eq!(
+            definition_member(true, true, "/* λ */ Account::settled();", 21),
+            Some(("Account".into(), "settled".into()))
+        );
+    }
+    #[test]
+    fn laravel_local_scope_survives_unsaved_original_and_instance_filter() {
+        let symbol = PhpIndexSymbol {
+            path: "Ledger.php".into(),
+            name: "recent".into(),
+            qualified: "Domain\\Ledger::recent".into(),
+            kind: "method".into(),
+            namespace: "Domain".into(),
+            container: Some("Domain\\Ledger".into()),
+            visibility: Some("public".into()),
+            is_static: true,
+            alias: None,
+            target: Some("Domain\\Ledger::recent".into()),
+            attributes: vec!["laravel:local-scope".into()],
+            byte: 0,
+            end: 0,
+            line: 0,
+            column: 0,
+        };
+        for context in [CursorContext::StaticMember, CursorContext::InstanceMember] {
+            let mut request = Request {
+                context: Some(context),
+                owner: Some("Domain\\Ledger".into()),
+                ..Default::default()
+            };
+            let mut original = symbol.clone();
+            original.is_static = false;
+            original.visibility = Some("protected".into());
+            original.attributes.clear();
+            request.unsaved.push(original);
+            request.allow_nonpublic = true;
+            assert_eq!(
+                candidates(&request, vec![symbol.clone()])
+                    .iter()
+                    .filter(|s| s.label == "recent")
+                    .count(),
+                1
+            );
         }
     }
     #[test]

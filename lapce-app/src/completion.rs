@@ -1246,6 +1246,33 @@ mod php_order_tests {
 mod native_namespace_dedupe_tests {
     use super::*;
     #[test]
+    fn facade_pack_and_native_method_dedupe() {
+        let row = |source| ScoredCompletionItem {
+            item: CompletionItem {
+                label: "get".into(),
+                insert_text: Some("get".into()),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source,
+            score: 0,
+            label_score: 0,
+            indices: vec![],
+            show_on_empty: true,
+        };
+        assert_eq!(
+            dedupe_keeping_blade_snippets(
+                vec![
+                    row(CompletionSource::Native),
+                    row(CompletionSource::Project)
+                ],
+                false
+            )
+            .len(),
+            1
+        );
+    }
+    #[test]
     fn same_short_name_different_namespace_survives() {
         let row = |qualified: &str| ScoredCompletionItem {
             item: CompletionItem {

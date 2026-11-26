@@ -728,6 +728,59 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             if fixture.read_text() != text:
                 raise RuntimeError('Scope capture changed source without acceptance')
 
+        # P5 same-index Laravel scopes/facade members. Non-conventional domain
+        # root prevents the old app/Models filename scanner satisfying the test.
+        (project / 'domain').mkdir(exist_ok=True)
+        composer_data = json.loads(composer_file.read_text())
+        composer_data.setdefault('require', {})['laravel/framework'] = '^12.0'
+        composer_file.write_text(json.dumps(composer_data))
+        model_text = '<?php\nnamespace Domain;\nclass Ledger extends \\Illuminate\\Database\\Eloquent\\Model {\n    public function scopeSettled($query) { return $query; }\n}\n'
+        (project / 'domain/Ledger.php').write_text(model_text)
+        facade_text = '<?php\nnamespace Domain;\n/** @method static string deliver(string $text) */\nclass Relay extends \\Illuminate\\Support\\Facades\\Facade {}\n'
+        (project / 'domain/Relay.php').write_text(facade_text)
+        # A real native facade contract overlaps the bundled Cache pack.
+        (project / 'domain/Cache.php').write_text('<?php\nnamespace Illuminate\\Support\\Facades;\n/** @method static mixed get(string $key) */\nclass Cache extends Facade {}\n')
+        time.sleep(3)
+        laravel_cases = [
+            ('54d-cache-dedupe', '<?php\nuse Illuminate\\Support\\Facades\\Cache;\nCache::ge', 'get'),
+            ('54-laravel-scope', '<?php\nuse Domain\\Ledger as Account;\nAccount::sett', 'settled'),
+            ('54a-laravel-facade', '<?php\nuse Domain\\Relay as Mailer;\nMailer::deli', 'deliver'),
+        ]
+        for capture, text, expected in laravel_cases:
+            fixture = project / (capture + '.php'); fixture.write_text(text)
+            run('key', 'Escape', 'ctrl+p'); time.sleep(0.6)
+            run('type', '--clearmodifiers', fixture.name); run('key', 'Return'); time.sleep(1.5)
+            run('key', 'ctrl+End', 'ctrl+space'); time.sleep(2); shot(capture)
+            pixels = Image.open(out / (capture + '.png'))
+            ocr_image = out / (capture + '-ocr.png')
+            pixels.crop((219, 76, 1100, 412)).resize((1762, 672)).save(ocr_image)
+            rendered = subprocess.run(['tesseract', str(ocr_image), 'stdout', '--psm', '11'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+            if expected not in rendered or (capture != '54d-cache-dedupe' and 'native php' not in rendered):
+                raise RuntimeError('P5 rendered native completion missing: ' + capture)
+            if capture == '54d-cache-dedupe':
+                # Popup only, source text itself is outside this crop.
+                rows = [line.strip() for line in rendered.splitlines() if line.strip() == 'get']
+                if len(rows) > 1:
+                    raise RuntimeError('Duplicate Cache::get rows rendered')
+            run('key', 'Escape')
+            if fixture.read_text() != text:
+                raise RuntimeError('Laravel completion changed source without acceptance')
+        # Exact indexed method/comment byte targets, never a basename search.
+        for capture, text, expected_source in [
+            ('54b-laravel-definition-target', '<?php\nuse Domain\\Ledger as Account;\nAccount::settled();\n', model_text),
+            ('54c-facade-definition-target', '<?php\nuse Domain\\Relay as Mailer;\nMailer::deliver();\n', facade_text),
+        ]:
+            fixture = project / (capture + '.php'); fixture.write_text(text)
+            run('key', 'ctrl+p'); time.sleep(0.6)
+            run('type', '--clearmodifiers', fixture.name); run('key', 'Return'); time.sleep(1.5)
+            run('key', 'ctrl+End', 'Up', 'End', 'Left', 'Left', 'Left', 'Left', 'F12'); time.sleep(2)
+            shot(capture)
+            run('key', 'ctrl+a', 'ctrl+c'); time.sleep(0.3)
+            copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+            run('key', 'Escape')
+            if copied != expected_source:
+                raise RuntimeError('P5 definition did not open exact indexed target: ' + capture)
+
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

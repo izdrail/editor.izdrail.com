@@ -702,7 +702,12 @@ impl EditorData {
         let editor = data.clone();
         cx.create_effect(move |previous| {
             let doc = editor.doc();
-            let context_rev = doc.syntax.with(|s| (s.php_context_rev, s.current_php_context().is_some_and(|p|p.analysis_ready)));
+            let context_rev = doc.syntax.with(|s| {
+                (
+                    s.php_context_rev,
+                    s.current_php_context().is_some_and(|p| p.analysis_ready),
+                )
+            });
             if previous != Some(context_rev)
                 && context_rev.0 == Some(doc.rev())
                 && editor.common.completion.with_untracked(|c| {
@@ -1801,6 +1806,10 @@ impl EditorData {
     }
 
     fn go_to_definition(&self) {
+        self.go_to_definition_native(true);
+    }
+
+    fn go_to_definition_native(&self, native: bool) {
         // Definition navigation preserves preview tabs. All destinations below
         // bypass preview replacement, while existing destination tabs are reused.
         // The source tooltip must not follow us to the destination, nor may
@@ -1818,6 +1827,106 @@ impl EditorData {
             Some(path) => path,
             None => return,
         };
+
+        // Exact indexed Laravel callable targets, including non-conventional
+        // Composer roots. No basename fallback and no source parse on the UI.
+        if native
+            && crate::project_completion::php_completion_path(&path)
+            && self.common.php_laravel.get_untracked()
+        {
+            let lookup = doc.syntax.with_untracked(|syntax| {
+                let context = (syntax.rev == doc.rev())
+                    .then(|| syntax.current_php_context())
+                    .flatten()?;
+                let (line, column) = doc.buffer.with_untracked(|buffer| {
+                    let line = buffer.line_of_offset(offset);
+                    (
+                        buffer.line_content(line).to_string(),
+                        offset - buffer.offset_of_line(line),
+                    )
+                });
+                let (receiver, name) = crate::php_completion::definition_member(
+                    true,
+                    context.completion_allowed(offset),
+                    &line,
+                    column,
+                )?;
+                let scope = context.completion_scope(offset);
+                let owner = match receiver.as_str() {
+                    "self" | "static" => scope.class?,
+                    "parent" => scope.parent?,
+                    _ => lapce_php::resolve_completion_name(
+                        &receiver,
+                        &scope.namespace,
+                        &scope.imports,
+                    ),
+                };
+                Some((owner, name))
+            });
+            if let Some((owner, name)) = lookup {
+                let editor = self.clone();
+                let guard = request_current.clone();
+                let expected = name.clone();
+                let send = create_ext_action(
+                    self.scope,
+                    move |symbols: Vec<lapce_rpc::proxy::PhpIndexSymbol>| {
+                        if !guard() {
+                            return;
+                        }
+                        let mut targets = symbols
+                            .into_iter()
+                            .filter(|s| {
+                                s.name == expected
+                                    && s.attributes
+                                        .iter()
+                                        .any(|a| a.starts_with("laravel:"))
+                            })
+                            .collect::<Vec<_>>();
+                        targets.sort_by_key(|s| (s.path.clone(), s.byte));
+                        targets
+                            .dedup_by(|a, b| a.path == b.path && a.byte == b.byte);
+                        if targets.len() == 1 {
+                            let target = targets.remove(0);
+                            editor.common.internal_command.send(
+                                InternalCommand::JumpToLocation {
+                                    location: EditorLocation {
+                                        path: target.path,
+                                        position: Some(EditorPosition::Offset(
+                                            target.byte,
+                                        )),
+                                        scroll_offset: None,
+                                        ignore_unconfirmed: true,
+                                        same_editor_tab: false,
+                                    },
+                                },
+                            );
+                        } else {
+                            editor.go_to_definition_native(false);
+                        }
+                    },
+                );
+                self.common.proxy.request_async(
+                    lapce_rpc::proxy::ProxyRequest::PhpCompletionQuery {
+                        token: name,
+                        kinds: vec!["method".into()],
+                        container: Some(owner),
+                        static_only: Some(true),
+                        allow_nonpublic: false,
+                        limit: 1000,
+                    },
+                    move |result| {
+                        let symbols = match result {
+                            Ok(ProxyResponse::PhpIndexQuery { symbols, .. }) => {
+                                symbols
+                            }
+                            _ => vec![],
+                        };
+                        send(symbols);
+                    },
+                );
+                return;
+            }
+        }
 
         // A Blade/Twig template or component under the cursor opens directly,
         // before any language server is asked.

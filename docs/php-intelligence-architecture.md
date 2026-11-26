@@ -304,3 +304,65 @@ static and destructuring bindings also invalidate old types.
 The editor completion effect tracks (php_context_rev, analysis_ready). Its second
 publication calls update_completion(true); CompletionData::request registers the
 input key before the proxy call and the same-session path checks that key.
+
+
+## Phase 5: Laravel bridge (issue 22)
+
+Composer requirement/lock/installed-package evidence enables Laravel enrichment
+inside the existing bounded PHP parse pass. An artisan filename alone is not
+proof. Cache version 3 invalidates old metadata; composer fingerprint changes
+reparse files, and edit/delete reconciliation removes stale aliases. No PHP,
+Artisan, service provider or user application is executed.
+
+The one symbol graph now records directly evidenced model, facade, provider,
+request, command, queued-job and collection roles. Eloquent legacy scopeX methods
+and exactly resolved Laravel Scope attributes produce public callable aliases.
+Relationship methods are tagged only for direct return $this->knownRelation(...).
+Custom facade @method static declarations become native members. All retain
+real byte locations and participate in the existing completion RPC and single
+Tantivy writer/cache, including Composer roots outside app/Models. Exact indexed
+Laravel static-call definitions resolve to the source method/comment, with an
+origin/cursor/revision guard; ambiguous or absent targets keep existing navigation.
+The index worker does the parse/enrichment; UI lookup uses the cached context.
+50,000 nodes, 4,096 aliases, file size and cancellation bounds remain explicit.
+
+### Existing providers retained, not reimplemented
+
+- Bundled facades: laravel_completion.rs, sixteen facade packs, namespace/import
+  validation, existing public API signature baselines.
+- Models/relationships and legacy scope navigation: model_index.rs,
+  eloquent_scopes.rs; the new aliases also work outside conventional folders.
+- Routes/middleware, bindings, commands, events/listeners/jobs, request fields,
+  config, helpers, Blade and collection/query-builder completions remain in the
+  existing project_completion and dedicated navigation providers. Their tests
+  run unchanged in the workspace suite; this is reuse, not a second PHP index.
+
+### Deliberate limits
+
+Roles require a direct canonical framework ancestor/interface in this pass;
+project-base-class role propagation, dynamic facade accessor execution, container
+runtime bindings, macros, relationship result types, schema introspection and
+chained builder type propagation are not inferred. Existing string providers
+remain bounded text/metadata providers, not whole-framework semantic resolution.
+Facade PHPDoc targets open the declared contract, not an invented backing method.
+No claim that a queued class is necessarily a job rather than a queued listener.
+Tests cover Composer gates, scope forms/access/collisions, false attributes,
+facade contract source ranges, direct roles, edit and Composer invalidation,
+unsaved adapter precedence, plus no-LSP GUI54 completion and F12 navigation.
+
+Review notes: native static F12 is gated by Laravel Composer package evidence;
+non-Laravel calls use the previous path without the new RPC. It reads one rope
+line, not the document. Cached completion_allowed rejects comments/strings.
+Unsaved *new* scopeX methods do not gain a callable alias until saved/indexed.
+An already indexed attribute scope alias supersedes its unsaved protected original
+for completion, even inside its declaring class. Facade pack/native member rows
+share the label/insertion key and are deduplicated by existing source priority
+(test: facade_pack_and_native_method_dedupe). Routes/config/Blade listed above
+are retained earlier providers, not new Phase 5 indexing.
+
+Laravel F12 gating is a workspace signal published by the proxy from the same
+Composer instance as the indexer (manifest, lock and installed.json evidence),
+refreshed on Composer watcher changes. F12 performs no project-profile file IO.
+Shared workspace owners notify each attached UI using weak, identity-deduped
+observers pruned when dispatchers close; initial state is false until
+background workspace initialization sends the evidence.

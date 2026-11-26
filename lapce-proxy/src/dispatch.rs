@@ -83,7 +83,7 @@ impl ProxyHandler for Dispatcher {
                 self.workspace = workspace;
                 self.php_index = self.workspace.clone().and_then(|root| {
                     lapce_core::directory::Directory::cache_directory()
-                        .map(|cache| crate::php::Manager::start(root, cache))
+                        .map(|cache| crate::php::Manager::start_with_core(root, cache, Some(self.core_rpc.clone())))
                 });
                 // Workspace is known here, not in `new`: install the
                 // PHP-aware adapter resolver over a fresh manager.

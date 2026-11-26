@@ -44,6 +44,9 @@ pub enum FileChanged {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "method", content = "params")]
 pub enum CoreNotification {
+    PhpFramework {
+        laravel: bool,
+    },
     ProxyStatus {
         status: ProxyStatus,
     },
@@ -172,7 +175,31 @@ pub struct CoreRpcHandler {
     pending: Arc<Mutex<HashMap<u64, Sender<Result<CoreResponse, RpcError>>>>>,
 }
 
+/// Notification observer that does not keep a closed UI/dispatcher alive.
+#[derive(Clone)]
+pub struct WeakCoreRpcHandler {
+    tx: Sender<CoreRpc>,
+    alive: std::sync::Weak<AtomicU64>,
+}
+impl WeakCoreRpcHandler {
+    pub fn notify(&self, notification: CoreNotification) -> bool {
+        self.alive.upgrade().is_some()
+            && self
+                .tx
+                .send(CoreRpc::Notification(Box::new(notification)))
+                .is_ok()
+    }
+    pub fn same(&self, other: &Self) -> bool {
+        self.alive.ptr_eq(&other.alive)
+    }
+}
 impl CoreRpcHandler {
+    pub fn downgrade(&self) -> WeakCoreRpcHandler {
+        WeakCoreRpcHandler {
+            tx: self.tx.clone(),
+            alive: Arc::downgrade(&self.id),
+        }
+    }
     pub fn new() -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         Self {
