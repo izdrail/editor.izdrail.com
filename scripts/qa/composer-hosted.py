@@ -12,8 +12,9 @@ binary = str(Path(sys.argv[1]).resolve())
 out = Path(sys.argv[2]).resolve()
 out.mkdir(parents=True, exist_ok=True)
 home = Path(tempfile.mkdtemp(prefix='gravity-gui-', dir='/tmp'))
-project = out / 'project'
-project.mkdir(exist_ok=True)
+# The native index correctly excludes target/**. Keep the opened workspace
+# outside the artifact directory (CI passes target/gui-acceptance as out).
+project = Path(tempfile.mkdtemp(prefix='gravity-php-project-', dir='/tmp'))
 source = '<?php\nnamespace App;\nfinal class UserService { public function name(): string { return "Synthetic"; } }\n'
 (project / 'example.php').write_text(source)
 for index in range(10):
