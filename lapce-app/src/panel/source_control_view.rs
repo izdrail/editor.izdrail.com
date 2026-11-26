@@ -707,9 +707,10 @@ fn keyboard_scm_action(
         })
         .style(move |s| {
             s.focus_visible(|s| {
-                s.background(
-                    config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
-                )
+                let config = config.get();
+                s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
+                    .outline(1.0)
+                    .outline_color(config.color(LapceColor::EDITOR_FOCUS))
             })
         })
 }

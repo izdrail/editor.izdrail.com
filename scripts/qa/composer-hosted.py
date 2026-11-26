@@ -913,6 +913,43 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Return'); time.sleep(2); shot('57a-scm-staged-diff')
         if 'event=diff-tab-opened' not in scm_events()[before_staged_open:]:
             raise RuntimeError('SCM staged Enter did not open actual diff')
+        # Last visual case. Preserve actual geometry and theme settings.
+        original_theme_settings = settings_file.read_text()
+        geometry = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', window], env=env, check=True, capture_output=True, text=True).stdout
+        dimensions = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+        original_width, original_height = dimensions['WIDTH'], dimensions['HEIGHT']
+        def staged_visual_focus():
+            seed_start = len(scm_events())
+            run('mousemove', str(staged_x), str(staged_y), 'mousedown', '1')
+            run('mousemove', '600', '200', 'mouseup', '1'); time.sleep(1)
+            if any('open-diff' in e or 'diff-tab' in e for e in scm_events()[seed_start:]):
+                raise RuntimeError('Theme focus seed activated staged diff')
+            run('key', 'Tab', 'shift+Tab'); time.sleep(1)
+            if not scm_events()[-1].startswith('event=focus:row:'):
+                raise RuntimeError('SCM staged focus lost across resize/theme reload')
+        def light_pixels(name):
+            # Blank native title strip, away from text and active editor state.
+            image = Image.open(out / (name + '.png')).convert('RGB')
+            patch = image.crop((300, 2, 350, 14))
+            pixels = list(patch.getdata())
+            if sum(sum(px) / 3 for px in pixels) / len(pixels) < 170:
+                raise RuntimeError('Expected actual light-theme pixels for ' + name)
+        staged_visual_focus(); shot('58-scm-focus-outline-dark')
+        run('windowsize', window, '850', '640'); time.sleep(2)
+        staged_visual_focus(); shot('58a-scm-focus-dark-narrow')
+        theme_text = original_theme_settings
+        if 'color-theme = "Lapce Dark"' in theme_text:
+            theme_text = theme_text.replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"')
+        elif 'color-theme = "Lapce Light"' not in theme_text:
+            theme_text = theme_text.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)
+        settings_file.write_text(theme_text)
+        time.sleep(3); staged_visual_focus(); shot('58b-scm-focus-light-narrow')
+        light_pixels('58b-scm-focus-light-narrow')
+        run('windowsize', window, original_width, original_height); time.sleep(2)
+        staged_visual_focus(); shot('58c-scm-focus-light-wide')
+        light_pixels('58c-scm-focus-light-wide')
+        settings_file.write_text(original_theme_settings)
+        time.sleep(3)
         if scm_file.read_text() != scm_after or staged_file.read_text() != staged_after:
             raise RuntimeError('SCM keyboard workflow changed fixture source')
         if git_fixture('status', '--porcelain=v1') != before_status:

@@ -314,3 +314,10 @@ diff; checkbox visibly clears then restores, without opening a diff. Control
 trace confirms stable focus identity and no pointer-seed diff activation. Exact
 fixture source and Git status unchanged. Staged-row activation remains pending
 next actual 57/57a captures. Commit/AI suggestion and broad UX-010 stay open.
+
+
+UI-039 staged-row acceptance: af04016 / 45823724011 all four gates green,
+actual57 focus and57a added-file diff inspected, stable row identity and no
+fixture source/index mutation. Focus on small checkbox remains too subtle for
+broad accessibility acceptance. Add a non-layout-changing EDITOR_FOCUS outline
+to existing keyboard focus style and verify dark/light plus narrow/wide pixels.
