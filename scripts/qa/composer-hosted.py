@@ -33,6 +33,12 @@ import json
     'enabled = true\nauto-install = false\n[servers.navigation-fixture]\n'
     'languages = ["python"]\ncommand = "python3"\nargs = '
     + json.dumps([str(lsp_fixture), str(lsp_log)]) + '\n')
+# Real Bash through a forwarding PTY records exact synthetic UI input bytes.
+pty_audit = out / 'terminal-pty-audit'
+pty_audit.mkdir(exist_ok=True)
+pty_fixture = Path(__file__).with_name('terminal-pty-fixture.py').resolve()
+with (config / 'settings.toml').open('a') as settings:
+    settings.write('\n[terminal.default-profile]\nlinux = "qa-pty"\n[terminal.profiles.qa-pty]\ncommand = "python3"\narguments = ' + json.dumps([str(pty_fixture), str(pty_audit)]) + '\n')
 env = os.environ | {'LAPCE_TERMINAL_UI_TRACE': '1', 'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(name, None)
@@ -203,6 +209,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Terminal header sequence or activation isolation failed')
         (out / 'terminal-keyboard-assertions.log').write_text('same_header_reverse=true\nclose_not_activated=true\nenter_space_header_only=true\n' + '\n'.join(events))
         # Create and close only one new disposable shell, never the original.
+        original_pty_files = list(pty_audit.glob('*.input'))
+        if len(original_pty_files) != 1:
+            raise RuntimeError('Expected one audited original PTY')
+        original_pty = original_pty_files[0]
+        before_pty = original_pty.read_bytes()
+        (out / 'terminal-pty-before.log').write_text(before_pty.hex() + '\n')
+        shot('00-terminal-original-before-second')
         run('key', 'ctrl+shift+F8'); time.sleep(3)
         start = len(terminal_events())
         run('mousemove', '570', '490', 'mousedown', '1')
@@ -223,6 +236,12 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '600', '220', 'mouseup', '1'); time.sleep(0.5)
         if header_identity not in terminal_events()[start:]:
             raise RuntimeError('Original terminal header not preserved after close')
+        after_pty = original_pty.read_bytes()
+        (out / 'terminal-pty-after.log').write_text(after_pty.hex() + '\n')
+        (out / 'terminal-pty-all-input.log').write_text('\n'.join(f.name + '=' + f.read_bytes().hex() for f in pty_audit.glob('*.input')))
+        if before_pty != after_pty:
+            raise RuntimeError('Second terminal create/close leaked bytes into original PTY; inspect before/after logs')
+
         (out / 'terminal-second-tab-assertions.log').write_text('distinct_new_header=true\ndistinct_close_target=true\none_deliberate_close=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
