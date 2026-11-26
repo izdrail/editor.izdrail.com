@@ -101,7 +101,11 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
             }
             if new_focus_terminal.tab_info.with_untracked(|info| info.tabs.is_empty()) {
                 new_focus_panel.hide_panel(&PanelKind::Terminal);
-                focus.set(Focus::Workbench);
+                // A global shortcut may already have moved application
+                // focus to Palette. Do not overwrite that destination.
+                if focus.get_untracked() == Focus::Panel(PanelKind::Terminal) {
+                    focus.set(Focus::Workbench);
+                }
             }
         })
         .on_cleanup(move || {

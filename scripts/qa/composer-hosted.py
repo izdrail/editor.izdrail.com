@@ -314,6 +314,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('00-terminal-empty-after-letter')
         if terminal_events().count('event=create:tab') != creations:
             raise RuntimeError('Letter on empty New created a shell')
+        run('key', 'ctrl+x'); time.sleep(0.5)
+        shot('00-terminal-empty-after-ctrl-x')
+        if terminal_events().count('event=create:tab') != creations:
+            raise RuntimeError('Ctrl+x fallback created a shell')
         run('key', 'ctrl+Return'); time.sleep(1)
         shot('00-terminal-empty-after-ctrl-enter')
         empty_pixels = subprocess.run(['tesseract', str(out / '00-terminal-empty-after-ctrl-enter.png'), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout
@@ -345,7 +349,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Empty New shortcut did not visibly open command palette')
         if terminal_tab_count('00-terminal-empty-palette-shortcut') != 0 or terminal_events().count('event=create:tab') != palette_creations:
             raise RuntimeError('Empty-panel palette shortcut created a shell')
+        run('type', '--clearmodifiers', 'zz_terminal_palette_focus_probe'); time.sleep(1)
+        shot('00-terminal-empty-palette-typed')
         run('key', 'Escape'); time.sleep(1)
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        close_last_keyboard('editor')
+        run('mousemove', '600', '220', 'click', '1'); time.sleep(1)
+        shot('00-terminal-empty-editor-click')
         run('key', 'ctrl+shift+F8'); time.sleep(3)
         close_last_keyboard('tab')
         final_inputs = {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}
