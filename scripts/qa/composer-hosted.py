@@ -711,7 +711,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             time.sleep(2); shot(capture)
             # Read rendered pixels, not source labels or successful key dispatch.
             image = out / (capture + '.png')
-            rendered = subprocess.run(['tesseract', str(image), 'stdout'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+            from PIL import Image
+            ocr_image = out / (capture + '-ocr.png')
+            Image.open(image).crop((219, 76, 1000, 412)).resize((1562, 672)).save(ocr_image)
+            rendered = subprocess.run(['tesseract', str(ocr_image), 'stdout', '--psm', '11'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
             expected = 'native php' if back else 'undefined local variable'
             if expected not in rendered:
                 raise RuntimeError('P4 rendered UI assertion failed: ' + capture + ': expected ' + expected)
