@@ -154,22 +154,39 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                             {
                                 let close = clickable_icon_base(
                                     || LapceIcons::CLOSE,
-                                    Some(move || terminal.close_tab(Some(terminal_tab_id))),
+                                    Some(move || {
+                                        terminal.close_tab(Some(terminal_tab_id))
+                                    }),
                                     || false,
                                     || false,
                                     config,
                                 );
                                 let close_id = close.id();
-                                tooltip_label(config, close
-                                    .on_event_stop(EventListener::FocusGained, move |_| {
-                                        keyboard_focus.set(Some(close_id));
-                                    })
-                                    .on_event_stop(EventListener::FocusLost, move |_| {
-                                        if keyboard_focus.get_untracked() == Some(close_id) {
-                                            keyboard_focus.set(None);
-                                        }
-                                    }), || "Close")
-                                    .style(|s| s.margin_horiz(6.0))
+                                tooltip_label(
+                                    config,
+                                    close
+                                        .on_event_stop(
+                                            EventListener::FocusGained,
+                                            move |_| {
+                                                keyboard_focus.set(Some(close_id));
+                                                terminal_ui_trace(&format!(
+                                                    "focus:close:{close_id:?}"
+                                                ));
+                                            },
+                                        )
+                                        .on_event_stop(
+                                            EventListener::FocusLost,
+                                            move |_| {
+                                                if keyboard_focus.get_untracked()
+                                                    == Some(close_id)
+                                                {
+                                                    keyboard_focus.set(None);
+                                                }
+                                            },
+                                        ),
+                                    || "Close",
+                                )
+                                .style(|s| s.margin_horiz(6.0))
                             },
                             empty().style(move |s| {
                                 s.absolute()
@@ -235,6 +252,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                 row.keyboard_navigable()
                     .on_event_stop(EventListener::FocusGained, move |_| {
                         keyboard_focus.set(Some(row_id));
+                        terminal_ui_trace(&format!("focus:header:{row_id:?}"));
                     })
                     .on_event_stop(EventListener::FocusLost, move |_| {
                         if keyboard_focus.get_untracked() == Some(row_id) {
@@ -258,6 +276,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                                 &key.key.logical_key,
                                 key.modifiers,
                             ) {
+                                terminal_ui_trace("activate:header");
                                 activate();
                             }
                         }
@@ -480,5 +499,12 @@ mod terminal_tab_keyboard_tests {
             &Key::Named(NamedKey::Tab),
             Modifiers::empty()
         ));
+    }
+}
+
+/// Opt-in diagnostics record only control identity/action, never shell data.
+fn terminal_ui_trace(event: &str) {
+    if std::env::var("LAPCE_TERMINAL_UI_TRACE").ok().as_deref() == Some("1") {
+        eprintln!("TERMINAL_UI event={event}");
     }
 }

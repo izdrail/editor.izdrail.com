@@ -365,3 +365,16 @@ The commit proxy stages only checked FileDiff paths, then commits the existing
 index. This fixture has no remote and tracks only the four SCM files plus
 .gitignore; all other generated files remain ignored. Exact tree assertions
 cover four SCM files, with status clean after the deliberate synthetic commit.
+
+c1d242e / 45873420348 all four jobs green. UI-040 bounded Commit/Suggest
+keyboard gate accepted: actual59-59g rings visible dark wide/light narrow,
+Commit/header/row forward and identical reverse verified, hidden AI skipped,
+CtrlSpace no action, empty Commit source/Git unchanged. Deliberate synthetic
+local commit verifies message, four-file tree and clean status; Suggest empty
+diff activates once per Enter/Space with no state change. Provider response
+and cancellation in flight remain unverified, UX-010/Phase1 stay open.
+
+UI-038 terminal close ownership fix exists but reverse/header activation
+pixels remain ambiguous. Add opt-in identity/action traces and assert the
+actual header/close/reverse/activation sequence before deciding more source
+changes are needed. No shell text enters the trace.
