@@ -815,7 +815,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         git_fixture('config', 'user.email', 'qa@example.invalid')
         scm_file = project / 'a_scm_keyboard.php'
         scm_file.write_text('<?php // before keyboard diff fixture\n')
-        (project / '.gitignore').write_text('domain/Bulk/\n')
+        (project / '.gitignore').write_text('*\n!.gitignore\n!a_scm_keyboard.php\n!a_scm_staged.php\n')
         git_fixture('add', 'a_scm_keyboard.php', '.gitignore')
         git_fixture('commit', '-m', 'Synthetic baseline')
         scm_after = '<?php // after keyboard diff fixture\n'
@@ -833,19 +833,24 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             return [line.split('SCM_UI ', 1)[1].strip() for line in (out / 'editor.log').read_text().splitlines() if 'SCM_UI ' in line]
         # Locate the actual named row, never guess a position near Commit.
         import csv, io
-        tsv = subprocess.run(['tesseract', str(out / '56-scm-keyboard-baseline.png'), 'stdout', 'tsv'], check=True, capture_output=True, text=True).stdout
+        from PIL import Image
+        Image.open(out / '56-scm-keyboard-baseline.png').crop((0, 0, 249, 796)).resize((996, 3184)).save(out / '56-scm-ocr.png')
+        tsv = subprocess.run(['tesseract', str(out / '56-scm-ocr.png'), 'stdout', '--psm', '6', 'tsv'], check=True, capture_output=True, text=True).stdout
         targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t')
-                   if 'a_scm_keyboard' in r['text'] and int(r['left']) < 300]
+                   if 'a_scm_keyboard' in r['text'] ]
         if len(targets) != 1:
             raise RuntimeError('Cannot locate unique SCM fixture row in actual baseline pixels')
         target = targets[0]
-        row_x = int(target['left']) + int(target['width']) // 2
-        row_y = int(target['top']) + int(target['height']) // 2
+        row_x = (int(target['left']) + int(target['width']) // 2) // 4
+        row_y = (int(target['top']) + int(target['height']) // 2) // 4
         def focus_scm_row():
             # PointerDown seeds focus, releasing outside cancels Click, so
             # it cannot open the diff and transfer focus into its editor.
+            seed_start = len(scm_events())
             run('mousemove', str(row_x), str(row_y), 'mousedown', '1')
             run('mousemove', '600', '200', 'mouseup', '1'); time.sleep(1)
+            if any('open-diff' in e or 'diff-tab' in e for e in scm_events()[seed_start:]):
+                raise RuntimeError('SCM pointer focus seed accidentally activated a diff')
         before_seed = len(scm_events())
         focus_scm_row()
         seeded = scm_events()[before_seed:]
