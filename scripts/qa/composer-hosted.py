@@ -1028,8 +1028,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
                 break
         else:
             raise RuntimeError('Commit traversal did not reach a visible SCM row')
-        for _ in range(steps):
-            run('key', 'shift+Tab'); time.sleep(0.2)
+        forward_events = scm_events()[traversal_start:]
+        if len(forward_events) != 2 or not forward_events[0].startswith('event=focus:header:') or not forward_events[1].startswith('event=focus:row:'):
+            raise RuntimeError('Expected Commit to header to first row sequence')
+        shot('59f-header-forward-row')
+        run('key', 'shift+Tab'); time.sleep(0.2)
+        if scm_events()[-1] != forward_events[0]:
+            raise RuntimeError('First row did not reverse to same header')
+        shot('59g-header-reverse')
+        run('key', 'shift+Tab'); time.sleep(0.2)
         if scm_events()[-1] != commit_identity or any(e.startswith(('event=focus:suggest:', 'event=suggest ')) for e in scm_events()[traversal_start:]):
             raise RuntimeError('Hidden AI reverse traversal failed')
         start = len(scm_events()); run('key', 'Return', 'space'); time.sleep(1)

@@ -23,7 +23,7 @@ use lapce_rpc::source_control::FileDiff;
 
 use super::{
     data::PanelSection, kind::PanelKind, position::PanelPosition,
-    view::foldable_panel_section,
+    view::foldable_panel_section_with_keyboard_focus,
 };
 use crate::{
     command::{CommandKind, InternalCommand, LapceCommand, LapceWorkbenchCommand},
@@ -267,20 +267,22 @@ pub fn source_control_panel(
             },
         ))
         .style(|s| s.flex_col().width_pct(100.0).padding(10.0)),
-        foldable_panel_section(
+        foldable_panel_section_with_keyboard_focus(
             text("Staged Changes"),
             staged_diffs_view(source_control.clone()),
             window_tab_data
                 .panel
                 .section_open(PanelSection::StagedChanges),
             config,
+            Some(source_control.common.keyboard_focus),
         )
         .style(|s| s.flex_col().width_pct(100.0)),
-        foldable_panel_section(
+        foldable_panel_section_with_keyboard_focus(
             text("Changes"),
-            file_diffs_view(source_control),
+            file_diffs_view(source_control.clone()),
             window_tab_data.panel.section_open(PanelSection::Changes),
             config,
+            Some(source_control.common.keyboard_focus),
         )
         .style(|s| s.flex_col().size_pct(100.0, 100.0)),
     ))
@@ -799,7 +801,7 @@ mod keyboard_tests {
 }
 
 /// Opt-in UI diagnostics contain control identity/state only, never source text.
-fn scm_trace(event: &str, checked: Option<bool>) {
+pub(crate) fn scm_trace(event: &str, checked: Option<bool>) {
     if std::env::var("LAPCE_SCM_TRACE").ok().as_deref() == Some("1") {
         eprintln!("SCM_UI event={event} checked={checked:?}");
     }

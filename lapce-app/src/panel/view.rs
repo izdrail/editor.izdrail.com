@@ -1,7 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 
 use floem::{
-    AnyView, IntoView, View,
+    AnyView, IntoView, View, ViewId,
     event::{Event, EventListener, EventPropagation},
     kurbo::{Point, Size},
     reactive::{
@@ -44,8 +44,18 @@ pub fn foldable_panel_section(
     open: RwSignal<bool>,
     config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View {
-    stack((
-        h_stack((
+    foldable_panel_section_with_keyboard_focus(header, child, open, config, None)
+}
+
+/// Optional keyboard ownership for panels whose editor otherwise consumes Tab.
+pub fn foldable_panel_section_with_keyboard_focus(
+    header: impl View + 'static,
+    child: impl View + 'static,
+    open: RwSignal<bool>,
+    config: ReadSignal<Arc<LapceConfig>>,
+    keyboard_focus: Option<RwSignal<Option<ViewId>>>,
+) -> impl View {
+    let header = h_stack((
             clickable_icon_base(
                 move || {
                     if open.get() {
@@ -82,7 +92,31 @@ pub fn foldable_panel_section(
         })
         .on_click_stop(move |_| {
             open.update(|open| *open = !*open);
-        }),
+        });
+    let id = header.id();
+    let header = header
+        .on_event_cont(EventListener::FocusGained, move |_| {
+            if let Some(owner) = keyboard_focus {
+                owner.set(Some(id));
+                super::source_control_view::scm_trace(&format!("focus:header:{id:?}"), None);
+            }
+        })
+        .on_event_cont(EventListener::FocusLost, move |_| {
+            if let Some(owner) = keyboard_focus {
+                if owner.get_untracked() == Some(id) {
+                    owner.set(None);
+                }
+            }
+        })
+        .on_cleanup(move || {
+            if let Some(owner) = keyboard_focus {
+                if owner.get_untracked() == Some(id) {
+                    owner.set(None);
+                }
+            }
+        });
+    stack((
+        header,
         child.style(move |s| s.apply_if(!open.get(), |s| s.hide())),
     ))
 }
