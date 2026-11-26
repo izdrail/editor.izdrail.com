@@ -154,32 +154,51 @@ pub fn source_control_panel(
             }),
             {
                 let source_control = source_control.clone();
-                label(|| "Commit".to_string())
-                    .on_click_stop(move |_| {
-                        source_control.commit();
-                    })
-                    .style(move |s| {
-                        let config = config.get();
-                        s.margin_top(10.0)
-                            .line_height(1.6)
-                            .width_pct(100.0)
-                            .justify_center()
-                            .border(1.0)
-                            .border_radius(6.0)
-                            .border_color(config.color(LapceColor::LAPCE_BORDER))
-                            .hover(|s| {
-                                s.cursor(CursorStyle::Pointer).background(
+                keyboard_scm_action(
+                    label(|| "Commit".to_string()),
+                    source_control.common.keyboard_focus,
+                    config,
+                    "commit",
+                )
+                .on_click_stop(move |event| {
+                    if let Event::KeyDown(key) = event {
+                        if !scm_activation(&key.key.logical_key, key.modifiers) {
+                            return;
+                        }
+                    }
+                    scm_trace("commit", None);
+                    source_control.commit();
+                })
+                .style(move |s| {
+                    let config = config.get();
+                    s.margin_top(10.0)
+                        .line_height(1.6)
+                        .width_pct(100.0)
+                        .justify_center()
+                        .border(1.0)
+                        .border_radius(6.0)
+                        .border_color(config.color(LapceColor::LAPCE_BORDER))
+                        .focus_visible(|s| {
+                            s.border_color(config.color(LapceColor::EDITOR_FOCUS))
+                                .background(
                                     config
-                                        .color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                                        .color(LapceColor::PANEL_CURRENT_BACKGROUND),
                                 )
-                            })
-                            .active(|s| {
-                                s.background(config.color(
+                        })
+                        .hover(|s| {
+                            s.cursor(CursorStyle::Pointer).background(
+                                config.color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                            )
+                        })
+                        .active(|s| {
+                            s.background(
+                                config.color(
                                     LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND,
-                                ))
-                            })
-                            .selectable(false)
-                    })
+                                ),
+                            )
+                        })
+                        .selectable(false)
+                })
             },
             {
                 let source_control = source_control.clone();
@@ -190,14 +209,28 @@ pub fn source_control_panel(
                     let config = config.get();
                     config.ai_chat.enabled && config.ai_chat.backend == "ollama"
                 };
-                label(move || {
-                    if suggesting.get() {
-                        "Cancel AI suggestion".to_string()
-                    } else {
-                        "Suggest message (AI)".to_string()
+                keyboard_scm_action(
+                    label(move || {
+                        if suggesting.get() {
+                            "Cancel AI suggestion".to_string()
+                        } else {
+                            "Suggest message (AI)".to_string()
+                        }
+                    }),
+                    source_control.common.keyboard_focus,
+                    config,
+                    "suggest",
+                )
+                .on_click_stop(move |event| {
+                    if let Event::KeyDown(key) = event {
+                        if !scm_activation(&key.key.logical_key, key.modifiers) {
+                            return;
+                        }
                     }
-                })
-                .on_click_stop(move |_| {
+                    if !ai_ready() {
+                        return;
+                    }
+                    scm_trace("suggest", None);
                     source_control.suggest_commit_message();
                 })
                 .style(move |s| {
@@ -210,6 +243,13 @@ pub fn source_control_panel(
                         .border_radius(6.0)
                         .border_color(config.color(LapceColor::LAPCE_BORDER))
                         .apply_if(!ai_ready(), |s| s.hide())
+                        .focus_visible(|s| {
+                            s.border_color(config.color(LapceColor::EDITOR_FOCUS))
+                                .background(
+                                    config
+                                        .color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                                )
+                        })
                         .hover(|s| {
                             s.cursor(CursorStyle::Pointer).background(
                                 config.color(LapceColor::PANEL_HOVERED_BACKGROUND),

@@ -987,6 +987,86 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('SCM keyboard workflow changed Git index or worktree')
         (out / 'scm-keyboard-assertions.log').write_text('staged_row_keyboard_diff=true\nsame_row_focus=true\ncheckbox_focus_retained=true\ncheckbox_toggled_restored=true\nreturn_and_space_actual_diff=true\nindex_worktree_unchanged=true\n' + '\n'.join(scm_events()))
 
+        # UI-040 deliberate actions are confined to this synthetic local repo.
+        def focus_scm_button(token, capture):
+            shot(capture + '-locate')
+            image = Image.open(out / (capture + '-locate.png'))
+            image.crop((0, 0, 249, 320)).resize((996, 1280)).save(out / (capture + '-ocr.png'))
+            tsv = subprocess.run(['tesseract', str(out / (capture + '-ocr.png')), 'stdout', '--psm', '6', 'tsv'], check=True, capture_output=True, text=True).stdout
+            targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t') if r['text'] == token and int(r['top']) > 800]
+            if len(targets) != 1:
+                raise RuntimeError('Cannot locate unique SCM action: ' + token)
+            item = targets[0]
+            x = (int(item['left']) + int(item['width']) // 2) // 4
+            y = (int(item['top']) + int(item['height']) // 2) // 4
+            start = len(scm_events())
+            run('mousemove', str(x), str(y), 'mousedown', '1')
+            run('mousemove', '600', '200', 'mouseup', '1'); time.sleep(0.5)
+            run('key', 'Tab', 'shift+Tab'); time.sleep(0.5)
+            kind = 'commit' if token == 'Commit' else 'suggest'
+            if not scm_events()[-1].startswith('event=focus:' + kind + ':'):
+                raise RuntimeError('SCM button reverse traversal missed: ' + token)
+            if any(e.startswith(('event=commit ', 'event=suggest ')) for e in scm_events()[start:]):
+                raise RuntimeError('SCM focus seed activated button')
+            shot(capture)
+        before_commit = git_fixture('rev-parse', 'HEAD')
+        focus_scm_button('Commit', '59-commit-focus-dark-wide')
+        start = len(scm_events())
+        run('key', 'ctrl+space'); time.sleep(0.5)
+        if any(e.startswith(('event=commit ', 'event=suggest ')) for e in scm_events()[start:]):
+            raise RuntimeError('Modified Space activated SCM action')
+        run('key', 'Tab'); time.sleep(0.5)
+        if not scm_events()[-1].startswith('event=focus:row:'):
+            raise RuntimeError('Hidden AI action was not skipped by Tab')
+        run('key', 'shift+Tab'); time.sleep(0.5)
+        if not scm_events()[-1].startswith('event=focus:commit:'):
+            raise RuntimeError('Hidden AI action was not skipped by Shift+Tab')
+        start = len(scm_events()); run('key', 'Return', 'space'); time.sleep(1)
+        if sum(e.startswith('event=commit ') for e in scm_events()[start:]) != 2:
+            raise RuntimeError('Empty Commit Enter/Space did not each activate once')
+        if git_fixture('rev-parse', 'HEAD') != before_commit or git_fixture('status', '--porcelain=v1') != before_status:
+            raise RuntimeError('Empty Commit changed Git state')
+        # Empty-message guard is tested before typing the deliberate message.
+        run('mousemove', '70', '100', 'click', '1')
+        run('type', '--clearmodifiers', 'Synthetic UI-040 keyboard commit')
+        focus_scm_button('Commit', '59a-commit-ready')
+        run('key', 'Return')
+        for _ in range(30):
+            time.sleep(0.2)
+            if git_fixture('rev-parse', 'HEAD') != before_commit:
+                break
+        if git_fixture('log', '-1', '--format=%s').strip() != 'Synthetic UI-040 keyboard commit':
+            raise RuntimeError('Deliberate keyboard commit did not land')
+        if git_fixture('status', '--porcelain=v1'):
+            raise RuntimeError('Deliberate commit left unexpected tracked changes')
+        for item, expected in [(scm_file, scm_after), (staged_file, staged_after), (long_staged, '<?php // staged layout fixture\n'), (long_unstaged, '<?php // after layout fixture\n')]:
+            if git_fixture('show', 'HEAD:' + item.relative_to(project).as_posix()) != expected or item.read_text() != expected:
+                raise RuntimeError('Deliberate commit tree/source mismatch')
+        shot('59b-commit-complete')
+        # With no checked diff, Suggest must return before a backend request.
+        clean_head = git_fixture('rev-parse', 'HEAD')
+        clean_settings = settings_file.read_text()
+        settings_file.write_text(clean_settings.replace('backend = "local"', 'backend = "ollama"'))
+        time.sleep(3)
+        focus_scm_button('Suggest', '59c-suggest-focus-dark-wide')
+        start = len(scm_events()); run('key', 'Return', 'space'); time.sleep(1)
+        if sum(e.startswith('event=suggest ') for e in scm_events()[start:]) != 2:
+            raise RuntimeError('Suggest Enter/Space did not each activate once')
+        light_settings = settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"')
+        if 'color-theme = "Lapce Light"' not in light_settings:
+            light_settings = light_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)
+        settings_file.write_text(light_settings); time.sleep(3)
+        run('windowsize', window, '850', '640'); time.sleep(2)
+        focus_scm_button('Suggest', '59d-suggest-focus-light-narrow')
+        light_pixels('59d-suggest-focus-light-narrow')
+        focus_scm_button('Commit', '59e-commit-focus-light-narrow')
+        light_pixels('59e-commit-focus-light-narrow')
+        if git_fixture('rev-parse', 'HEAD') != clean_head or git_fixture('status', '--porcelain=v1'):
+            raise RuntimeError('Post-commit traversal/suggestion changed Git state')
+        settings_file.write_text(clean_settings)
+        run('windowsize', window, original_width, original_height); time.sleep(3)
+        (out / 'scm-button-assertions.log').write_text('empty_commit_no_mutation=true\ndeliberate_local_commit_exact_tree=true\nbutton_reverse_traversal=true\nsuggest_empty_diff_two_activations=true\npost_commit_git_unchanged=true\nreal_suggestion_provider_unverified=true\n' + '\n'.join(scm_events()))
+
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

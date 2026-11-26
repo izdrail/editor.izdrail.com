@@ -340,3 +340,28 @@ icons restored flush right, checkbox own border intact, ring inside panel edges
 in both themes/widths, hover preserved and no geometry shift on focus. Long
 name/folder runtime coverage remains open. Add separate nested long-name Git
 fixtures before final theme/width captures, preserving keyboard target paths.
+
+256e273 / 45852282202 all four jobs green. Long nested staged/unstaged
+filenames ellipsize with flush-right status icons in both themes/window widths;
+final keyboard/source/Git-state assertions pass. Folder text is squeezed out
+by these long basenames, not separately accepted as visible folder truncation.
+
+UI-040 medium/P0: Commit and conditional AI suggestion are pointer-only.
+Reuse SCM keyboard ownership, native traversal and plain Enter/Space Click
+action path, preserving modified shortcuts and existing validation/backend
+routing. Request/cancel remains the same action, not a second keyboard lane.
+Runtime acceptance must use only disposable local Git and controlled unavailable
+backend/no-network paths; do not infer a working real suggestion provider.
+
+UI-040 review revision: hidden AI action is guarded in handler as well as
+hidden from native traversal. Focus border is set after each button's own
+rest border. Enter/Space on focused Commit performs a real commit when a
+message and checked changes exist, exactly like a click. QA exercises both
+empty validation and a deliberate synthetic local commit, plus non-Ollama
+hidden-action Tab/Shift+Tab skipping and Ctrl+Space non-activation.
+
+AI no-diff QA asserts UI activation only, not a provider response or request.
+The commit proxy stages only checked FileDiff paths, then commits the existing
+index. This fixture has no remote and tracks only the four SCM files plus
+.gitignore; all other generated files remain ignored. Exact tree assertions
+cover four SCM files, with status clean after the deliberate synthetic commit.
