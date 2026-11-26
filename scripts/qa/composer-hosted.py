@@ -20,7 +20,7 @@ for index in range(10):
     (project / f'multi_647_{index:02}.php').write_text('<?php // Synthetic mention navigation fixture.\n')
 config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
-(config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n[editor]\nfont-size = 15\nenable-error-lens = true\nerror-lens-font-size = 15\n')
+(config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
 # Only the deterministic local Python fixture runs. PHP and all package
 # downloads remain disabled; the composer never contacts a language service.
 lsp_log = out / 'navigation-lsp.log'
@@ -689,6 +689,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             if fixture.read_text() != text:
                 raise RuntimeError('Native completion capture changed source without acceptance')
 
+        # Apply readable diagnostic text only after existing settings/coordinate
+        # fixtures. Their temporary [editor] tables must not become duplicates.
+        settings_file.write_text(initial_settings + '\n[editor]\nfont-size = 15\nenable-error-lens = true\nerror-lens-font-size = 15\n')
+        time.sleep(3)
         # P4 typed-receiver and conservative local-diagnostic checks, no PHP LSP.
         scope_cases = [
             ('53-typed-parameter', '<?php\nnamespace App; class ScopeUser {public function name(){}} function run(ScopeUser $user) {$user->na;}', 2),
