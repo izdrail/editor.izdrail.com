@@ -138,6 +138,18 @@ impl Default for Registry {
                 ..Server::default()
             },
         );
+        // Configuration only. Proprietary server is never installed/bundled.
+        servers.insert(
+            "intelephense".into(),
+            Server {
+                languages: vec!["php".into()],
+                command: "intelephense".into(),
+                args: vec!["--stdio".into()],
+                enabled: false,
+                packages: vec![],
+                ..Default::default()
+            },
+        );
         Self {
             enabled: true,
             phpactor_opt_in: false,
@@ -604,6 +616,17 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn php_server_presets_are_opt_in_and_do_not_install_intelephense() {
+        let registry = Registry::default();
+        let intel = &registry.servers["intelephense"];
+        assert!(!intel.enabled);
+        assert_eq!(intel.command, "intelephense");
+        assert_eq!(intel.args, vec!["--stdio"]);
+        assert!(intel.packages.is_empty());
+        assert!(!registry.servers["php"].enabled);
+        assert!(!registry.phpactor_opt_in);
+    }
     #[test]
     fn phpactor_requires_explicit_opt_in_in_fresh_and_legacy_registries() {
         let fresh = Registry::default();

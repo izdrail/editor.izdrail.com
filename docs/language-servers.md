@@ -216,3 +216,36 @@ over stdio returns completion/definition/hover/codeAction/documentLink and sync
 capabilities, logs INFO to stderr. The release is young (v0.0.x) and pinned on
 purpose; bump the version and all five digests together after checking a new
 release.
+
+## Native PHP fallback and optional Intelephense preset (P6)
+
+The disabled `intelephense` preset runs a user-installed `intelephense --stdio`.
+It has no managed packages and never downloads or redistributes the server.
+Enable only one PHP server. For Phpactor, enable `servers.php` and set
+`phpactor-opt-in = true`; for Intelephense, leave Phpactor disabled and enable
+`servers.intelephense`. Existing global configs can add the entry explicitly:
+
+```toml
+[servers.intelephense]
+languages = ["php"]
+command = "intelephense"
+args = ["--stdio"]
+enabled = true
+packages = []
+```
+
+Licensing checked against upstream sources on 2026-11-26: Phpactor's MIT
+license is https://raw.githubusercontent.com/phpactor/phpactor/master/LICENSE .
+Intelephense's package identifies itself as proprietary and points to its
+LICENSE.txt, https://www.npmjs.com/package/intelephense . Its end-user freemium
+model is described at https://intelephense.com/ . This change provides only
+configuration, not an Intelephense binary, licence or entitlement. No new
+third-party dependency is introduced by P5/P6. The pinned tree-sitter-php grammar
+is MIT, as recorded in its package manifest; it shares the existing runtime.
+
+The offline protocol recovery test uses a mock PHP stdio server, deliberately
+crashes it, then verifies next-request restart, new server identity and reopened
+document content. Completion tests verify native-only, recovered server metadata
+winning duplicate rows, and native fallback after server rows disappear. These
+are protocol/pipeline tests, not claims that proprietary server binaries were
+installed or licensed during CI. GUI checks run with PHP LSP absent.

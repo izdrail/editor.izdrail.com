@@ -19,6 +19,7 @@ while True:
  elif m=='textDocument/completion':send({'jsonrpc':'2.0','id':msg['id'],'result':[{'label':'mock_completion'}]})
  elif m=='completionItem/resolve':p['detail']='resolved';send({'jsonrpc':'2.0','id':msg['id'],'result':p})
  elif m=='textDocument/definition':send({'jsonrpc':'2.0','id':msg['id'],'result':{'uri':p['textDocument']['uri'],'range':{'start':{'line':0,'character':0},'end':{'line':0,'character':1}}}})
+ elif m=='test/crash':sys.exit(17)
  elif m=='shutdown':send({'jsonrpc':'2.0','id':msg['id'],'result':None})
  elif m=='exit':sys.exit(0)
  elif 'id' in msg:send({'jsonrpc':'2.0','id':msg['id'],'result':None})

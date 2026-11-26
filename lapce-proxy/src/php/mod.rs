@@ -292,15 +292,37 @@ impl Manager {
                     .map(move |s| (path, s))
             })
             .collect::<Vec<_>>();
-        matches.sort_by_cached_key(|(_, s)| {
-            (
-                !s.name.to_lowercase().starts_with(&prefix),
-                s.name.len(),
-                s.name.to_lowercase(),
-            )
-        });
-        let symbols = matches
+        // Only the bounded prefix is needed; sorting all 50k candidates made
+        // every broad query pay O(N log N). Cache lowercase once per match,
+        // select top K in O(N), then sort those K for stable display order.
+        let mut ranked = matches
+            .drain(..)
+            .map(|(path, s)| {
+                let lower = s.name.to_lowercase();
+                (
+                    (
+                        !lower.starts_with(&prefix),
+                        s.name.len(),
+                        lower,
+                        path,
+                        s.byte,
+                        &s.qualified,
+                        format!("{:?}", s.kind),
+                        s.is_static,
+                    ),
+                    (path, s),
+                )
+            })
+            .collect::<Vec<_>>();
+        let cap = limit.min(1000);
+        if cap < ranked.len() {
+            ranked.select_nth_unstable_by(cap, |a, b| a.0.cmp(&b.0));
+            ranked.truncate(cap);
+        }
+        ranked.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        let symbols = ranked
             .into_iter()
+            .map(|(_, symbol)| symbol)
             .take(limit.min(1000))
             .map(|(path, s)| lapce_rpc::proxy::PhpIndexSymbol {
                 path: path.clone(),
@@ -332,6 +354,12 @@ impl Manager {
 }
 // Candidate prefilter only. Final matching/ranking remains Nucleo in the app.
 fn subsequence(text: &str, pattern: &str) -> bool {
+    if text.is_ascii() && pattern.is_ascii() {
+        let mut chars = text.bytes();
+        return pattern
+            .bytes()
+            .all(|c| chars.by_ref().any(|t| t.eq_ignore_ascii_case(&c)));
+    }
     let mut chars = text.chars().flat_map(char::to_lowercase);
     pattern
         .chars()
@@ -350,6 +378,147 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         panic!("worker state: {}", manager.query("", 1).0);
+    }
+    #[test]
+    fn top_k_same_byte_alias_has_deterministic_winner() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(temp.path().join("project")).unwrap();
+        let manager =
+            Manager::start(temp.path().join("project"), temp.path().join("cache"));
+        wait_ready(&manager);
+        let mut symbols = lapce_index::php::scanner::scan(
+            "<?php class Model {public function same(){}}",
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let mut alias = symbols
+            .symbols
+            .iter()
+            .find(|s| s.name == "same")
+            .unwrap()
+            .clone();
+        alias.is_static = true;
+        alias.target = Some(alias.qualified.clone());
+        symbols.symbols.push(alias);
+        {
+            let mut snapshot = manager.0.snapshot.lock().unwrap();
+            snapshot.files.insert("fixture.php".into(), symbols);
+            snapshot.state = "ready: fixture".into();
+        }
+        let one = manager.query("same", 1).1;
+        let two = manager.query("same", 1).1;
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].qualified, two[0].qualified);
+        assert_eq!(one[0].is_static, two[0].is_static);
+        assert!(!one[0].is_static);
+    }
+    #[test]
+    fn ascii_and_unicode_prefilter_keep_subsequence_semantics() {
+        for (text, token, want) in [
+            ("UserModel", "um", true),
+            ("UserModel", "uz", false),
+            ("ÉcoleModèle", "ém", true),
+            ("User", "", true),
+        ] {
+            assert_eq!(subsequence(text, token), want);
+        }
+    }
+    #[test]
+    #[ignore]
+    fn native_2000_file_index_latency_and_rss() {
+        fn rss_kib() -> u64 {
+            std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| {
+                    s.lines()
+                        .find(|l| l.starts_with("VmRSS:"))
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .and_then(|v| v.parse().ok())
+                })
+                .unwrap_or(0)
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(
+            root.join("composer.json"),
+            r#"{"autoload":{"psr-4":{"Bench\\":"src/"}}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir(root.join("src")).unwrap();
+        for i in 0..2000 {
+            std::fs::write(root.join(format!("src/Model{i}.php")),format!("<?php namespace Bench; class Model{i} {{public function save(){{}} public function name(){{}} public function find(){{}} public function all(){{}}}} ")).unwrap();
+        }
+        let before = rss_kib();
+        let start = std::time::Instant::now();
+        let manager = Manager::start(root.clone(), temp.path().join("cache"));
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
+        let mut cold_queries = Vec::new();
+        while !manager.query("Model", 1).0.starts_with("ready:") {
+            assert!(std::time::Instant::now() < deadline, "indexing deadline");
+            let now = std::time::Instant::now();
+            manager.query("Model", 1000);
+            cold_queries.push(now.elapsed().as_secs_f64() * 1000.);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let cold_ms = start.elapsed().as_secs_f64() * 1000.;
+        let after = rss_kib();
+        assert_eq!(
+            manager
+                .0
+                .snapshot
+                .lock()
+                .unwrap()
+                .files
+                .values()
+                .flat_map(|f| &f.symbols)
+                .filter(|s| s.kind == lapce_index::php::scanner::Kind::Class)
+                .count(),
+            2000
+        );
+        let generation = manager.0.snapshot.lock().unwrap().generation;
+        let changed = root.join("src/Model500.php");
+        std::fs::write(&changed,"<?php namespace Bench; class ChangedModel500 {public function save(){}} ").unwrap();
+        let start = std::time::Instant::now();
+        manager.changes().changed(vec![changed]);
+        let mut queries = Vec::new();
+        let mut reconcile_ms = None;
+        while manager.0.snapshot.lock().unwrap().generation == generation
+            || queries.len() < 200
+        {
+            assert!(start.elapsed() < Duration::from_secs(120));
+            let now = std::time::Instant::now();
+            let (_, symbols) = manager.completion_query(
+                "Model",
+                &["class".into()],
+                None,
+                None,
+                false,
+                1000,
+            );
+            assert!(!symbols.is_empty());
+            queries.push(now.elapsed().as_secs_f64() * 1000.);
+            if reconcile_ms.is_none()
+                && manager.0.snapshot.lock().unwrap().generation != generation
+            {
+                reconcile_ms = Some(start.elapsed().as_secs_f64() * 1000.);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let incremental_ms =
+            reconcile_ms.unwrap_or_else(|| start.elapsed().as_secs_f64() * 1000.);
+        assert!(!manager.query("ChangedModel500", 10).1.is_empty());
+        queries.sort_by(f64::total_cmp);
+        let p95 = queries
+            .get(queries.len().saturating_sub(1) * 95 / 100)
+            .copied()
+            .unwrap_or(0.);
+        println!(
+            "native2000 files=2000 cold_ms={cold_ms:.3} incremental_ms={incremental_ms:.3} rss_before_kib={before} rss_after_kib={after} cold_query_max_ms={:.3} warm_query_p95_ms={p95:.3} samples={} state={}",
+            cold_queries.into_iter().fold(0., f64::max),
+            queries.len(),
+            manager.query("", 0).0
+        );
     }
     #[test]
     fn framework_notifications_refresh_from_composer_and_prune_dead_observers() {

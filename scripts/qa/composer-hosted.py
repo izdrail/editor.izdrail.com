@@ -784,6 +784,27 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             if copied != expected_source:
                 raise RuntimeError('P5 definition did not open exact indexed target: ' + capture)
 
+        # P6 event-path responsiveness during a real background index burst.
+        responsive = project / '55-indexing-responsive.php'
+        responsive.write_text('<?php\n// ')
+        run('key', 'ctrl+p'); time.sleep(0.6)
+        run('type', '--clearmodifiers', responsive.name); run('key', 'Return'); time.sleep(1)
+        run('key', 'ctrl+End')
+        bulk = project / 'domain/Bulk'; bulk.mkdir(exist_ok=True)
+        burst_start = time.monotonic()
+        for index in range(2000):
+            (bulk / ('Item' + str(index) + '.php')).write_text('<?php namespace Domain\\Bulk; class Item' + str(index) + ' {public function save(){}}\n')
+        input_start = time.monotonic()
+        run('type', '--clearmodifiers', 'responsive-during-index-burst')
+        run('key', 'ctrl+a', 'ctrl+c'); time.sleep(0.3)
+        copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+        event_ms = (time.monotonic()-input_start)*1000
+        shot('55-indexing-responsive')
+        if copied != '<?php\n// responsive-during-index-burst':
+            raise RuntimeError('P6 UI input lost during index burst')
+        run('key', 'Escape')
+        (out / 'php-ui-indexing-benchmark.log').write_text('files=2000 event_type_select_copy_ms=' + str(event_ms) + ' burst_to_capture_ms=' + str((time.monotonic()-burst_start)*1000) + ' includes_xdotool_and_300ms_clipboard_wait=true\n')
+
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

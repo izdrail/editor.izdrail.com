@@ -366,3 +366,49 @@ refreshed on Composer watcher changes. F12 performs no project-profile file IO.
 Shared workspace owners notify each attached UI using weak, identity-deduped
 observers pruned when dispatchers close; initial state is false until
 background workspace initialization sends the evidence.
+
+## Phase 6: stabilisation and measured optimisation (issue 23)
+
+Audit: the three ScopeUser rows seen in GUI54e were same-FQN declarations in
+three earlier on-disk fixtures, not a cache failing to delete an old file. Each
+inserts the same absolute name. Generic PHP snippets also repeated identical
+actions because the prior same-tier dedupe only collapsed snippets for Blade.
+P6 collapses identical Native/Snippet actions by source, label, insertion, text
+edit, additional edits and insertion format. Distinct namespace insertions,
+auto-import edits and LSP overloads are preserved. F12 still refuses ambiguous
+source targets; hiding identical completion actions does not pick a definition.
+
+The proxy's prefilter keeps Unicode fallback but uses ASCII byte matching for
+ordinary PHP names. Ranking lowercases each matched name once and selects top K
+before sorting only K candidates, rather than sorting all N. Order is the same
+starts-with, name length, lowercase name order, with path/byte tie-breakers.
+No second fuzzy engine: Nucleo still owns final app matching and ranking.
+
+Reproduce hosted debug benchmarks with scripts/test-linux-hosted.sh. The ignored
+native_2000_file_index_latency_and_rss test creates 2,000 PSR-4 PHP files (10,000
+class/method symbols), measures initial index readiness, one-file reconciliation,
+Linux process RSS before/after, and concurrent cached query p95 while the worker
+reconciles. It asserts all 2,000 classes and the edited replacement appear. At least 200 queries are sampled around reconciliation. The
+RSS is indicative only, whole test-process memory, not an allocator attribution or peak. Cold
+queries may be empty while the first snapshot is built; later reconciliation
+retains usable symbols. Query samples include lock contention, not RPC/render.
+GUI55 injects 2,000 files through the actual watcher path and verifies typed text
+and capture survive. Its timer includes xdotool plus a deliberate clipboard wait,
+not a frame-time promise; pixel inspection remains a separate gate.
+
+P5 accepted baseline, run45796880347 (aaeda7c),
+https://github.com/izdrail/editor.izdrail.com/actions/runs/45796880347 : 50k debug min/median ms proxy
+Model49 243.734/244.011, empty 20.547/21.013, depth64 45.354/45.368, adapter
+49.374/49.631. Scope5k parse/publication-clone/analysis 223.107/225.214.
+Runner load varies; compare the next hosted results only with these caveats.
+Final P6 measurements are recorded with the acceptance run, not guessed here.
+
+P6 adds no dependencies. Source inventory: completion.rs (local action dedupe,
+server fallback/recovery assertions), proxy php/mod.rs (bounded top-K and large
+fixture benchmark), lsp.rs/mock_server.py (crash/reopen regression), registry.rs
+(disabled configuration-only Intelephense preset), hosted test/GUI scripts and
+these architecture/LSP docs. Earlier phase files are documented above and in
+phase-specific commits. Remaining limits include linear candidate scanning,
+whole-snapshot clone/publication, no full PHP control-flow/generic inference,
+no dynamic framework execution, no proprietary-LSP runtime validation and no
+claim of constant-time indexing or guaranteed frame deadlines.

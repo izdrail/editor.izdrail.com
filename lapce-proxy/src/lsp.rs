@@ -1175,6 +1175,68 @@ mod dispatch_tests {
 mod failure_tests {
     use super::*;
     #[test]
+    fn php_stdio_crash_recovery_reopens_retained_documents() {
+        use lapce_rpc::buffer::BufferId;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("Recovery.php");
+        std::fs::write(&path, "<?php class Recovery {}").unwrap();
+        let registry = registry::Registry {
+            enabled: true,
+            auto_install: false,
+            phpactor_opt_in: false,
+            servers: HashMap::from([(
+                "mock-php".into(),
+                registry::Server {
+                    languages: vec!["php".into()],
+                    command: "python3".into(),
+                    args: vec![
+                        concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/lsp/mock_server.py"
+                        )
+                        .into(),
+                    ],
+                    ..Default::default()
+                },
+            )]),
+        };
+        let manager = Manager::with_registry(
+            Some(temp.path().into()),
+            CoreRpcHandler::new(),
+            Ok(registry),
+        );
+        let buffer = crate::buffer::Buffer::new(BufferId::next(), path.clone());
+        let uri = Url::from_file_path(&path).unwrap();
+        let request = |method: &str| {
+            let (tx, rx) = crossbeam_channel::bounded(1);
+            manager.send(Job::Request {buffer:buffer.clone(),method:method.into(),params:json!({"textDocument":{"uri":uri},"position":{"line":0,"character":0}}),callback:Box::new(move |result|{let _=tx.send(result);})});
+            rx.recv_timeout(Duration::from_secs(5))
+                .unwrap_or_else(|err| {
+                    Err(error(format!(
+                        "mock PHP callback not delivered within 5s: {err}"
+                    )))
+                })
+        };
+        let (first_id, first) = request("textDocument/completion").unwrap();
+        assert_eq!(first[0]["label"], "mock_completion");
+        assert!(request("test/crash").is_err());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let (next_id, hover) = loop {
+            match request("textDocument/hover") {
+                Ok(result) => break result,
+                Err(err) => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "mock PHP did not recover within 5s: {err:?}"
+                    );
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+        };
+        assert_ne!(first_id, next_id);
+        assert_eq!(hover["contents"]["value"], "<?php class Recovery {}");
+    }
+    #[test]
     fn failed_server_start_returns_error_and_reaps_child() {
         let mut command = Command::new("python3");
         command.args(["-c", "import sys;sys.exit(1)"]);

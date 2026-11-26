@@ -553,6 +553,31 @@ fn dedupe_keeping_blade_snippets(
     all: Vec<ScoredCompletionItem>,
     blade: bool,
 ) -> Vec<ScoredCompletionItem> {
+    // Collapse only identical local actions, not overloads from a server or
+    // candidates with distinct import edits/qualified insertions.
+    let mut seen_local = std::collections::HashSet::new();
+    let all = all
+        .into_iter()
+        .filter(|row| {
+            if !matches!(
+                row.source,
+                CompletionSource::Native | CompletionSource::Snippet
+            ) {
+                return true;
+            }
+            let key = (
+                row.source,
+                row.item.label.clone(),
+                row.item.insert_text.clone(),
+                serde_json::to_string(&row.item.text_edit).unwrap_or_default(),
+                serde_json::to_string(&row.item.additional_text_edits)
+                    .unwrap_or_default(),
+                serde_json::to_string(&row.item.insert_text_format)
+                    .unwrap_or_default(),
+            );
+            seen_local.insert(key)
+        })
+        .collect();
     let all = dedupe_native_lsp(all);
     if !blade {
         return dedupe_across_sources(
@@ -1211,6 +1236,30 @@ mod native_merge_tests {
         }
     }
     #[test]
+    fn native_fallback_survives_server_absence_and_recovery() {
+        let native = row(CompletionSource::Native, None);
+        assert_eq!(
+            dedupe_keeping_blade_snippets(vec![native.clone()], false).len(),
+            1
+        );
+        let recovered = dedupe_keeping_blade_snippets(
+            vec![
+                native.clone(),
+                row(
+                    CompletionSource::Lsp,
+                    Some("recovered server documentation"),
+                ),
+            ],
+            false,
+        );
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].source, CompletionSource::Lsp);
+        assert_eq!(
+            dedupe_keeping_blade_snippets(vec![native], false)[0].source,
+            CompletionSource::Native
+        );
+    }
+    #[test]
     fn lsp_metadata_wins_native_duplicate() {
         let out = dedupe_keeping_blade_snippets(
             vec![
@@ -1274,6 +1323,45 @@ mod php_order_tests {
 #[cfg(test)]
 mod native_namespace_dedupe_tests {
     use super::*;
+    #[test]
+    fn identical_local_actions_collapse_but_distinct_edits_survive() {
+        let row = |source| ScoredCompletionItem {
+            item: CompletionItem {
+                label: "ScopeUser".into(),
+                insert_text: Some("\\App\\ScopeUser".into()),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source,
+            score: 0,
+            label_score: 0,
+            indices: vec![],
+            show_on_empty: true,
+        };
+        for source in [CompletionSource::Native, CompletionSource::Snippet] {
+            assert_eq!(
+                dedupe_keeping_blade_snippets(
+                    vec![row(source), row(source), row(source)],
+                    false
+                )
+                .len(),
+                1
+            );
+        }
+        let mut with_import = row(CompletionSource::Native);
+        with_import.item.additional_text_edits = Some(vec![lsp_types::TextEdit {
+            range: lsp_types::Range::default(),
+            new_text: "use App\\ScopeUser;".into(),
+        }]);
+        assert_eq!(
+            dedupe_keeping_blade_snippets(
+                vec![row(CompletionSource::Native), with_import],
+                false
+            )
+            .len(),
+            2
+        );
+    }
     #[test]
     fn facade_pack_and_native_method_dedupe() {
         let row = |source| ScoredCompletionItem {
