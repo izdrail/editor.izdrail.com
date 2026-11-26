@@ -238,7 +238,7 @@ impl Engine {
                 continue;
             };
             let hash = format!("{:x}", Sha256::digest(source.as_bytes()));
-            if self.cache.version == VERSION && old.is_some_and(|f| f.hash == hash) {
+            if !force && old.is_some_and(|f| f.hash == hash) {
                 let mut reused = old.unwrap().clone();
                 reused.size = size;
                 reused.modified = modified;
@@ -405,6 +405,22 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_cache_version_reparses_unchanged_source() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("project");
+        let dir = t.path().join("index");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("Invoice.php"), "<?php class Invoice {}").unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut engine = Engine::open(&dir).unwrap();
+        engine.reconcile(&root, &BTreeSet::new(), &cancel).unwrap();
+        engine.cache.version = 2;
+        let progress = engine.reconcile(&root, &BTreeSet::new(), &cancel).unwrap();
+        assert_eq!(progress.parsed, 1);
+        assert_eq!(progress.reused, 0);
+        assert_eq!(engine.cache.version, VERSION);
+    }
     #[test]
     fn laravel_aliases_follow_edits_cache_and_composer_changes() {
         let t = tempfile::tempdir().unwrap();
