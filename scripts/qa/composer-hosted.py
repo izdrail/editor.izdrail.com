@@ -208,7 +208,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         if events != [header_identity, close_identity, header_identity, 'event=activate:header', 'event=activate:header']:
             raise RuntimeError('Terminal header sequence or activation isolation failed')
         (out / 'terminal-keyboard-assertions.log').write_text('same_header_reverse=true\nclose_not_activated=true\nenter_space_header_only=true\n' + '\n'.join(events))
-        # Create and close only one new disposable shell, never the original.
+        # Separate disposable shells exercise both activation keys against
+        # the same surviving original real PTY, plus modified-key isolation.
         original_pty_files = list(pty_audit.glob('*.input'))
         if len(original_pty_files) != 1:
             raise RuntimeError('Expected one audited original PTY')
@@ -216,33 +217,87 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         before_pty = original_pty.read_bytes()
         (out / 'terminal-pty-before.log').write_text(before_pty.hex() + '\n')
         shot('00-terminal-original-before-second')
+        terminal_settings_file = config / 'settings.toml'
+        terminal_dark_settings = terminal_settings_file.read_text()
+        for close_key, suffix in [('Return', 'enter'), ('space', 'space-light')]:
+            if suffix.endswith('light'):
+                terminal_settings_file.write_text(terminal_dark_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1))
+                time.sleep(3)
+            run('key', 'ctrl+shift+F8'); time.sleep(3)
+            start = len(terminal_events())
+            run('mousemove', '570', '490', 'mousedown', '1')
+            run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+            shot('00-terminal-second-header-' + suffix)
+            headers = [e for e in terminal_events()[start:] if e.startswith('event=focus:header:')]
+            if not headers or headers[-1] == header_identity:
+                raise RuntimeError('New disposable terminal header not focused')
+            run('key', 'Tab'); shot('00-terminal-second-close-focus-' + suffix)
+            if not terminal_events()[-1].startswith('event=focus:close:') or terminal_events()[-1] == close_identity:
+                raise RuntimeError('New terminal close target is not distinct')
+            new_close_identity = terminal_events()[-1]
+            run('key', 'shift+Tab')
+            if terminal_events()[-1] != headers[-1]:
+                raise RuntimeError('Second close reverse traversal missed header')
+            run('key', 'Tab')
+            if terminal_events()[-1] != new_close_identity:
+                raise RuntimeError('Second header did not return to same close')
+            shot('00-terminal-second-close-return-' + suffix)
+            closes_before = terminal_events().count('event=activate:close')
+            run('key', 'ctrl+Return'); time.sleep(1)
+            shot('00-terminal-second-modified-no-close-' + suffix)
+            if terminal_events().count('event=activate:close') != closes_before or original_pty.read_bytes() != before_pty:
+                raise RuntimeError('Ctrl+Enter closed terminal or wrote to original PTY')
+            run('key', close_key); time.sleep(2)
+            shot('00-terminal-second-closed-' + suffix)
+            if terminal_events().count('event=activate:close') != closes_before + 1:
+                raise RuntimeError('Disposable terminal close must activate exactly once')
+            # Native traversal immediately after destroying the focused close
+            # must not write Tab or activation bytes into surviving PTY.
+            tab_start = len(terminal_events())
+            run('key', 'Tab'); shot('00-terminal-after-close-tab-' + suffix)
+            post_tab = terminal_events()[tab_start:]
+            (out / ('terminal-post-close-tab-' + suffix + '.log')).write_text('\n'.join(post_tab))
+            after_pty = original_pty.read_bytes()
+            (out / ('terminal-pty-after-' + suffix + '.log')).write_text(after_pty.hex() + '\n')
+            (out / 'terminal-pty-all-input.log').write_text('\n'.join(f.name + '=' + f.read_bytes().hex() for f in pty_audit.glob('*.input')))
+            if before_pty != after_pty:
+                raise RuntimeError('Second terminal close/traversal leaked bytes into original PTY')
+            if not any(e.startswith(('event=focus:header:', 'event=focus:close:')) for e in post_tab):
+                raise RuntimeError('Post-close Tab did not reach a traced terminal header/next target')
+            start = len(terminal_events())
+            run('mousemove', '350', '490', 'mousedown', '1')
+            run('mousemove', '600', '220', 'mouseup', '1'); time.sleep(0.5)
+            if header_identity not in terminal_events()[start:] and terminal_events()[-1] != header_identity:
+                raise RuntimeError('Original terminal header not preserved after close')
+        terminal_settings_file.write_text(terminal_dark_settings); time.sleep(3)
+        # A non-active disposable second tab must close by pointer without
+        # selecting its header. Original prompt survives, no PTY bytes.
         run('key', 'ctrl+shift+F8'); time.sleep(3)
-        start = len(terminal_events())
-        run('mousemove', '570', '490', 'mousedown', '1')
-        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
-        shot('00-terminal-second-header')
-        headers = [e for e in terminal_events()[start:] if e.startswith('event=focus:header:')]
-        if not headers or headers[-1] == header_identity:
-            raise RuntimeError('New disposable terminal header not focused')
-        second_header = headers[-1]
-        run('key', 'Tab'); shot('00-terminal-second-close-focus')
-        if not terminal_events()[-1].startswith('event=focus:close:') or terminal_events()[-1] == close_identity:
-            raise RuntimeError('New terminal close target is not distinct')
-        run('key', 'Return'); time.sleep(2); shot('00-terminal-second-closed')
-        if terminal_events().count('event=activate:close') != 1:
-            raise RuntimeError('Disposable terminal close must activate exactly once')
-        start = len(terminal_events())
         run('mousemove', '350', '490', 'mousedown', '1')
-        run('mousemove', '600', '220', 'mouseup', '1'); time.sleep(0.5)
-        if header_identity not in terminal_events()[start:]:
-            raise RuntimeError('Original terminal header not preserved after close')
-        after_pty = original_pty.read_bytes()
-        (out / 'terminal-pty-after.log').write_text(after_pty.hex() + '\n')
-        (out / 'terminal-pty-all-input.log').write_text('\n'.join(f.name + '=' + f.read_bytes().hex() for f in pty_audit.glob('*.input')))
-        if before_pty != after_pty:
-            raise RuntimeError('Second terminal create/close leaked bytes into original PTY; inspect before/after logs')
-
-        (out / 'terminal-second-tab-assertions.log').write_text('distinct_new_header=true\ndistinct_close_target=true\none_deliberate_close=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
+        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        run('key', 'Return'); time.sleep(1)
+        run('mousemove', '675', '490'); shot('00-terminal-pointer-nonactive-hover')
+        pointer_start = len(terminal_events())
+        pointer_closes = terminal_events().count('event=activate:close')
+        run('click', '1'); time.sleep(2)
+        shot('00-terminal-pointer-nonactive-closed')
+        if terminal_events().count('event=activate:close') != pointer_closes + 1:
+            raise RuntimeError('Pointer non-active close missed')
+        if 'event=activate:header' in terminal_events()[pointer_start:]:
+            raise RuntimeError('Pointer close also activated header')
+        if original_pty.read_bytes() != before_pty:
+            raise RuntimeError('Pointer close leaked input into original PTY')
+        # Close the final disposable test shell, then verify native Tab does
+        # not write or create a replacement shell through stale terminal focus.
+        run('mousemove', '350', '490', 'mousedown', '1')
+        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        run('key', 'Tab', 'Return'); time.sleep(2)
+        shot('00-terminal-last-closed')
+        final_inputs = {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}
+        run('key', 'Tab'); time.sleep(2); shot('00-terminal-last-closed-tab')
+        if final_inputs != {f.name: f.read_bytes() for f in pty_audit.glob('*.input')}:
+            raise RuntimeError('Last-tab close leaves Tab routed to a dead/replacement PTY')
+        (out / 'terminal-second-tab-assertions.log').write_text('enter_space_close_once=true\nmodified_no_close=true\noriginal_pty_unchanged=true\npost_close_tab_no_input=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'

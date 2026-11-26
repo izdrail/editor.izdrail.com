@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use floem::{
     View, ViewId,
@@ -64,6 +64,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
     let config = window_tab_data.common.config;
     let focus = window_tab_data.common.focus;
     let keyboard_focus = window_tab_data.common.keyboard_focus;
+    let header_ids = Rc::new(RefCell::new(HashMap::new()));
     let active_index = move || terminal.tab_info.with(|info| info.active);
     let tab_info = terminal.tab_info;
     let header_width = create_rw_signal(0.0);
@@ -85,6 +86,8 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
             },
             |(_, tab)| tab.terminal_tab_id,
             move |(index, tab)| {
+                let header_ids = header_ids.clone();
+                let close_header_ids = header_ids.clone();
                 let terminal = terminal.clone();
                 let local_terminal = terminal.clone();
                 let terminal_tab_id = tab.terminal_tab_id;
@@ -154,18 +157,70 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                             {
                                 let close = clickable_icon_base(
                                     || LapceIcons::CLOSE,
-                                    Some(move || {
-                                        terminal_ui_trace("activate:close");
-                                        terminal.close_tab(Some(terminal_tab_id))
-                                    }),
+                                    None::<fn()>,
                                     || false,
                                     || false,
                                     config,
-                                );
+                                )
+                                .keyboard_navigable()
+                                .style(move |s| {
+                                    s.focus_visible(|s| {
+                                        s.border_color(config.get().color(
+                                            LapceColor::EDITOR_FOCUS,
+                                        ))
+                                    })
+                                })
+                                .on_click_stop(move |event| {
+                                    if let Event::KeyDown(key) = event {
+                                        if !terminal_tab_activation(
+                                            &key.key.logical_key,
+                                            key.modifiers,
+                                        ) {
+                                            return;
+                                        }
+                                    }
+                                    terminal_ui_trace("activate:close");
+                                    terminal.close_tab(Some(terminal_tab_id));
+                                    // Keep native traversal owned by a live header
+                                    // after removing the focused close control.
+                                    if let Some(tab) = terminal.active_tab(false) {
+                                        if let Some(id) = close_header_ids
+                                            .borrow()
+                                            .get(&tab.terminal_tab_id)
+                                            .copied()
+                                        {
+                                            keyboard_focus.set(Some(id));
+                                            id.request_focus();
+                                        }
+                                    }
+                                })
+                                // Do not select a non-active tab while closing it.
+                                .on_event_stop(EventListener::PointerDown, |_| {});
                                 let close_id = close.id();
                                 tooltip_label(
                                     config,
                                     close
+                                        // Floem's keyboard Click return is not used
+                                        // to stop KeyDown propagation. Consume the
+                                        // activation here before it reaches PTY.
+                                        .on_event(EventListener::KeyDown, |event| {
+                                            if let Event::KeyDown(key) = event {
+                                                if terminal_tab_activation(
+                                                    &key.key.logical_key,
+                                                    floem::keyboard::Modifiers::empty(),
+                                                ) {
+                                                    return EventPropagation::Stop;
+                                                }
+                                            }
+                                            EventPropagation::Continue
+                                        })
+                                        .on_cleanup(move || {
+                                            if keyboard_focus.get_untracked()
+                                                == Some(close_id)
+                                            {
+                                                keyboard_focus.set(None);
+                                            }
+                                        })
                                         .on_event_stop(
                                             EventListener::FocusGained,
                                             move |_| {
@@ -241,6 +296,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                     })
                 });
                 let row_id = row.id();
+                header_ids.borrow_mut().insert(terminal_tab_id, row_id);
                 let activate = move || {
                     if tab_info.with_untracked(|tab| tab.active)
                         != index.get_untracked()
@@ -251,6 +307,14 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                 };
                 let pointer_activate = activate.clone();
                 row.keyboard_navigable()
+                    .on_cleanup(move || {
+                        header_ids.borrow_mut().retain(|k, v| {
+                            !(*k == terminal_tab_id && *v == row_id)
+                        });
+                        if keyboard_focus.get_untracked() == Some(row_id) {
+                            keyboard_focus.set(None);
+                        }
+                    })
                     .on_event_stop(EventListener::FocusGained, move |_| {
                         keyboard_focus.set(Some(row_id));
                         terminal_ui_trace(&format!("focus:header:{row_id:?}"));
@@ -484,6 +548,18 @@ fn terminal_tab_activation(
 mod terminal_tab_keyboard_tests {
     use super::terminal_tab_activation;
     use floem::keyboard::{Key, Modifiers, NamedKey};
+    #[test]
+    fn rebuilt_header_cleanup_preserves_new_identity() {
+        let tab = crate::id::TerminalTabId::next();
+        let old = floem::ViewId::new();
+        let new = floem::ViewId::new();
+        let mut ids = std::collections::HashMap::from([(tab, new)]);
+        ids.retain(|k, v| !(*k == tab && *v == old));
+        assert_eq!(ids.get(&tab), Some(&new));
+        ids.retain(|k, v| !(*k == tab && *v == new));
+        assert!(ids.is_empty());
+    }
+
     #[test]
     fn plain_activation_isolated_from_shell_input() {
         for key in [NamedKey::Enter, NamedKey::Space] {
