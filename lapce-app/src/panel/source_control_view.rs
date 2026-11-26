@@ -681,6 +681,10 @@ fn keyboard_scm_action(
     config: ReadSignal<Arc<LapceConfig>>,
     kind: &'static str,
 ) -> impl View {
+    // Keep the existing checkbox's own border and checked mark untouched.
+    let view = container(view.style(move |s| {
+        s.apply_if(kind == "row", |s| s.width_pct(100.0).items_center())
+    }));
     let id = view.id();
     view.keyboard_navigable()
         .on_event_stop(EventListener::FocusGained, move |_| {
@@ -706,12 +710,15 @@ fn keyboard_scm_action(
             EventPropagation::Continue
         })
         .style(move |s| {
-            s.focus_visible(|s| {
-                let config = config.get();
-                s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
-                    .outline(1.0)
-                    .outline_color(config.color(LapceColor::EDITOR_FOCUS))
-            })
+            // Reserve the ring inside the bounds, not an outside outline that
+            // the panel's scroll viewport clips at its left/right edges.
+            s.border(1.0)
+                .border_color(floem::peniko::Color::TRANSPARENT)
+                .focus_visible(|s| {
+                    let config = config.get();
+                    s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
+                        .border_color(config.color(LapceColor::EDITOR_FOCUS))
+                })
         })
 }
 

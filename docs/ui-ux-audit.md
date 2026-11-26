@@ -321,3 +321,11 @@ actual57 focus and57a added-file diff inspected, stable row identity and no
 fixture source/index mutation. Focus on small checkbox remains too subtle for
 broad accessibility acceptance. Add a non-layout-changing EDITOR_FOCUS outline
 to existing keyboard focus style and verify dark/light plus narrow/wide pixels.
+
+cb44347 / 45829821989 all gates green, but actual58-58c pixel inspection
+found the outside outline clipped at panel edges. Not visually accepted.
+Reserve a transparent 1px border at rest, color it only on keyboard focus so
+there is no geometry shift on focus and the ring stays inside the viewport.
+The reserved border changes rest geometry by 2px; an outer container keeps
+the existing checkbox border/mark independent.
+Recheck row edges and checkbox plus both themes/widths.

@@ -948,6 +948,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('windowsize', window, original_width, original_height); time.sleep(2)
         staged_visual_focus(); shot('58c-scm-focus-light-wide')
         light_pixels('58c-scm-focus-light-wide')
+        focus_scm_row(); run('key', 'Tab'); time.sleep(1)
+        if not scm_events()[-1].startswith('event=focus:checkbox:'):
+            raise RuntimeError('Light-theme checkbox focus lost')
+        shot('58d-scm-checkbox-light-focus')
+        run('mousemove', '600', '200', 'click', '1'); time.sleep(1)
+        shot('58e-scm-rest-light')
+        run('mousemove', str(row_x), str(row_y)); shot('58f-scm-hover-light')
         settings_file.write_text(original_theme_settings)
         time.sleep(3)
         if scm_file.read_text() != scm_after or staged_file.read_text() != staged_after:
