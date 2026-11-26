@@ -367,6 +367,21 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+s'); time.sleep(1)
         if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
             raise RuntimeError('Post-last-close Tab silently changed source buffer')
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        close_last_keyboard('shift-tab')
+        reverse_creates = terminal_events().count('event=create:tab')
+        run('key', 'shift+Tab'); time.sleep(2); shot('00-terminal-last-closed-shift-tab')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if terminal_events().count('event=create:tab') != reverse_creates or (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
+            raise RuntimeError('Last-close ShiftTab created shell or changed source')
+        run('key', 'ctrl+shift+F8'); time.sleep(3)
+        close_last_keyboard('body')
+        body_creates = terminal_events().count('event=create:tab')
+        run('mousemove', '600', '600', 'click', '1')
+        run('key', 'x'); time.sleep(2); shot('00-terminal-empty-body-typed')
+        if terminal_events().count('event=create:tab') != body_creates + 1:
+            raise RuntimeError('Empty terminal body click plus typing did not create exactly one shell')
+
         (out / 'terminal-second-tab-assertions.log').write_text('enter_space_close_once=true\nmodified_no_close=true\noriginal_pty_unchanged=true\npost_close_tab_no_input=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
