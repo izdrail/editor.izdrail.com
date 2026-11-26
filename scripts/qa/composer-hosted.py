@@ -992,8 +992,12 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             shot(capture + '-locate')
             image = Image.open(out / (capture + '-locate.png'))
             image.crop((0, 0, 249, 320)).resize((996, 1280)).save(out / (capture + '-ocr.png'))
-            tsv = subprocess.run(['tesseract', str(out / (capture + '-ocr.png')), 'stdout', '--psm', '11', 'tsv'], check=True, capture_output=True, text=True).stdout
-            targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t') if r['text'] == token and int(r['top']) > 800]
+            targets = []
+            for psm in ['11', '3']:
+                tsv = subprocess.run(['tesseract', str(out / (capture + '-ocr.png')), 'stdout', '--psm', psm, 'tsv'], check=True, capture_output=True, text=True).stdout
+                targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t') if r['text'] == token and int(r['top']) > 800]
+                if len(targets) == 1:
+                    break
             if len(targets) != 1:
                 raise RuntimeError('Cannot locate unique SCM action: ' + token)
             item = targets[0]
