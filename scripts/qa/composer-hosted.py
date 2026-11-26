@@ -310,7 +310,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             return text.count('linux') + text.count('default')
         new_actions = terminal_events().count('event=activate:new')
         creations = terminal_events().count('event=create:tab')
-        run('key', 'x'); time.sleep(0.5)
+        run('key', 'x', 'shift+x'); time.sleep(0.5)
+        shot('00-terminal-empty-after-letter')
         if terminal_events().count('event=create:tab') != creations:
             raise RuntimeError('Letter on empty New created a shell')
         run('key', 'ctrl+Return'); time.sleep(1)

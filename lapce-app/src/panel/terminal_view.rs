@@ -124,7 +124,12 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                 if terminal_tab_activation(
                     &key.key.logical_key,
                     floem::keyboard::Modifiers::empty(),
-                ) {
+                ) || (matches!(key.key.logical_key, floem::keyboard::Key::Character(_))
+                    && (key.modifiers.is_empty()
+                        || key.modifiers == floem::keyboard::Modifiers::SHIFT))
+                {
+                    // A button is not a text receiver. Do not let workbench
+                    // receive_char report a no-op as handled and move focus.
                     return EventPropagation::Stop;
                 }
             }
