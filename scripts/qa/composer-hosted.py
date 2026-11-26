@@ -961,6 +961,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('windowsize', window, original_width, original_height); time.sleep(2)
         staged_visual_focus(); shot('58c-scm-focus-light-wide')
         light_pixels('58c-scm-focus-light-wide')
+        # New staged row shifts Changes below its original position.
+        Image.open(out / '58c-scm-focus-light-wide.png').crop((0, 0, 249, 796)).resize((996, 3184)).save(out / '58c-scm-ocr.png')
+        tsv = subprocess.run(['tesseract', str(out / '58c-scm-ocr.png'), 'stdout', '--psm', '6', 'tsv'], check=True, capture_output=True, text=True).stdout
+        targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t') if 'a_scm_keyboard' in r['text']]
+        if len(targets) != 1:
+            raise RuntimeError('Cannot locate shifted SCM fixture row in light pixels')
+        target = targets[0]
+        row_x = (int(target['left']) + int(target['width']) // 2) // 4
+        row_y = (int(target['top']) + int(target['height']) // 2) // 4
         focus_scm_row(); run('key', 'Tab'); time.sleep(1)
         if not scm_events()[-1].startswith('event=focus:checkbox:'):
             raise RuntimeError('Light-theme checkbox focus lost')
