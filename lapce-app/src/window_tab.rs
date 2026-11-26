@@ -2654,7 +2654,7 @@ impl WindowTabData {
                 });
             }
             CoreNotification::PhpFramework { laravel } => {
-                self.common.php_laravel.set(laravel);
+                self.common.php_laravel.set(*laravel);
             }
             CoreNotification::OpenFileChanged { path, content } => {
                 self.main_split.open_file_changed(path, content);
