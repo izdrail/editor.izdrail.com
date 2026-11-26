@@ -155,6 +155,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                                 let close = clickable_icon_base(
                                     || LapceIcons::CLOSE,
                                     Some(move || {
+                                        terminal_ui_trace("activate:close");
                                         terminal.close_tab(Some(terminal_tab_id))
                                     }),
                                     || false,

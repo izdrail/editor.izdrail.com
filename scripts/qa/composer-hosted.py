@@ -33,7 +33,7 @@ import json
     'enabled = true\nauto-install = false\n[servers.navigation-fixture]\n'
     'languages = ["python"]\ncommand = "python3"\nargs = '
     + json.dumps([str(lsp_fixture), str(lsp_log)]) + '\n')
-env = os.environ | {'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
+env = os.environ | {'LAPCE_TERMINAL_UI_TRACE': '1', 'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(name, None)
 
@@ -178,12 +178,30 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'shift+Tab', 'Tab'); shot('00-open-editors-return-focus')
         run('key', 'Return'); shot('00-open-editors-keyboard-activate')
         # Existing terminal tab header, never the PTY content area.
-        run('mousemove', '350', '490', 'click', '1'); shot('00-terminal-header-focus')
-        # Pointer activation may focus a nested title child. Traverse into
-        # the close icon and back to the header without pressing the icon.
+        def terminal_events():
+            log.flush()
+            return [line.split('TERMINAL_UI ', 1)[1].strip() for line in (out / 'editor.log').read_text().splitlines() if 'TERMINAL_UI ' in line]
+        start = len(terminal_events())
+        run('mousemove', '350', '490', 'mousedown', '1')
+        run('mousemove', '600', '220', 'mouseup', '1'); time.sleep(0.5)
+        shot('00-terminal-header-focus')
+        headers = [e for e in terminal_events()[start:] if e.startswith('event=focus:header:')]
+        if not headers:
+            raise RuntimeError('Terminal header focus seed missed')
+        header_identity = headers[-1]
         run('key', 'Tab'); shot('00-terminal-header-next-focus')
+        if not terminal_events()[-1].startswith('event=focus:close:'):
+            raise RuntimeError('Terminal header Tab missed close')
+        close_identity = terminal_events()[-1]
         run('key', 'shift+Tab'); shot('00-terminal-header-return-focus')
+        if terminal_events()[-1] != header_identity:
+            raise RuntimeError('Terminal reverse traversal did not return to same header')
         run('key', 'Return'); shot('00-terminal-header-keyboard-activate')
+        run('key', 'space'); time.sleep(0.5)
+        events = terminal_events()[start:]
+        if events != [header_identity, close_identity, header_identity, 'event=activate:header', 'event=activate:header']:
+            raise RuntimeError('Terminal header sequence or activation isolation failed')
+        (out / 'terminal-keyboard-assertions.log').write_text('same_header_reverse=true\nclose_not_activated=true\nenter_space_header_only=true\n' + '\n'.join(events))
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'
