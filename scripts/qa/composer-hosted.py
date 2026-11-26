@@ -379,8 +379,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         body_creates = terminal_events().count('event=create:tab')
         run('mousemove', '600', '600', 'click', '1')
         run('key', 'x'); time.sleep(2); shot('00-terminal-empty-body-typed')
-        if terminal_events().count('event=create:tab') != body_creates + 1:
-            raise RuntimeError('Empty terminal body click plus typing did not create exactly one shell')
+        if terminal_events().count('event=create:tab') != body_creates:
+            raise RuntimeError('Empty terminal body focus-away unexpectedly created a shell')
+        # Focus-away hides the empty panel. The subsequent probe targets the
+        # editor, not a PTY; remove it and verify the disposable buffer.
+        run('key', 'Escape', 'ctrl+z', 'ctrl+s'); time.sleep(1)
+        if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
+            raise RuntimeError('Body focus-away probe did not restore disposable source')
 
         (out / 'terminal-second-tab-assertions.log').write_text('enter_space_close_once=true\nmodified_no_close=true\noriginal_pty_unchanged=true\npost_close_tab_no_input=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # UI041: open configuration palette only. Never select a config.
