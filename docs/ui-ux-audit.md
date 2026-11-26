@@ -329,3 +329,8 @@ there is no geometry shift on focus and the ring stays inside the viewport.
 The reserved border changes rest geometry by 2px; an outer container keeps
 the existing checkbox border/mark independent.
 Recheck row edges and checkbox plus both themes/widths.
+
+62b3864 / 45834377207 all gates green. Ring edges now visible in both themes,
+but actual56/58 showed a layout regression: wrapping the full row moved the
+status icon beside the filename. Not visually accepted. Wrap only checkbox;
+keep row styles on the original stack to preserve absolute status alignment.

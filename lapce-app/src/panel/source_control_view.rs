@@ -1,7 +1,7 @@
 use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use floem::{
-    View, ViewId,
+    IntoView, View, ViewId,
     action::show_context_menu,
     event::{Event, EventListener, EventPropagation},
     menu::{Menu, MenuItem},
@@ -681,10 +681,14 @@ fn keyboard_scm_action(
     config: ReadSignal<Arc<LapceConfig>>,
     kind: &'static str,
 ) -> impl View {
-    // Keep the existing checkbox's own border and checked mark untouched.
-    let view = container(view.style(move |s| {
-        s.apply_if(kind == "row", |s| s.width_pct(100.0).items_center())
-    }));
+    // Only the checkbox needs an extra container to preserve its own border.
+    // Rows keep caller layout on the actual stack, including the absolute
+    // right-aligned status icon and filename/folder flex sizing.
+    let view = if kind == "checkbox" {
+        container(view).into_any()
+    } else {
+        view.into_any()
+    };
     let id = view.id();
     view.keyboard_navigable()
         .on_event_stop(EventListener::FocusGained, move |_| {
