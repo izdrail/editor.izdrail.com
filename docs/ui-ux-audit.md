@@ -305,3 +305,12 @@ Commit and AI suggestion remain pointer-only and outside this bounded slice,
 so UX-010 and Phase 1 remain open. They need a separate deliberate-activation
 workflow, not accidental Space-triggered commit acceptance. Opt-in SCM traces
 ship in product builds but contain only control ids/action/state, no file text.
+
+
+UI-039 bounded unstaged-row/checkbox acceptance: main b9ea1b4, hosted
+45817897623 all four gates green. Actual 56/56a-f inspected: Tab/Shift+Tab
+returns to identical row; independent Enter and Space open actual before/after
+diff; checkbox visibly clears then restores, without opening a diff. Control
+trace confirms stable focus identity and no pointer-seed diff activation. Exact
+fixture source and Git status unchanged. Staged-row activation remains pending
+next actual 57/57a captures. Commit/AI suggestion and broad UX-010 stay open.

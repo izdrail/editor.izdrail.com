@@ -891,11 +891,33 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         checks = [e for e in scm_events()[before_check:] if e.startswith('event=checkbox ')]
         if len(checks) != 2 or checks[0] == checks[1]:
             raise RuntimeError('SCM checkbox state did not toggle and restore')
+        # Exercise the staged row separately; source reuse is not acceptance.
+        staged_targets = [r for r in csv.DictReader(io.StringIO(tsv), delimiter='\t')
+                          if 'a_scm_staged' in r['text']]
+        if len(staged_targets) != 1:
+            raise RuntimeError('Cannot locate unique staged SCM row')
+        staged_target = staged_targets[0]
+        staged_x = (int(staged_target['left']) + int(staged_target['width']) // 2) // 4
+        staged_y = (int(staged_target['top']) + int(staged_target['height']) // 2) // 4
+        before_seed = len(scm_events())
+        run('mousemove', str(staged_x), str(staged_y), 'mousedown', '1')
+        run('mousemove', '600', '200', 'mouseup', '1'); time.sleep(1)
+        seeded = scm_events()[before_seed:]
+        if any('open-diff' in e or 'diff-tab' in e for e in seeded) or not seeded or not seeded[-1].startswith('event=focus:row:'):
+            raise RuntimeError('SCM staged focus seed failed or activated diff')
+        staged_focus = seeded[-1]
+        run('key', 'Tab', 'shift+Tab'); time.sleep(1); shot('57-scm-staged-return-focus')
+        if scm_events()[-1] != staged_focus:
+            raise RuntimeError('SCM staged reverse traversal lost row identity')
+        before_staged_open = len(scm_events())
+        run('key', 'Return'); time.sleep(2); shot('57a-scm-staged-diff')
+        if 'event=diff-tab-opened' not in scm_events()[before_staged_open:]:
+            raise RuntimeError('SCM staged Enter did not open actual diff')
         if scm_file.read_text() != scm_after or staged_file.read_text() != staged_after:
             raise RuntimeError('SCM keyboard workflow changed fixture source')
         if git_fixture('status', '--porcelain=v1') != before_status:
             raise RuntimeError('SCM keyboard workflow changed Git index or worktree')
-        (out / 'scm-keyboard-assertions.log').write_text('same_row_focus=true\ncheckbox_focus_retained=true\ncheckbox_toggled_restored=true\nreturn_and_space_actual_diff=true\nindex_worktree_unchanged=true\n' + '\n'.join(scm_events()))
+        (out / 'scm-keyboard-assertions.log').write_text('staged_row_keyboard_diff=true\nsame_row_focus=true\ncheckbox_focus_retained=true\ncheckbox_toggled_restored=true\nreturn_and_space_actual_diff=true\nindex_worktree_unchanged=true\n' + '\n'.join(scm_events()))
 
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
