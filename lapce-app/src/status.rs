@@ -79,22 +79,40 @@ pub fn status(
 
     let progresses = window_tab_data.progresses;
     let inline = window_tab_data.common.inline_completion;
+    let completion = window_tab_data.common.completion;
     let keypress = window_tab_data.common.keypress;
     let focus = window_tab_data.common.focus;
     let ghost_hint = move || {
-        if focus.get() != crate::window_tab::Focus::Workbench { return String::new(); }
-        let Some(editor) = editor.get() else { return String::new(); };
+        if focus.get() != crate::window_tab::Focus::Workbench {
+            return String::new();
+        }
+        let Some(editor) = editor.get() else {
+            return String::new();
+        };
         let _ = editor.cursor().get();
-        let on_screen = editor.doc().inline_completion.with(|text| ghost_on_screen(text.as_deref()));
-        let visible = on_screen && inline.with(|data| {
-            data.status == crate::inline_completion::InlineCompletionStatus::Active
-                && !data.items.is_empty()
-                && editor.doc().content.get().path() == Some(&data.path)
-        });
-        if !visible { return String::new(); }
+        let on_screen = editor
+            .doc()
+            .inline_completion
+            .with(|text| ghost_on_screen(text.as_deref()));
+        let visible = on_screen
+            && inline.with(|data| {
+                data.status
+                    == crate::inline_completion::InlineCompletionStatus::Active
+                    && !data.items.is_empty()
+                    && editor.doc().content.get().path() == Some(&data.path)
+            });
+        if !visible {
+            return String::new();
+        }
         let keys = keypress.get();
-        let Some(accept) = keys.command_hint("inline_completion.select", &editor) else { return String::new(); };
-        let Some(cancel) = keys.command_hint("inline_completion.cancel", &editor) else { return String::new(); };
+        let Some(accept) = keys.command_hint("inline_completion.select", &editor)
+        else {
+            return String::new();
+        };
+        let Some(cancel) = keys.command_hint("inline_completion.cancel", &editor)
+        else {
+            return String::new();
+        };
         format!("Ghost: {accept} accept, {cancel} dismiss")
     };
     let mode = create_memo(move |_| window_tab_data.mode());
@@ -151,34 +169,40 @@ pub fn status(
             }),
             palette_status_action(
                 stack((
-                svg(move || config.get().ui_svg(LapceIcons::SCM)).style(move |s| {
-                    let config = config.get();
-                    let icon_size = config.ui.icon_size() as f32;
-                    s.size(icon_size, icon_size)
-                        .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
+                    svg(move || config.get().ui_svg(LapceIcons::SCM)).style(
+                        move |s| {
+                            let config = config.get();
+                            let icon_size = config.ui.icon_size() as f32;
+                            s.size(icon_size, icon_size)
+                                .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
+                        },
+                    ),
+                    label(branch).style(move |s| {
+                        s.margin_left(10.0)
+                            .color(config.get().color(LapceColor::STATUS_FOREGROUND))
+                            .selectable(false)
+                    }),
+                ))
+                .style(move |s| {
+                    s.display(if branch().is_empty() {
+                        Display::None
+                    } else {
+                        Display::Flex
+                    })
+                    .height_pct(100.0)
+                    .focus_visible(|s| {
+                        s.background(
+                            config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                        )
+                    })
+                    .padding_horiz(10.0)
+                    .align_items(Some(AlignItems::Center))
+                    .hover(|s| {
+                        s.cursor(CursorStyle::Pointer).background(
+                            config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                        )
+                    })
                 }),
-                label(branch).style(move |s| {
-                    s.margin_left(10.0)
-                        .color(config.get().color(LapceColor::STATUS_FOREGROUND))
-                        .selectable(false)
-                }),
-            ))
-            .style(move |s| {
-                s.display(if branch().is_empty() {
-                    Display::None
-                } else {
-                    Display::Flex
-                })
-                .height_pct(100.0)
-                .focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
-                .padding_horiz(10.0)
-                .align_items(Some(AlignItems::Center))
-                .hover(|s| {
-                    s.cursor(CursorStyle::Pointer).background(
-                        config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND),
-                    )
-                })
-            }),
                 palette_status,
                 keyboard_focus,
             )
@@ -231,9 +255,13 @@ pub fn status(
                 .keyboard_navigable()
                 .on_event(EventListener::KeyDown, |event| {
                     if let Event::KeyDown(key) = event {
-                        if matches!(key.key.logical_key, floem::keyboard::Key::Named(
-                            floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
-                        )) {
+                        if matches!(
+                            key.key.logical_key,
+                            floem::keyboard::Key::Named(
+                                floem::keyboard::NamedKey::Enter
+                                    | floem::keyboard::NamedKey::Space
+                            )
+                        ) {
                             return EventPropagation::Stop;
                         }
                     }
@@ -244,7 +272,13 @@ pub fn status(
                 })
                 .style(move |s| {
                     s.height_pct(100.0)
-                        .focus_visible(|s| s.background(config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND)))
+                        .focus_visible(|s| {
+                            s.background(
+                                config
+                                    .get()
+                                    .color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                            )
+                        })
                         .padding_horiz(10.0)
                         .items_center()
                         .hover(|s| {
@@ -277,20 +311,64 @@ pub fn status(
             }),
             label(move || {
                 let ai = config.get().effective_ai_autocomplete();
-                if ai.enabled && ["ollama", "openai"].contains(&ai.backend.as_str()) && crate::chat::fallback_target(&ai.endpoint).is_some() {
+                if ai.enabled
+                    && ["ollama", "openai"].contains(&ai.backend.as_str())
+                    && crate::chat::fallback_target(&ai.endpoint).is_some()
+                {
                     inline.with(|data| data.provider_notice.clone())
-                } else { String::new() }
-            }).style(move |s| {
-                s.max_width(280.0).min_width(0.0).text_ellipsis().padding_horiz(6.0)
+                } else {
+                    String::new()
+                }
+            })
+            .style(move |s| {
+                s.max_width(280.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
+                    .padding_horiz(6.0)
                     .color(config.get().color(LapceColor::STATUS_FOREGROUND))
             }),
             label(move || {
-                let Some(active)=editor.get() else {return String::new();};
-                let Some(binding)=active.doc().projection.get() else {return String::new();};
+                let Some(active) = editor.get() else {
+                    return String::new();
+                };
+                let Some(binding) = active.doc().projection.get() else {
+                    return String::new();
+                };
                 binding.notice.get()
-            }).style(move |s|s.max_width(480.0).min_width(0.0).text_ellipsis().padding_horiz(6.0).color(config.get().color(LapceColor::STATUS_FOREGROUND))),
+            })
+            .style(move |s| {
+                s.max_width(480.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
+                    .padding_horiz(6.0)
+                    .color(config.get().color(LapceColor::STATUS_FOREGROUND))
+            }),
+            label(move || {
+                completion.with(|c| {
+                    if c.status == crate::completion::CompletionStatus::Inactive {
+                        return String::new();
+                    }
+                    c.native_state
+                        .as_ref()
+                        .map(|state| {
+                            if state.starts_with("ready:") {
+                                String::new()
+                            } else {
+                                format!("PHP index: {state}")
+                            }
+                        })
+                        .unwrap_or_default()
+                })
+            })
+            .style(move |s| {
+                s.max_width(280.0)
+                    .padding_horiz(5.0)
+                    .color(config.get().color(LapceColor::STATUS_FOREGROUND))
+            }),
             label(ghost_hint).style(move |s| {
-                s.max_width(260.0).min_width(0.0).text_ellipsis()
+                s.max_width(260.0)
+                    .min_width(0.0)
+                    .text_ellipsis()
                     .padding_horiz(6.0)
                     .color(config.get().color(LapceColor::STATUS_FOREGROUND))
             }),
@@ -389,51 +467,64 @@ pub fn status(
         }),
         stack({
             let palette_clone = palette.clone();
-            let cursor_info = status_text(config, editor, palette_status, keyboard_focus, move || {
-                if let Some(editor) = editor.get() {
-                    let mut status = String::new();
-                    let cursor = editor.cursor().get();
-                    if let Some((line, column, character)) = editor
-                        .doc_signal()
-                        .get()
-                        .buffer
-                        .with(|buffer| cursor.get_line_col_char(buffer))
-                    {
-                        status = format!(
-                            "Ln {}, Col {}, Char {}",
-                            line + 1,
-                            column + 1,
-                            character,
-                        );
-                    }
-                    if let Some(selection) = cursor.get_selection() {
-                        let selection_range = selection.0.abs_diff(selection.1);
-
-                        if selection.0 != selection.1 {
-                            status =
-                                format!("{status} ({selection_range} selected)");
+            let cursor_info = status_text(
+                config,
+                editor,
+                palette_status,
+                keyboard_focus,
+                move || {
+                    if let Some(editor) = editor.get() {
+                        let mut status = String::new();
+                        let cursor = editor.cursor().get();
+                        if let Some((line, column, character)) = editor
+                            .doc_signal()
+                            .get()
+                            .buffer
+                            .with(|buffer| cursor.get_line_col_char(buffer))
+                        {
+                            status = format!(
+                                "Ln {}, Col {}, Char {}",
+                                line + 1,
+                                column + 1,
+                                character,
+                            );
                         }
+                        if let Some(selection) = cursor.get_selection() {
+                            let selection_range = selection.0.abs_diff(selection.1);
+
+                            if selection.0 != selection.1 {
+                                status =
+                                    format!("{status} ({selection_range} selected)");
+                            }
+                        }
+                        let selection_count = cursor.get_selection_count();
+                        if selection_count > 1 {
+                            status =
+                                format!("{status} {selection_count} selections");
+                        }
+                        return status;
                     }
-                    let selection_count = cursor.get_selection_count();
-                    if selection_count > 1 {
-                        status = format!("{status} {selection_count} selections");
-                    }
-                    return status;
-                }
-                String::new()
-            })
+                    String::new()
+                },
+            )
             .on_click_stop(move |_| {
                 palette_clone.run(PaletteKind::Line);
             });
             let palette_clone = palette.clone();
-            let line_ending_info = status_text(config, editor, palette_status, keyboard_focus, move || {
-                if let Some(editor) = editor.get() {
-                    let doc = editor.doc_signal().get();
-                    doc.buffer.with(|b| b.line_ending()).as_str()
-                } else {
-                    ""
-                }
-            })
+            let line_ending_info = status_text(
+                config,
+                editor,
+                palette_status,
+                keyboard_focus,
+                move || {
+                    if let Some(editor) = editor.get() {
+                        let doc = editor.doc_signal().get();
+                        doc.buffer.with(|b| b.line_ending()).as_str()
+                    } else {
+                        ""
+                    }
+                },
+            )
             .on_click_stop(move |_| {
                 palette_clone.run(PaletteKind::LineEnding);
             })
@@ -442,14 +533,20 @@ pub fn status(
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             });
             let palette_clone = palette.clone();
-            let language_info = status_text(config, editor, palette_status, keyboard_focus, move || {
-                if let Some(editor) = editor.get() {
-                    let doc = editor.doc_signal().get();
-                    doc.syntax().with(|s| s.language.name())
-                } else {
-                    "unknown"
-                }
-            })
+            let language_info = status_text(
+                config,
+                editor,
+                palette_status,
+                keyboard_focus,
+                move || {
+                    if let Some(editor) = editor.get() {
+                        let doc = editor.doc_signal().get();
+                        doc.syntax().with(|s| s.language.name())
+                    } else {
+                        "unknown"
+                    }
+                },
+            )
             .on_click_stop(move |_| {
                 palette_clone.run(PaletteKind::Language);
             })
@@ -530,32 +627,43 @@ fn palette_status_action(
             return_focus.set(false);
             // The root key handler requests workbench focus after Escape.
             // Restore after that dispatch, rather than racing its queued focus.
-            floem::action::exec_after(std::time::Duration::from_millis(1), move |_| {
-                if palette_status.get_untracked() == crate::palette::PaletteStatus::Inactive {
-                    id.request_focus();
-                }
-            });
+            floem::action::exec_after(
+                std::time::Duration::from_millis(1),
+                move |_| {
+                    if palette_status.get_untracked()
+                        == crate::palette::PaletteStatus::Inactive
+                    {
+                        id.request_focus();
+                    }
+                },
+            );
         }
         active
     });
     view.keyboard_navigable()
-    .on_event_cont(EventListener::PointerDown, move |_| return_focus.set(true))
-    .on_event_stop(EventListener::FocusGained, move |_| keyboard_focus.set(Some(id)))
-    .on_event_stop(EventListener::FocusLost, move |_| {
-        if keyboard_focus.get_untracked() == Some(id) {
-            keyboard_focus.set(None);
-        }
-    })
-    .on_event(EventListener::KeyDown, |event| {
-        if let Event::KeyDown(key) = event {
-            if matches!(key.key.logical_key, floem::keyboard::Key::Named(
-                floem::keyboard::NamedKey::Enter | floem::keyboard::NamedKey::Space
-            )) {
-                return EventPropagation::Stop;
+        .on_event_cont(EventListener::PointerDown, move |_| return_focus.set(true))
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(id))
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            if keyboard_focus.get_untracked() == Some(id) {
+                keyboard_focus.set(None);
             }
-        }
-        EventPropagation::Continue
-    })
+        })
+        .on_event(EventListener::KeyDown, |event| {
+            if let Event::KeyDown(key) = event {
+                if matches!(
+                    key.key.logical_key,
+                    floem::keyboard::Key::Named(
+                        floem::keyboard::NamedKey::Enter
+                            | floem::keyboard::NamedKey::Space
+                    )
+                ) {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
 }
 
 fn status_text<S: std::fmt::Display + 'static>(
@@ -565,36 +673,43 @@ fn status_text<S: std::fmt::Display + 'static>(
     keyboard_focus: RwSignal<Option<ViewId>>,
     text: impl Fn() -> S + 'static,
 ) -> impl View {
-    palette_status_action(label(text), palette_status, keyboard_focus)
-    .style(move |s| {
-        let config = config.get();
-        let display = if editor
-            .get()
-            .map(|editor| {
-                editor.doc_signal().get().content.with(|c| {
-                    use crate::doc::DocContent;
-                    matches!(c, DocContent::File { .. } | DocContent::Scratch { .. })
+    palette_status_action(label(text), palette_status, keyboard_focus).style(
+        move |s| {
+            let config = config.get();
+            let display = if editor
+                .get()
+                .map(|editor| {
+                    editor.doc_signal().get().content.with(|c| {
+                        use crate::doc::DocContent;
+                        matches!(
+                            c,
+                            DocContent::File { .. } | DocContent::Scratch { .. }
+                        )
+                    })
                 })
-            })
-            .unwrap_or(false)
-        {
-            Display::Flex
-        } else {
-            Display::None
-        };
+                .unwrap_or(false)
+            {
+                Display::Flex
+            } else {
+                Display::None
+            };
 
-        s.display(display)
-            .focus_visible(|s| s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND)))
-            .height_full()
-            .padding_horiz(10.0)
-            .items_center()
-            .color(config.color(LapceColor::STATUS_FOREGROUND))
-            .hover(|s| {
-                s.cursor(CursorStyle::Pointer)
-                    .background(config.color(LapceColor::PANEL_HOVERED_BACKGROUND))
-            })
-            .selectable(false)
-    })
+            s.display(display)
+                .focus_visible(|s| {
+                    s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
+                })
+                .height_full()
+                .padding_horiz(10.0)
+                .items_center()
+                .color(config.color(LapceColor::STATUS_FOREGROUND))
+                .hover(|s| {
+                    s.cursor(CursorStyle::Pointer).background(
+                        config.color(LapceColor::PANEL_HOVERED_BACKGROUND),
+                    )
+                })
+                .selectable(false)
+        },
+    )
 }
 
 /// The hint may only name keys while ghost text is actually drawn. The

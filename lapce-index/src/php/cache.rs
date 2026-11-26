@@ -16,7 +16,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const MAX_BYTES: u64 = crate::walker::MAX_FILE_BYTES;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CachedFile {

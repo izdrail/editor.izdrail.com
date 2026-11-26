@@ -71,9 +71,7 @@ use crate::{
     doc::{Doc, DocContent, DocumentHighlight},
     editor_tab::EditorTabChild,
     id::{DiffEditorId, EditorTabId},
-    inline_completion::{
-        EditHistory, InlineCompletionItem, InlineCompletionStatus,
-    },
+    inline_completion::{EditHistory, InlineCompletionItem, InlineCompletionStatus},
     keypress::{KeyPressFocus, condition::Condition},
     lsp::path_from_url,
     main_split::{Editors, MainSplitData, SplitDirection, SplitMoveDirection},
@@ -150,7 +148,9 @@ impl EditorInfo {
             }
             DocContent::Local => editors.new_local(data.scope, common),
             DocContent::History(_) => editors.new_local(data.scope, common),
-            DocContent::Scratch { name, read_only, .. } => {
+            DocContent::Scratch {
+                name, read_only, ..
+            } => {
                 let doc = data
                     .scratch_docs
                     .try_update(|scratch_docs| {
@@ -203,53 +203,102 @@ impl EditorViewKind {
 }
 
 /// Reject ambiguous completion batches before any source buffer is changed.
-fn projection_completion_disjoint(ranges: impl IntoIterator<Item = lsp_types::Range>) -> bool {
+fn projection_completion_disjoint(
+    ranges: impl IntoIterator<Item = lsp_types::Range>,
+) -> bool {
     let mut ranges: Vec<_> = ranges.into_iter().collect();
-    ranges.sort_by_key(|range| (range.start.line, range.start.character, range.end.line, range.end.character));
-    ranges.iter().all(|range| range.start <= range.end) && ranges.windows(2).all(|pair| {
-        let left = pair[0]; let right = pair[1];
-        left.end < right.start || (left.end == right.start && left.start != left.end && right.start != right.end)
-    })
+    ranges.sort_by_key(|range| {
+        (
+            range.start.line,
+            range.start.character,
+            range.end.line,
+            range.end.character,
+        )
+    });
+    ranges.iter().all(|range| range.start <= range.end)
+        && ranges.windows(2).all(|pair| {
+            let left = pair[0];
+            let right = pair[1];
+            left.end < right.start
+                || (left.end == right.start
+                    && left.start != left.end
+                    && right.start != right.end)
+        })
 }
 
 #[cfg(test)]
 mod projection_disjoint_completion_tests {
     use super::projection_completion_disjoint;
     use lsp_types::{Position, Range};
-    fn r(start: u32, end: u32) -> Range { Range::new(Position::new(4,start),Position::new(4,end)) }
-    #[test] fn projection_disjoint_completion_accepts_adjacent_and_unsorted() {
-        assert!(projection_completion_disjoint([r(9,12),r(3,6),r(6,9)]));
-        assert!(projection_completion_disjoint([r(3,3),r(4,5)]));
+    fn r(start: u32, end: u32) -> Range {
+        Range::new(Position::new(4, start), Position::new(4, end))
     }
-    #[test] fn projection_disjoint_completion_refuses_overlap_duplicate_or_containment() {
-        for ranges in [[r(3,6),r(5,9)],[r(3,6),r(3,6)],[r(3,9),r(4,6)],[r(3,3),r(3,3)],[r(3,6),r(6,6)],[r(3,3),r(3,6)],[r(6,3),r(9,12)]] {
+    #[test]
+    fn projection_disjoint_completion_accepts_adjacent_and_unsorted() {
+        assert!(projection_completion_disjoint([r(9, 12), r(3, 6), r(6, 9)]));
+        assert!(projection_completion_disjoint([r(3, 3), r(4, 5)]));
+    }
+    #[test]
+    fn projection_disjoint_completion_refuses_overlap_duplicate_or_containment() {
+        for ranges in [
+            [r(3, 6), r(5, 9)],
+            [r(3, 6), r(3, 6)],
+            [r(3, 9), r(4, 6)],
+            [r(3, 3), r(3, 3)],
+            [r(3, 6), r(6, 6)],
+            [r(3, 3), r(3, 6)],
+            [r(6, 3), r(9, 12)],
+        ] {
             assert!(!projection_completion_disjoint(ranges));
         }
     }
-    #[test] fn projection_disjoint_completion_compares_lines_before_columns() {
-        let mut other = r(0,1); other.start.line = 5; other.end.line = 5;
-        assert!(projection_completion_disjoint([r(3,9),other]));
+    #[test]
+    fn projection_disjoint_completion_compares_lines_before_columns() {
+        let mut other = r(0, 1);
+        other.start.line = 5;
+        other.end.line = 5;
+        assert!(projection_completion_disjoint([r(3, 9), other]));
     }
 }
 
 /// A primary completion edit is a single-line range containing the request.
-fn projection_completion_primary_range(range: lsp_types::Range, caret: lsp_types::Position) -> bool {
-    range.start.line == caret.line && range.end.line == caret.line
-        && range.start.character <= caret.character && caret.character <= range.end.character
+fn projection_completion_primary_range(
+    range: lsp_types::Range,
+    caret: lsp_types::Position,
+) -> bool {
+    range.start.line == caret.line
+        && range.end.line == caret.line
+        && range.start.character <= caret.character
+        && caret.character <= range.end.character
 }
 
 #[cfg(test)]
 mod projection_primary_range_tests {
     use super::projection_completion_primary_range;
     use lsp_types::{Position, Range};
-    fn p(line: u32, col: u32) -> Position { Position::new(line, col) }
-    #[test] fn projection_primary_range_accepts_exact_suffix_and_empty() {
-        assert!(projection_completion_primary_range(Range::new(p(12, 3),p(12, 6)),p(12, 4)));
-        assert!(projection_completion_primary_range(Range::new(p(12, 4),p(12, 4)),p(12, 4)));
+    fn p(line: u32, col: u32) -> Position {
+        Position::new(line, col)
     }
-    #[test] fn projection_primary_range_refuses_reversed_multiline_or_remote() {
-        for range in [Range::new(p(12, 5),p(12, 3)),Range::new(p(11, 3),p(12, 5)),Range::new(p(12, 3),p(13, 5)),Range::new(p(12, 5),p(12, 6))] {
-            assert!(!projection_completion_primary_range(range,p(12, 4)));
+    #[test]
+    fn projection_primary_range_accepts_exact_suffix_and_empty() {
+        assert!(projection_completion_primary_range(
+            Range::new(p(12, 3), p(12, 6)),
+            p(12, 4)
+        ));
+        assert!(projection_completion_primary_range(
+            Range::new(p(12, 4), p(12, 4)),
+            p(12, 4)
+        ));
+    }
+    #[test]
+    fn projection_primary_range_refuses_reversed_multiline_or_remote() {
+        for range in [
+            Range::new(p(12, 5), p(12, 3)),
+            Range::new(p(11, 3), p(12, 5)),
+            Range::new(p(12, 3), p(13, 5)),
+            Range::new(p(12, 5), p(12, 6)),
+        ] {
+            assert!(!projection_completion_primary_range(range, p(12, 4)));
         }
     }
 }
@@ -276,9 +325,15 @@ fn projection_completion_replace_edit(
 mod projection_insert_replace_tests {
     use super::projection_completion_replace_edit;
     use lsp_types::{InsertReplaceEdit, Position, Range};
-    fn pos(character: u32) -> Position { Position::new(12342, character) }
+    fn pos(character: u32) -> Position {
+        Position::new(12342, character)
+    }
     fn edit() -> InsertReplaceEdit {
-        InsertReplaceEdit { new_text: "replacement".into(), insert: Range::new(pos(9), pos(12)), replace: Range::new(pos(9), pos(15)) }
+        InsertReplaceEdit {
+            new_text: "replacement".into(),
+            insert: Range::new(pos(9), pos(12)),
+            replace: Range::new(pos(9), pos(15)),
+        }
     }
     #[test]
     fn projection_insert_replace_accepts_canonical_prefix_and_preserves_text() {
@@ -290,9 +345,11 @@ mod projection_insert_replace_tests {
     }
     #[test]
     fn projection_insert_replace_accepts_equal_and_empty_ranges() {
-        let mut edit = edit(); edit.replace = edit.insert;
+        let mut edit = edit();
+        edit.replace = edit.insert;
         assert!(projection_completion_replace_edit(&edit, pos(12)).is_some());
-        edit.insert = Range::new(pos(9), pos(9)); edit.replace = edit.insert;
+        edit.insert = Range::new(pos(9), pos(9));
+        edit.replace = edit.insert;
         assert!(projection_completion_replace_edit(&edit, pos(9)).is_some());
     }
     #[test]
@@ -307,7 +364,10 @@ mod projection_insert_replace_tests {
                 3 => edit.replace.end.line += 1,
                 _ => edit.insert.end = pos(8),
             }
-            assert!(projection_completion_replace_edit(&edit, pos(12)).is_none(), "variant {variant}");
+            assert!(
+                projection_completion_replace_edit(&edit, pos(12)).is_none(),
+                "variant {variant}"
+            );
         }
     }
     #[test]
@@ -376,10 +436,7 @@ impl PartialEq for EditorData {
 /// The chunk scan is widened by one byte on each side because
 /// `iter_chunks` over an empty `offset..offset` range yields nothing at
 /// all - the request context used to go out empty every time.
-pub(crate) fn containing_spans<T: Clone>(
-    spans: &Spans<T>,
-    offset: usize,
-) -> Vec<T> {
+pub(crate) fn containing_spans<T: Clone>(spans: &Spans<T>, offset: usize) -> Vec<T> {
     spans
         .iter_chunks(offset.saturating_sub(1)..offset + 1)
         .filter(|(iv, _)| iv.start <= offset && iv.end >= offset)
@@ -403,6 +460,30 @@ pub(crate) fn completion_word_start(
     if !php {
         return start;
     }
+    // Native PHP FQCN/variables replace the full token, including its marker.
+    // Keep member operators outside the edit range.
+    let mut php_start = start;
+    while php_start > 0 {
+        let previous = buffer.text().prev_codepoint_offset(php_start).unwrap_or(0);
+        let ch = buffer
+            .slice_to_cow(previous..php_start)
+            .chars()
+            .next()
+            .unwrap_or(' ');
+        if ch == '\\' || ch == '$' || ch == '_' || ch.is_alphanumeric() {
+            php_start = previous;
+            if ch == '$' {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    if php_start < start
+        && buffer.slice_to_cow(php_start..offset).contains(['\\', '$'])
+    {
+        return php_start;
+    }
     let line_start = buffer.offset_of_line(buffer.line_of_offset(start));
     let before = buffer.slice_to_cow(line_start..start);
     // In a Blade component tag name the marker (`<x-` / `<livewire:`) stays
@@ -413,19 +494,18 @@ pub(crate) fn completion_word_start(
         crate::builtin_snippets::tag_name_word_len(&before)
     } else {
         let before_cursor = buffer.slice_to_cow(line_start..offset);
-        if crate::project_completion::colon_name_context(&before_cursor)
-        {
+        if crate::project_completion::colon_name_context(&before_cursor) {
             crate::project_completion::colon_word_len(&before)
-        } else if crate::project_completion::dotted_name_context(
-            &before_cursor,
-        ) {
+        } else if crate::project_completion::dotted_name_context(&before_cursor) {
             crate::project_completion::dotted_word_len(&before)
         } else {
             let extension = crate::builtin_snippets::hyphen_word_len(&before);
             let full = buffer.slice_to_cow(start.saturating_sub(extension)..offset);
             if blade || full.starts_with("lv-") || full.starts_with("lw-") {
                 extension
-            } else { 0 }
+            } else {
+                0
+            }
         }
     };
     start - ext
@@ -463,7 +543,11 @@ mod completion_word_start_tests {
         for name in ["view.blade.php", "VIEW.BLADE.PHP", "view.Blade.Php"] {
             for (text, expected) in [("<x-forms.in", 3), ("<div wire-ta", 5)] {
                 let b = Buffer::new(text);
-                assert_eq!(completion_word_start(&b, Some(Path::new(name)), text.len()), expected, "{name}: {text}");
+                assert_eq!(
+                    completion_word_start(&b, Some(Path::new(name)), text.len()),
+                    expected,
+                    "{name}: {text}"
+                );
             }
         }
     }
@@ -484,7 +568,14 @@ mod completion_word_start_tests {
     fn php_cli_whole_name_ranges_match_the_offering_gate() {
         let command = Buffer::new("Artisan::call('reports:r')");
         let config = Buffer::new("config('app.na')");
-        for name in ["artisan", "project/artisan", "bin/console", "project/bin/console", "probe.php", "view.blade.php"] {
+        for name in [
+            "artisan",
+            "project/artisan",
+            "bin/console",
+            "project/bin/console",
+            "probe.php",
+            "view.blade.php",
+        ] {
             let path = Some(Path::new(name));
             assert_eq!(completion_word_start(&command, path, 24), 15, "{name}");
             assert_eq!(completion_word_start(&config, path, 14), 8, "{name}");
@@ -496,6 +587,21 @@ mod completion_word_start_tests {
         }
     }
 
+    #[test]
+    fn php_variable_and_unicode_qualified_ranges() {
+        for (source, expected) in [
+            ("<?php $na", 6),
+            ("<?php new \\Über\\Mo", 10),
+            ("<?php $x->na", 10),
+        ] {
+            let buffer = Buffer::new(source);
+            assert_eq!(
+                completion_word_start(&buffer, php(), source.len()),
+                expected,
+                "{source}"
+            );
+        }
+    }
     #[test]
     fn colon_context_without_colon_stays_at_the_boundary() {
         let b = Buffer::new("Artisan::call('re')");
@@ -546,7 +652,10 @@ mod snippet_origin_tests {
     #[test]
     fn tab_stops_are_clamped_to_the_new_text() {
         let tabs = vec![(1, (3, 9)), (0, (20, 20))];
-        assert_eq!(clamp_snippet_tabs(tabs, 10), vec![(1, (3, 9)), (0, (10, 10))]);
+        assert_eq!(
+            clamp_snippet_tabs(tabs, 10),
+            vec![(1, (3, 9)), (0, (10, 10))]
+        );
         assert!(clamp_snippet_tabs(Vec::new(), 0).is_empty());
     }
 }
@@ -590,6 +699,21 @@ impl EditorData {
             ai_edit_history: cx.create_rw_signal(EditHistory::default()),
         };
         data.reveal_cursor_in_folds();
+        let editor = data.clone();
+        cx.create_effect(move |previous| {
+            let doc = editor.doc();
+            let context_rev = doc.syntax.with(|s| s.php_context_rev);
+            if previous != Some(context_rev)
+                && context_rev == Some(doc.rev())
+                && editor.common.completion.with_untracked(|c| {
+                    c.status != CompletionStatus::Inactive
+                        && c.latest_editor_id == Some(editor.id())
+                })
+            {
+                editor.update_completion(true);
+            }
+            context_rev
+        });
         data
     }
 
@@ -1641,25 +1765,39 @@ impl EditorData {
 
     /// Resolve projection coordinates before entering existing source-aware
     /// navigation paths (including framework resolvers and LSP fallback).
-    fn navigation_source(&self)->Option<(Rc<Doc>,usize)> {
-        let doc=self.doc();let offset=self.cursor().with_untracked(|c|c.offset());
-        if doc.projection.get_untracked().is_some() {doc.projection_navigation_source(offset)}
-        else {Some((doc,offset))}
+    fn navigation_source(&self) -> Option<(Rc<Doc>, usize)> {
+        let doc = self.doc();
+        let offset = self.cursor().with_untracked(|c| c.offset());
+        if doc.projection.get_untracked().is_some() {
+            doc.projection_navigation_source(offset)
+        } else {
+            Some((doc, offset))
+        }
     }
 
     /// Freeze the request origin while leaving the response guard live. Each
     /// async stage rechecks it, including references/implementation resolution.
-    fn navigation_request(&self)->Option<(Rc<Doc>,usize,Rc<dyn Fn()->bool>)> {
-        let origin=self.doc();let origin_rev=origin.rev();let origin_id=origin.buffer_id;
-        let (source,offset)=self.navigation_source()?;
-        let source_id=source.buffer_id;let source_rev=source.rev();let editor=self.clone();
-        let current=Rc::new(move || {
-            let origin=editor.doc();
-            if origin.buffer_id!=origin_id || origin.rev()!=origin_rev {return false;}
-            let Some((source,current_offset))=editor.navigation_source() else {return false;};
-            source.buffer_id==source_id && source.rev()==source_rev && current_offset==offset
+    fn navigation_request(&self) -> Option<(Rc<Doc>, usize, Rc<dyn Fn() -> bool>)> {
+        let origin = self.doc();
+        let origin_rev = origin.rev();
+        let origin_id = origin.buffer_id;
+        let (source, offset) = self.navigation_source()?;
+        let source_id = source.buffer_id;
+        let source_rev = source.rev();
+        let editor = self.clone();
+        let current = Rc::new(move || {
+            let origin = editor.doc();
+            if origin.buffer_id != origin_id || origin.rev() != origin_rev {
+                return false;
+            }
+            let Some((source, current_offset)) = editor.navigation_source() else {
+                return false;
+            };
+            source.buffer_id == source_id
+                && source.rev() == source_rev
+                && current_offset == offset
         });
-        Some((source,offset,current))
+        Some((source, offset, current))
     }
 
     fn go_to_definition(&self) {
@@ -1669,7 +1807,9 @@ impl EditorData {
         // an already scheduled hover or late LSP response bring it back.
         self.common.mouse_hover_timer.set(TimerToken::INVALID);
         self.common.hover.dismiss();
-        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
+        let Some((doc, offset, request_current)) = self.navigation_request() else {
+            return;
+        };
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -1678,7 +1818,6 @@ impl EditorData {
             Some(path) => path,
             None => return,
         };
-
 
         // A Blade/Twig template or component under the cursor opens directly,
         // before any language server is asked.
@@ -1691,27 +1830,42 @@ impl EditorData {
                 )
             });
             // Minified or generated lines are not worth scanning.
-            let line_text = if line_text.len() > 8192 { String::new() } else { line_text };
+            let line_text = if line_text.len() > 8192 {
+                String::new()
+            } else {
+                line_text
+            };
             if let Some(target) =
                 crate::template_refs::resolve(root, &path, &line_text, col)
             {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: None,
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
                 return;
             }
             if self.common.workspace.kind.is_local() {
-                if let Some(target) = crate::file_refs::resolve(root, &path, &line_text, col) {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation { path: target, position: None,
-                            scroll_offset: None, ignore_unconfirmed: true, same_editor_tab: false },
-                    });
+                if let Some(target) =
+                    crate::file_refs::resolve(root, &path, &line_text, col)
+                {
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: None,
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
+                        },
+                    );
                     return;
                 }
             }
@@ -1723,21 +1877,24 @@ impl EditorData {
                     let first = line.saturating_sub(30);
                     let from = buffer.offset_of_line(first);
                     let to = offset.min(from + 16_384).max(from);
-                    let to_end = buffer.offset_of_line(line + 1).min(from + 16_384).max(to);
+                    let to_end =
+                        buffer.offset_of_line(line + 1).min(from + 16_384).max(to);
                     (buffer.slice_to_cow(from..to_end).to_string(), to - from)
                 });
                 if let Some((target, line)) =
                     crate::blade_props::resolve(root, &path, &window, at)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1745,27 +1902,9 @@ impl EditorData {
             if let Some(target) =
                 crate::inertia_pages::resolve(root, &line_text, col)
             {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // `<UserCard` / `<user-card` in a Vue, Svelte or JSX file opens
-            // the component file under `resources/js`.
-            if path
-                .extension()
-                .is_some_and(|e| ["vue", "svelte", "tsx", "jsx"].iter().any(|k| e == *k))
-            {
-                if let Some(target) =
-                    crate::vue_components::resolve(root, &line_text, col)
-                {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
                         location: EditorLocation {
                             path: target,
                             position: None,
@@ -1774,6 +1913,27 @@ impl EditorData {
                             same_editor_tab: false,
                         },
                     });
+                return;
+            }
+            // `<UserCard` / `<user-card` in a Vue, Svelte or JSX file opens
+            // the component file under `resources/js`.
+            if path.extension().is_some_and(|e| {
+                ["vue", "svelte", "tsx", "jsx"].iter().any(|k| e == *k)
+            }) {
+                if let Some(target) =
+                    crate::vue_components::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: None,
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
+                        },
+                    );
                     return;
                 }
             }
@@ -1783,15 +1943,17 @@ impl EditorData {
                 if let Some(target) =
                     crate::js_imports::resolve(root, &path, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: None,
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: None,
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1801,15 +1963,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::middleware_alias::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1819,15 +1983,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::config_channels::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1836,15 +2002,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::eloquent_scopes::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1853,46 +2021,55 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::eloquent_factories::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
             // `@can('x')` / `Gate::allows('x')` opens `Gate::define('x'`.
             if crate::project_completion::php_completion_path(&path) {
-                if let Some((target, line)) = crate::gate_refs::resolve(root, &line_text, col) {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                if let Some((target, line)) =
+                    crate::gate_refs::resolve(root, &line_text, col)
+                {
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
             // `PostSeeder::class` in `$this->call(...)` opens the seeder.
             if crate::project_completion::php_completion_path(&path) {
-                if let Some((target, line)) = crate::seeder_refs::resolve(root, &line_text, col)
+                if let Some((target, line)) =
+                    crate::seeder_refs::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1901,15 +2078,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::blade_slots::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1919,15 +2098,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::controller_actions::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1937,15 +2118,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::symfony_params::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1953,15 +2136,17 @@ impl EditorData {
             if let Some(target) =
                 crate::asset_refs::resolve(root, &path, &line_text, col)
             {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: None,
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
                 return;
             }
             // Livewire view: `wire:click="save"` / `$wire.save()` opens the
@@ -1970,15 +2155,17 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::livewire_handlers::resolve(root, &path, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation {
-                            path: target,
-                            position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: true,
-                            same_editor_tab: false,
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
                         },
-                    });
+                    );
                     return;
                 }
             }
@@ -1987,101 +2174,9 @@ impl EditorData {
             if let Some((target, line)) =
                 crate::env_refs::resolve(root, &line_text, col)
             {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: Some(EditorPosition::Line(line)),
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // WordPress: get_template_part(), get_header(), locate_template()
-            // and `__DIR__ . '/x.php'` style includes open the file.
-            if let Some(target) =
-                crate::wp_templates::resolve(root, &path, &line_text, col)
-            {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // WordPress: hook callbacks and hook names (bounded text search).
-            if let Some((target, line)) =
-                crate::wp_hooks::resolve(root, &path, &line_text, col)
-            {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: Some(EditorPosition::Line(line)),
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // Laravel config('a.b') and __('file.key') / __('Text').
-            if let Some((target, line)) =
-                crate::laravel_keys::resolve(root, &line_text, col)
-            {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: Some(EditorPosition::Line(line)),
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // Named routes: route('x'), path('x'), generateUrl('x').
-            if let Some((target, line)) =
-                crate::route_names::resolve(root, &line_text, col)
-            {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: Some(EditorPosition::Line(line)),
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // composer.json / composer.lock: a package name opens its
-            // composer.json under vendor/.
-            if let Some((target, line)) =
-                crate::composer_pkg::resolve(root, &path, &line_text, col)
-            {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: Some(EditorPosition::Line(line)),
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
-                return;
-            }
-            // `$request->input('title')` in a FormRequest opens the
-            // `'title' => ...` line of rules().
-            if crate::project_completion::php_completion_path(&path) {
-                if let Some((target, line)) =
-                    crate::request_fields::resolve(root, &path, &line_text, col)
-                {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
                         location: EditorLocation {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
@@ -2090,17 +2185,132 @@ impl EditorData {
                             same_editor_tab: false,
                         },
                     });
+                return;
+            }
+            // WordPress: get_template_part(), get_header(), locate_template()
+            // and `__DIR__ . '/x.php'` style includes open the file.
+            if let Some(target) =
+                crate::wp_templates::resolve(root, &path, &line_text, col)
+            {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: None,
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
+                return;
+            }
+            // WordPress: hook callbacks and hook names (bounded text search).
+            if let Some((target, line)) =
+                crate::wp_hooks::resolve(root, &path, &line_text, col)
+            {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
+                return;
+            }
+            // Laravel config('a.b') and __('file.key') / __('Text').
+            if let Some((target, line)) =
+                crate::laravel_keys::resolve(root, &line_text, col)
+            {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
+                return;
+            }
+            // Named routes: route('x'), path('x'), generateUrl('x').
+            if let Some((target, line)) =
+                crate::route_names::resolve(root, &line_text, col)
+            {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
+                return;
+            }
+            // composer.json / composer.lock: a package name opens its
+            // composer.json under vendor/.
+            if let Some((target, line)) =
+                crate::composer_pkg::resolve(root, &path, &line_text, col)
+            {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
+                        location: EditorLocation {
+                            path: target,
+                            position: Some(EditorPosition::Line(line)),
+                            scroll_offset: None,
+                            ignore_unconfirmed: true,
+                            same_editor_tab: false,
+                        },
+                    });
+                return;
+            }
+            // `$request->input('title')` in a FormRequest opens the
+            // `'title' => ...` line of rules().
+            if crate::project_completion::php_completion_path(&path) {
+                if let Some((target, line)) =
+                    crate::request_fields::resolve(root, &path, &line_text, col)
+                {
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
+                        },
+                    );
                     return;
                 }
             }
             // Explicit PHP imports/namespace mapping also work without a PHP LSP.
             if crate::project_completion::php_completion_path(&path) {
                 let source = doc.buffer.with_untracked(|buffer| buffer.to_string());
-                if let Some((target, line)) = crate::php_imports::definition_at(root, &source, offset) {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
-                        location: EditorLocation { path: target, position: Some(EditorPosition::Line(line)),
-                            scroll_offset: None, ignore_unconfirmed: true, same_editor_tab: false },
-                    });
+                if let Some((target, line)) =
+                    crate::php_imports::definition_at(root, &source, offset)
+                {
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
+                        },
+                    );
                     return;
                 }
             }
@@ -2110,7 +2320,27 @@ impl EditorData {
                 if let Some((target, line)) =
                     crate::class_const_refs::resolve(root, &line_text, col)
                 {
-                    self.common.internal_command.send(InternalCommand::JumpToLocation {
+                    self.common.internal_command.send(
+                        InternalCommand::JumpToLocation {
+                            location: EditorLocation {
+                                path: target,
+                                position: Some(EditorPosition::Line(line)),
+                                scroll_offset: None,
+                                ignore_unconfirmed: true,
+                                same_editor_tab: false,
+                            },
+                        },
+                    );
+                    return;
+                }
+            }
+            // Symfony: a class named in YAML/XML/Twig config opens its file.
+            if let Some((target, line)) =
+                crate::class_refs::resolve(root, &path, &line_text, col)
+            {
+                self.common
+                    .internal_command
+                    .send(InternalCommand::JumpToLocation {
                         location: EditorLocation {
                             path: target,
                             position: Some(EditorPosition::Line(line)),
@@ -2119,22 +2349,6 @@ impl EditorData {
                             same_editor_tab: false,
                         },
                     });
-                    return;
-                }
-            }
-            // Symfony: a class named in YAML/XML/Twig config opens its file.
-            if let Some((target, line)) =
-                crate::class_refs::resolve(root, &path, &line_text, col)
-            {
-                self.common.internal_command.send(InternalCommand::JumpToLocation {
-                    location: EditorLocation {
-                        path: target,
-                        position: Some(EditorPosition::Line(line)),
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                });
                 return;
             }
         }
@@ -2152,7 +2366,9 @@ impl EditorData {
 
         let internal_command = self.common.internal_command;
         let send = create_ext_action(self.scope, move |d| {
-            if !request_current() {return;}
+            if !request_current() {
+                return;
+            }
 
             match d {
                 DefinitionOrReference::Location(location) => {
@@ -2197,14 +2413,22 @@ impl EditorData {
                             }
                         }
                         GotoDefinitionResponse::Link(location_links) => {
-                            let Some(location_link) = location_links.first().cloned() else {return;};
+                            let Some(location_link) =
+                                location_links.first().cloned()
+                            else {
+                                return;
+                            };
                             Some(Location {
                                 uri: location_link.target_uri,
                                 range: location_link.target_selection_range,
                             })
                         }
                     } {
-                        if definition_is_current_symbol(&path, start_position, &location) {
+                        if definition_is_current_symbol(
+                            &path,
+                            start_position,
+                            &location,
+                        ) {
                             proxy.get_references(
                                 path.clone(),
                                 position,
@@ -2262,7 +2486,9 @@ impl EditorData {
     }
 
     pub fn call_hierarchy(&self, window_tab_data: WindowTabData) {
-        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
+        let Some((doc, offset, request_current)) = self.navigation_request() else {
+            return;
+        };
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -2271,7 +2497,6 @@ impl EditorData {
             Some(path) => path,
             None => return,
         };
-
 
         let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
@@ -2288,7 +2513,9 @@ impl EditorData {
             path,
             position,
             create_ext_action(self.scope, move |result| {
-                if !request_current() {return;}
+                if !request_current() {
+                    return;
+                }
                 if let Ok(ProxyResponse::ShowCallHierarchyResponse {
                     items, ..
                 }) = result
@@ -2319,7 +2546,9 @@ impl EditorData {
     }
 
     pub fn find_reference(&self, window_tab_data: WindowTabData) {
-        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
+        let Some((doc, offset, request_current)) = self.navigation_request() else {
+            return;
+        };
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -2329,7 +2558,6 @@ impl EditorData {
             None => return,
         };
 
-
         let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
             let start_position = buffer.offset_to_position(start_offset);
@@ -2337,11 +2565,13 @@ impl EditorData {
             (start_position, position)
         });
         let scope = window_tab_data.scope;
-        let response_current=request_current.clone();
+        let response_current = request_current.clone();
         let update_implementation = create_ext_action(self.scope, {
             let window_tab_data = window_tab_data.clone();
             move |result| {
-                if !response_current() {return;}
+                if !response_current() {
+                    return;
+                }
                 if let Ok(ProxyResponse::ReferencesResolveResponse { items }) =
                     result
                 {
@@ -2358,7 +2588,9 @@ impl EditorData {
             path,
             position,
             create_ext_action(self.scope, move |result| {
-                if !request_current() {return;}
+                if !request_current() {
+                    return;
+                }
                 if let Ok(ProxyResponse::GetReferencesResponse { references }) =
                     result
                 {
@@ -2378,7 +2610,9 @@ impl EditorData {
     }
 
     pub fn go_to_implementation(&self, window_tab_data: WindowTabData) {
-        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
+        let Some((doc, offset, request_current)) = self.navigation_request() else {
+            return;
+        };
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -2388,7 +2622,6 @@ impl EditorData {
             None => return,
         };
 
-
         let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
             let start_offset = buffer.prev_code_boundary(offset);
             let start_position = buffer.offset_to_position(start_offset);
@@ -2396,11 +2629,13 @@ impl EditorData {
             (start_position, position)
         });
         let scope = window_tab_data.scope;
-        let response_current=request_current.clone();
+        let response_current = request_current.clone();
         let update_implementation = create_ext_action(self.scope, {
             let window_tab_data = window_tab_data.clone();
             move |result| {
-                if !response_current() {return;}
+                if !response_current() {
+                    return;
+                }
                 if let Ok(ProxyResponse::ReferencesResolveResponse { items }) =
                     result
                 {
@@ -2418,7 +2653,9 @@ impl EditorData {
             position,
             create_ext_action(self.scope, {
                 move |result| {
-                    if !request_current() {return;}
+                    if !request_current() {
+                        return;
+                    }
                     if let Ok(ProxyResponse::GotoImplementationResponse {
                         resp,
                         ..
@@ -2480,12 +2717,9 @@ impl EditorData {
             tracing::error!("{:?}", err);
         } else {
             if let Some(offset) = jump_to {
-                let offset = self
-                    .doc()
-                    .buffer
-                    .with_untracked(|b| {
-                        b.prev_code_boundary(offset.min(b.text().len()))
-                    });
+                let offset = self.doc().buffer.with_untracked(|b| {
+                    b.prev_code_boundary(offset.min(b.text().len()))
+                });
                 let config = self.common.config.get_untracked();
                 self.cursor().set(if config.core.modal {
                     Cursor::new(CursorMode::Normal(offset), None, None)
@@ -2505,13 +2739,20 @@ impl EditorData {
 
     /// Publish one bounded endpoint/error hint without writing model output
     /// into the chat lane or leaking credential/response bodies into status.
-    fn native_ai_status_action(&self, generation: u64) -> impl FnOnce(String) + Send + 'static {
+    fn native_ai_status_action(
+        &self,
+        generation: u64,
+    ) -> impl FnOnce(String) + Send + 'static {
         let editor = self.clone();
         let config_id = self.common.config.get_untracked().id;
         create_ext_action(self.scope, move |notice: String| {
             if editor.ai_generation.get_untracked() == generation
-                && editor.common.config.get_untracked().id == config_id {
-                editor.common.inline_completion.update(|data| data.provider_notice = notice);
+                && editor.common.config.get_untracked().id == config_id
+            {
+                editor
+                    .common
+                    .inline_completion
+                    .update(|data| data.provider_notice = notice);
             }
         })
     }
@@ -2572,7 +2813,11 @@ impl EditorData {
     /// invocation (Alt+Backslash) fires immediately; edit hooks only arm the
     /// debounce timer so inference starts after a typing pause.
     fn update_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
-        let ai = self.common.config.get_untracked().effective_ai_autocomplete();
+        let ai = self
+            .common
+            .config
+            .get_untracked()
+            .effective_ai_autocomplete();
         match trigger_kind {
             InlineCompletionTriggerKind::Invoked => {
                 self.ai_auto_timer.set(TimerToken::INVALID);
@@ -2582,11 +2827,14 @@ impl EditorData {
                 // Every typed character and edit lands here (receive_char,
                 // run_edit_command). Keep a visible suggestion correct at
                 // once, whether or not auto-trigger will request a new one.
-                let session_active = self.common.inline_completion.with_untracked(
-                    |c| c.status != InlineCompletionStatus::Inactive,
-                );
+                let session_active =
+                    self.common.inline_completion.with_untracked(|c| {
+                        c.status != InlineCompletionStatus::Inactive
+                    });
                 let plan = crate::inline_completion::automatic_edit_plan(
-                    ai.enabled, ai.auto_trigger, session_active,
+                    ai.enabled,
+                    ai.auto_trigger,
+                    session_active,
                 );
                 if plan.refresh_visible {
                     self.refresh_visible_inline_completion();
@@ -2683,9 +2931,12 @@ impl EditorData {
         });
         if relevant {
             let config = self.common.config.get_untracked();
-            crate::inline_completion::update_batched(inline_completion, |completion| {
-                completion.update_inline_completion(&config, &doc, offset);
-            });
+            crate::inline_completion::update_batched(
+                inline_completion,
+                |completion| {
+                    completion.update_inline_completion(&config, &doc, offset);
+                },
+            );
         } else if inline_completion
             .with_untracked(|c| c.status != InlineCompletionStatus::Inactive)
         {
@@ -2700,7 +2951,11 @@ impl EditorData {
     fn request_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
         let automatic = trigger_kind == InlineCompletionTriggerKind::Automatic;
         let request_config_id = self.common.config.get_untracked().id;
-        let ai = self.common.config.get_untracked().effective_ai_autocomplete();
+        let ai = self
+            .common
+            .config
+            .get_untracked()
+            .effective_ai_autocomplete();
         if !ai.enabled {
             self.cancel_inline_completion();
             return;
@@ -2750,9 +3005,12 @@ impl EditorData {
         });
         if has_relevant {
             let config = self.common.config.get_untracked();
-            crate::inline_completion::update_batched(inline_completion, |completion| {
-                completion.update_inline_completion(&config, &doc, offset);
-            });
+            crate::inline_completion::update_batched(
+                inline_completion,
+                |completion| {
+                    completion.update_inline_completion(&config, &doc, offset);
+                },
+            );
         }
 
         self.ai_generation.update(|g| *g = g.wrapping_add(1));
@@ -2779,7 +3037,9 @@ impl EditorData {
         });
         let gateway_messages = if ai.backend == "openai" {
             Some(crate::ghost_gateway::messages(&prefix, &suffix))
-        } else { None };
+        } else {
+            None
+        };
         let gateway_suffix = suffix.clone();
         let request = if ai.backend == "ollama" {
             // Native network lane, with bounded context and no local model.
@@ -2806,12 +3066,20 @@ impl EditorData {
             }
         } else if gateway_messages.is_some() {
             lapce_ai::Request {
-                model: Default::default(), tokenizer: Default::default(),
-                prefix, suffix, prefix_tokens: 0, suffix_tokens: 0,
-                max_tokens: ai.max_tokens, request_id: 0, messages: None, remote: None,
+                model: Default::default(),
+                tokenizer: Default::default(),
+                prefix,
+                suffix,
+                prefix_tokens: 0,
+                suffix_tokens: 0,
+                max_tokens: ai.max_tokens,
+                request_id: 0,
+                messages: None,
+                remote: None,
             }
         } else {
-            let root = match lapce_core::directory::Directory::data_local_directory() {
+            let root = match lapce_core::directory::Directory::data_local_directory()
+            {
                 Some(p) => p.join("ai-models"),
                 None => return,
             };
@@ -2832,9 +3100,7 @@ impl EditorData {
                 }
             })
             .ok()
-            .and_then(|b| {
-                serde_json::from_slice::<lapce_ai::Installed>(&b).ok()
-            });
+            .and_then(|b| serde_json::from_slice::<lapce_ai::Installed>(&b).ok());
             let model = if ai.model_path.is_empty() {
                 match installed.as_ref() {
                     Some(i) => i.model.clone(),
@@ -2906,23 +3172,48 @@ impl EditorData {
 
         inline_completion.update(|c| c.status = InlineCompletionStatus::Started);
 
-        if ai.backend == "ollama" && crate::chat::fallback_target(&ai.endpoint).is_some() {
-            if let Some(old) = self.ai_gateway_cancel.get_untracked() { old.store(true, std::sync::atomic::Ordering::Release); }
+        if ai.backend == "ollama"
+            && crate::chat::fallback_target(&ai.endpoint).is_some()
+        {
+            if let Some(old) = self.ai_gateway_cancel.get_untracked() {
+                old.store(true, std::sync::atomic::Ordering::Release);
+            }
             let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
             self.ai_gateway_cancel.set(Some(cancelled.clone()));
             let status = self.native_ai_status_action(generation);
             std::thread::spawn(move || {
-                let result = crate::ghost_gateway::native_with_fallback(&request, cancelled);
+                let result =
+                    crate::ghost_gateway::native_with_fallback(&request, cancelled);
                 let items = match result {
                     Ok((text, source)) => {
-                        status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                        status(if source != ai.endpoint {
+                            "Ghost AI: llm fallback (auto)".into()
+                        } else {
+                            "Ghost AI: ai.izdrail.com".into()
+                        });
                         let text = lapce_ai::ollama::clean(&text, &gateway_suffix);
-                        if text.is_empty() { Vec::new() } else { vec![lsp_types::InlineCompletionItem {
-                            insert_text: text, filter_text: None, range: Some(lsp_types::Range::new(position, position)),
-                            command: None, insert_text_format: Some(lsp_types::InsertTextFormat::PLAIN_TEXT),
-                        }] }
+                        if text.is_empty() {
+                            Vec::new()
+                        } else {
+                            vec![lsp_types::InlineCompletionItem {
+                                insert_text: text,
+                                filter_text: None,
+                                range: Some(lsp_types::Range::new(
+                                    position, position,
+                                )),
+                                command: None,
+                                insert_text_format: Some(
+                                    lsp_types::InsertTextFormat::PLAIN_TEXT,
+                                ),
+                            }]
+                        }
                     }
-                    Err(error) => { if error != "Cancelled" { status("Ghost AI: request failed".into()); } Vec::new() }
+                    Err(error) => {
+                        if error != "Cancelled" {
+                            status("Ghost AI: request failed".into());
+                        }
+                        Vec::new()
+                    }
                 };
                 send(items);
             });
@@ -2937,29 +3228,48 @@ impl EditorData {
             let status = self.native_ai_status_action(generation);
             std::thread::spawn(move || {
                 let result = crate::ghost_gateway::complete_with_source(
-                    &ai.endpoint, &ai.remote_model, &messages,
-                    ai.max_tokens, ai.timeout_ms, cancelled,
+                    &ai.endpoint,
+                    &ai.remote_model,
+                    &messages,
+                    ai.max_tokens,
+                    ai.timeout_ms,
+                    cancelled,
                 );
                 let text = match result {
                     Ok((text, source)) => {
                         if crate::chat::fallback_target(&ai.endpoint).is_some() {
-                            status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                            status(if source != ai.endpoint {
+                                "Ghost AI: llm fallback (auto)".into()
+                            } else {
+                                "Ghost AI: ai.izdrail.com".into()
+                            });
                         }
                         Some(text)
                     }
                     Err(error) => {
-                        if error != "Cancelled" && crate::chat::fallback_target(&ai.endpoint).is_some() { status("Ghost AI: request failed".into()); }
+                        if error != "Cancelled"
+                            && crate::chat::fallback_target(&ai.endpoint).is_some()
+                        {
+                            status("Ghost AI: request failed".into());
+                        }
                         None
                     }
                 };
-                let items = text.map(|text| lapce_ai::ollama::clean(&text, &gateway_suffix)).filter(|text| !text.is_empty()).map(|text| {
-                    vec![lsp_types::InlineCompletionItem {
-                        insert_text: text, filter_text: None,
-                        range: Some(lsp_types::Range::new(position, position)),
-                        command: None,
-                        insert_text_format: Some(lsp_types::InsertTextFormat::PLAIN_TEXT),
-                    }]
-                }).unwrap_or_default();
+                let items = text
+                    .map(|text| lapce_ai::ollama::clean(&text, &gateway_suffix))
+                    .filter(|text| !text.is_empty())
+                    .map(|text| {
+                        vec![lsp_types::InlineCompletionItem {
+                            insert_text: text,
+                            filter_text: None,
+                            range: Some(lsp_types::Range::new(position, position)),
+                            command: None,
+                            insert_text_format: Some(
+                                lsp_types::InsertTextFormat::PLAIN_TEXT,
+                            ),
+                        }]
+                    })
+                    .unwrap_or_default();
                 send(items);
             });
             return;
@@ -2999,8 +3309,15 @@ impl EditorData {
     /// range; accepting applies the replacement in place (no cursor jump).
     fn request_next_edit(&self) {
         let request_config_id = self.common.config.get_untracked().id;
-        let ai = self.common.config.get_untracked().effective_ai_autocomplete();
-        if !ai.enabled || !ai.next_edit || !["ollama", "openai"].contains(&ai.backend.as_str()) {
+        let ai = self
+            .common
+            .config
+            .get_untracked()
+            .effective_ai_autocomplete();
+        if !ai.enabled
+            || !ai.next_edit
+            || !["ollama", "openai"].contains(&ai.backend.as_str())
+        {
             return;
         }
         if self.get_mode() != Mode::Insert {
@@ -3010,8 +3327,7 @@ impl EditorData {
         if !doc.loaded() {
             return;
         }
-        let Some(path) = doc.content.with_untracked(|c| c.path().cloned())
-        else {
+        let Some(path) = doc.content.with_untracked(|c| c.path().cloned()) else {
             return;
         };
         let offset = self.cursor().with_untracked(|c| c.offset());
@@ -3088,25 +3404,27 @@ impl EditorData {
         // action, which runs back on the UI thread; the outer closure only
         // carries the raw reply text across.
         let send = create_ext_action(self.scope, move |raw: String| {
-            let Some(edit) = crate::inline_completion::parse_next_edit(&raw)
-            else {
+            let Some(edit) = crate::inline_completion::parse_next_edit(&raw) else {
                 return;
             };
             let doc = editor.doc();
             // Anchor offsets are only valid against the exact buffer the
             // model saw; any edit since discards the prediction.
             if !crate::inline_completion::prediction_is_current(
-                generation, editor.ai_generation.get_untracked(),
-                offset, editor.cursor().with_untracked(|c| c.offset()),
+                generation,
+                editor.ai_generation.get_untracked(),
+                offset,
+                editor.cursor().with_untracked(|c| c.offset()),
             ) || editor.get_mode() != Mode::Insert
                 || editor.common.config.get_untracked().id != request_config_id
-                || doc.buffer_id != buffer_id || doc.rev() != rev {
+                || doc.buffer_id != buffer_id
+                || doc.rev() != rev
+            {
                 return;
             }
             let item = doc.buffer.with_untracked(|buffer| {
                 let (start, end) = window_bounds(buffer);
-                let window =
-                    buffer.text().slice_to_cow(start..end).into_owned();
+                let window = buffer.text().slice_to_cow(start..end).into_owned();
                 let span = if edit.old.is_empty() {
                     offset..offset
                 } else {
@@ -3138,18 +3456,31 @@ impl EditorData {
                 c.update_doc(&doc, offset);
             });
         });
-        if ai.backend == "ollama" && crate::chat::fallback_target(&ai.endpoint).is_some() {
-            if let Some(old) = self.ai_gateway_cancel.get_untracked() { old.store(true, std::sync::atomic::Ordering::Release); }
+        if ai.backend == "ollama"
+            && crate::chat::fallback_target(&ai.endpoint).is_some()
+        {
+            if let Some(old) = self.ai_gateway_cancel.get_untracked() {
+                old.store(true, std::sync::atomic::Ordering::Release);
+            }
             let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
             self.ai_gateway_cancel.set(Some(cancelled.clone()));
             let status = self.native_ai_status_action(generation);
             std::thread::spawn(move || {
-                match crate::ghost_gateway::native_with_fallback(&request, cancelled) {
+                match crate::ghost_gateway::native_with_fallback(&request, cancelled)
+                {
                     Ok((raw, source)) => {
-                        status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                        status(if source != ai.endpoint {
+                            "Ghost AI: llm fallback (auto)".into()
+                        } else {
+                            "Ghost AI: ai.izdrail.com".into()
+                        });
                         send(raw);
                     }
-                    Err(error) => { if error != "Cancelled" { status("Ghost AI: request failed".into()); } }
+                    Err(error) => {
+                        if error != "Cancelled" {
+                            status("Ghost AI: request failed".into());
+                        }
+                    }
                 }
             });
             return;
@@ -3163,17 +3494,29 @@ impl EditorData {
             let status = self.native_ai_status_action(generation);
             std::thread::spawn(move || {
                 match crate::ghost_gateway::complete_with_source(
-                    &ai.endpoint, &ai.remote_model, &messages,
-                    256, ai.timeout_ms, cancelled,
+                    &ai.endpoint,
+                    &ai.remote_model,
+                    &messages,
+                    256,
+                    ai.timeout_ms,
+                    cancelled,
                 ) {
                     Ok((raw, source)) => {
                         if crate::chat::fallback_target(&ai.endpoint).is_some() {
-                            status(if source != ai.endpoint { "Ghost AI: llm fallback (auto)".into() } else { "Ghost AI: ai.izdrail.com".into() });
+                            status(if source != ai.endpoint {
+                                "Ghost AI: llm fallback (auto)".into()
+                            } else {
+                                "Ghost AI: ai.izdrail.com".into()
+                            });
                         }
                         send(raw);
                     }
                     Err(error) => {
-                        if error != "Cancelled" && crate::chat::fallback_target(&ai.endpoint).is_some() { status("Ghost AI: request failed".into()); }
+                        if error != "Cancelled"
+                            && crate::chat::fallback_target(&ai.endpoint).is_some()
+                        {
+                            status("Ghost AI: request failed".into());
+                        }
                     }
                 }
             });
@@ -3188,8 +3531,7 @@ impl EditorData {
                 // The dispatcher wraps the raw reply as one item at the
                 // cursor; only its text (the model contract) matters here.
                 let Ok(ProxyResponse::GetInlineCompletions {
-                    completions:
-                        lsp_types::InlineCompletionResponse::Array(items),
+                    completions: lsp_types::InlineCompletionResponse::Array(items),
                 }) = res
                 else {
                     return;
@@ -3212,9 +3554,16 @@ impl EditorData {
     }
 
     pub fn select_completion(&self) {
-        let source_guard = self.common.completion.with_untracked(|completion| completion.source_guard.clone());
+        let source_guard = self
+            .common
+            .completion
+            .with_untracked(|completion| completion.source_guard.clone());
         if source_guard.as_ref().is_some_and(|guard| !guard.current())
-            || self.common.completion.with_untracked(|completion| completion.source_guard.is_some() && completion.latest_editor_id != Some(self.id())) {
+            || self.common.completion.with_untracked(|completion| {
+                completion.source_guard.is_some()
+                    && completion.latest_editor_id != Some(self.id())
+            })
+        {
             self.cancel_completion();
             return;
         }
@@ -3225,7 +3574,9 @@ impl EditorData {
         self.cancel_completion();
         let doc = self.doc();
         if let Some(item) = item {
-            if item.item.data.is_some() {
+            if item.source == crate::completion_sources::CompletionSource::Lsp
+                && item.item.data.is_some()
+            {
                 let editor = self.clone();
                 let rev = doc.buffer.with_untracked(|buffer| buffer.rev());
                 let path = doc.content.with_untracked(|c| c.path().cloned());
@@ -3233,7 +3584,9 @@ impl EditorData {
                 let buffer = doc.buffer;
                 let content = doc.content;
                 let send = create_ext_action(self.scope, move |item| {
-                    if source_guard.as_ref().is_some_and(|guard| !guard.current()) { return; }
+                    if source_guard.as_ref().is_some_and(|guard| !guard.current()) {
+                        return;
+                    }
                     if editor.cursor().with_untracked(|c| c.offset() != offset) {
                         return;
                     }
@@ -3245,7 +3598,13 @@ impl EditorData {
                         return;
                     }
                     if let Some(guard) = source_guard {
-                        editor.common.internal_command.send(InternalCommand::ApplyProjectionCompletion { editor_id: editor.id(), item, guard });
+                        editor.common.internal_command.send(
+                            InternalCommand::ApplyProjectionCompletion {
+                                editor_id: editor.id(),
+                                item,
+                                guard,
+                            },
+                        );
                         return;
                     }
                     if let Err(err) = editor.apply_completion_item(&item) {
@@ -3312,121 +3671,145 @@ impl EditorData {
                 php_variable_items, profile_items, snippet_items, word_items,
             },
         };
-        let (words, snippets, keywords, line_before, blade_vars, alpine_props, json_items, yaml_items) =
-            doc.buffer.with_untracked(|buffer| {
-                let end_offset = buffer.next_code_boundary(offset);
-                let len = buffer.len();
-                // Leave the word being typed out so it does not suggest itself.
-                let mut text = String::new();
-                text.push_str(&buffer.slice_to_cow(
-                    start_offset.saturating_sub(MAX_SCAN_BYTES / 2)..start_offset,
-                ));
-                text.push(' ');
-                text.push_str(&buffer.slice_to_cow(
+        let (
+            words,
+            snippets,
+            keywords,
+            line_before,
+            blade_vars,
+            alpine_props,
+            json_items,
+            yaml_items,
+        ) = doc.buffer.with_untracked(|buffer| {
+            let end_offset = buffer.next_code_boundary(offset);
+            let len = buffer.len();
+            // Leave the word being typed out so it does not suggest itself.
+            let mut text = String::new();
+            text.push_str(&buffer.slice_to_cow(
+                start_offset.saturating_sub(MAX_SCAN_BYTES / 2)..start_offset,
+            ));
+            text.push(' ');
+            text.push_str(
+                &buffer.slice_to_cow(
                     end_offset..len.min(end_offset + MAX_SCAN_BYTES / 2),
-                ));
-                let lang = lapce_proxy::buffer::language_id_from_path(path);
-                let is_blade = crate::builtin_snippets::snippet_language(path, "php") == "blade";
-                let mut words = word_items(&buffer_words(&text));
-                if lang == Some("php") && !is_blade {
-                    words.extend(php_variable_items(&text));
-                }
-                let project = lapce_core::project_profile::detect(path);
-                let before_cursor = buffer.slice_to_cow(0..offset);
-                let keywords = lang
-                    .map(|l| profile_items(l, &project, &before_cursor))
-                    .unwrap_or_default();
-                if lang == Some("php") {
-                    if let Some(items) = crate::laravel_completion::facade_items(&before_cursor, project.laravel) {
-                        return (Vec::new(), Vec::new(), items, String::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-                    }
-                }
-                // theme.json / block.json schema keys and values.
-                let json_items =
-                    crate::project_completion::json_schema_items(path, &before_cursor);
-                // Symfony config/services/routes YAML schema keys and values.
-                let yaml_items = crate::project_completion::symfony_yaml_schema_items(
-                    self.common.workspace.path.as_deref(),
-                    path,
+                ),
+            );
+            let lang = lapce_proxy::buffer::language_id_from_path(path);
+            let is_blade =
+                crate::builtin_snippets::snippet_language(path, "php") == "blade";
+            let mut words = word_items(&buffer_words(&text));
+            if lang == Some("php") && !is_blade {
+                words.extend(php_variable_items(&text));
+            }
+            let project = lapce_core::project_profile::detect(path);
+            let before_cursor = buffer.slice_to_cow(0..offset);
+            let keywords = lang
+                .map(|l| profile_items(l, &project, &before_cursor))
+                .unwrap_or_default();
+            if lang == Some("php") {
+                if let Some(items) = crate::laravel_completion::facade_items(
                     &before_cursor,
-                );
-
-                let line = buffer.line_of_offset(start_offset);
-                let line_text = buffer.line_content(line);
-                let indent = leading_indent(&line_text).to_string();
-                // Text of the current line up to the cursor, for
-                // project-aware contexts like `route('...')`.
-                let line_before = buffer
-                    .slice_to_cow(buffer.offset_of_line(line)..offset)
-                    .to_string();
-                // `.blade.php` is PHP for imported snippets but has its own bundled pack.
-                let snippet_lang = lang
-                    .map(|l| crate::builtin_snippets::snippet_language(path, l));
-                // Snippet bodies for Blade start with `@` or `<`; replace the one typed.
-                let range_start = if start_offset > 0
-                    && crate::builtin_snippets::replaces_leading_char(
-                        snippet_lang.unwrap_or(""),
-                        buffer
-                            .slice_to_cow(start_offset - 1..start_offset)
-                            .chars()
-                            .next(),
-                    ) {
-                    start_offset - 1
-                } else {
-                    start_offset
-                };
-                let range = lsp_types::Range {
-                    start: buffer.offset_to_position(range_start),
-                    end: buffer.offset_to_position(offset),
-                };
-                let snippets = match lang {
-                    Some(lang) => {
-                        let loaded = lapce_core::textmate::loaded();
-                        let mut all = loaded.snippets_for(lang);
-                        all.extend(crate::builtin_snippets::for_context(
-                            snippet_lang.unwrap_or(lang),
-                            &project,
-                        ));
-                        let mut items = snippet_items(&all, &indent, range);
-                        if lang == "php" && !is_blade {
-                            // The accepted lexer identifies a PHP-only buffer;
-                            // a snippet inside it does not need another open tag.
-                            crate::completion_sources::php_snippet_open_tag(&mut items,
-                                lapce_core::lexilla::is_pure_php(&before_cursor));
-                        }
-                        items
-                    }
-                    None => Vec::new(),
-                };
-                // Blade views: variables the view defines above the
-                // cursor (assignments, loop variables, @props, @inject).
-                let blade_vars = if is_blade {
-                    crate::project_completion::blade_variables(
-                        &before_cursor,
-                        &line_before,
-                    )
-                } else {
-                    Vec::new()
-                };
-                // Alpine: properties of the nearest enclosing x-data,
-                // inside an Alpine expression attribute value.
-                let alpine_props =
-                    crate::project_completion::alpine_data_property_items(
-                        &before_cursor,
-                        &line_before,
-                        self.common.workspace.path.as_deref(),
+                    project.laravel,
+                ) {
+                    return (
+                        Vec::new(),
+                        Vec::new(),
+                        items,
+                        String::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
                     );
-                (
-                    words,
-                    snippets,
-                    keywords,
-                    line_before,
-                    blade_vars,
-                    alpine_props,
-                    json_items,
-                    yaml_items,
+                }
+            }
+            // theme.json / block.json schema keys and values.
+            let json_items =
+                crate::project_completion::json_schema_items(path, &before_cursor);
+            // Symfony config/services/routes YAML schema keys and values.
+            let yaml_items = crate::project_completion::symfony_yaml_schema_items(
+                self.common.workspace.path.as_deref(),
+                path,
+                &before_cursor,
+            );
+
+            let line = buffer.line_of_offset(start_offset);
+            let line_text = buffer.line_content(line);
+            let indent = leading_indent(&line_text).to_string();
+            // Text of the current line up to the cursor, for
+            // project-aware contexts like `route('...')`.
+            let line_before = buffer
+                .slice_to_cow(buffer.offset_of_line(line)..offset)
+                .to_string();
+            // `.blade.php` is PHP for imported snippets but has its own bundled pack.
+            let snippet_lang =
+                lang.map(|l| crate::builtin_snippets::snippet_language(path, l));
+            // Snippet bodies for Blade start with `@` or `<`; replace the one typed.
+            let range_start = if start_offset > 0
+                && crate::builtin_snippets::replaces_leading_char(
+                    snippet_lang.unwrap_or(""),
+                    buffer
+                        .slice_to_cow(start_offset - 1..start_offset)
+                        .chars()
+                        .next(),
+                ) {
+                start_offset - 1
+            } else {
+                start_offset
+            };
+            let range = lsp_types::Range {
+                start: buffer.offset_to_position(range_start),
+                end: buffer.offset_to_position(offset),
+            };
+            let snippets = match lang {
+                Some(lang) => {
+                    let loaded = lapce_core::textmate::loaded();
+                    let mut all = loaded.snippets_for(lang);
+                    all.extend(crate::builtin_snippets::for_context(
+                        snippet_lang.unwrap_or(lang),
+                        &project,
+                    ));
+                    let mut items = snippet_items(&all, &indent, range);
+                    if lang == "php" && !is_blade {
+                        // The accepted lexer identifies a PHP-only buffer;
+                        // a snippet inside it does not need another open tag.
+                        crate::completion_sources::php_snippet_open_tag(
+                            &mut items,
+                            lapce_core::lexilla::is_pure_php(&before_cursor),
+                        );
+                    }
+                    items
+                }
+                None => Vec::new(),
+            };
+            // Blade views: variables the view defines above the
+            // cursor (assignments, loop variables, @props, @inject).
+            let blade_vars = if is_blade {
+                crate::project_completion::blade_variables(
+                    &before_cursor,
+                    &line_before,
                 )
-            });
+            } else {
+                Vec::new()
+            };
+            // Alpine: properties of the nearest enclosing x-data,
+            // inside an Alpine expression attribute value.
+            let alpine_props = crate::project_completion::alpine_data_property_items(
+                &before_cursor,
+                &line_before,
+                self.common.workspace.path.as_deref(),
+            );
+            (
+                words,
+                snippets,
+                keywords,
+                line_before,
+                blade_vars,
+                alpine_props,
+                json_items,
+                yaml_items,
+            )
+        });
         let wrap = |item, source| ScoredCompletionItem {
             item,
             plugin_id: lapce_rpc::plugin::PluginId(0),
@@ -3448,7 +3831,8 @@ impl EditorData {
         // Inside a `<x-...` / `<livewire:...` tag name, only the project's
         // component tags are relevant: no snippets, keywords or words, and
         // show them even before a letter is typed.
-        let tag_only = crate::builtin_snippets::snippet_language(path, "php") == "blade"
+        let tag_only = crate::builtin_snippets::snippet_language(path, "php")
+            == "blade"
             && matches!(
                 crate::project_completion::context(&line_before),
                 Some(
@@ -3473,16 +3857,25 @@ impl EditorData {
         snippets
             .into_iter()
             .map(|i| wrap(i, CompletionSource::Snippet))
-            .chain(
-                keywords
-                    .into_iter()
-                    .map(|i| {
-                        let member = i.label_details.as_ref().and_then(|d|d.description.as_ref()).is_some_and(|d|d.starts_with("Illuminate\\Support\\Facades\\"));
-                        let mut w=wrap(i, if member { CompletionSource::Project } else { CompletionSource::Keyword });
-                        w.show_on_empty=member;
-                        w
-                    }),
-            )
+            .chain(keywords.into_iter().map(|i| {
+                let member = i
+                    .label_details
+                    .as_ref()
+                    .and_then(|d| d.description.as_ref())
+                    .is_some_and(|d| {
+                        d.starts_with("Illuminate\\Support\\Facades\\")
+                    });
+                let mut w = wrap(
+                    i,
+                    if member {
+                        CompletionSource::Project
+                    } else {
+                        CompletionSource::Keyword
+                    },
+                );
+                w.show_on_empty = member;
+                w
+            }))
             .chain(project.into_iter().map(|i| {
                 // Project items exist only because the line is a known
                 // quoted context, so offer them on the bare quote too.
@@ -3543,49 +3936,195 @@ impl EditorData {
         let ws_root = self.common.workspace.path.clone();
         let (start_offset, input, char, tag_ctx, project_ctx, json_ctx, yaml_ctx) =
             doc.buffer.with_untracked(|buffer| {
-            // Blade words cover hyphenated snippet prefixes (`x-da`) and
-            // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
-            let start_offset = completion_word_start(buffer, Some(&path), offset);
-            let end_offset = buffer.next_code_boundary(offset);
-            let input = buffer.slice_to_cow(start_offset..end_offset).to_string();
-            let char = if start_offset == 0 {
-                "".to_string()
+                // Blade words cover hyphenated snippet prefixes (`x-da`) and
+                // dotted component tag names (`<x-forms.in`, `<livewire:admin.us`).
+                let start_offset =
+                    completion_word_start(buffer, Some(&path), offset);
+                let end_offset = buffer.next_code_boundary(offset);
+                let input =
+                    buffer.slice_to_cow(start_offset..end_offset).to_string();
+                let char = if start_offset == 0 {
+                    "".to_string()
+                } else {
+                    buffer
+                        .slice_to_cow(start_offset - 1..start_offset)
+                        .to_string()
+                };
+                // `<x-` ends in `-`, which is not a trigger char, but the
+                // component list should open there too.
+                let tag_ctx =
+                    crate::builtin_snippets::snippet_language(&path, "php")
+                        == "blade"
+                        && start_offset > 0
+                        && {
+                            let line_start = buffer
+                                .offset_of_line(buffer.line_of_offset(start_offset));
+                            crate::builtin_snippets::tag_name_context(
+                                &buffer.slice_to_cow(line_start..start_offset),
+                            )
+                        };
+                // `route('`, `@include('`, `wire:model="..."` and friends: the
+                // project has items for an empty quoted argument, so open on
+                // the bare quote too.
+                let project_ctx =
+                    crate::project_completion::php_completion_path(&path) && {
+                        let line_start =
+                            buffer.offset_of_line(buffer.line_of_offset(offset));
+                        crate::project_completion::context(
+                            &buffer.slice_to_cow(line_start..offset),
+                        )
+                        .is_some()
+                    };
+                // theme.json / block.json complete schema keys on the bare
+                // quote and enum values after the colon.
+                let json_ctx = crate::project_completion::json_schema_path(&path);
+                // Symfony YAML config files complete schema keys and values.
+                let yaml_ctx = crate::project_completion::symfony_yaml_schema_path(
+                    ws_root.as_deref(),
+                    &path,
+                );
+                (
+                    start_offset,
+                    input,
+                    char,
+                    tag_ctx,
+                    project_ctx,
+                    json_ctx,
+                    yaml_ctx,
+                )
+            });
+        let php_request = if crate::project_completion::php_completion_path(&path)
+            && !path.to_string_lossy().ends_with(".blade.php")
+        {
+            let prefix = doc.buffer.with_untracked(|b| {
+                let start = b
+                    .text()
+                    .at_or_next_codepoint_boundary(offset.saturating_sub(256))
+                    .unwrap_or(offset);
+                b.slice_to_cow(start..offset).to_string()
+            });
+            let current = doc.syntax.with_untracked(|s| {
+                if s.rev == doc.rev() {
+                    s.current_php_context()
+                        .map(|c| c.completion_allowed(offset))
+                } else {
+                    None
+                }
+            });
+            let allowed = current == Some(true);
+            let (context, scope) = doc.syntax.with_untracked(|s| {
+                (s.rev == doc.rev())
+                    .then(|| s.current_php_context())
+                    .flatten()
+                    .map(|context| {
+                        (
+                            context.cursor_context(offset),
+                            context.completion_scope(offset),
+                        )
+                    })
+                    .unwrap_or_default()
+            });
+            let context = if allowed {
+                context
             } else {
-                buffer
-                    .slice_to_cow(start_offset - 1..start_offset)
-                    .to_string()
+                Some(lapce_php::CursorContext::NonPhp(lapce_php::Context::Html))
             };
-            // `<x-` ends in `-`, which is not a trigger char, but the
-            // component list should open there too.
-            let tag_ctx = crate::builtin_snippets::snippet_language(&path, "php") == "blade"
-                && start_offset > 0 && {
-                let line_start =
-                    buffer.offset_of_line(buffer.line_of_offset(start_offset));
-                crate::builtin_snippets::tag_name_context(
-                    &buffer.slice_to_cow(line_start..start_offset),
-                )
-            };
-            // `route('`, `@include('`, `wire:model="..."` and friends: the
-            // project has items for an empty quoted argument, so open on
-            // the bare quote too.
-            let project_ctx = crate::project_completion::php_completion_path(&path) && {
-                let line_start =
-                    buffer.offset_of_line(buffer.line_of_offset(offset));
-                crate::project_completion::context(
-                    &buffer.slice_to_cow(line_start..offset),
-                )
-                .is_some()
-            };
-            // theme.json / block.json complete schema keys on the bare
-            // quote and enum values after the colon.
-            let json_ctx = crate::project_completion::json_schema_path(&path);
-            // Symfony YAML config files complete schema keys and values.
-            let yaml_ctx = crate::project_completion::symfony_yaml_schema_path(
-                ws_root.as_deref(),
-                &path,
+            let mut request = crate::php_completion::request(
+                &prefix,
+                context,
+                scope.class.clone(),
             );
-            (start_offset, input, char, tag_ctx, project_ctx, json_ctx, yaml_ctx)
-        });
+            let receiver = crate::php_completion::receiver(&prefix);
+            if matches!(
+                request.context,
+                Some(
+                    lapce_php::CursorContext::InstanceMember
+                        | lapce_php::CursorContext::StaticMember
+                )
+            ) {
+                request.owner = match receiver {
+                    "$this" | "self" | "static" => scope.class,
+                    "parent" => scope.parent,
+                    _ if !receiver.is_empty() && !receiver.starts_with('$') => {
+                        Some(lapce_php::resolve_completion_name(
+                            receiver,
+                            &scope.namespace,
+                            &scope.imports,
+                        ))
+                    }
+                    _ => None,
+                };
+            }
+            request.variables = scope.variables;
+            request.unsaved = doc.syntax.with_untracked(|s| {
+                s.current_php_context()
+                    .filter(|_| s.rev == doc.rev())
+                    .map(|context| {
+                        context
+                            .completion_declarations()
+                            .into_iter()
+                            .map(|(name, qualified, kind)| {
+                                lapce_rpc::proxy::PhpIndexSymbol {
+                                    path: path.clone(),
+                                    name,
+                                    qualified,
+                                    kind,
+                                    namespace: String::new(),
+                                    container: None,
+                                    visibility: None,
+                                    is_static: false,
+                                    alias: None,
+                                    target: None,
+                                    attributes: vec![],
+                                    byte: 0,
+                                    end: 0,
+                                    line: 0,
+                                    column: 0,
+                                }
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
+            let members = doc.syntax.with_untracked(|s| {
+                s.current_php_context()
+                    .filter(|_| s.rev == doc.rev())
+                    .map(|context| context.completion_members(offset))
+                    .unwrap_or_default()
+            });
+            request.unsaved.extend(
+                members
+                    .into_iter()
+                    .filter(|(_, owner, _, _, _)| {
+                        request.owner.as_deref() == Some(owner.as_str())
+                    })
+                    .map(|(name, owner, kind, is_static, visibility)| {
+                        lapce_rpc::proxy::PhpIndexSymbol {
+                            path: path.clone(),
+                            qualified: format!("{owner}::{name}"),
+                            name,
+                            kind,
+                            namespace: String::new(),
+                            container: Some(owner),
+                            visibility,
+                            is_static,
+                            alias: None,
+                            target: None,
+                            attributes: vec![],
+                            byte: 0,
+                            end: 0,
+                            line: 0,
+                            column: 0,
+                        }
+                    }),
+            );
+            Some((
+                request,
+                crate::php_completion::trigger_session(&prefix, current),
+            ))
+        } else {
+            None
+        };
         if !display_if_empty_input
             && input.is_empty()
             && char != "."
@@ -3594,6 +4133,7 @@ impl EditorData {
             && !project_ctx
             && !json_ctx
             && !yaml_ctx
+            && !php_request.as_ref().is_some_and(|(_, trigger)| *trigger)
         {
             self.cancel_completion();
             return;
@@ -3627,7 +4167,7 @@ impl EditorData {
                     completion.request(
                         self.id(),
                         &self.common.proxy,
-                        path,
+                        path.clone(),
                         input,
                         position,
                     );
@@ -3639,6 +4179,9 @@ impl EditorData {
                 .get_untracked()
                 .update_document_completion(self, cursor_offset);
 
+            if let Some((request, _)) = php_request {
+                self.request_php_completion(&doc, &path, request);
+            }
             return;
         }
 
@@ -3651,6 +4194,10 @@ impl EditorData {
             completion.status = CompletionStatus::Started;
             completion.input_items.clear();
             completion.local_items = local_items;
+            completion.native_items.clear();
+            completion.php_context = php_request
+                .as_ref()
+                .and_then(|(request, _)| request.context.clone());
             completion.request_id += 1;
             let start_pos = doc
                 .buffer
@@ -3670,7 +4217,7 @@ impl EditorData {
                 completion.request(
                     self.id(),
                     &self.common.proxy,
-                    path,
+                    path.clone(),
                     input,
                     position,
                 );
@@ -3679,32 +4226,168 @@ impl EditorData {
             // LSP server, so no response would ever refresh the list.
             completion.filter_items();
         });
+        if let Some((request, _)) = php_request {
+            self.request_php_completion(&doc, &path, request);
+        }
+    }
+
+    fn request_php_completion(
+        &self,
+        doc: &Doc,
+        path: &std::path::Path,
+        request: crate::php_completion::Request,
+    ) {
+        let completion = self.common.completion;
+        let rev = doc.rev();
+        let doc = doc.clone();
+        let path = path.to_owned();
+        let request_id = completion.with_untracked(|c| c.request_id);
+        completion.update(|c| {
+            c.native_generation += 1;
+            c.php_context = request.context.clone();
+            if matches!(
+                request.context,
+                Some(
+                    lapce_php::CursorContext::Variable
+                        | lapce_php::CursorContext::NonPhp(_)
+                )
+            ) {
+                c.receive_native(
+                    request_id,
+                    crate::php_completion::candidates(&request, vec![]),
+                );
+            }
+        });
+        let native_generation = completion.with_untracked(|c| c.native_generation);
+        if matches!(
+            request.context,
+            Some(
+                lapce_php::CursorContext::NonPhp(_)
+                    | lapce_php::CursorContext::Variable
+            )
+        ) {
+            return;
+        }
+        let (kinds, static_only) = crate::php_completion::query_filters(&request);
+        let container = request.owner.clone();
+        let allow_nonpublic = request.allow_nonpublic;
+        let send = create_ext_action(
+            self.common.scope,
+            move |(state, symbols): (
+                String,
+                Vec<lapce_rpc::proxy::PhpIndexSymbol>,
+            )| {
+                if doc.rev() != rev {
+                    return;
+                }
+                completion.update(|c| {
+                    if c.path == path
+                        && c.request_id == request_id
+                        && c.native_generation == native_generation
+                    {
+                        c.native_state = Some(state.clone());
+                        c.receive_native(
+                            request_id,
+                            crate::php_completion::candidates(&request, symbols),
+                        );
+                    }
+                });
+            },
+        );
+        let prefix = completion.with_untracked(|c| {
+            c.input
+                .trim_start_matches('$')
+                .trim_start_matches('\\')
+                .to_owned()
+        });
+        let proxy = self.common.proxy.clone();
+        let guard = self.doc();
+        let delay = if completion.with_untracked(|c| c.input.is_empty()) {
+            0
+        } else {
+            35
+        };
+        exec_after(Duration::from_millis(delay), move |_| {
+            if guard.rev() != rev
+                || completion.with_untracked(|c| {
+                    c.request_id != request_id
+                        || c.native_generation != native_generation
+                        || c.status == CompletionStatus::Inactive
+                })
+            {
+                return;
+            }
+            proxy.request_async(
+                lapce_rpc::proxy::ProxyRequest::PhpCompletionQuery {
+                    token: prefix,
+                    kinds,
+                    container,
+                    static_only,
+                    allow_nonpublic,
+                    limit: 1000,
+                },
+                move |response| {
+                    if let Ok(ProxyResponse::PhpIndexQuery { state, symbols }) =
+                        response
+                    {
+                        send((state, symbols));
+                    }
+                },
+            );
+        });
     }
 
     fn update_projection_completion(&self, display_if_empty_input: bool) {
         self.cancel_completion();
-        if self.get_mode() != Mode::Insert { return; }
-        let Some((source, offset, current)) = self.navigation_request() else { return; };
-        if !source.loaded() { return; }
-        let Some(path) = source.content.with_untracked(|content| content.path().cloned()) else { return; };
+        if self.get_mode() != Mode::Insert {
+            return;
+        }
+        let Some((source, offset, current)) = self.navigation_request() else {
+            return;
+        };
+        if !source.loaded() {
+            return;
+        }
+        let Some(path) = source
+            .content
+            .with_untracked(|content| content.path().cloned())
+        else {
+            return;
+        };
         let (start, input, trigger) = source.buffer.with_untracked(|buffer| {
             let start = completion_word_start(buffer, Some(&path), offset);
             let end = buffer.next_code_boundary(offset);
-            let trigger = start > 0 && matches!(buffer.text().byte_at(start-1), b'.' | b':');
+            let trigger =
+                start > 0 && matches!(buffer.text().byte_at(start - 1), b'.' | b':');
             (start, buffer.slice_to_cow(start..end).to_string(), trigger)
         });
-        if !display_if_empty_input && input.is_empty() && !trigger { return; }
+        if !display_if_empty_input && input.is_empty() && !trigger {
+            return;
+        }
         let origin = self.doc();
         let display = self.cursor().with_untracked(|cursor| cursor.offset());
-        let Some(binding) = origin.projection.get_untracked() else { return; };
-        let Some(anchor) = binding.projection.borrow().navigation_anchor(display) else { return; };
-        let Some(range) = binding.projection.borrow().completion_display_range(&anchor, start..offset) else { return; };
+        let Some(binding) = origin.projection.get_untracked() else {
+            return;
+        };
+        let Some(anchor) = binding.projection.borrow().navigation_anchor(display)
+        else {
+            return;
+        };
+        let Some(range) = binding
+            .projection
+            .borrow()
+            .completion_display_range(&anchor, start..offset)
+        else {
+            return;
+        };
         let cursor = self.cursor();
         let guard = crate::rename::SourceRenameGuard::new(Rc::new(move || {
             cursor.try_get_untracked().is_some() && current()
         }));
         let locals = self.local_completion_items_for(&source, &path, start, offset);
-        let position = source.buffer.with_untracked(|buffer|buffer.offset_to_position(offset));
+        let position = source
+            .buffer
+            .with_untracked(|buffer| buffer.offset_to_position(offset));
         self.common.completion.update(|completion| {
             completion.path = path.clone();
             completion.offset = range.start;
@@ -3717,7 +4400,10 @@ impl EditorData {
             completion.request(self.id(), &self.common.proxy, path, input, position);
             completion.filter_items();
         });
-        self.common.completion.get_untracked().update_document_completion(self, display);
+        self.common
+            .completion
+            .get_untracked()
+            .update_document_completion(self, display);
     }
 
     /// Check if there are completions that are being rendered
@@ -3728,72 +4414,158 @@ impl EditorData {
         })
     }
 
-    pub(crate) fn apply_completion_item(&self, item: &CompletionItem) -> anyhow::Result<()> {
+    pub(crate) fn apply_completion_item(
+        &self,
+        item: &CompletionItem,
+    ) -> anyhow::Result<()> {
         if self.doc().projection.get_untracked().is_some() {
             let item = self.projection_completion_item(item)?;
             self.apply_completion_item_to_view(&item)
-        } else { self.apply_completion_item_to_view(item) }
+        } else {
+            self.apply_completion_item_to_view(item)
+        }
     }
 
-    pub(crate) fn projection_completion_preview(&self, item: &CompletionItem) -> Option<String> {
+    pub(crate) fn projection_completion_preview(
+        &self,
+        item: &CompletionItem,
+    ) -> Option<String> {
         let mapped = self.projection_completion_item(item).ok()?;
-        if mapped.additional_text_edits.as_ref().is_some_and(|edits| !edits.is_empty()) { return None; }
-        let Some(CompletionTextEdit::Edit(edit)) = &mapped.text_edit else { return None; };
+        if mapped
+            .additional_text_edits
+            .as_ref()
+            .is_some_and(|edits| !edits.is_empty())
+        {
+            return None;
+        }
+        let Some(CompletionTextEdit::Edit(edit)) = &mapped.text_edit else {
+            return None;
+        };
         let doc = self.doc();
         let offset = self.cursor().with_untracked(|cursor| cursor.offset());
         let prefix = doc.buffer.with_untracked(|buffer| {
             let start = buffer.offset_of_position(&edit.range.start);
             let end = buffer.offset_of_position(&edit.range.end);
-            (start <= offset && end == offset && buffer.next_code_boundary(offset) == offset)
+            (start <= offset
+                && end == offset
+                && buffer.next_code_boundary(offset) == offset)
                 .then(|| buffer.slice_to_cow(start..offset).to_string())
         })?;
         crate::completion::projection_lens_suffix(&mapped, &prefix)
     }
 
-    fn projection_completion_item(&self, item: &CompletionItem) -> anyhow::Result<CompletionItem> {
+    fn projection_completion_item(
+        &self,
+        item: &CompletionItem,
+    ) -> anyhow::Result<CompletionItem> {
         let origin = self.doc();
         let display = self.cursor().with_untracked(|cursor| cursor.offset());
-        let (source, offset) = origin.projection_navigation_source(display).ok_or_else(||anyhow::anyhow!("stale completion source"))?;
-        let binding = origin.projection.get_untracked().ok_or_else(||anyhow::anyhow!("missing projection"))?;
+        let (source, offset) = origin
+            .projection_navigation_source(display)
+            .ok_or_else(|| anyhow::anyhow!("stale completion source"))?;
+        let binding = origin
+            .projection
+            .get_untracked()
+            .ok_or_else(|| anyhow::anyhow!("missing projection"))?;
         let projection = binding.projection.borrow();
-        let anchor = projection.navigation_anchor(display).ok_or_else(||anyhow::anyhow!("completion header"))?;
-        let map = |edit: &lsp_types::TextEdit| -> anyhow::Result<lsp_types::TextEdit> {
-            let range = source.buffer.with_untracked(|buffer| {
-                let start = buffer.offset_of_position(&edit.range.start);
-                let end = buffer.offset_of_position(&edit.range.end);
-                (buffer.offset_to_position(start) == edit.range.start && buffer.offset_to_position(end) == edit.range.end).then_some(start..end)
-            }).ok_or_else(||anyhow::anyhow!("invalid completion range"))?;
-            let range = projection.completion_display_range(&anchor, range).ok_or_else(||anyhow::anyhow!("completion edit outside current excerpt"))?;
-            let range = origin.buffer.with_untracked(|buffer|lsp_types::Range::new(buffer.offset_to_position(range.start), buffer.offset_to_position(range.end)));
-            Ok(lsp_types::TextEdit::new(range, edit.new_text.clone()))
-        };
+        let anchor = projection
+            .navigation_anchor(display)
+            .ok_or_else(|| anyhow::anyhow!("completion header"))?;
+        let map =
+            |edit: &lsp_types::TextEdit| -> anyhow::Result<lsp_types::TextEdit> {
+                let range = source
+                    .buffer
+                    .with_untracked(|buffer| {
+                        let start = buffer.offset_of_position(&edit.range.start);
+                        let end = buffer.offset_of_position(&edit.range.end);
+                        (buffer.offset_to_position(start) == edit.range.start
+                            && buffer.offset_to_position(end) == edit.range.end)
+                            .then_some(start..end)
+                    })
+                    .ok_or_else(|| anyhow::anyhow!("invalid completion range"))?;
+                let range = projection
+                    .completion_display_range(&anchor, range)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("completion edit outside current excerpt")
+                    })?;
+                let range = origin.buffer.with_untracked(|buffer| {
+                    lsp_types::Range::new(
+                        buffer.offset_to_position(range.start),
+                        buffer.offset_to_position(range.end),
+                    )
+                });
+                Ok(lsp_types::TextEdit::new(range, edit.new_text.clone()))
+            };
         let mut mapped = item.clone();
         let primary = match &item.text_edit {
             Some(CompletionTextEdit::Edit(edit)) => edit.clone(),
             Some(CompletionTextEdit::InsertAndReplace(edit)) => {
-                let position = source.buffer.with_untracked(|buffer| buffer.offset_to_position(offset));
+                let position = source
+                    .buffer
+                    .with_untracked(|buffer| buffer.offset_to_position(offset));
                 let replace = projection_completion_replace_edit(edit, position)
-                    .ok_or_else(|| anyhow::anyhow!("invalid insert/replace completion"))?;
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("invalid insert/replace completion")
+                    })?;
                 // Both alternatives must round-trip in the source and fit the
                 // current excerpt, even though acceptance uses replace semantics.
                 map(&lsp_types::TextEdit::new(edit.insert, String::new()))?;
                 replace
-            },
+            }
             None => source.buffer.with_untracked(|buffer| {
-                let path = source.content.with_untracked(|content|content.path().cloned());
-                lsp_types::TextEdit::new(lsp_types::Range::new(buffer.offset_to_position(completion_word_start(buffer, path.as_deref(), offset)), buffer.offset_to_position(buffer.next_code_boundary(offset))), item.insert_text.clone().unwrap_or_else(||item.label.clone()))
+                let path = source
+                    .content
+                    .with_untracked(|content| content.path().cloned());
+                lsp_types::TextEdit::new(
+                    lsp_types::Range::new(
+                        buffer.offset_to_position(completion_word_start(
+                            buffer,
+                            path.as_deref(),
+                            offset,
+                        )),
+                        buffer.offset_to_position(buffer.next_code_boundary(offset)),
+                    ),
+                    item.insert_text
+                        .clone()
+                        .unwrap_or_else(|| item.label.clone()),
+                )
             }),
         };
-        let position = source.buffer.with_untracked(|buffer| buffer.offset_to_position(offset));
-        anyhow::ensure!(projection_completion_primary_range(primary.range, position), "invalid primary completion range");
+        let position = source
+            .buffer
+            .with_untracked(|buffer| buffer.offset_to_position(offset));
+        anyhow::ensure!(
+            projection_completion_primary_range(primary.range, position),
+            "invalid primary completion range"
+        );
         mapped.text_edit = Some(CompletionTextEdit::Edit(map(&primary)?));
-        mapped.additional_text_edits = item.additional_text_edits.as_ref().map(|edits|edits.iter().map(map).collect::<anyhow::Result<Vec<_>>>()).transpose()?;
-        let Some(CompletionTextEdit::Edit(primary)) = &mapped.text_edit else { unreachable!() };
-        anyhow::ensure!(projection_completion_disjoint(std::iter::once(primary.range).chain(mapped.additional_text_edits.iter().flatten().map(|edit| edit.range))), "overlapping completion edits");
+        mapped.additional_text_edits = item
+            .additional_text_edits
+            .as_ref()
+            .map(|edits| edits.iter().map(map).collect::<anyhow::Result<Vec<_>>>())
+            .transpose()?;
+        let Some(CompletionTextEdit::Edit(primary)) = &mapped.text_edit else {
+            unreachable!()
+        };
+        anyhow::ensure!(
+            projection_completion_disjoint(
+                std::iter::once(primary.range).chain(
+                    mapped
+                        .additional_text_edits
+                        .iter()
+                        .flatten()
+                        .map(|edit| edit.range)
+                )
+            ),
+            "overlapping completion edits"
+        );
         Ok(mapped)
     }
 
-    fn apply_completion_item_to_view(&self, item: &CompletionItem) -> anyhow::Result<()> {
+    fn apply_completion_item_to_view(
+        &self,
+        item: &CompletionItem,
+    ) -> anyhow::Result<()> {
         let doc = self.doc();
         let buffer = doc.buffer.get_untracked();
         let cursor = self.cursor().get_untracked();
@@ -3834,9 +4606,13 @@ impl EditorData {
                         // Do not widen a suffix-only server edit to the whole word.
                         (edit_start, edit_end)
                     } else {
-                        (snippet_origin(start_offset, edit_start), end_offset.max(edit_end))
+                        (
+                            snippet_origin(start_offset, edit_start),
+                            end_offset.max(edit_end),
+                        )
                     };
-                    let selection = lapce_core::selection::Selection::region(origin, end);
+                    let selection =
+                        lapce_core::selection::Selection::region(origin, end);
                     match text_format {
                         lsp_types::InsertTextFormat::PLAIN_TEXT => {
                             self.do_edit(
@@ -3866,8 +4642,7 @@ impl EditorData {
         }
 
         let offset = cursor.offset();
-        let start_offset =
-            completion_word_start(&buffer, path.as_deref(), offset);
+        let start_offset = completion_word_start(&buffer, path.as_deref(), offset);
         let end_offset = buffer.next_code_boundary(offset);
         let selection = Selection::region(start_offset, end_offset);
 
@@ -3916,10 +4691,12 @@ impl EditorData {
         let Some(expanded) = expanded else {
             return false;
         };
-        let base: String = before.chars().take_while(|c| c.is_whitespace()).collect();
+        let base: String =
+            before.chars().take_while(|c| c.is_whitespace()).collect();
         let snippet = expanded.replace('\n', &format!("\n{base}"));
         // `char_idx` counts chars; convert to a byte offset within the line.
-        let byte_idx: usize = before.chars().take(char_idx).map(char::len_utf8).sum();
+        let byte_idx: usize =
+            before.chars().take(char_idx).map(char::len_utf8).sum();
         let start = line_start + byte_idx;
         let selection = Selection::region(start, offset);
         self.completion_apply_snippet(&snippet, &selection, Vec::new(), start)
@@ -4178,7 +4955,9 @@ impl EditorData {
     }
 
     pub fn get_code_actions(&self) {
-        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
+        let Some((doc, offset, request_current)) = self.navigation_request() else {
+            return;
+        };
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -4224,8 +5003,11 @@ impl EditorData {
             move |resp: (PluginId, CodeActionResponse)| {
                 if doc.rev() == rev {
                     doc.code_actions().update(|c| {
-                        if request_current() {c.insert(offset, (resp.0, resp.1.into()));}
-                        else {c.remove(&offset);}
+                        if request_current() {
+                            c.insert(offset, (resp.0, resp.1.into()));
+                        } else {
+                            c.remove(&offset);
+                        }
                     });
                 }
             },
@@ -4260,32 +5042,64 @@ impl EditorData {
 
     pub(crate) fn show_projection_code_lens(&self, line: usize) {
         let origin = self.doc();
-        let Some((plugin_id, offset, lenses)) = origin.display_code_lenses().get(&line).cloned() else { return; };
-        let Some((source, source_offset)) = origin.projection_navigation_source(offset) else { return; };
-        let origin_id = origin.buffer_id; let origin_rev = origin.rev();
-        let source_id = source.buffer_id; let source_rev = source.rev();
-        let cursor = self.cursor(); let caret = cursor.with_untracked(|cursor| cursor.offset());
+        let Some((plugin_id, offset, lenses)) =
+            origin.display_code_lenses().get(&line).cloned()
+        else {
+            return;
+        };
+        let Some((source, source_offset)) =
+            origin.projection_navigation_source(offset)
+        else {
+            return;
+        };
+        let origin_id = origin.buffer_id;
+        let origin_rev = origin.rev();
+        let source_id = source.buffer_id;
+        let source_rev = source.rev();
+        let cursor = self.cursor();
+        let caret = cursor.with_untracked(|cursor| cursor.offset());
         let editor = self.clone();
         let guard = crate::rename::SourceRenameGuard::new(Rc::new(move || {
-            if !cursor.try_get_untracked().is_some_and(|cursor| cursor.offset() == caret) { return false; }
+            if !cursor
+                .try_get_untracked()
+                .is_some_and(|cursor| cursor.offset() == caret)
+            {
+                return false;
+            }
             let current = editor.doc();
-            current.buffer_id == origin_id && current.rev() == origin_rev
-                && current.projection_navigation_source(offset).is_some_and(|(source, current_offset)| {
-                    source.buffer_id == source_id && source.rev() == source_rev && current_offset == source_offset
-                })
+            current.buffer_id == origin_id
+                && current.rev() == origin_rev
+                && current.projection_navigation_source(offset).is_some_and(
+                    |(source, current_offset)| {
+                        source.buffer_id == source_id
+                            && source.rev() == source_rev
+                            && current_offset == source_offset
+                    },
+                )
         }));
-        self.common.internal_command.send(InternalCommand::ShowCodeActions {
-            offset, mouse_click: true, plugin_id,
-            code_actions: lenses.into_iter().filter_map(|lens| lens.command.map(lsp_types::CodeActionOrCommand::Command)).collect(),
-            guard: Some((self.id(), guard)),
-        });
+        self.common
+            .internal_command
+            .send(InternalCommand::ShowCodeActions {
+                offset,
+                mouse_click: true,
+                plugin_id,
+                code_actions: lenses
+                    .into_iter()
+                    .filter_map(|lens| {
+                        lens.command.map(lsp_types::CodeActionOrCommand::Command)
+                    })
+                    .collect(),
+                guard: Some((self.id(), guard)),
+            });
     }
 
     pub fn show_code_actions(&self, mouse_click: bool) {
         let offset = self.cursor().with_untracked(|c| c.offset());
-        let Some((doc,source_offset,current))=self.navigation_request() else {return;};
-        let guard=crate::rename::SourceRenameGuard::new(current);
-        let editor_id=self.id();
+        let Some((doc, source_offset, current)) = self.navigation_request() else {
+            return;
+        };
+        let guard = crate::rename::SourceRenameGuard::new(current);
+        let editor_id = self.id();
         let code_actions = doc
             .code_actions()
             .with_untracked(|c| c.get(&source_offset).cloned());
@@ -4297,7 +5111,7 @@ impl EditorData {
                         mouse_click,
                         plugin_id,
                         code_actions,
-                        guard:Some((editor_id,guard)),
+                        guard: Some((editor_id, guard)),
                     },
                 );
             }
@@ -4314,7 +5128,10 @@ impl EditorData {
         after_action: impl FnOnce() + 'static,
     ) {
         let doc = self.doc();
-        if doc.projection.get_untracked().is_some() {doc.save_projection(after_action);return;}
+        if doc.projection.get_untracked().is_some() {
+            doc.save_projection(after_action);
+            return;
+        }
         let is_pristine = doc.is_pristine();
         let content = doc.content.get_untracked();
 
@@ -4387,8 +5204,12 @@ impl EditorData {
         let doc = self.doc();
         if let Some(eol) = props.eol {
             let want = match eol {
-                crate::editorconfig::Eol::Lf => lapce_core::line_ending::LineEnding::Lf,
-                crate::editorconfig::Eol::CrLf => lapce_core::line_ending::LineEnding::CrLf,
+                crate::editorconfig::Eol::Lf => {
+                    lapce_core::line_ending::LineEnding::Lf
+                }
+                crate::editorconfig::Eol::CrLf => {
+                    lapce_core::line_ending::LineEnding::CrLf
+                }
             };
             if doc.buffer.with_untracked(|b| b.line_ending()) != want {
                 doc.buffer.update(|b| b.set_line_ending(want));
@@ -4410,7 +5231,9 @@ impl EditorData {
             .edit_selection(&doc.buffer.get_untracked());
         let edits: Vec<(lapce_core::selection::Selection, &str)> = ranges
             .iter()
-            .map(|(s, e, r)| (lapce_core::selection::Selection::region(*s, *e), r.as_str()))
+            .map(|(s, e, r)| {
+                (lapce_core::selection::Selection::region(*s, *e), r.as_str())
+            })
             .collect();
         self.do_edit(&selection, &edits);
     }
@@ -4454,18 +5277,33 @@ impl EditorData {
     }
 
     fn format_projection_source(&self) {
-        let Some((doc, _, current)) = self.navigation_request() else { return; };
-        if !doc.loaded() { return; }
-        let Some(path) = doc.content.with_untracked(|content| content.path().cloned()) else { return; };
+        let Some((doc, _, current)) = self.navigation_request() else {
+            return;
+        };
+        if !doc.loaded() {
+            return;
+        }
+        let Some(path) = doc
+            .content
+            .with_untracked(|content| content.path().cloned())
+        else {
+            return;
+        };
         let guard = crate::rename::SourceRenameGuard::new(current);
         let editor_id = self.id();
         let internal_command = self.common.internal_command;
         let format_path = path.clone();
         let send = create_ext_action(self.scope, move |result| {
-            if !guard.current() { return; }
+            if !guard.current() {
+                return;
+            }
             if let Ok(Ok(ProxyResponse::GetDocumentFormatting { edits })) = result {
                 if let Some(edit) = source_format_edit(&path, edits) {
-                    internal_command.send(InternalCommand::ApplySourceFormat { editor_id, edit, guard });
+                    internal_command.send(InternalCommand::ApplySourceFormat {
+                        editor_id,
+                        edit,
+                        guard,
+                    });
                 }
             }
         });
@@ -4473,7 +5311,9 @@ impl EditorData {
         let proxy = self.common.proxy.clone();
         std::thread::spawn(move || {
             proxy.get_document_formatting(format_path, move |result| {
-                if let Err(err) = tx.send(result) { tracing::error!("{:?}", err); }
+                if let Err(err) = tx.send(result) {
+                    tracing::error!("{:?}", err);
+                }
             });
             send(rx.recv_timeout(std::time::Duration::from_secs(1)));
         });
@@ -4636,10 +5476,12 @@ impl EditorData {
     }
 
     fn rename(&self) {
-        let Some((doc,offset,request_current))=self.navigation_request() else {return;};
-        let origin=self.doc();
-        let editor_id=self.id();
-        let guard=crate::rename::SourceRenameGuard::new(request_current);
+        let Some((doc, offset, request_current)) = self.navigation_request() else {
+            return;
+        };
+        let origin = self.doc();
+        let editor_id = self.id();
+        let guard = crate::rename::SourceRenameGuard::new(request_current);
         let path = match if doc.loaded() {
             doc.content.with_untracked(|c| c.path().cloned())
         } else {
@@ -4662,7 +5504,9 @@ impl EditorData {
                     return;
                 }
 
-                if !guard.current() {return;}
+                if !guard.current() {
+                    return;
+                }
 
                 let (start, end, position, placeholder) =
                     buffer.with_untracked(|buffer| match resp {
@@ -4700,18 +5544,32 @@ impl EditorData {
                         buffer.slice_to_cow(start..end).to_string()
                     })
                 });
-                let display_start=if let Some(binding)=origin.projection.get_untracked() {
-                    let anchor=crate::multibuffer::SourceAnchor{source:local_path.clone(),buffer_id:doc.buffer_id.0,revision:rev,offset};
-                    let Some(range)=binding.projection.borrow().rename_display_range(&anchor,start..end) else {return;};
-                    range.start
-                } else {start};
+                let display_start =
+                    if let Some(binding) = origin.projection.get_untracked() {
+                        let anchor = crate::multibuffer::SourceAnchor {
+                            source: local_path.clone(),
+                            buffer_id: doc.buffer_id.0,
+                            revision: rev,
+                            offset,
+                        };
+                        let Some(range) = binding
+                            .projection
+                            .borrow()
+                            .rename_display_range(&anchor, start..end)
+                        else {
+                            return;
+                        };
+                        range.start
+                    } else {
+                        start
+                    };
                 internal_command.send(InternalCommand::StartRename {
                     path: local_path.clone(),
                     editor_id,
                     placeholder,
-                    start:display_start,
+                    start: display_start,
                     position,
-                    guard:guard.clone(),
+                    guard: guard.clone(),
                 });
             }
         });
@@ -4748,8 +5606,14 @@ impl EditorData {
         self.do_edit(
             &selection,
             &[
-                (Selection::region(pair.open_name.start, pair.open_name.end), new_name),
-                (Selection::region(pair.close_name.start, pair.close_name.end), new_name),
+                (
+                    Selection::region(pair.open_name.start, pair.open_name.end),
+                    new_name,
+                ),
+                (
+                    Selection::region(pair.close_name.start, pair.close_name.end),
+                    new_name,
+                ),
             ],
         );
         true
@@ -4900,14 +5764,18 @@ impl EditorData {
         match pointer_event.button.mouse_button() {
             MouseButton::Primary => {
                 self.active().set(true);
-                let definition_click = (cfg!(target_os = "macos") && pointer_event.modifiers.meta())
-                    || (cfg!(not(target_os = "macos")) && pointer_event.modifiers.control());
+                let definition_click = (cfg!(target_os = "macos")
+                    && pointer_event.modifiers.meta())
+                    || (cfg!(not(target_os = "macos"))
+                        && pointer_event.modifiers.control());
                 if definition_click {
                     // A rapid Ctrl-click can carry click count 2/3. Word/line
                     // selection would move the request to the token boundary.
                     let mode = self.cursor().with_untracked(|c| c.get_mode());
-                    let (offset, _) = self.editor.offset_of_point(mode, pointer_event.pos);
-                    self.cursor().update(|cursor| cursor.set_offset(offset, false, false));
+                    let (offset, _) =
+                        self.editor.offset_of_point(mode, pointer_event.pos);
+                    self.cursor()
+                        .update(|cursor| cursor.set_offset(offset, false, false));
                 } else {
                     self.left_click(pointer_event);
                 }
@@ -5149,9 +6017,13 @@ impl EditorData {
         });
         if let Some(text) = selected_context {
             let command = self.common.internal_command;
-            menu = menu.entry(MenuItem::new("Send to chat").action(move || {
-                command.send(InternalCommand::SendSelectionToChat { text: text.clone() });
-            })).separator();
+            menu = menu
+                .entry(MenuItem::new("Send to chat").action(move || {
+                    command.send(InternalCommand::SendSelectionToChat {
+                        text: text.clone(),
+                    });
+                }))
+                .separator();
         }
         let mut cmds = if is_file {
             if path
@@ -5260,27 +6132,46 @@ impl EditorData {
         // Every new hover supersedes in-flight language-server responses.
         let request_id = self.common.hover.next_request_id();
         let origin = self.doc();
-        let display_offset=offset;
-        let projected=origin.projection.get_untracked().is_some();
-        let Some((doc,offset))=(if projected {origin.projection_navigation_source(display_offset)} else {Some((origin.clone(),display_offset))}) else {
+        let display_offset = offset;
+        let projected = origin.projection.get_untracked().is_some();
+        let Some((doc, offset)) = (if projected {
+            origin.projection_navigation_source(display_offset)
+        } else {
+            Some((origin.clone(), display_offset))
+        }) else {
             self.common.hover.active.set(false);
             return;
         };
-        let request_stamp=crate::hover::SourceHoverStamp {
-            origin_id:origin.buffer_id.0, origin_revision:origin.rev(),
-            source_id:doc.buffer_id.0,source_revision:doc.rev(),source_offset:offset,
-            cursor_offset:self.cursor().with_untracked(|cursor|cursor.offset()),
+        let request_stamp = crate::hover::SourceHoverStamp {
+            origin_id: origin.buffer_id.0,
+            origin_revision: origin.rev(),
+            source_id: doc.buffer_id.0,
+            source_revision: doc.rev(),
+            source_offset: offset,
+            cursor_offset: self.cursor().with_untracked(|cursor| cursor.offset()),
         };
-        let editor=self.clone();
-        let request_current=move || {
-            let origin=editor.doc();
-            let source=if projected {origin.projection_navigation_source(display_offset)} else {Some((origin.clone(),display_offset))};
-            let Some((source,source_offset))=source else {return false;};
-            request_stamp==crate::hover::SourceHoverStamp {
-                origin_id:origin.buffer_id.0,origin_revision:origin.rev(),source_id:source.buffer_id.0,
-                source_revision:source.rev(),source_offset,
-                cursor_offset:editor.cursor().with_untracked(|cursor|cursor.offset()),
-            }
+        let editor = self.clone();
+        let request_current = move || {
+            let origin = editor.doc();
+            let source = if projected {
+                origin.projection_navigation_source(display_offset)
+            } else {
+                Some((origin.clone(), display_offset))
+            };
+            let Some((source, source_offset)) = source else {
+                return false;
+            };
+            request_stamp
+                == crate::hover::SourceHoverStamp {
+                    origin_id: origin.buffer_id.0,
+                    origin_revision: origin.rev(),
+                    source_id: source.buffer_id.0,
+                    source_revision: source.rev(),
+                    source_offset,
+                    cursor_offset: editor
+                        .cursor()
+                        .with_untracked(|cursor| cursor.offset()),
+                }
         };
         let path = doc
             .content
@@ -5299,8 +6190,14 @@ impl EditorData {
                 let line = buffer.line_of_offset(offset);
                 let from = buffer.offset_of_line(line.saturating_sub(30));
                 let cap = from + 16_384;
-                let to = buffer.offset_of_line(line + 1).min(cap).max(offset.min(cap));
-                (buffer.slice_to_cow(from..to).to_string(), offset.min(cap) - from)
+                let to = buffer
+                    .offset_of_line(line + 1)
+                    .min(cap)
+                    .max(offset.min(cap));
+                (
+                    buffer.slice_to_cow(from..to).to_string(),
+                    offset.min(cap) - from,
+                )
             });
             let root = self.common.workspace.path.as_deref();
             if let Some(md) = crate::hover_help::help(root, &path, &window, at) {
@@ -5393,7 +6290,8 @@ impl EditorData {
                 )
             });
             let root = self.common.workspace.path.as_deref();
-            if let Some(md) = crate::config_value_hover::help(root, &line_text, col) {
+            if let Some(md) = crate::config_value_hover::help(root, &line_text, col)
+            {
                 let content =
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
@@ -5591,24 +6489,26 @@ impl EditorData {
         // `$this->member` in a PHP file: used only if the language server has
         // nothing to say.
         let fallback: Option<String> = crate::php_this_hover::supports_path(&path)
-        .then(|| {
-            doc.buffer.with_untracked(|buffer| {
-                if buffer.len() > 1 << 20 {
-                    return None;
-                }
-                let line = buffer.line_of_offset(offset);
-                let line_text = buffer.line_content(line).to_string();
-                if line_text.len() > 8192 {
-                    return None;
-                }
-                let col = offset - buffer.offset_of_line(line);
-                crate::php_this_hover::member_at(&line_text, col)?;
-                crate::php_this_hover::help(&buffer.to_string(), &line_text, col)
+            .then(|| {
+                doc.buffer.with_untracked(|buffer| {
+                    if buffer.len() > 1 << 20 {
+                        return None;
+                    }
+                    let line = buffer.line_of_offset(offset);
+                    let line_text = buffer.line_content(line).to_string();
+                    if line_text.len() > 8192 {
+                        return None;
+                    }
+                    let col = offset - buffer.offset_of_line(line);
+                    crate::php_this_hover::member_at(&line_text, col)?;
+                    crate::php_this_hover::help(&buffer.to_string(), &line_text, col)
+                })
             })
-        })
-        .flatten();
+            .flatten();
         let send = create_ext_action(self.scope, move |resp| {
-            if !request_current() {return;}
+            if !request_current() {
+                return;
+            }
             if !crate::hover::response_is_current(
                 request_id,
                 hover_data.request_id.get_untracked(),
@@ -5854,49 +6754,109 @@ impl EditorData {
         }
         self.projection_highlights.set(None);
         let active = self.projection_highlight_active;
-        if !active.get_untracked() { return; }
-        let Some((source, offset, current)) = self.navigation_request() else { return; };
-        let Some(binding) = origin.projection.get_untracked() else { return; };
-        let Some(excerpt) = binding.projection.borrow().excerpts.iter()
-            .find(|excerpt| excerpt.display_range.contains(&caret)).cloned() else { return; };
-        let Some(path) = source.content.with_untracked(|content| content.path().cloned()) else { return; };
-        let position = source.buffer.with_untracked(|buffer| buffer.offset_to_position(offset));
+        if !active.get_untracked() {
+            return;
+        }
+        let Some((source, offset, current)) = self.navigation_request() else {
+            return;
+        };
+        let Some(binding) = origin.projection.get_untracked() else {
+            return;
+        };
+        let Some(excerpt) = binding
+            .projection
+            .borrow()
+            .excerpts
+            .iter()
+            .find(|excerpt| excerpt.display_range.contains(&caret))
+            .cloned()
+        else {
+            return;
+        };
+        let Some(path) = source
+            .content
+            .with_untracked(|content| content.path().cloned())
+        else {
+            return;
+        };
+        let position = source
+            .buffer
+            .with_untracked(|buffer| buffer.offset_to_position(offset));
         let state = self.projection_highlights;
-        let guard: Rc<dyn Fn() -> bool> = Rc::new(move || active.try_get_untracked() == Some(true) && current());
+        let guard: Rc<dyn Fn() -> bool> =
+            Rc::new(move || active.try_get_untracked() == Some(true) && current());
         let send = create_ext_action(self.scope, move |response| {
-            if !guard() { return; }
-            let Ok(ProxyResponse::GetDocumentHighlights { highlights: Some(highlights) }) = response else { return; };
-            let mut spans = source.buffer.with_untracked(|buffer| highlights.iter().filter_map(|highlight| {
-                let span = canonical_highlight_offsets(buffer, highlight.range)?;
-                projected_highlight_range(excerpt.source_range.clone(), excerpt.display_range.start, span)
-            }).collect::<Vec<_>>());
+            if !guard() {
+                return;
+            }
+            let Ok(ProxyResponse::GetDocumentHighlights {
+                highlights: Some(highlights),
+            }) = response
+            else {
+                return;
+            };
+            let mut spans = source.buffer.with_untracked(|buffer| {
+                highlights
+                    .iter()
+                    .filter_map(|highlight| {
+                        let span =
+                            canonical_highlight_offsets(buffer, highlight.range)?;
+                        projected_highlight_range(
+                            excerpt.source_range.clone(),
+                            excerpt.display_range.start,
+                            span,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
             DocumentHighlight::sort(&mut spans);
             if DocumentHighlight::find_for_offset(&spans, caret).is_some() {
-                state.set(Some(ProjectionHighlights { current: guard, spans }));
+                state.set(Some(ProjectionHighlights {
+                    current: guard,
+                    spans,
+                }));
             }
         });
-        self.common.proxy.get_document_highlights(path, position, send);
+        self.common
+            .proxy
+            .get_document_highlights(path, position, send);
     }
 
     pub(crate) fn display_document_highlights(&self) -> Vec<DocumentHighlight> {
         if self.doc().projection.get_untracked().is_none() {
-            return self.doc().highlights.with_untracked(|highlights| highlights.clone().unwrap_or_default());
+            return self.doc().highlights.with_untracked(|highlights| {
+                highlights.clone().unwrap_or_default()
+            });
         }
-        self.projection_highlights.with_untracked(|state| state.as_ref()
-            .filter(|state| (state.current)()).map(|state| state.spans.clone()).unwrap_or_default())
+        self.projection_highlights.with_untracked(|state| {
+            state
+                .as_ref()
+                .filter(|state| (state.current)())
+                .map(|state| state.spans.clone())
+                .unwrap_or_default()
+        })
     }
 
     pub fn jump_highlight(&self, direction: InlineFindDirection) {
         let cursor_offset = self.cursor().with_untracked(|c| c.offset());
 
         let highlights = self.display_document_highlights();
-        let new_offset = DocumentHighlight::find_for_offset(&highlights, cursor_offset).map(|index| {
-            let new_index = match direction {
-                InlineFindDirection::Left => if index == 0 { highlights.len() - 1 } else { index - 1 },
-                InlineFindDirection::Right => (index + 1) % highlights.len(),
-            };
-            highlights[new_index].start
-        });
+        let new_offset =
+            DocumentHighlight::find_for_offset(&highlights, cursor_offset).map(
+                |index| {
+                    let new_index = match direction {
+                        InlineFindDirection::Left => {
+                            if index == 0 {
+                                highlights.len() - 1
+                            } else {
+                                index - 1
+                            }
+                        }
+                        InlineFindDirection::Right => (index + 1) % highlights.len(),
+                    };
+                    highlights[new_index].start
+                },
+            );
 
         if let Some(new_offset) = new_offset {
             self.run_move_command(
@@ -6065,9 +7025,28 @@ impl KeyPressFocus for EditorData {
                 );
                 self.cursor().set(cursor);
 
-                if !c
-                    .chars()
-                    .all(|c| c.is_whitespace() || c.is_ascii_whitespace())
+                let php_space_trigger =
+                    self.doc().content.with_untracked(|content| {
+                        content.path().is_some_and(|path| {
+                            crate::project_completion::php_completion_path(path)
+                        })
+                    }) && self.doc().buffer.with_untracked(|b| {
+                        let offset =
+                            self.cursor().with_untracked(|cursor| cursor.offset());
+                        let start = b
+                            .text()
+                            .at_or_next_codepoint_boundary(
+                                offset.saturating_sub(256),
+                            )
+                            .unwrap_or(offset);
+                        crate::php_completion::immediate(
+                            &b.slice_to_cow(start..offset),
+                        )
+                    });
+                if php_space_trigger
+                    || !c
+                        .chars()
+                        .all(|c| c.is_whitespace() || c.is_ascii_whitespace())
                 {
                     self.update_completion(false);
                 } else {
@@ -6598,7 +7577,10 @@ fn find_hint(mut pre_hint_len: u32, index: u32, hint: &InlayHint) -> FindHintRs 
 
 // Shift is part of the Match Pairs shortcut, not a request to select the span.
 // Other shifted movements retain normal selection extension.
-fn movement_extends_selection(movement: &lapce_core::movement::Movement, mods: Modifiers) -> bool {
+fn movement_extends_selection(
+    movement: &lapce_core::movement::Movement,
+    mods: Modifiers,
+) -> bool {
     mods.shift() && !matches!(movement, lapce_core::movement::Movement::MatchPairs)
 }
 
@@ -6612,23 +7594,50 @@ mod match_pairs_modifier_tests {
     fn shortcut_shift_is_not_selection_but_arrows_still_extend() {
         let shortcut = Modifiers::CONTROL | Modifiers::SHIFT;
         assert!(!movement_extends_selection(&Movement::MatchPairs, shortcut));
-        assert!(!movement_extends_selection(&Movement::MatchPairs, Modifiers::empty()));
-        assert!(movement_extends_selection(&Movement::Left, Modifiers::SHIFT));
+        assert!(!movement_extends_selection(
+            &Movement::MatchPairs,
+            Modifiers::empty()
+        ));
+        assert!(movement_extends_selection(
+            &Movement::Left,
+            Modifiers::SHIFT
+        ));
         assert!(movement_extends_selection(&Movement::Right, shortcut));
-        assert!(!movement_extends_selection(&Movement::Left, Modifiers::CONTROL));
+        assert!(!movement_extends_selection(
+            &Movement::Left,
+            Modifiers::CONTROL
+        ));
     }
 }
 
 #[cfg(test)]
 mod code_action_context_tests {
-    #[test]fn projection_code_action_context_uses_canonical_offset_not_header_offset() {
-        use crate::multibuffer::{Projection,Snapshot};
-        use lapce_xi_rope::{spans::SpansBuilder,Interval};
-        let source=Snapshot{path:"one.php".into(),buffer_id:4,revision:7,read_only:false,text:format!("{}$first = BROKEN;\n","// omitted\n".repeat(100))};
-        let at=source.text.find("$first").unwrap();let projection=Projection::build(&[source.clone()],&[(source.path.clone(),at..source.text.len())],4096).unwrap();
-        let display=projection.excerpts[0].display_range.start+9;let anchor=projection.navigation_anchor(display).unwrap();
-        let mut spans=SpansBuilder::new(source.text.len());spans.add_span(Interval::new(at+9,at+15),1);let spans=spans.build();
-        assert_eq!(super::containing_spans(&spans,anchor.offset),vec![1]);assert!(super::containing_spans(&spans,display).is_empty());assert!(projection.navigation_anchor(0).is_none());
+    #[test]
+    fn projection_code_action_context_uses_canonical_offset_not_header_offset() {
+        use crate::multibuffer::{Projection, Snapshot};
+        use lapce_xi_rope::{Interval, spans::SpansBuilder};
+        let source = Snapshot {
+            path: "one.php".into(),
+            buffer_id: 4,
+            revision: 7,
+            read_only: false,
+            text: format!("{}$first = BROKEN;\n", "// omitted\n".repeat(100)),
+        };
+        let at = source.text.find("$first").unwrap();
+        let projection = Projection::build(
+            &[source.clone()],
+            &[(source.path.clone(), at..source.text.len())],
+            4096,
+        )
+        .unwrap();
+        let display = projection.excerpts[0].display_range.start + 9;
+        let anchor = projection.navigation_anchor(display).unwrap();
+        let mut spans = SpansBuilder::new(source.text.len());
+        spans.add_span(Interval::new(at + 9, at + 15), 1);
+        let spans = spans.build();
+        assert_eq!(super::containing_spans(&spans, anchor.offset), vec![1]);
+        assert!(super::containing_spans(&spans, display).is_empty());
+        assert!(projection.navigation_anchor(0).is_none());
     }
     use super::containing_spans;
     use lapce_xi_rope::{Interval, spans::Spans, spans::SpansBuilder};
@@ -6667,8 +7676,13 @@ mod code_action_context_tests {
 
 /// Keep formatter edits in canonical coordinates, including edits outside the
 /// visible excerpt. The existing workspace-edit path owns source Undo/Redo.
-fn source_format_edit(path: &std::path::Path, edits: Vec<lsp_types::TextEdit>) -> Option<lsp_types::WorkspaceEdit> {
-    if edits.is_empty() { return None; }
+fn source_format_edit(
+    path: &std::path::Path,
+    edits: Vec<lsp_types::TextEdit>,
+) -> Option<lsp_types::WorkspaceEdit> {
+    if edits.is_empty() {
+        return None;
+    }
     let uri = lsp_types::Url::from_file_path(path).ok()?;
     Some(lsp_types::WorkspaceEdit {
         changes: Some([(uri, edits)].into_iter().collect()),
@@ -6684,7 +7698,16 @@ mod projection_format_tests {
     #[test]
     fn canonical_file_keeps_edits_outside_excerpt_and_unicode_path() {
         let path = std::path::Path::new("/tmp/format space/日本語.php");
-        let edits = vec![TextEdit::new(Range::new(Position::new(0, 0), Position::new(0, 0)), "<?php\n".into()), TextEdit::new(Range::new(Position::new(12342, 9), Position::new(12342, 15)), "FIXED".into())];
+        let edits = vec![
+            TextEdit::new(
+                Range::new(Position::new(0, 0), Position::new(0, 0)),
+                "<?php\n".into(),
+            ),
+            TextEdit::new(
+                Range::new(Position::new(12342, 9), Position::new(12342, 15)),
+                "FIXED".into(),
+            ),
+        ];
         let edit = source_format_edit(path, edits.clone()).unwrap();
         let changes = edit.changes.unwrap();
         assert_eq!(changes.len(), 1);
@@ -6693,7 +7716,10 @@ mod projection_format_tests {
 
     #[test]
     fn empty_format_response_does_not_open_a_source() {
-        assert!(source_format_edit(std::path::Path::new("/tmp/one.php"), vec![]).is_none());
+        assert!(
+            source_format_edit(std::path::Path::new("/tmp/one.php"), vec![])
+                .is_none()
+        );
     }
 
     #[test]
@@ -6701,7 +7727,8 @@ mod projection_format_tests {
         use std::{cell::Cell, rc::Rc};
         let revision = Rc::new(Cell::new(7));
         let live = revision.clone();
-        let guard = crate::rename::SourceRenameGuard::new(Rc::new(move || live.get() == 7));
+        let guard =
+            crate::rename::SourceRenameGuard::new(Rc::new(move || live.get() == 7));
         assert!(guard.current());
         revision.set(8);
         assert!(!guard.current());
@@ -6715,8 +7742,14 @@ struct ProjectionHighlights {
 }
 
 /// Highlights never cross into headers, another excerpt or hidden source text.
-fn projected_highlight_range(source: std::ops::Range<usize>, display: usize, span: std::ops::Range<usize>) -> Option<DocumentHighlight> {
-    if span.start >= span.end || span.start < source.start || span.end > source.end { return None; }
+fn projected_highlight_range(
+    source: std::ops::Range<usize>,
+    display: usize,
+    span: std::ops::Range<usize>,
+) -> Option<DocumentHighlight> {
+    if span.start >= span.end || span.start < source.start || span.end > source.end {
+        return None;
+    }
     Some(DocumentHighlight {
         start: display.checked_add(span.start.checked_sub(source.start)?)?,
         end: display.checked_add(span.end.checked_sub(source.start)?)?,
@@ -6726,41 +7759,71 @@ fn projected_highlight_range(source: std::ops::Range<usize>, display: usize, spa
 #[cfg(test)]
 mod projection_highlight_tests {
     use super::projected_highlight_range;
-    #[test] fn projection_highlight_maps_nonzero_source_byte_offsets() {
-        let span = projected_highlight_range(280000..280100, 80, 280020..280027).unwrap();
+    #[test]
+    fn projection_highlight_maps_nonzero_source_byte_offsets() {
+        let span =
+            projected_highlight_range(280000..280100, 80, 280020..280027).unwrap();
         assert_eq!((span.start, span.end), (100, 107));
         let span = projected_highlight_range(30..40, 80, 30..40).unwrap();
         assert_eq!((span.start, span.end), (80, 90));
     }
-    #[test] fn projection_highlight_refuses_empty_reversed_and_cross_excerpt() {
+    #[test]
+    fn projection_highlight_refuses_empty_reversed_and_cross_excerpt() {
         for span in [20..20, 24..21, 19..22, 22..31, 5..15, 35..40] {
             assert!(projected_highlight_range(20..30, 80, span).is_none());
         }
     }
-    #[test] fn projection_highlight_refuses_display_overflow() {
+    #[test]
+    fn projection_highlight_refuses_display_overflow() {
         assert!(projected_highlight_range(20..30, usize::MAX - 2, 21..25).is_none());
     }
 }
 
 /// Validate before converting: the editor's general coordinate helpers clamp.
-fn canonical_highlight_offsets(buffer: &impl RopeTextPosition, range: lsp_types::Range) -> Option<std::ops::Range<usize>> {
-    if range.start >= range.end || range.end.line as usize > buffer.last_line() { return None; }
+fn canonical_highlight_offsets(
+    buffer: &impl RopeTextPosition,
+    range: lsp_types::Range,
+) -> Option<std::ops::Range<usize>> {
+    if range.start >= range.end || range.end.line as usize > buffer.last_line() {
+        return None;
+    }
     let start = buffer.offset_of_position(&range.start);
     let end = buffer.offset_of_position(&range.end);
-    (buffer.offset_to_position(start) == range.start && buffer.offset_to_position(end) == range.end).then_some(start..end)
+    (buffer.offset_to_position(start) == range.start
+        && buffer.offset_to_position(end) == range.end)
+        .then_some(start..end)
 }
 
 #[cfg(test)]
 mod projection_highlight_position_tests {
     use super::*;
-    fn range(a: u32, b: u32) -> lsp_types::Range { lsp_types::Range::new(lsp_types::Position::new(0, a), lsp_types::Position::new(0, b)) }
-    #[test] fn projection_highlight_utf16_maps_non_ascii_to_byte_offsets() {
-        let buffer = RopeTextVal::new(Rope::from("λ😀name\r\nnext"));
-        assert_eq!(canonical_highlight_offsets(&buffer, range(1, 7)), Some(2..10));
+    fn range(a: u32, b: u32) -> lsp_types::Range {
+        lsp_types::Range::new(
+            lsp_types::Position::new(0, a),
+            lsp_types::Position::new(0, b),
+        )
     }
-    #[test] fn projection_highlight_refuses_clamped_or_split_surrogate_positions() {
+    #[test]
+    fn projection_highlight_utf16_maps_non_ascii_to_byte_offsets() {
         let buffer = RopeTextVal::new(Rope::from("λ😀name\r\nnext"));
-        for range in [range(1, 2), range(1, 200), range(7, 3), range(3, 3), lsp_types::Range::new(lsp_types::Position::new(0, 1), lsp_types::Position::new(u32::MAX, 0))] {
+        assert_eq!(
+            canonical_highlight_offsets(&buffer, range(1, 7)),
+            Some(2..10)
+        );
+    }
+    #[test]
+    fn projection_highlight_refuses_clamped_or_split_surrogate_positions() {
+        let buffer = RopeTextVal::new(Rope::from("λ😀name\r\nnext"));
+        for range in [
+            range(1, 2),
+            range(1, 200),
+            range(7, 3),
+            range(3, 3),
+            lsp_types::Range::new(
+                lsp_types::Position::new(0, 1),
+                lsp_types::Position::new(u32::MAX, 0),
+            ),
+        ] {
             assert!(canonical_highlight_offsets(&buffer, range).is_none());
         }
     }
@@ -6785,7 +7848,9 @@ mod definition_identity_tests {
     use std::path::PathBuf;
 
     fn source() -> PathBuf {
-        std::env::temp_dir().join("gravity definition identity").join("source.php")
+        std::env::temp_dir()
+            .join("gravity definition identity")
+            .join("source.php")
     }
 
     fn location(path: &std::path::Path, line: u32, character: u32) -> Location {
@@ -6798,20 +7863,32 @@ mod definition_identity_tests {
         let source = source();
         let target = source.with_file_name("target.php");
         let start = Position::new(4, 8);
-        assert!(!definition_is_current_symbol(&source, start, &location(&target, 4, 8)));
+        assert!(!definition_is_current_symbol(
+            &source,
+            start,
+            &location(&target, 4, 8)
+        ));
     }
 
     #[test]
     fn definition_identity_same_file_same_symbol_opens_usages() {
         let source = source();
-        assert!(definition_is_current_symbol(&source, Position::new(4, 8), &location(&source, 4, 8)));
+        assert!(definition_is_current_symbol(
+            &source,
+            Position::new(4, 8),
+            &location(&source, 4, 8)
+        ));
     }
 
     #[test]
     fn definition_identity_same_file_other_symbol_is_destination() {
         let source = source();
         for (line, col) in [(3, 8), (4, 7), (5, 8), (4, 9)] {
-            assert!(!definition_is_current_symbol(&source, Position::new(4, 8), &location(&source, line, col)));
+            assert!(!definition_is_current_symbol(
+                &source,
+                Position::new(4, 8),
+                &location(&source, line, col)
+            ));
         }
     }
 
@@ -6819,8 +7896,15 @@ mod definition_identity_tests {
     fn definition_identity_non_file_uri_is_not_self() {
         let source = source();
         let start = Position::new(4, 8);
-        let definition = Location::new(Url::parse("untitled:generated.php").unwrap(), Range::new(start, start));
+        let definition = Location::new(
+            Url::parse("untitled:generated.php").unwrap(),
+            Range::new(start, start),
+        );
         assert!(!definition_is_current_symbol(&source, start, &definition));
-        assert!(!definition_is_current_symbol(std::path::Path::new("relative.php"), start, &location(&source, 4, 8)));
+        assert!(!definition_is_current_symbol(
+            std::path::Path::new("relative.php"),
+            start,
+            &location(&source, 4, 8)
+        ));
     }
 }

@@ -306,7 +306,34 @@ impl Document {
             .text
             .at_or_next_codepoint_boundary(offset.saturating_sub(256))
             .unwrap_or(offset);
-        let prefix = self.text.slice_to_cow(start..offset);
+        // Text fallbacks must not interpret keywords inside comments/strings.
+        // Walk only nodes intersecting the bounded cursor window.
+        let mut prefix = self.text.slice_to_cow(start..offset).into_owned();
+        let mut pending = vec![self.tree.root_node()];
+        let mut visited = 0;
+        while let Some(node) = pending.pop() {
+            visited += 1;
+            if visited > 2048 {
+                break;
+            }
+            if node.end_byte() <= start || node.start_byte() >= offset {
+                continue;
+            }
+            if matches!(
+                node.kind(),
+                "comment" | "string" | "encapsed_string" | "heredoc" | "nowdoc"
+            ) {
+                let from = node.start_byte().max(start) - start;
+                let to = node.end_byte().min(offset) - start;
+                prefix.replace_range(from..to, &" ".repeat(to - from));
+            } else {
+                let mut cursor = node.walk();
+                pending
+                    .extend(node.named_children(&mut cursor).filter(|n| {
+                        n.end_byte() > start && n.start_byte() < offset
+                    }));
+            }
+        }
         let trimmed = prefix.trim_end();
         let previous = self.text.prev_codepoint_offset(offset).unwrap_or(0);
         let node = self
@@ -361,19 +388,47 @@ impl Document {
                 before.split_whitespace().next_back().unwrap_or("")
             };
             let tail = trimmed.rsplit(['{', '}', ';']).next().unwrap_or(trimmed);
-            let list_context =
-                if tail.split_whitespace().any(|word| word == "implements") {
-                    Some(CursorContext::Implements)
-                } else if tail.split_whitespace().any(|word| word == "extends") {
-                    Some(CursorContext::Extends)
-                } else {
-                    None
-                };
-            if trait_use || closure_use {
+            let list_context = if tail
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .any(|word| word == "implements")
+            {
+                Some(CursorContext::Implements)
+            } else if tail
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .any(|word| word == "extends")
+            {
+                Some(CursorContext::Extends)
+            } else {
+                None
+            };
+            let closure_capture = tail.rfind("use").is_some_and(|at| {
+                tail[..at].contains("function")
+                    && tail[..at]
+                        .chars()
+                        .next_back()
+                        .is_some_and(char::is_whitespace)
+                    && tail[at + 3..].trim_start().starts_with('(')
+            });
+            if trait_use || closure_use || closure_capture {
                 return Some(CursorContext::Expression);
             }
             if let Some(context) = declaration_context.or(list_context) {
-                return Some(context);
+                // Interfaces extend interfaces, classes extend classes.
+                let mut owner = node;
+                let mut interface =
+                    tail.split_whitespace().any(|word| word == "interface");
+                while let Some(n) = owner {
+                    if n.kind() == "interface_declaration" {
+                        interface = true;
+                        break;
+                    }
+                    owner = n.parent();
+                }
+                return Some(if interface && context == CursorContext::Extends {
+                    CursorContext::Implements
+                } else {
+                    context
+                });
             }
             match word {
                 "new" => CursorContext::New,
@@ -726,10 +781,20 @@ mod tests {
             );
         }
         for (source, expected) in [
-            ("<?php interface X extends A, B", CursorContext::Extends),
+            ("<?php interface X extends A, B", CursorContext::Implements),
             ("<?php class X implements A, B", CursorContext::Implements),
         ] {
             assert_eq!(doc(source).cursor_context(source.len()), Some(expected));
+        }
+        for source in [
+            "<?php /* extends Foo */ ordinary",
+            "<?php /* function() use ( */ ordinary",
+            "<?php $s='implements Foo'; ordinary",
+        ] {
+            assert_eq!(
+                doc(source).cursor_context(source.len()),
+                Some(CursorContext::Expression)
+            );
         }
         let quoted = "<?php $x=<<<'SQL'\nSELECT id FROM users\nSQL;";
         assert_eq!(
@@ -869,6 +934,575 @@ mod tests {
                 .regions
                 .iter()
                 .all(|region| region.context == Context::Html)
+        );
+    }
+}
+
+/// Declaration-only scope facts for immediate completion. No inferred types.
+#[derive(Default, Debug)]
+pub struct CompletionScope {
+    pub class: Option<String>,
+    pub namespace: String,
+    pub imports: std::collections::BTreeMap<String, String>,
+    pub parent: Option<String>,
+    pub variables: Vec<String>,
+}
+impl Document {
+    /// Current unsaved top-level declarations, bounded AST traversal.
+    pub fn completion_declarations(&self) -> Vec<(String, String, String)> {
+        let mut out = vec![];
+        let mut stack = vec![(self.tree.root_node(), String::new())];
+        let mut visited = 0;
+        while let Some((node, mut namespace)) = stack.pop() {
+            visited += 1;
+            if visited > 20000 {
+                break;
+            }
+            let mut c = node.walk();
+            for child in node.named_children(&mut c) {
+                if child.kind() == "namespace_definition" {
+                    let ns = child
+                        .child_by_field_name("name")
+                        .map(|n| self.text.slice_to_cow(n.byte_range()).into_owned())
+                        .unwrap_or_default();
+                    if let Some(body) = child.child_by_field_name("body") {
+                        stack.push((body, ns));
+                    } else {
+                        namespace = ns;
+                    }
+                    continue;
+                }
+                let kind = match child.kind() {
+                    "class_declaration" => "class",
+                    "interface_declaration" => "interface",
+                    "trait_declaration" => "trait",
+                    "enum_declaration" => "enum",
+                    "function_definition" => "function",
+                    _ => continue,
+                };
+                if let Some(name) = child.child_by_field_name("name") {
+                    let name =
+                        self.text.slice_to_cow(name.byte_range()).into_owned();
+                    let full = if namespace.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{namespace}\\{name}")
+                    };
+                    out.push((name, full, kind.to_owned()));
+                }
+            }
+        }
+        out
+    }
+    pub fn completion_members(
+        &self,
+        offset: usize,
+    ) -> Vec<(String, String, String, bool, Option<String>)> {
+        let scope = self.completion_scope(offset);
+        let Some(owner) = scope.class else {
+            return vec![];
+        };
+        let mut node = self
+            .tree
+            .root_node()
+            .descendant_for_byte_range(offset.saturating_sub(1), offset);
+        let mut class = None;
+        while let Some(n) = node {
+            if matches!(
+                n.kind(),
+                "class_declaration" | "trait_declaration" | "enum_declaration"
+            ) {
+                class = Some(n);
+                break;
+            }
+            node = n.parent();
+        }
+        let Some(class) = class else { return vec![] };
+        let mut result = vec![];
+        let mut stack = vec![class];
+        let mut visited = 0;
+        while let Some(n) = stack.pop() {
+            visited += 1;
+            if visited > 20000 {
+                break;
+            }
+            let kind = match n.kind() {
+                "method_declaration" => Some("method"),
+                "property_element" | "property_promotion_parameter" => {
+                    Some("property")
+                }
+                "const_element" | "enum_case" => Some("constant"),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                let mut c = n.walk();
+                let name = n.child_by_field_name("name").or_else(|| {
+                    n.named_children(&mut c)
+                        .find(|n| matches!(n.kind(), "name" | "variable_name"))
+                });
+                if let Some(name) = name {
+                    let parent = if matches!(
+                        n.kind(),
+                        "method_declaration"
+                            | "property_promotion_parameter"
+                            | "enum_case"
+                    ) {
+                        n
+                    } else {
+                        n.parent().unwrap_or(n)
+                    };
+                    let mut c = parent.walk();
+                    let children = parent.named_children(&mut c).collect::<Vec<_>>();
+                    let static_ = n.kind() == "enum_case"
+                        || children.iter().any(|n| n.kind() == "static_modifier");
+                    let visibility = children
+                        .iter()
+                        .find(|n| n.kind() == "visibility_modifier")
+                        .map(|n| {
+                            self.text.slice_to_cow(n.byte_range()).into_owned()
+                        });
+                    result.push((
+                        self.text
+                            .slice_to_cow(name.byte_range())
+                            .trim_start_matches('&')
+                            .trim_start()
+                            .to_owned(),
+                        owner.clone(),
+                        kind.to_owned(),
+                        static_,
+                        visibility,
+                    ));
+                }
+                // Only constructor parameters can declare promoted properties.
+                // Do not descend into method bodies or nested anonymous classes.
+                if n.kind() == "method_declaration"
+                    && n.child_by_field_name("name").is_some_and(|name| {
+                        self.text
+                            .slice_to_cow(name.byte_range())
+                            .eq_ignore_ascii_case("__construct")
+                    })
+                {
+                    if let Some(parameters) = n.child_by_field_name("parameters") {
+                        stack.push(parameters);
+                    }
+                }
+                continue;
+            }
+            if n != class
+                && matches!(
+                    n.kind(),
+                    "class_declaration" | "anonymous_class" | "function_definition"
+                )
+            {
+                continue;
+            }
+            let mut c = n.walk();
+            stack.extend(n.named_children(&mut c));
+        }
+        result
+    }
+    pub fn completion_allowed(&self, offset: usize) -> bool {
+        if self.index.at(offset) != Some(Context::Php) {
+            return false;
+        }
+        let mut node = self
+            .tree
+            .root_node()
+            .descendant_for_byte_range(offset.saturating_sub(1), offset);
+        while let Some(n) = node {
+            if matches!(
+                n.kind(),
+                "comment"
+                    | "string"
+                    | "encapsed_string"
+                    | "heredoc"
+                    | "nowdoc"
+                    | "shell_command_expression"
+            ) {
+                return false;
+            }
+            node = n.parent();
+        }
+        true
+    }
+    pub fn completion_scope(&self, offset: usize) -> CompletionScope {
+        let mut result = CompletionScope::default();
+        if offset > self.text.len() {
+            return result;
+        }
+        let mut node = self
+            .tree
+            .root_node()
+            .descendant_for_byte_range(offset.saturating_sub(1), offset);
+        let mut scope = None;
+        let mut class_node = None;
+        while let Some(n) = node {
+            if scope.is_none()
+                && matches!(
+                    n.kind(),
+                    "function_definition"
+                        | "method_declaration"
+                        | "anonymous_function"
+                        | "arrow_function"
+                )
+            {
+                scope = Some(n);
+            }
+            if class_node.is_none()
+                && matches!(
+                    n.kind(),
+                    "class_declaration"
+                        | "interface_declaration"
+                        | "trait_declaration"
+                        | "enum_declaration"
+                )
+            {
+                class_node = Some(n);
+            }
+            if n.is_error() {
+                let start = self.text.slice_to_cow(
+                    n.start_byte()..(n.start_byte() + 32).min(self.text.len()),
+                );
+                if start.trim_start().starts_with("class ")
+                    || start.trim_start().starts_with("abstract class ")
+                    || start.trim_start().starts_with("final class ")
+                {
+                    class_node = Some(n);
+                    if scope.is_none() {
+                        scope = Some(n);
+                    }
+                }
+            }
+            node = n.parent();
+        }
+        let root = self.tree.root_node();
+        let mut cursor = root.walk();
+        for n in root.named_children(&mut cursor) {
+            if n.start_byte() > offset {
+                break;
+            }
+            if n.kind() == "namespace_definition"
+                && (n.child_by_field_name("body").is_none()
+                    || n.byte_range().contains(&offset))
+            {
+                result.namespace = n
+                    .child_by_field_name("name")
+                    .map(|n| self.text.slice_to_cow(n.byte_range()).into_owned())
+                    .unwrap_or_default();
+            }
+        }
+        fn imports(
+            n: tree_sitter::Node,
+            text: &Rope,
+            offset: usize,
+            out: &mut std::collections::BTreeMap<String, String>,
+        ) {
+            if n.start_byte() > offset {
+                return;
+            }
+            if matches!(
+                n.kind(),
+                "class_declaration" | "function_definition" | "method_declaration"
+            ) {
+                return;
+            }
+            if n.kind() == "namespace_use_clause" {
+                let mut c = n.walk();
+                if let Some(name) = n
+                    .named_children(&mut c)
+                    .find(|n| matches!(n.kind(), "name" | "qualified_name"))
+                {
+                    let mut target = text
+                        .slice_to_cow(name.byte_range())
+                        .trim_start_matches('\\')
+                        .to_owned();
+                    if let Some(group) =
+                        n.parent().filter(|p| p.kind() == "namespace_use_group")
+                    {
+                        if let Some(declaration) = group.parent() {
+                            let mut c = declaration.walk();
+                            if let Some(prefix) = declaration
+                                .named_children(&mut c)
+                                .find(|n| n.kind() == "namespace_name")
+                            {
+                                target = format!(
+                                    "{}\\{}",
+                                    text.slice_to_cow(prefix.byte_range()),
+                                    target
+                                );
+                            }
+                        }
+                    }
+                    let alias = n
+                        .child_by_field_name("alias")
+                        .map(|n| text.slice_to_cow(n.byte_range()).into_owned())
+                        .unwrap_or_else(|| {
+                            target.rsplit('\\').next().unwrap_or("").to_owned()
+                        });
+                    out.insert(alias.to_lowercase(), target);
+                }
+                return;
+            }
+            let mut c = n.walk();
+            for child in n.named_children(&mut c) {
+                imports(child, text, offset, out);
+            }
+        }
+        // Limit import traversal to active namespace body when bracketed.
+        let mut c = root.walk();
+        let body = root
+            .named_children(&mut c)
+            .find(|n| {
+                n.kind() == "namespace_definition"
+                    && n.byte_range().contains(&offset)
+                    && n.child_by_field_name("body").is_some()
+            })
+            .and_then(|n| n.child_by_field_name("body"))
+            .unwrap_or(root);
+        imports(body, &self.text, offset, &mut result.imports);
+        if let Some(class) = class_node {
+            let mut class_cursor = class.walk();
+            let class_name = if class.is_error() {
+                class
+                    .named_children(&mut class_cursor)
+                    .find(|n| n.kind() == "name")
+            } else {
+                class.child_by_field_name("name")
+            };
+            if let Some(name) = class_name {
+                let name = self.text.slice_to_cow(name.byte_range()).into_owned();
+                let mut namespace = String::new();
+                let root = self.tree.root_node();
+                let mut c = root.walk();
+                for n in root.named_children(&mut c) {
+                    if n.start_byte() > class.start_byte() {
+                        break;
+                    }
+                    if n.kind() == "namespace_definition" {
+                        if n.child_by_field_name("body").is_none()
+                            || n.byte_range().contains(&class.start_byte())
+                        {
+                            namespace = n
+                                .child_by_field_name("name")
+                                .map(|n| {
+                                    self.text
+                                        .slice_to_cow(n.byte_range())
+                                        .into_owned()
+                                })
+                                .unwrap_or_default();
+                        }
+                    }
+                }
+                result.class = Some(if namespace.is_empty() {
+                    name
+                } else {
+                    format!("{namespace}\\{name}")
+                });
+            }
+        }
+        if let Some(class) = class_node {
+            let mut c = class.walk();
+            if let Some(base) = class
+                .named_children(&mut c)
+                .find(|n| n.kind() == "base_clause")
+            {
+                let mut c = base.walk();
+                if let Some(name) = base.named_children(&mut c).next() {
+                    let raw = self.text.slice_to_cow(name.byte_range());
+                    result.parent = Some(resolve_completion_name(
+                        &raw,
+                        &result.namespace,
+                        &result.imports,
+                    ));
+                }
+            }
+        }
+        if let Some(scope) = scope {
+            let mut stack = vec![scope];
+            let mut visited = 0;
+            while let Some(n) = stack.pop() {
+                visited += 1;
+                if visited > 10000 {
+                    break;
+                }
+                if n.start_byte() > offset {
+                    continue;
+                }
+                if n != scope
+                    && matches!(
+                        n.kind(),
+                        "function_definition"
+                            | "anonymous_function"
+                            | "arrow_function"
+                            | "class_declaration"
+                            | "anonymous_class"
+                    )
+                {
+                    continue;
+                }
+                if n.kind() == "variable_name" {
+                    let declaration = n.parent().is_some_and(|p| {
+                        matches!(
+                            p.kind(),
+                            "simple_parameter"
+                                | "variadic_parameter"
+                                | "property_promotion_parameter"
+                                | "anonymous_function_use_clause"
+                        ) || (p.kind() == "assignment_expression"
+                            && p.child_by_field_name("left") == Some(n))
+                    });
+                    if declaration {
+                        result.variables.push(
+                            self.text.slice_to_cow(n.byte_range()).into_owned(),
+                        );
+                    }
+                }
+                let mut c = n.walk();
+                stack.extend(n.named_children(&mut c));
+            }
+        }
+        if result.class.is_some() && scope.is_some() {
+            result.variables.push("$this".into());
+        }
+        result.variables.sort();
+        result.variables.dedup();
+        result
+    }
+}
+
+#[cfg(test)]
+mod completion_scope_tests {
+    use super::*;
+    #[test]
+    fn unsaved_promoted_properties_and_enum_cases() {
+        let source = "<?php namespace App; class User {function __construct(public readonly string $name, protected int &$age, $ordinary) {} function run() {$local=1;}} enum State:string {case Ready='ready'; function run() {}}";
+        let doc =
+            Document::new(Rope::from(source), false, &AtomicUsize::new(0)).unwrap();
+        let members = doc.completion_members(source.find("$local").unwrap());
+        for (name, visibility) in [("$name", "public"), ("$age", "protected")] {
+            assert!(
+                members.iter().any(|m| m.0 == name
+                    && m.1 == "App\\User"
+                    && m.2 == "property"
+                    && !m.3
+                    && m.4.as_deref() == Some(visibility)),
+                "{members:?}"
+            );
+        }
+        assert!(
+            !members
+                .iter()
+                .any(|m| m.0 == "$ordinary" || m.0 == "$local")
+        );
+        let members = doc.completion_members(source.rfind("run()").unwrap());
+        assert!(
+            members.iter().any(|m| m.0 == "Ready"
+                && m.1 == "App\\State"
+                && m.2 == "constant"
+                && m.3),
+            "{members:?}"
+        );
+    }
+    #[test]
+    fn class_local_scope_excludes_nested_and_future() {
+        let source = "<?php namespace App; class User {function run($user) {$name=1; $missing; $f=function($nested){}; $this->save(); $later=1;}}";
+        let offset = source.find("save").unwrap();
+        let doc =
+            Document::new(Rope::from(source), false, &AtomicUsize::new(0)).unwrap();
+        let scope = doc.completion_scope(offset);
+        assert_eq!(scope.class.as_deref(), Some("App\\User"));
+        assert!(scope.variables.contains(&"$user".into()));
+        assert!(scope.variables.contains(&"$name".into()));
+        for name in ["$nested", "$later", "$missing"] {
+            assert!(!scope.variables.contains(&name.into()), "{name}");
+        }
+    }
+}
+
+pub fn resolve_completion_name(
+    name: &str,
+    namespace: &str,
+    imports: &std::collections::BTreeMap<String, String>,
+) -> String {
+    if name.starts_with('\\') {
+        return name.trim_start_matches('\\').to_owned();
+    }
+    let mut parts = name.splitn(2, '\\');
+    let first = parts.next().unwrap_or("");
+    if let Some(target) = imports.get(&first.to_lowercase()) {
+        return parts
+            .next()
+            .map(|tail| format!("{target}\\{tail}"))
+            .unwrap_or_else(|| target.clone());
+    }
+    if namespace.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{namespace}\\{name}")
+    }
+}
+#[cfg(test)]
+mod completion_gate_tests {
+    use super::*;
+    #[test]
+    fn false_positive_trigger_matrix() {
+        for text in [
+            "<script>obj->",
+            "<p>$",
+            "<?php // $",
+            "<?php /* new  */",
+            "<?php $s='new ';",
+            "<style>.x::",
+        ] {
+            let d = Document::new(Rope::from(text), false, &AtomicUsize::new(0))
+                .unwrap();
+            let offset = if text.ends_with("';") {
+                text.len() - 2
+            } else {
+                text.len()
+            };
+            assert!(!d.completion_allowed(offset), "{text}");
+        }
+        let s = "<?php class C {function m() {$this->";
+        let d = Document::new(Rope::from(s), false, &AtomicUsize::new(0)).unwrap();
+        assert!(d.completion_allowed(s.len()));
+    }
+    #[test]
+    fn incomplete_member_owner_recovery() {
+        let s =
+            "<?php namespace App; class C extends Base {function f($user) {$this->";
+        let d = Document::new(Rope::from(s), false, &AtomicUsize::new(0)).unwrap();
+
+        assert_eq!(d.completion_scope(s.len()).class.as_deref(), Some("App\\C"));
+    }
+    #[test]
+    fn incomplete_use_and_declaration_lists() {
+        for source in [
+            "<?php $f=function () use (",
+            "<?php $f=function () use ($x, ",
+        ] {
+            let d = Document::new(Rope::from(source), false, &AtomicUsize::new(0))
+                .unwrap();
+            assert_ne!(d.cursor_context(source.len()), Some(CursorContext::Import));
+        }
+        for (source, want) in [
+            ("<?php class C extends A, B", CursorContext::Extends),
+            ("<?php class C implements A, B", CursorContext::Implements),
+        ] {
+            let d = Document::new(Rope::from(source), false, &AtomicUsize::new(0))
+                .unwrap();
+            assert_eq!(d.cursor_context(source.len()), Some(want));
+        }
+    }
+    #[test]
+    fn namespace_import_and_parent_resolution() {
+        let s = "<?php namespace App; use Vendor\\Base as ParentType; use Vendor\\User; class C extends ParentType {function f() {User::x();}}";
+        let d = Document::new(Rope::from(s), false, &AtomicUsize::new(0)).unwrap();
+        let scope = d.completion_scope(s.find("User::").unwrap() + 6);
+        assert_eq!(scope.parent.as_deref(), Some("Vendor\\Base"));
+        assert_eq!(
+            resolve_completion_name("User", &scope.namespace, &scope.imports),
+            "Vendor\\User"
         );
     }
 }

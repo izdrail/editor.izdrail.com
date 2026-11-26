@@ -27,6 +27,8 @@ pub struct Symbol {
     pub alias: Option<String>,
     pub target: Option<String>,
     pub attributes: Vec<String>,
+    #[serde(default)]
+    pub related: Vec<String>,
     pub byte: usize,
     pub end: usize,
     pub line: usize,
@@ -114,6 +116,67 @@ impl Scan<'_> {
             .map(|n| text(n, self.source).to_owned())
             .into_iter()
             .collect();
+        let mut related = vec![];
+        if matches!(
+            kind,
+            Kind::Class | Kind::Trait | Kind::Interface | Kind::Enum
+        ) {
+            fn references(
+                n: tree_sitter::Node,
+                source: &str,
+                out: &mut Vec<String>,
+            ) {
+                if matches!(
+                    n.kind(),
+                    "base_clause" | "use_declaration" | "class_interface_clause"
+                ) {
+                    let mut c = n.walk();
+                    for ch in n.named_children(&mut c) {
+                        if matches!(
+                            ch.kind(),
+                            "name" | "qualified_name" | "namespace_name"
+                        ) {
+                            out.push(text(ch, source).to_owned());
+                        }
+                    }
+                    return;
+                }
+                if matches!(
+                    n.kind(),
+                    "method_declaration" | "function_definition" | "anonymous_class"
+                ) {
+                    return;
+                }
+                let mut c = n.walk();
+                for ch in n.named_children(&mut c) {
+                    references(ch, source, out);
+                }
+            }
+            references(node, self.source, &mut related);
+            for name in &mut related {
+                if name.starts_with('\\') {
+                    *name = name.trim_start_matches('\\').to_owned();
+                } else {
+                    let mut parts = name.splitn(2, '\\');
+                    let first = parts.next().unwrap_or("");
+                    let tail = parts.next();
+                    if let Some(import) = self.out.symbols.iter().rev().find(|s| {
+                        s.kind == Kind::Import
+                            && s.namespace == ns
+                            && s.alias
+                                .as_deref()
+                                .is_some_and(|a| a.eq_ignore_ascii_case(first))
+                    }) {
+                        let base = import.target.as_deref().unwrap_or(first);
+                        *name = tail
+                            .map(|t| format!("{base}\\{t}"))
+                            .unwrap_or_else(|| base.to_owned());
+                    } else {
+                        *name = qualified(ns, name, None, &Kind::Class);
+                    }
+                }
+            }
+        }
         let point = name_node.start_position();
         self.out.symbols.push(Symbol {
             name: name.to_owned(),
@@ -126,6 +189,7 @@ impl Scan<'_> {
             alias: None,
             target: None,
             attributes: attrs,
+            related,
             byte: name_node.start_byte(),
             end: name_node.end_byte(),
             line: point.row,

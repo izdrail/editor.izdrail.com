@@ -16,6 +16,7 @@ pub enum CompletionSource {
     #[default]
     Lsp,
     Snippet,
+    Native,
     /// Lexer word lists: language keywords, builtins, Laravel facades etc.
     Keyword,
     /// Project strings: route names, config keys, env keys, view names,
@@ -33,7 +34,7 @@ impl CompletionSource {
         // from; inside their context they are the relevant answer.
         match self {
             CompletionSource::Lsp => 0,
-            CompletionSource::Project => 1,
+            CompletionSource::Project | CompletionSource::Native => 1,
             CompletionSource::Snippet => 2,
             CompletionSource::Keyword => 3,
             CompletionSource::Word => 4,
@@ -154,11 +155,13 @@ pub fn php_variable_items(text: &str) -> Vec<CompletionItem> {
             for (off, c) in text[start..].char_indices() {
                 // PHP accepts every byte >= 0x80 in a variable name. All
                 // bytes of a non-ASCII UTF-8 character meet that rule.
-                let ok = !c.is_ascii() || c == '_' || if off == 0 {
-                    c.is_ascii_alphabetic()
-                } else {
-                    c.is_ascii_alphanumeric()
-                };
+                let ok = !c.is_ascii()
+                    || c == '_'
+                    || if off == 0 {
+                        c.is_ascii_alphabetic()
+                    } else {
+                        c.is_ascii_alphanumeric()
+                    };
                 if !ok {
                     break;
                 }
@@ -247,16 +250,27 @@ pub fn snippet_items(
 /// Only the exact leading tag is removed; namespace/import decisions remain
 /// visible to the user rather than silently rewriting their source.
 pub fn php_snippet_open_tag(items: &mut [CompletionItem], active_php: bool) {
-    if !active_php { return; }
-    let strip = |text: &str| text.strip_prefix("<?php\n\n")
-        .or_else(|| text.strip_prefix("<?php\n")).map(str::to_string);
+    if !active_php {
+        return;
+    }
+    let strip = |text: &str| {
+        text.strip_prefix("<?php\n\n")
+            .or_else(|| text.strip_prefix("<?php\n"))
+            .map(str::to_string)
+    };
     for item in items {
-        if item.kind != Some(CompletionItemKind::SNIPPET) { continue; }
+        if item.kind != Some(CompletionItemKind::SNIPPET) {
+            continue;
+        }
         if let Some(text) = item.insert_text.as_mut() {
-            if let Some(body) = strip(text) { *text = body; }
+            if let Some(body) = strip(text) {
+                *text = body;
+            }
         }
         if let Some(CompletionTextEdit::Edit(edit)) = item.text_edit.as_mut() {
-            if let Some(body) = strip(&edit.new_text) { edit.new_text = body; }
+            if let Some(body) = strip(&edit.new_text) {
+                edit.new_text = body;
+            }
         }
     }
 }
@@ -280,15 +294,20 @@ mod tests {
         let mut items = vec![CompletionItem {
             kind: Some(CompletionItemKind::SNIPPET),
             insert_text: Some("<?php\n\nnamespace App;\n".into()),
-            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(Range::default(), "<?php\n\nnamespace App;\n".into()))),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                Range::default(),
+                "<?php\n\nnamespace App;\n".into(),
+            ))),
             ..Default::default()
         }];
         php_snippet_open_tag(&mut items, false);
         assert!(items[0].insert_text.as_ref().unwrap().starts_with("<?php"));
         php_snippet_open_tag(&mut items, true);
-        assert_eq!(items[0].insert_text.as_deref(),Some("namespace App;\n"));
-        let Some(CompletionTextEdit::Edit(edit)) = &items[0].text_edit else { panic!() };
-        assert_eq!(edit.new_text,"namespace App;\n");
+        assert_eq!(items[0].insert_text.as_deref(), Some("namespace App;\n"));
+        let Some(CompletionTextEdit::Edit(edit)) = &items[0].text_edit else {
+            panic!()
+        };
+        assert_eq!(edit.new_text, "namespace App;\n");
     }
 
     #[test]
@@ -480,7 +499,12 @@ pub fn profile_items(
             } else {
                 CompletionItemKind::FUNCTION
             }),
-            label_details: symbol.qualified_name.as_ref().map(|name| lsp_types::CompletionItemLabelDetails { detail: None, description: Some(name.clone()) }),
+            label_details: symbol.qualified_name.as_ref().map(|name| {
+                lsp_types::CompletionItemLabelDetails {
+                    detail: None,
+                    description: Some(name.clone()),
+                }
+            }),
             detail: Some(format!(
                 "{} {} baseline{}",
                 symbol.framework,
@@ -548,11 +572,16 @@ mod php_byte_variable_tests {
     #[test]
     fn php_variable_names_keep_all_non_ascii_utf8_bytes() {
         let names = ["cafe\u{0301}", "name🙂", "_value", "é", "\u{0301}start"];
-        let source = names.iter().map(|name| format!("${name};")).collect::<String>();
+        let source = names
+            .iter()
+            .map(|name| format!("${name};"))
+            .collect::<String>();
         let items = php_variable_items(&source);
         for name in names {
             let label = format!("${name}");
-            let item = items.iter().find(|item| item.label == label)
+            let item = items
+                .iter()
+                .find(|item| item.label == label)
                 .unwrap_or_else(|| panic!("missing {label}"));
             assert_eq!(item.insert_text.as_deref(), Some(name));
             assert_eq!(item.filter_text.as_deref(), Some(name));
@@ -568,10 +597,21 @@ mod rejected_php_context_tests {
     #[test]
     fn rejected_php_contexts_return_no_catalogue_items() {
         let profile = lapce_core::project_profile::ProjectProfile {
-            laravel: true, wordpress: true, ..Default::default()
+            laravel: true,
+            wordpress: true,
+            ..Default::default()
         };
-        for before in ["<?php $str", "<?php $value->str", "<?php 'str", "<?php // str", "<?php ?>"] {
-            assert!(profile_items("php", &profile, before).is_empty(), "{before}");
+        for before in [
+            "<?php $str",
+            "<?php $value->str",
+            "<?php 'str",
+            "<?php // str",
+            "<?php ?>",
+        ] {
+            assert!(
+                profile_items("php", &profile, before).is_empty(),
+                "{before}"
+            );
         }
         let items = profile_items("php", &profile, "<?php str");
         for name in ["strlen", "Route", "add_action"] {
@@ -587,13 +627,18 @@ mod property_magic_completion_tests {
     fn property_magic_constant_is_complete_and_context_gated() {
         for laravel in [false, true] {
             let rows = language_items("php", laravel);
-            let found: Vec<_> = rows.iter().filter(|r| r.label == "__PROPERTY__").collect();
+            let found: Vec<_> =
+                rows.iter().filter(|r| r.label == "__PROPERTY__").collect();
             assert_eq!(found.len(), 1);
             assert_eq!(found[0].kind, Some(CompletionItemKind::CONSTANT));
             assert_eq!(found[0].insert_text.as_deref(), Some("__PROPERTY__"));
         }
         let profile = lapce_core::project_profile::ProjectProfile::default();
-        assert!(profile_items("php", &profile, "<?php __PROP").iter().any(|i| i.label == "__PROPERTY__"));
+        assert!(
+            profile_items("php", &profile, "<?php __PROP")
+                .iter()
+                .any(|i| i.label == "__PROPERTY__")
+        );
         for before in ["<?php '__PROP", "<?php // __PROP", "<?php $x->__PROP"] {
             assert!(profile_items("php", &profile, before).is_empty());
         }

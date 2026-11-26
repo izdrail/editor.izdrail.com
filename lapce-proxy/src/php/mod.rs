@@ -186,45 +186,124 @@ impl Manager {
     pub fn changes(&self) -> Changes {
         Changes(Arc::downgrade(&self.0))
     }
-    pub fn query(
+    pub fn completion_query(
+        &self,
+        token: &str,
+        kinds: &[String],
+        container: Option<&str>,
+        static_only: Option<bool>,
+        allow_nonpublic: bool,
+        limit: usize,
+    ) -> (String, Vec<lapce_rpc::proxy::PhpIndexSymbol>) {
+        let mut owners = std::collections::BTreeSet::new();
+        if let Some(container) = container {
+            owners.insert(container.to_owned());
+            let state = self.0.snapshot.lock().unwrap();
+            let mut frontier = vec![container.to_owned()];
+            let mut depth = 0;
+            while let Some(owner) = frontier.pop() {
+                depth += 1;
+                if depth > 128 {
+                    break;
+                }
+                for symbol in state
+                    .files
+                    .values()
+                    .flat_map(|f| &f.symbols)
+                    .filter(|s| s.qualified == owner)
+                {
+                    for related in &symbol.related {
+                        if owners.insert(related.clone()) {
+                            frontier.push(related.clone());
+                        }
+                    }
+                }
+            }
+        }
+        self.query_filtered(token, limit, |s| {
+            let kind = format!("{:?}", s.kind).to_lowercase();
+            (kinds.is_empty() || kinds.contains(&kind))
+                && match (container, s.container.as_deref()) {
+                    (Some(_), Some(owner)) => owners.contains(owner),
+                    (None, None) => true,
+                    _ => false,
+                }
+                && static_only.is_none_or(|required| {
+                    s.is_static == required || required && kind == "constant"
+                })
+                && (s.visibility.as_deref().is_none_or(|v| v == "public")
+                    || allow_nonpublic
+                        && (s.container.as_deref() == container
+                            || s.visibility.as_deref() != Some("private")))
+        })
+    }
+    fn query_filtered(
         &self,
         prefix: &str,
         limit: usize,
+        accept: impl Fn(&lapce_index::php::scanner::Symbol) -> bool,
     ) -> (String, Vec<lapce_rpc::proxy::PhpIndexSymbol>) {
         let state = self.0.snapshot.lock().unwrap();
         let prefix = prefix.to_lowercase();
-        let symbols = state
+        let mut matches = state
             .files
             .iter()
             .flat_map(|(path, file)| {
                 file.symbols
                     .iter()
                     .filter(|s| {
-                        s.name.to_lowercase().starts_with(&prefix)
-                            || s.qualified.to_lowercase().starts_with(&prefix)
+                        accept(s)
+                            && (subsequence(&s.name, &prefix)
+                                || subsequence(&s.qualified, &prefix))
                     })
-                    .map(move |s| lapce_rpc::proxy::PhpIndexSymbol {
-                        path: path.clone(),
-                        name: s.name.clone(),
-                        qualified: s.qualified.clone(),
-                        kind: format!("{:?}", s.kind).to_lowercase(),
-                        namespace: s.namespace.clone(),
-                        container: s.container.clone(),
-                        visibility: s.visibility.clone(),
-                        is_static: s.is_static,
-                        alias: s.alias.clone(),
-                        target: s.target.clone(),
-                        attributes: s.attributes.clone(),
-                        byte: s.byte,
-                        end: s.end,
-                        line: s.line,
-                        column: s.column,
-                    })
+                    .map(move |s| (path, s))
             })
+            .collect::<Vec<_>>();
+        matches.sort_by_cached_key(|(_, s)| {
+            (
+                !s.name.to_lowercase().starts_with(&prefix),
+                s.name.len(),
+                s.name.to_lowercase(),
+            )
+        });
+        let symbols = matches
+            .into_iter()
             .take(limit.min(1000))
+            .map(|(path, s)| lapce_rpc::proxy::PhpIndexSymbol {
+                path: path.clone(),
+                name: s.name.clone(),
+                qualified: s.qualified.clone(),
+                kind: format!("{:?}", s.kind).to_lowercase(),
+                namespace: s.namespace.clone(),
+                container: s.container.clone(),
+                visibility: s.visibility.clone(),
+                is_static: s.is_static,
+                alias: s.alias.clone(),
+                target: s.target.clone(),
+                attributes: s.attributes.clone(),
+                byte: s.byte,
+                end: s.end,
+                line: s.line,
+                column: s.column,
+            })
             .collect();
         (state.state.clone(), symbols)
     }
+    pub fn query(
+        &self,
+        prefix: &str,
+        limit: usize,
+    ) -> (String, Vec<lapce_rpc::proxy::PhpIndexSymbol>) {
+        self.query_filtered(prefix, limit, |_| true)
+    }
+}
+// Candidate prefilter only. Final matching/ranking remains Nucleo in the app.
+fn subsequence(text: &str, pattern: &str) -> bool {
+    let mut chars = text.chars().flat_map(char::to_lowercase);
+    pattern
+        .chars()
+        .flat_map(char::to_lowercase)
+        .all(|c| chars.by_ref().any(|t| t == c))
 }
 #[cfg(test)]
 mod tests {
@@ -238,6 +317,149 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         panic!("worker state: {}", manager.query("", 1).0);
+    }
+    #[test]
+    #[ignore]
+    fn native_50k_proxy_baseline() {
+        use lapce_index::php::scanner::{Kind, Symbol};
+        let (tx, _rx) = unbounded();
+        let snapshot = Snapshot {
+            state: "ready: synthetic".into(),
+            generation: 1,
+            files: BTreeMap::from([(
+                "vendor/fixture.php".into(),
+                FileSymbols {
+                    malformed: false,
+                    symbols: (0..50000)
+                        .map(|i| Symbol {
+                            name: format!("Model{i}"),
+                            qualified: format!("Vendor\\Package{i}\\Model{i}"),
+                            kind: Kind::Class,
+                            namespace: format!("Vendor\\Package{i}"),
+                            container: None,
+                            visibility: None,
+                            is_static: false,
+                            alias: None,
+                            target: None,
+                            attributes: vec![],
+                            related: vec![],
+                            byte: 0,
+                            end: 0,
+                            line: 0,
+                            column: 0,
+                        })
+                        .collect(),
+                },
+            )]),
+        };
+        let owner = Arc::new(Owner {
+            root: PathBuf::new(),
+            composer: Mutex::new(Default::default()),
+            tx,
+            cancel: Arc::new(AtomicBool::new(false)),
+            epoch: Arc::new(AtomicU64::new(0)),
+            snapshot: Arc::new(Mutex::new(snapshot)),
+        });
+        let manager = Manager(owner);
+        for token in ["Model49", ""] {
+            let mut samples = vec![];
+            for _ in 0..5 {
+                let start = std::time::Instant::now();
+                let (_, rows) = manager.completion_query(
+                    token,
+                    &["class".into()],
+                    None,
+                    None,
+                    false,
+                    1000,
+                );
+                assert!(!rows.is_empty());
+                samples.push(start.elapsed().as_secs_f64() * 1000.);
+            }
+            samples.sort_by(f64::total_cmp);
+            println!(
+                "native50k proxy token={token:?} min_ms={:.3} median_ms={:.3} no_lsp=true",
+                samples[0], samples[2]
+            );
+        }
+        {
+            let mut snapshot = manager.0.snapshot.lock().unwrap();
+            let symbols = &mut snapshot
+                .files
+                .get_mut(&PathBuf::from("vendor/fixture.php"))
+                .unwrap()
+                .symbols;
+            for i in 0..64 {
+                let mut s = symbols[i].clone();
+                s.qualified = format!("Depth{i}");
+                s.name = s.qualified.clone();
+                s.related = if i < 63 {
+                    vec![format!("Depth{}", i + 1)]
+                } else {
+                    vec![]
+                };
+                symbols.push(s);
+            }
+            let mut member = symbols[0].clone();
+            member.kind = Kind::Method;
+            member.name = "inherited".into();
+            member.qualified = "Depth63::inherited".into();
+            member.container = Some("Depth63".into());
+            symbols.push(member);
+        }
+        let mut samples = vec![];
+        for _ in 0..5 {
+            let start = std::time::Instant::now();
+            let (_, rows) = manager.completion_query(
+                "",
+                &["method".into()],
+                Some("Depth0"),
+                Some(false),
+                true,
+                1000,
+            );
+            assert_eq!(rows.len(), 1);
+            samples.push(start.elapsed().as_secs_f64() * 1000.);
+        }
+        samples.sort_by(f64::total_cmp);
+        println!(
+            "native50k proxy depth64 min_ms={:.3} median_ms={:.3}",
+            samples[0], samples[2]
+        );
+    }
+    #[test]
+    fn completion_filters_before_limit_and_inherits_without_parent_private() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("p");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("A.php"),"<?php namespace App; trait Shared {public function traitMethod(){}} class Base {protected function inherited(){} private function secret(){}} class Child extends Base {use Shared; private function own(){}} ").unwrap();
+        let manager = Manager::start(root, t.path().join("cache"));
+        wait_ready(&manager);
+        let (_, symbols) = manager.completion_query(
+            "",
+            &["method".into()],
+            Some("App\\Child"),
+            Some(false),
+            true,
+            100,
+        );
+        for name in ["traitMethod", "inherited", "own"] {
+            assert!(
+                symbols.iter().any(|s| s.name == name),
+                "{name}: {symbols:?}"
+            );
+        }
+        assert!(!symbols.iter().any(|s| s.name == "secret"));
+        let (_, symbols) = manager.completion_query(
+            "inher",
+            &["method".into()],
+            Some("App\\Child"),
+            Some(false),
+            true,
+            1,
+        );
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "inherited");
     }
     #[test]
     fn restart_and_ignored_watcher_pipeline() {

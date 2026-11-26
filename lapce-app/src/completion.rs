@@ -17,7 +17,8 @@ use nucleo::Utf32Str;
 
 use crate::{
     completion_rank::{
-        Rank, compare, dedupe_across_sources, has_prefix_ignore_case, php_magic_candidate,
+        Rank, compare, dedupe_across_sources, has_prefix_ignore_case,
+        php_magic_candidate,
     },
     completion_sources::{CompletionSource, MIN_WORD_INPUT},
     config::LapceConfig,
@@ -67,6 +68,10 @@ pub struct CompletionData {
     pub input_items: im::HashMap<String, im::Vector<ScoredCompletionItem>>,
     /// Snippets and buffer words, gathered once when the session starts.
     pub local_items: im::Vector<ScoredCompletionItem>,
+    pub native_items: im::Vector<ScoredCompletionItem>,
+    pub native_state: Option<String>,
+    pub native_generation: u64,
+    pub php_context: Option<lapce_php::CursorContext>,
     /// The filtered items that are being displayed to the user
     pub filtered_items: im::Vector<ScoredCompletionItem>,
     /// The size of the completion element.  
@@ -95,6 +100,10 @@ impl CompletionData {
             input: "".to_string(),
             input_items: im::HashMap::new(),
             local_items: im::Vector::new(),
+            native_items: im::Vector::new(),
+            native_state: None,
+            native_generation: 0,
+            php_context: None,
             filtered_items: im::Vector::new(),
             layout_rect: Rect::ZERO,
             matcher: cx
@@ -118,7 +127,11 @@ impl CompletionData {
             return;
         }
 
-        if self.source_guard.as_ref().is_some_and(|guard| !guard.current()) {
+        if self
+            .source_guard
+            .as_ref()
+            .is_some_and(|guard| !guard.current())
+        {
             self.cancel();
             return;
         }
@@ -171,6 +184,10 @@ impl CompletionData {
         self.input.clear();
         self.input_items.clear();
         self.local_items.clear();
+        self.native_items.clear();
+        self.native_generation += 1;
+        self.native_state = None;
+        self.php_context = None;
         self.filtered_items.clear();
     }
 
@@ -204,31 +221,38 @@ impl CompletionData {
     /// `dedupe_keeping_blade_snippets`).
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
         let blade = keeps_blade_snippets(&self.path);
-        let items = self.lsp_items();
+        let mut items = self.lsp_items();
+        items.extend(self.native_items.clone());
         if self.input.is_empty() {
             let locals = empty_input_locals(&self.local_items);
             if locals.is_empty() {
-                return items;
+                return dedupe_keeping_blade_snippets(
+                    items.into_iter().collect(),
+                    blade,
+                )
+                .into_iter()
+                .collect();
             }
-            let mut all: Vec<ScoredCompletionItem> =
-                items.into_iter().collect();
+            let mut all: Vec<ScoredCompletionItem> = items.into_iter().collect();
             all.extend(locals);
             return dedupe_keeping_blade_snippets(all, blade)
-            .into_iter()
-            .collect();
+                .into_iter()
+                .collect();
         }
         let typed = self.input.chars().count();
         let mut all: Vec<ScoredCompletionItem> = items.into_iter().collect();
         all.extend(typed_input_locals(&self.local_items, typed));
         dedupe_keeping_blade_snippets(all, blade)
-        .into_iter()
-        .collect()
+            .into_iter()
+            .collect()
     }
 
     pub fn filter_items(&mut self) {
         self.input_id += 1;
         if self.input.is_empty() {
-            self.filtered_items = self.all_items();
+            let mut items = self.all_items();
+            self.sort_php(&mut items);
+            self.filtered_items = items;
             return;
         }
 
@@ -237,7 +261,7 @@ impl CompletionData {
             .matcher
             .try_update(|matcher| {
                 let pattern = nucleo::pattern::Pattern::parse(
-                    &self.input,
+                    self.input.trim_start_matches('\\'),
                     nucleo::pattern::CaseMatching::Ignore,
                     nucleo::pattern::Normalization::Smart,
                 );
@@ -246,9 +270,16 @@ impl CompletionData {
                     .filter_map(|i| {
                         let filter_text =
                             i.item.filter_text.as_ref().unwrap_or(&i.item.label);
-                        if !php_magic_candidate(&self.input, filter_text,
-                            crate::project_completion::php_completion_path(&self.path),
-                            i.source == CompletionSource::Lsp) { return None; }
+                        if !php_magic_candidate(
+                            &self.input,
+                            filter_text,
+                            crate::project_completion::php_completion_path(
+                                &self.path,
+                            ),
+                            i.source == CompletionSource::Lsp,
+                        ) {
+                            return None;
+                        }
                         let shift = i
                             .item
                             .label
@@ -273,7 +304,7 @@ impl CompletionData {
                                 i.item.filter_text.as_ref().unwrap_or(&i.item.label);
                             let prefix = if has_prefix_ignore_case(
                                 filter_text,
-                                &self.input,
+                                self.input.trim_start_matches('\\'),
                             ) {
                                 64
                             } else {
@@ -303,7 +334,31 @@ impl CompletionData {
         // Source priority first (LSP, project, snippets, keywords, buffer
         // words), then match quality, `sortText` and label length.
         items.sort_by(|a, b| compare(&rank_of(a), &rank_of(b)));
+        self.sort_php(&mut items);
         self.filtered_items = items;
+    }
+
+    pub fn receive_native(&mut self, request_id: usize, items: Vec<CompletionItem>) {
+        if self.status == CompletionStatus::Inactive || self.request_id != request_id
+        {
+            return;
+        }
+        self.native_items = items
+            .into_iter()
+            .map(|item| ScoredCompletionItem {
+                item,
+                plugin_id: PluginId(0),
+                source: CompletionSource::Native,
+                score: 0,
+                label_score: 0,
+                indices: vec![],
+                show_on_empty: true,
+            })
+            .collect();
+        self.filter_items();
+    }
+    fn sort_php(&self, items: &mut im::Vector<ScoredCompletionItem>) {
+        sort_php_items(&self.php_context, &self.input, items);
     }
 
     /// Move down in the list of items.
@@ -372,14 +427,25 @@ impl CompletionData {
         if doc.projection.get_untracked().is_some() {
             let valid = self.status != CompletionStatus::Inactive
                 && self.latest_editor_id == Some(editor_data.id())
-                && self.source_guard.as_ref().is_some_and(|guard| guard.current())
+                && self
+                    .source_guard
+                    .as_ref()
+                    .is_some_and(|guard| guard.current())
                 && self.config.get_untracked().editor.enable_completion_lens;
-            let lens = valid.then(|| self.current_item()).flatten()
-                .and_then(|item| editor_data.projection_completion_preview(&item.item));
+            let lens =
+                valid
+                    .then(|| self.current_item())
+                    .flatten()
+                    .and_then(|item| {
+                        editor_data.projection_completion_preview(&item.item)
+                    });
             if let Some(lens) = lens {
-                let (line, col) = editor_data.editor.offset_to_line_col(cursor_offset);
+                let (line, col) =
+                    editor_data.editor.offset_to_line_col(cursor_offset);
                 doc.set_completion_lens(lens, line, col);
-            } else { doc.clear_completion_lens(); }
+            } else {
+                doc.clear_completion_lens();
+            }
             return;
         }
 
@@ -431,21 +497,61 @@ fn keeps_blade_snippets(path: &std::path::Path) -> bool {
 /// must not hide the directive snippet that expands the whole
 /// `@foreach ... @endforeach` block. Snippets still dedupe among
 /// themselves, and everywhere else the highest-priority source wins.
+fn dedupe_native_lsp(all: Vec<ScoredCompletionItem>) -> Vec<ScoredCompletionItem> {
+    let mut count = std::collections::HashMap::new();
+    for i in &all {
+        if i.source == CompletionSource::Native {
+            *count.entry(i.item.label.clone()).or_insert(0usize) += 1;
+        }
+    }
+    let lsp = all
+        .iter()
+        .filter(|i| i.source == CompletionSource::Lsp)
+        .map(|i| (i.item.label.clone(), i.item.insert_text.clone()))
+        .collect::<Vec<_>>();
+    all.into_iter()
+        .filter(|i| {
+            i.source != CompletionSource::Native
+                || !lsp.iter().any(|server| {
+                    server.0 == i.item.label
+                        && (count.get(&i.item.label) == Some(&1)
+                            || server.1 == i.item.insert_text)
+                })
+        })
+        .collect()
+}
 fn dedupe_keeping_blade_snippets(
     all: Vec<ScoredCompletionItem>,
     blade: bool,
 ) -> Vec<ScoredCompletionItem> {
+    let all = dedupe_native_lsp(all);
     if !blade {
-        return dedupe_across_sources(all, |i| i.item.label.as_str(), |i| {
-            i.source.tier()
-        });
+        return dedupe_across_sources(
+            all,
+            |i| {
+                i.item
+                    .insert_text
+                    .as_deref()
+                    .filter(|_| i.source == CompletionSource::Native)
+                    .unwrap_or(&i.item.label)
+            },
+            |i| i.source.tier(),
+        );
     }
     let (snips, rest): (Vec<_>, Vec<_>) = all
         .into_iter()
         .partition(|i| matches!(i.source, CompletionSource::Snippet));
-    let mut out = dedupe_across_sources(rest, |i| i.item.label.as_str(), |i| {
-        i.source.tier()
-    });
+    let mut out = dedupe_across_sources(
+        rest,
+        |i| {
+            i.item
+                .insert_text
+                .as_deref()
+                .filter(|_| i.source == CompletionSource::Native)
+                .unwrap_or(&i.item.label)
+        },
+        |i| i.source.tier(),
+    );
     // Snippets share one tier, and `dedupe_across_sources` keeps equal
     // tiers, so collapse repeated labels first-wins instead.
     let mut seen = std::collections::HashSet::new();
@@ -489,6 +595,58 @@ fn sort_text(i: &ScoredCompletionItem) -> &str {
     i.item.sort_text.as_deref().unwrap_or(&i.item.label)
 }
 
+fn sort_php_items(
+    context: &Option<lapce_php::CursorContext>,
+    input: &str,
+    items: &mut im::Vector<ScoredCompletionItem>,
+) {
+    if context.is_none() {
+        return;
+    }
+    let exact_snippet = |i: &ScoredCompletionItem| {
+        i.source == CompletionSource::Snippet
+            && !input.is_empty()
+            && crate::completion_rank::has_prefix_ignore_case(&i.item.label, input)
+    };
+    items.sort_by(|a, b| {
+        exact_snippet(b)
+            .cmp(&exact_snippet(a))
+            .then_with(|| compare(&rank_of(a), &rank_of(b)))
+    });
+    // Reorder symbol slots only. Preserve snippet/keyword/project/word
+    // positions and their established source priority.
+    let symbol = |i: &ScoredCompletionItem| {
+        matches!(i.source, CompletionSource::Lsp | CompletionSource::Native)
+            && i.item.kind.is_some_and(|k| {
+                k != lsp_types::CompletionItemKind::SNIPPET
+                    && k != lsp_types::CompletionItemKind::KEYWORD
+            })
+    };
+    let mut symbols = items
+        .iter()
+        .filter(|i| symbol(i))
+        .cloned()
+        .collect::<Vec<_>>();
+    symbols.sort_by_cached_key(|i| {
+        (
+            crate::php_completion::hidden(&i.item.label, input),
+            crate::php_completion::bucket(context, i.item.kind),
+            std::cmp::Reverse(i.score),
+            std::cmp::Reverse(crate::php_completion::boundary_bonus(
+                &i.item.label,
+                input,
+            )),
+            i.item.label.to_lowercase(),
+        )
+    });
+    let mut symbols = symbols.into_iter();
+    for item in items.iter_mut() {
+        if symbol(item) {
+            *item = symbols.next().unwrap();
+        }
+    }
+}
+
 fn rank_of(i: &ScoredCompletionItem) -> Rank<'_> {
     Rank {
         tier: i.source.tier(),
@@ -505,9 +663,17 @@ fn rank_of(i: &ScoredCompletionItem) -> Rank<'_> {
 /// Returns `Some(Some(text))` if the completion lens should be shown and changed to the given text.
 /// Preview only text extending the exact replaced prefix. Callers validate
 /// canonical ranges and require the edit to end at the current caret.
-pub(crate) fn projection_lens_suffix(item: &CompletionItem, prefix: &str) -> Option<String> {
-    let Some(CompletionTextEdit::Edit(edit)) = &item.text_edit else { return None; };
-    let text = match item.insert_text_format.unwrap_or(InsertTextFormat::PLAIN_TEXT) {
+pub(crate) fn projection_lens_suffix(
+    item: &CompletionItem,
+    prefix: &str,
+) -> Option<String> {
+    let Some(CompletionTextEdit::Edit(edit)) = &item.text_edit else {
+        return None;
+    };
+    let text = match item
+        .insert_text_format
+        .unwrap_or(InsertTextFormat::PLAIN_TEXT)
+    {
         InsertTextFormat::PLAIN_TEXT => edit.new_text.clone(),
         InsertTextFormat::SNIPPET => Snippet::from_str(&edit.new_text).ok()?.text(),
         _ => return None,
@@ -520,23 +686,59 @@ pub(crate) fn projection_lens_suffix(item: &CompletionItem, prefix: &str) -> Opt
 mod projection_lens_tests {
     use super::*;
     fn item(text: &str, snippet: bool) -> CompletionItem {
-        CompletionItem { label: "not the inserted text".into(),
-            text_edit: Some(CompletionTextEdit::Edit(lsp_types::TextEdit::new(lsp_types::Range::default(), text.into()))),
-            insert_text_format: Some(if snippet { InsertTextFormat::SNIPPET } else { InsertTextFormat::PLAIN_TEXT }),
-            ..Default::default() }
+        CompletionItem {
+            label: "not the inserted text".into(),
+            text_edit: Some(CompletionTextEdit::Edit(lsp_types::TextEdit::new(
+                lsp_types::Range::default(),
+                text.into(),
+            ))),
+            insert_text_format: Some(if snippet {
+                InsertTextFormat::SNIPPET
+            } else {
+                InsertTextFormat::PLAIN_TEXT
+            }),
+            ..Default::default()
+        }
     }
-    #[test] fn projection_lens_previews_exact_prefix_and_first_line() {
-        assert_eq!(projection_lens_suffix(&item("BROKEN_FIXED\nnext", false), "BROKEN"), Some("_FIXED".into()));
-        assert_eq!(projection_lens_suffix(&item("éclair", false), "é"), Some("clair".into()));
-        assert_eq!(projection_lens_suffix(&item("value", false), ""), Some("value".into()));
+    #[test]
+    fn projection_lens_previews_exact_prefix_and_first_line() {
+        assert_eq!(
+            projection_lens_suffix(&item("BROKEN_FIXED\nnext", false), "BROKEN"),
+            Some("_FIXED".into())
+        );
+        assert_eq!(
+            projection_lens_suffix(&item("éclair", false), "é"),
+            Some("clair".into())
+        );
+        assert_eq!(
+            projection_lens_suffix(&item("value", false), ""),
+            Some("value".into())
+        );
     }
-    #[test] fn projection_lens_uses_snippet_text_not_syntax() {
-        assert_eq!(projection_lens_suffix(&item("BROKEN_${1:argument}($0)", true), "BROKEN"), Some("_argument()".into()));
+    #[test]
+    fn projection_lens_uses_snippet_text_not_syntax() {
+        assert_eq!(
+            projection_lens_suffix(
+                &item("BROKEN_${1:argument}($0)", true),
+                "BROKEN"
+            ),
+            Some("_argument()".into())
+        );
     }
-    #[test] fn projection_lens_refuses_replaced_prefix_or_empty_extension() {
-        assert_eq!(projection_lens_suffix(&item("FIXED", false), "BROKEN"), None);
-        assert_eq!(projection_lens_suffix(&item("BROKEN", false), "BROKEN"), None);
-        assert_eq!(projection_lens_suffix(&item("BROKEN\nnext", false), "BROKEN"), None);
+    #[test]
+    fn projection_lens_refuses_replaced_prefix_or_empty_extension() {
+        assert_eq!(
+            projection_lens_suffix(&item("FIXED", false), "BROKEN"),
+            None
+        );
+        assert_eq!(
+            projection_lens_suffix(&item("BROKEN", false), "BROKEN"),
+            None
+        );
+        assert_eq!(
+            projection_lens_suffix(&item("BROKEN\nnext", false), "BROKEN"),
+            None
+        );
         assert_eq!(projection_lens_suffix(&CompletionItem::default(), ""), None);
     }
 }
@@ -652,9 +854,15 @@ mod blend_tests {
     #[test]
     fn blade_dedupe_follows_the_case_insensitive_snippet_rule() {
         use std::path::Path;
-        assert!(keeps_blade_snippets(Path::new("resources/views/VIEW.BLADE.PHP")));
-        assert!(keeps_blade_snippets(Path::new("resources/views/show.blade.php")));
-        assert!(!keeps_blade_snippets(Path::new("resources/views/show.blade.php.bak")));
+        assert!(keeps_blade_snippets(Path::new(
+            "resources/views/VIEW.BLADE.PHP"
+        )));
+        assert!(keeps_blade_snippets(Path::new(
+            "resources/views/show.blade.php"
+        )));
+        assert!(!keeps_blade_snippets(Path::new(
+            "resources/views/show.blade.php.bak"
+        )));
         assert!(!keeps_blade_snippets(Path::new("app/Models/User.php")));
     }
 
@@ -668,10 +876,14 @@ mod blend_tests {
         let got = dedupe_keeping_blade_snippets(all, true);
         // LSP and snippet both survive the shared label; the word is out.
         assert_eq!(got.len(), 2);
-        assert!(got.iter().any(|i| matches!(i.source, CompletionSource::Lsp)));
-        assert!(got
-            .iter()
-            .any(|i| matches!(i.source, CompletionSource::Snippet)));
+        assert!(
+            got.iter()
+                .any(|i| matches!(i.source, CompletionSource::Lsp))
+        );
+        assert!(
+            got.iter()
+                .any(|i| matches!(i.source, CompletionSource::Snippet))
+        );
         // A project item and a snippet with the same label both survive
         // too (`isset` in `wire:model="..."`).
         let all = vec![
@@ -735,7 +947,12 @@ mod blend_tests {
 /// Keep a measured completion popup within its owning tab after above/below
 /// placement. Size constraints are applied by the view separately.
 pub fn clamp_popup_origin(
-    x: f64, y: f64, width: f64, height: f64, tab_width: f64, tab_height: f64,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    tab_width: f64,
+    tab_height: f64,
 ) -> (f64, f64) {
     (
         x.max(0.0).min((tab_width - width - 1.0).max(0.0)),
@@ -859,7 +1076,10 @@ mod popup_geometry_tests {
         use super::clamp_popup_origin as clamp;
         assert_eq!(clamp(20.0, 30.0, 100.0, 80.0, 900.0, 600.0), (20.0, 30.0));
         assert_eq!(clamp(-10.0, -50.0, 100.0, 80.0, 900.0, 600.0), (0.0, 0.0));
-        assert_eq!(clamp(880.0, 590.0, 100.0, 80.0, 900.0, 600.0), (799.0, 520.0));
+        assert_eq!(
+            clamp(880.0, 590.0, 100.0, 80.0, 900.0, 600.0),
+            (799.0, 520.0)
+        );
         assert_eq!(clamp(2.0, -300.0, 400.0, 400.0, 100.0, 60.0), (0.0, 0.0));
         assert_eq!(clamp(2.0, 2.0, 400.0, 400.0, 0.0, 0.0), (0.0, 0.0));
     }
@@ -874,34 +1094,204 @@ pub fn completion_description(item: &CompletionItem) -> String {
         labels.and_then(|d| d.description.as_deref()),
         labels.and_then(|d| d.detail.as_deref()),
         item.detail.as_deref(),
-    ].into_iter().flatten() {
+    ]
+    .into_iter()
+    .flatten()
+    {
         let value = value.trim();
-        if !value.is_empty() && !parts.contains(&value) { parts.push(value); }
+        if !value.is_empty() && !parts.contains(&value) {
+            parts.push(value);
+        }
     }
-    let mut chars = parts.join(" | ").chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<Vec<_>>();
-    if chars.len() > 4096 { chars.truncate(4095); chars.push('…'); }
+    let mut chars = parts
+        .join(" | ")
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<Vec<_>>();
+    if chars.len() > 4096 {
+        chars.truncate(4095);
+        chars.push('…');
+    }
     chars.into_iter().collect()
-
 }
 #[cfg(test)]
 mod description_tests {
- use super::*;
- #[test] fn owner_and_signature_stay_separate_from_label_and_single_line() {
-  let item=CompletionItem { label:"get".into(),detail:Some("get($uri)\nroute".into()),label_details:Some(lsp_types::CompletionItemLabelDetails { detail:None,description:Some("Illuminate\\Support\\Facades\\Route::get".into()) }),..Default::default() };
-  let d=completion_description(&item);assert!(d.contains("Route::get | get($uri) route"));assert!(!d.contains('\n'));assert_eq!(item.label,"get");
- }
+    use super::*;
+    #[test]
+    fn owner_and_signature_stay_separate_from_label_and_single_line() {
+        let item = CompletionItem {
+            label: "get".into(),
+            detail: Some("get($uri)\nroute".into()),
+            label_details: Some(lsp_types::CompletionItemLabelDetails {
+                detail: None,
+                description: Some("Illuminate\\Support\\Facades\\Route::get".into()),
+            }),
+            ..Default::default()
+        };
+        let d = completion_description(&item);
+        assert!(d.contains("Route::get | get($uri) route"));
+        assert!(!d.contains('\n'));
+        assert_eq!(item.label, "get");
+    }
 }
 
 #[cfg(test)]
 mod metadata_tests {
- use super::*;
- #[test] fn lsp_label_signature_is_kept_and_duplicates_are_removed() {
-  let mut item = CompletionItem { label:"method".into(), label_details:Some(lsp_types::CompletionItemLabelDetails { detail:Some("(string $arg)".into()), description:Some("App\\Service::method".into()) }), detail:Some("(string $arg)".into()), ..Default::default() };
-  assert_eq!(completion_description(&item), "App\\Service::method | (string $arg)");
-  item.detail = Some("x".repeat(6000));
-  let text = completion_description(&item);
-  assert_eq!(text.chars().count(),4096); assert!(text.ends_with('…'));
-  item.label_details = None; item.detail = Some("你好\n世界".into());
-  assert_eq!(completion_description(&item),"你好 世界");
- }
+    use super::*;
+    #[test]
+    fn lsp_label_signature_is_kept_and_duplicates_are_removed() {
+        let mut item = CompletionItem {
+            label: "method".into(),
+            label_details: Some(lsp_types::CompletionItemLabelDetails {
+                detail: Some("(string $arg)".into()),
+                description: Some("App\\Service::method".into()),
+            }),
+            detail: Some("(string $arg)".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            completion_description(&item),
+            "App\\Service::method | (string $arg)"
+        );
+        item.detail = Some("x".repeat(6000));
+        let text = completion_description(&item);
+        assert_eq!(text.chars().count(), 4096);
+        assert!(text.ends_with('…'));
+        item.label_details = None;
+        item.detail = Some("你好\n世界".into());
+        assert_eq!(completion_description(&item), "你好 世界");
+    }
+}
+#[cfg(test)]
+mod native_merge_tests {
+    use super::*;
+    fn row(source: CompletionSource, doc: Option<&str>) -> ScoredCompletionItem {
+        ScoredCompletionItem {
+            item: CompletionItem {
+                label: "User".into(),
+                documentation: doc
+                    .map(|s| lsp_types::Documentation::String(s.into())),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source,
+            score: 0,
+            label_score: 0,
+            indices: vec![],
+            show_on_empty: true,
+        }
+    }
+    #[test]
+    fn lsp_metadata_wins_native_duplicate() {
+        let out = dedupe_keeping_blade_snippets(
+            vec![
+                row(CompletionSource::Native, None),
+                row(CompletionSource::Lsp, Some("server docs")),
+            ],
+            false,
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].source, CompletionSource::Lsp);
+        assert!(out[0].item.documentation.is_some());
+    }
+}
+
+#[cfg(test)]
+mod php_order_tests {
+    use super::*;
+    fn row(
+        label: &str,
+        source: CompletionSource,
+        kind: lsp_types::CompletionItemKind,
+        score: u32,
+    ) -> ScoredCompletionItem {
+        ScoredCompletionItem {
+            item: CompletionItem {
+                label: label.into(),
+                kind: Some(kind),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source,
+            score,
+            label_score: score,
+            indices: vec![],
+            show_on_empty: true,
+        }
+    }
+    #[test]
+    fn snippets_and_lsp_word_tiers_survive_php_buckets() {
+        use lsp_types::CompletionItemKind as K;
+        let mut rows = vec![
+            row("lv-class", CompletionSource::Snippet, K::SNIPPET, 500),
+            row("Class", CompletionSource::Native, K::CLASS, 1),
+            row("word", CompletionSource::Word, K::TEXT, 1000),
+            row("server", CompletionSource::Lsp, K::FUNCTION, 2),
+        ]
+        .into_iter()
+        .collect();
+        sort_php_items(&Some(lapce_php::CursorContext::New), "lv-", &mut rows);
+        let labels = rows
+            .iter()
+            .map(|r| r.item.label.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().position(|s| *s == "server").unwrap()
+                < labels.iter().position(|s| *s == "word").unwrap()
+        );
+        assert_eq!(labels[0], "lv-class");
+    }
+}
+#[cfg(test)]
+mod native_namespace_dedupe_tests {
+    use super::*;
+    #[test]
+    fn same_short_name_different_namespace_survives() {
+        let row = |qualified: &str| ScoredCompletionItem {
+            item: CompletionItem {
+                label: "User".into(),
+                insert_text: Some(qualified.into()),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source: CompletionSource::Native,
+            score: 0,
+            label_score: 0,
+            indices: vec![],
+            show_on_empty: true,
+        };
+        let out = dedupe_keeping_blade_snippets(
+            vec![row("\\App\\User"), row("\\Vendor\\User")],
+            false,
+        );
+        assert_eq!(out.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod native_region_tests {
+    use super::*;
+    #[test]
+    fn project_string_rows_remain_when_native_is_suppressed() {
+        let mut rows = im::Vector::new();
+        rows.push_back(ScoredCompletionItem {
+            item: CompletionItem {
+                label: "named.route".into(),
+                ..Default::default()
+            },
+            plugin_id: PluginId(0),
+            source: CompletionSource::Project,
+            score: 0,
+            label_score: 0,
+            indices: vec![],
+            show_on_empty: true,
+        });
+        let native = crate::php_completion::request(
+            "route('na",
+            Some(lapce_php::CursorContext::NonPhp(lapce_php::Context::Php)),
+            None,
+        );
+        assert!(crate::php_completion::candidates(&native, vec![]).is_empty());
+        assert_eq!(rows[0].item.label, "named.route");
+    }
 }

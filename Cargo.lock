@@ -3939,6 +3939,7 @@ dependencies = [
  "lapce-ai",
  "lapce-core",
  "lapce-index",
+ "lapce-php",
  "lapce-proxy",
  "lapce-rpc",
  "lapce-vscode-experiment",

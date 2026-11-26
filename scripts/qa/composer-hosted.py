@@ -670,6 +670,25 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
 
 
 
+        # Native PHP completion, PHP LSP deliberately absent in this profile.
+        native_cases = [
+            ('52-native-this', '<?php\nnamespace App; class NativeFixture { public function nativeSave() {} public function run() { $this->'),
+            ('52a-native-new', '<?php\nnamespace App; class NativeModel {}\nnew '),
+            ('52b-native-use', '<?php\nnamespace App; class NativeModel {}\nuse '),
+            ('52c-project-route-string', "<?php\nroute('na"),
+            ('52d-html-region', '<html><script>obj->'),
+        ]
+        for capture, text in native_cases:
+            fixture = project / (capture + '.php')
+            fixture.write_text(text)
+            run('key', 'Escape', 'ctrl+p'); time.sleep(0.6)
+            run('type', '--clearmodifiers', fixture.name); run('key', 'Return'); time.sleep(1.5)
+            run('key', 'ctrl+End', 'ctrl+space'); time.sleep(2)
+            shot(capture)
+            run('key', 'Escape')
+            if fixture.read_text() != text:
+                raise RuntimeError('Native completion capture changed source without acceptance')
+
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

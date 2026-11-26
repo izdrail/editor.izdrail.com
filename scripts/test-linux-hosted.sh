@@ -45,4 +45,6 @@ for backend in lexilla logos; do
   GRAVITY_LEXER=$backend SNAPSHOT_PERF_SYNTAX=$backend cargo run --locked -p lapce-core --features logos-php --example snapshot_perf -- --compare --quick > "target/acceptance-logs/logos-syntax-$backend-smoke.json"
 done
 cargo test --locked --workspace -- --test-threads=2 2>&1 | tee target/acceptance-logs/workspace.log
+cargo test --locked -p lapce-proxy native_50k_proxy_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-native-proxy-benchmark.log
+cargo test --locked -p lapce-app native_50k_adapter_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-native-adapter-benchmark.log
 df -h .

@@ -211,3 +211,48 @@ heavy watcher filtering off the callback/composer mutex, richer RPC/pipeline
 coverage, and repeated 20k-50k release vendor-like benchmarks. Configuration-only
 edits already hash-reuse unchanged files but still read them to verify the hash.
 All baseline numbers above are one debug run, not release targets.
+
+## Phase 3 plan
+
+Keep the current CompletionData popup and Nucleo matcher. Add a separate native
+batch on the same request id/path/revision, not input_items (LSP-owned metadata).
+Context buckets precede fuzzy score only for PHP, preserving other languages'
+source ordering. The app reads current_php_context when available; otherwise a
+bounded last-256-byte trigger classifier starts a native request, never a UI parse.
+Native queries use the proxy's existing hot snapshot through asynchronous RPC.
+Merge de-duplicates across sources in favor of LSP, retaining server docs/edits.
+Methods/properties are offered only with a known receiver owner, initially $this
+or explicit static class names. Unknown dynamic receivers stay LSP-owned rather
+than displaying every project's member. Native namespace/class/function symbols
+stay available when no LSP is running. Immediate triggers include bare $, ->, ::,
+new/use space and namespace separator. Projection paths keep their guarded source
+mapping and are not silently extended by this first native adapter. Scope/type
+inference remains Phase4; Phase3 uses declaration context only.
+
+Phase3 uses absolute qualified insertion rather than adding automatic use edits.
+This avoids import collisions and requires no filesystem edit beyond the current
+completion. Unicode/FQCN replacement retains byte offsets. Native items have no
+resolve data and are excluded from server completionItem/resolve. Parser catchup
+refreshes open sessions; until a matching current AST exists no native symbols are
+shown, avoiding false triggers in embedded languages/comments/strings.35ms timers
+coalesce obsolete native requests by generation and revision. Server filters
+kind/owner/static/access before result cap; hot query is still linear in symbols.
+Class parents and trait declarations supply inherited members; dynamic receiver
+types remain Phase4. Local variables are declaration-only and bounded, not a full
+PHP scope/type engine. Unsaved top-level declarations join disk candidates.
+Review correction: a non-PHP region disables only native PHP rows and triggers;
+it does not cancel existing Laravel quoted project strings, snippets, buffer
+words or LSP requests. Context catchup preserves explicit Ctrl+Space sessions.
+Chained dynamic receivers are unknown, not treated as the current class. Current
+unsaved class members join the native batch when a declaration tree is recoverable;
+malformed member shapes still fall back to LSP. Native namespace duplicates use
+qualified insertion identity, retaining two same-named classes from different
+namespaces. Configured LSP documentation wins unambiguous duplicates.
+
+Phase3 reproducible adapter baseline: ignored test `native_50k_adapter_baseline`
+constructs50,000 vendor-like class candidates with no LSP and repeats5 times.
+Debug isolated adapter min41.892ms, median51.349ms on the two-logical-CPU worker.
+This intentionally includes candidate cloning but excludes index lookup, RPC,
+Nucleo/UI and rendering. It is not end-to-end completion latency. A separate
+ignored proxy query fixture `native_50k_proxy_baseline` measures the bounded hot
+query; run it after linking the proxy tests. No release/UI claim until measured.
