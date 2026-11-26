@@ -593,7 +593,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         for relative, contents in {
             'app/Models/Post.php': '<?php\nnamespace App\\Models;\nclass Post {}\n',
             'app/Services/ReceiptService.php': '<?php\nnamespace App\\Services;\nclass ReceiptService {}\n',
-            'routes/web.php': "<?php\nRoute::get('/users', fn () => null)->name('users.index');\n",
+            'routes/web.php': "<?php\nRoute::get('/users', fn () => null)->name('users.index');\nRoute::get('/named', fn () => null)->name('native.example');\n",
             'model_usage.php': '<?php\nPost::class;\n',
             'class_usage.php': '<?php\nReceiptService::class;\n',
             'route_usage.php': "<?php\nroute('users.index');\n",

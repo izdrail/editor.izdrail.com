@@ -929,12 +929,11 @@ mod tests {
     fn html_comments_and_attributes_do_not_inject_fake_tags() {
         let source = "<!-- <script>fake</script> --><p title='<script>fake</script>'>body</p>";
         let doc = doc(source);
-        assert!(
-            doc.index
-                .regions
-                .iter()
-                .all(|region| region.context == Context::Html)
-        );
+        assert!(doc
+            .index
+            .regions
+            .iter()
+            .all(|region| region.context == Context::Html));
     }
 }
 
@@ -1014,6 +1013,37 @@ impl Document {
             ) {
                 class = Some(n);
                 break;
+            }
+            // An unfinished method/member expression can make the whole class
+            // an ERROR node. Reuse the class identity recovered by completion_scope
+            // rather than losing earlier, valid member declarations.
+            if n.is_error() {
+                let mut cursor = n.walk();
+                let matches_owner = n
+                    .named_children(&mut cursor)
+                    .find(|child| child.kind() == "name")
+                    .is_some_and(|name| {
+                        self.text.slice_to_cow(name.byte_range())
+                            == owner.rsplit('\\').next().unwrap_or("")
+                    });
+                let head = self.text.slice_to_cow(
+                    n.start_byte()..(n.start_byte() + 32).min(self.text.len()),
+                );
+                if matches_owner
+                    && [
+                        "class ",
+                        "abstract class ",
+                        "final class ",
+                        "readonly class ",
+                        "final readonly class ",
+                        "readonly final class ",
+                    ]
+                    .iter()
+                    .any(|prefix| head.trim_start().starts_with(prefix))
+                {
+                    class = Some(n);
+                    break;
+                }
             }
             node = n.parent();
         }
@@ -1166,6 +1196,9 @@ impl Document {
                 if start.trim_start().starts_with("class ")
                     || start.trim_start().starts_with("abstract class ")
                     || start.trim_start().starts_with("final class ")
+                    || start.trim_start().starts_with("readonly class ")
+                    || start.trim_start().starts_with("final readonly class ")
+                    || start.trim_start().starts_with("readonly final class ")
                 {
                     class_node = Some(n);
                     if scope.is_none() {
@@ -1389,11 +1422,9 @@ mod completion_scope_tests {
                 "{members:?}"
             );
         }
-        assert!(
-            !members
-                .iter()
-                .any(|m| m.0 == "$ordinary" || m.0 == "$local")
-        );
+        assert!(!members
+            .iter()
+            .any(|m| m.0 == "$ordinary" || m.0 == "$local"));
         let members = doc.completion_members(source.rfind("run()").unwrap());
         assert!(
             members.iter().any(|m| m.0 == "Ready"
@@ -1474,6 +1505,19 @@ mod completion_gate_tests {
         let d = Document::new(Rope::from(s), false, &AtomicUsize::new(0)).unwrap();
 
         assert_eq!(d.completion_scope(s.len()).class.as_deref(), Some("App\\C"));
+        let s = "<?php namespace App; class NativeFixture { public function nativeSave() {} public function run() { $this->";
+        let d = Document::new(Rope::from(s), false, &AtomicUsize::new(0)).unwrap();
+        assert_eq!(
+            d.completion_scope(s.len()).class.as_deref(),
+            Some("App\\NativeFixture")
+        );
+        assert!(
+            d.completion_members(s.len())
+                .iter()
+                .any(|m| m.0 == "nativeSave"),
+            "{:?}",
+            d.completion_members(s.len())
+        );
     }
     #[test]
     fn incomplete_use_and_declaration_lists() {
