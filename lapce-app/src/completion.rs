@@ -998,6 +998,27 @@ mod blend_tests {
     }
 }
 
+/// Honor the configured completion width, capped by the owning tab.
+/// The default is a preference, not a hidden minimum overriding Settings.
+pub fn popup_width(configured: usize, tab_width: f64) -> f64 {
+    (configured.max(120) as f64).min((tab_width - 1.0).max(0.0))
+}
+
+#[cfg(test)]
+mod popup_width_tests {
+    use super::popup_width;
+    #[test]
+    fn configured_width_is_not_overridden_by_a_hidden_minimum() {
+        assert_eq!(popup_width(320, 1443.0), 320.0);
+        assert_eq!(popup_width(600, 1443.0), 600.0);
+        assert_eq!(popup_width(1000, 850.0), 849.0);
+        assert_eq!(popup_width(0, 850.0), 120.0);
+        assert_eq!(popup_width(100, 80.0), 79.0);
+        assert_eq!(popup_width(600, 0.0), 0.0);
+        assert_eq!(popup_width(600, 1.0), 0.0);
+    }
+}
+
 /// Keep a measured completion popup within its owning tab after above/below
 /// placement. Size constraints are applied by the view separately.
 pub fn clamp_popup_origin(

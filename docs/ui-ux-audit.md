@@ -470,3 +470,15 @@ coverage remains unverified. Checkbox ring padding/gap and dark/light visibility
 are correct; native traversal, stable toggle identity, keyboard/pointer once-only
 sync and source-byte guards pass. Remove focus target remains open. No language-
 brand icon claim, no broad Phase1 completion.
+
+UI-046 medium: Editor completion-width setting (default600) was overridden by
+hidden minimum720. Respect requested width with120px minimum and owning-tab cap,
+preserving recorded default600 rather than silently changing it. Source reviewed;
+320/600/capped1000 dark/light, right edge, row ellipsis runtime pixels pending.
+
+PHP indexing lookup optimization c96b1eb / 45994171952 all four hosted jobs green.
+Stored symbol bodies equal pre-change nth-line semantics. Same-runner lookup-only
+microfixture:480890bytes/12000lines,4000lookups x3, repeated nth6044346us versus
+indexed lines3421us, equal output bytes. This is not an overall indexing speedup.
+Current native2000 cold1376.922ms/incremental492.402ms, RSS21668 to66280KiB,
+warmqueryp953.421ms. Prior runs are different runners, no before/after inference.

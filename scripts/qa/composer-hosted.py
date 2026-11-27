@@ -1228,6 +1228,29 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             if fixture.read_text() != text:
                 raise RuntimeError('Scope capture changed source without acceptance')
 
+        # UI-046: respect completion width preference without silent720px floor.
+        completion_settings = settings_file.read_text()
+        width_fixture = project / '52-native-this.php'
+        # Existing native fixture remains unchanged; reopen via file palette.
+        run('key', 'ctrl+p'); time.sleep(0.6)
+        run('type', '--clearmodifiers', width_fixture.name); run('key', 'Return'); time.sleep(1)
+        for preferred, theme in [(600, 'dark'), (320, 'dark'), (320, 'light'), (1000, 'light')]:
+            import re
+            preferred_settings = re.sub(r'(?m)^completion-width\s*=.*\n?', '', completion_settings)
+            preferred_settings = preferred_settings.replace('[editor]\n', '[editor]\ncompletion-width = ' + str(preferred) + '\n', 1)
+            if 'completion-width =' not in preferred_settings:
+                preferred_settings += '\n[editor]\ncompletion-width = ' + str(preferred) + '\n'
+            preferred_settings = re.sub(r'(?m)^color-theme\s*=.*\n?', '', preferred_settings)
+            preferred_settings = preferred_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce ' + theme.title() + '"\n', 1)
+            settings_file.write_text(preferred_settings); time.sleep(3)
+            if preferred == 1000:
+                run('windowsize', window, '850', '640'); time.sleep(2)
+            run('key', 'Escape', 'ctrl+End', 'ctrl+space'); time.sleep(2)
+            shot('61-completion-width-' + str(preferred) + '-' + theme)
+            run('key', 'Escape')
+        settings_file.write_text(completion_settings)
+        run('windowsize', window, '1443', '796'); time.sleep(3)
+
         # P5 same-index Laravel scopes/facade members. Non-conventional domain
         # root prevents the old app/Models filename scanner satisfying the test.
         (project / 'domain').mkdir(exist_ok=True)

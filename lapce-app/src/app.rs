@@ -3378,8 +3378,9 @@ fn completion(window_tab_data: Rc<WindowTabData>) -> impl View {
         let has_items = completion_data.with(|c| !c.filtered_items.is_empty());
         s.display(if has_items { Display::Flex } else { Display::None })
             .position(Position::Absolute)
-            .width((config.editor.completion_width as f64)
-                .max(720.0).min((tab_rect.get().width() - 1.0).max(0.0)) as f32)
+            .width(crate::completion::popup_width(
+                config.editor.completion_width, tab_rect.get().width(),
+            ) as f32)
             .max_height(window_tab_data.completion_max_height().max(1.0) as f32)
             .set(PropagatePointerWheel, false)
             .margin_left(origin.x as f32)
