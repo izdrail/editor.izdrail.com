@@ -2315,7 +2315,9 @@ enum ChatBodyBlock {
 /// Offsets come from the Markdown parser, including unfinished fenced blocks
 /// during streaming. Never run or rewrite code while displaying it.
 fn chat_body_blocks(body: &str, user: bool) -> Vec<ChatBodyBlock> {
-    if user { return vec![ChatBodyBlock::Prose(body.to_owned())]; }
+    if user {
+        return vec![ChatBodyBlock::Prose(body.to_owned())];
+    }
     use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
     let mut blocks = Vec::new();
     let mut start = None;
@@ -2325,33 +2327,59 @@ fn chat_body_blocks(body: &str, user: bool) -> Vec<ChatBodyBlock> {
     for (event, range) in Parser::new(body).into_offset_iter() {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
-                if range.start > previous { blocks.push(ChatBodyBlock::Prose(body[previous..range.start].to_owned())); }
+                if range.start > previous {
+                    blocks.push(ChatBodyBlock::Prose(
+                        body[previous..range.start].to_owned(),
+                    ));
+                }
                 start = Some(range.start);
-                language = match kind { CodeBlockKind::Fenced(info) => info.split_whitespace().next().unwrap_or("").to_owned(), CodeBlockKind::Indented => String::new() };
+                language = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split_whitespace().next().unwrap_or("").to_owned()
+                    }
+                    CodeBlockKind::Indented => String::new(),
+                };
                 code.clear();
             }
             Event::Text(text) if start.is_some() => code.push_str(&text),
             Event::End(TagEnd::CodeBlock) if start.is_some() => {
-                blocks.push(ChatBodyBlock::Code { language: language.clone(), source: std::mem::take(&mut code) });
+                blocks.push(ChatBodyBlock::Code {
+                    language: language.clone(),
+                    source: std::mem::take(&mut code),
+                });
                 start = None;
                 previous = range.end;
             }
             _ => {}
         }
     }
-    if previous < body.len() { blocks.push(ChatBodyBlock::Prose(body[previous..].to_owned())); }
+    if previous < body.len() {
+        blocks.push(ChatBodyBlock::Prose(body[previous..].to_owned()));
+    }
     blocks
 }
 
-fn chat_code_layout(source: &str, language: &str, config: &LapceConfig) -> floem::text::TextLayout {
+fn chat_code_layout(
+    source: &str,
+    language: &str,
+    config: &LapceConfig,
+) -> floem::text::TextLayout {
     use floem::text::{Attrs, AttrsList, FamilyOwned, TextLayout};
-    let family = FamilyOwned::parse_list(&config.editor.font_family).collect::<Vec<_>>();
-    let attrs = Attrs::new().family(&family)
+    let family =
+        FamilyOwned::parse_list(&config.editor.font_family).collect::<Vec<_>>();
+    let attrs = Attrs::new()
+        .family(&family)
         .font_size(config.editor.font_size() as f32)
         .color(config.color(LapceColor::EDITOR_FOREGROUND));
     let mut spans = AttrsList::new(attrs.clone());
-    crate::markdown::highlight_as_code(&mut spans, attrs,
-        lapce_core::language::LapceLanguage::from_name(language), source, 0, config);
+    crate::markdown::highlight_as_code(
+        &mut spans,
+        attrs,
+        lapce_core::language::LapceLanguage::from_name(language),
+        source,
+        0,
+        config,
+    );
     let mut layout = TextLayout::new();
     layout.set_text(source, spans, None);
     layout
@@ -2363,10 +2391,13 @@ struct CodeCopyActivation {
 }
 impl CodeCopyActivation {
     fn accepts(key: &Key, mods: floem::keyboard::Modifiers) -> bool {
-        mods.is_empty() && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
+        mods.is_empty()
+            && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
     }
     fn down(&mut self, key: &Key, mods: floem::keyboard::Modifiers, repeat: bool) {
-        if !repeat { self.armed = Self::accepts(key, mods).then(|| key.clone()); }
+        if !repeat {
+            self.armed = Self::accepts(key, mods).then(|| key.clone());
+        }
     }
     fn up(&mut self, key: &Key, mods: floem::keyboard::Modifiers) -> bool {
         self.armed.take().as_ref() == Some(key) && Self::accepts(key, mods)
@@ -2374,11 +2405,17 @@ impl CodeCopyActivation {
 }
 
 fn code_copy_stops_key(key: &Key, mods: floem::keyboard::Modifiers) -> bool {
-    CodeCopyActivation::accepts(key, mods) || (matches!(key, Key::Character(_))
-        && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT))
+    CodeCopyActivation::accepts(key, mods)
+        || (matches!(key, Key::Character(_))
+            && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT))
 }
 
-fn code_copy(source: &str, status: RwSignal<&'static str>, alive: Rc<std::cell::Cell<bool>>, generation: Rc<std::cell::Cell<u64>>) {
+fn code_copy(
+    source: &str,
+    status: RwSignal<&'static str>,
+    alive: Rc<std::cell::Cell<bool>>,
+    generation: Rc<std::cell::Cell<u64>>,
+) {
     let next = generation.get().wrapping_add(1);
     generation.set(next);
     let success = floem::Clipboard::set_contents(source.to_owned()).is_ok();
@@ -2387,21 +2424,39 @@ fn code_copy(source: &str, status: RwSignal<&'static str>, alive: Rc<std::cell::
     }
     status.set(if success { "Copied" } else { "Copy failed" });
     floem::action::exec_after(std::time::Duration::from_millis(1800), move |_| {
-        if alive.get() && generation.get() == next { status.set("Copy"); }
+        if alive.get() && generation.get() == next {
+            status.set("Copy");
+        }
     });
 }
 
-fn chat_block_key(index: usize, block: &ChatBodyBlock, theme: u64) -> (usize, u8, u64, u64) {
+fn chat_block_key(
+    index: usize,
+    block: &ChatBodyBlock,
+    theme: u64,
+) -> (usize, u8, u64, u64) {
     use std::hash::{Hash, Hasher};
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     let kind = match block {
-        ChatBodyBlock::Prose(text) => { text.hash(&mut hash); 0 }
-        ChatBodyBlock::Code { source, language } => { source.hash(&mut hash); language.hash(&mut hash); 1 }
+        ChatBodyBlock::Prose(text) => {
+            text.hash(&mut hash);
+            0
+        }
+        ChatBodyBlock::Code { source, language } => {
+            source.hash(&mut hash);
+            language.hash(&mut hash);
+            1
+        }
     };
     (index, kind, hash.finish(), theme)
 }
 
-fn chat_busy_tick(tick: RwSignal<u64>, active: Rc<std::cell::Cell<bool>>, generation: Rc<std::cell::Cell<u64>>, run: u64) {
+fn chat_busy_tick(
+    tick: RwSignal<u64>,
+    active: Rc<std::cell::Cell<bool>>,
+    generation: Rc<std::cell::Cell<u64>>,
+    run: u64,
+) {
     floem::action::exec_after(std::time::Duration::from_millis(120), move |_| {
         if active.get() && generation.get() == run {
             tick.update(|value| *value = value.wrapping_add(1));
@@ -2410,7 +2465,12 @@ fn chat_busy_tick(tick: RwSignal<u64>, active: Rc<std::cell::Cell<bool>>, genera
     });
 }
 
-fn chat_code_card(source: String, language: String, config: ReadSignal<Arc<LapceConfig>>, keyboard_focus: RwSignal<Option<floem::ViewId>>) -> impl View {
+fn chat_code_card(
+    source: String,
+    language: String,
+    config: ReadSignal<Arc<LapceConfig>>,
+    keyboard_focus: RwSignal<Option<floem::ViewId>>,
+) -> impl View {
     let copied = floem::reactive::create_rw_signal("Copy");
     let alive = Rc::new(std::cell::Cell::new(true));
     let copy_generation = Rc::new(std::cell::Cell::new(0u64));
@@ -2428,23 +2488,42 @@ fn chat_code_card(source: String, language: String, config: ReadSignal<Arc<Lapce
     let down = activation.clone();
     v_stack((
         h_stack((
-            label(move || if display_language.is_empty() { "Code".to_owned() } else { display_language.clone() })
-                .style(|s| s.flex_grow(1.0).min_width(0.0).text_ellipsis()),
-            copy_label.keyboard_navigable()
-                .on_event_stop(EventListener::FocusGained, move |_| keyboard_focus.set(Some(copy_id)))
+            label(move || {
+                if display_language.is_empty() {
+                    "Code".to_owned()
+                } else {
+                    display_language.clone()
+                }
+            })
+            .style(|s| s.flex_grow(1.0).min_width(0.0).text_ellipsis()),
+            copy_label
+                .keyboard_navigable()
+                .on_event_stop(EventListener::FocusGained, move |_| {
+                    keyboard_focus.set(Some(copy_id))
+                })
                 .on_event_stop(EventListener::FocusLost, move |_| {
                     lost.borrow_mut().armed = None;
-                    if keyboard_focus.get_untracked() == Some(copy_id) { keyboard_focus.set(None); }
+                    if keyboard_focus.get_untracked() == Some(copy_id) {
+                        keyboard_focus.set(None);
+                    }
                 })
                 .on_cleanup(move || {
                     alive.set(false);
                     cleanup.borrow_mut().armed = None;
-                    if keyboard_focus.get_untracked() == Some(copy_id) { keyboard_focus.set(None); }
+                    if keyboard_focus.get_untracked() == Some(copy_id) {
+                        keyboard_focus.set(None);
+                    }
                 })
                 .on_event(EventListener::KeyDown, move |event| {
                     if let Event::KeyDown(key) = event {
-                        if keyboard_focus.get_untracked() != Some(copy_id) { return EventPropagation::Continue; }
-                        down.borrow_mut().down(&key.key.logical_key, key.modifiers, key.key.repeat);
+                        if keyboard_focus.get_untracked() != Some(copy_id) {
+                            return EventPropagation::Continue;
+                        }
+                        down.borrow_mut().down(
+                            &key.key.logical_key,
+                            key.modifiers,
+                            key.key.repeat,
+                        );
                         if code_copy_stops_key(&key.key.logical_key, key.modifiers) {
                             return EventPropagation::Stop;
                         }
@@ -2453,9 +2532,19 @@ fn chat_code_card(source: String, language: String, config: ReadSignal<Arc<Lapce
                 })
                 .on_event(EventListener::KeyUp, move |event| {
                     if let Event::KeyUp(key) = event {
-                        if keyboard_focus.get_untracked() != Some(copy_id) { return EventPropagation::Continue; }
-                        if activation.borrow_mut().up(&key.key.logical_key, key.modifiers) {
-                            code_copy(&key_source, copied, key_alive.clone(), key_generation.clone());
+                        if keyboard_focus.get_untracked() != Some(copy_id) {
+                            return EventPropagation::Continue;
+                        }
+                        if activation
+                            .borrow_mut()
+                            .up(&key.key.logical_key, key.modifiers)
+                        {
+                            code_copy(
+                                &key_source,
+                                copied,
+                                key_alive.clone(),
+                                key_generation.clone(),
+                            );
                             return EventPropagation::Stop;
                         }
                     }
@@ -2463,29 +2552,84 @@ fn chat_code_card(source: String, language: String, config: ReadSignal<Arc<Lapce
                 })
                 .on_click_stop(move |event| {
                     if !matches!(event, Event::KeyDown(_)) {
-                        code_copy(&click_source, copied, click_alive.clone(), copy_generation.clone());
+                        code_copy(
+                            &click_source,
+                            copied,
+                            click_alive.clone(),
+                            copy_generation.clone(),
+                        );
                     }
                 })
-                .style(move |s| s.padding_horiz(6.0).padding_vert(3.0).cursor(CursorStyle::Pointer)
-                    .border(1.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                    .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))),
-        )).style(|s| s.width_full().min_width(0.0).items_center().padding(6.0).gap(8.0)),
-        scroll(crate::markdown::linked_text(chat_code_layout(&source, &language, &config.get_untracked()), Vec::new())
-            .style(|s| s.padding(8.0).flex_shrink(0.0).text_overflow(floem::style::TextOverflow::Clip)))
-            .style(|s| s.width_full().min_width(0.0).max_height(420.0).set(PropagatePointerWheel, true)),
-    )).style(move |s| s.width_full().min_width(0.0).margin_vert(6.0)
-        .border(1.0).border_radius(4.0)
-        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
-        .background(config.get().color(LapceColor::EDITOR_BACKGROUND)))
+                .style(move |s| {
+                    s.padding_horiz(6.0)
+                        .padding_vert(3.0)
+                        .cursor(CursorStyle::Pointer)
+                        .border(1.0)
+                        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                        .focus_visible(|s| {
+                            s.border_color(
+                                config.get().color(LapceColor::EDITOR_FOCUS),
+                            )
+                        })
+                }),
+        ))
+        .style(|s| {
+            s.width_full()
+                .min_width(0.0)
+                .items_center()
+                .padding(6.0)
+                .gap(8.0)
+        }),
+        scroll(
+            crate::markdown::linked_text(
+                chat_code_layout(&source, &language, &config.get_untracked()),
+                Vec::new(),
+            )
+            .style(|s| {
+                s.padding(8.0)
+                    .flex_shrink(0.0)
+                    .text_overflow(floem::style::TextOverflow::Clip)
+            }),
+        )
+        .style(|s| {
+            s.width_full()
+                .min_width(0.0)
+                .max_height(420.0)
+                .set(PropagatePointerWheel, true)
+        }),
+    ))
+    .style(move |s| {
+        s.width_full()
+            .min_width(0.0)
+            .margin_vert(6.0)
+            .border(1.0)
+            .border_radius(4.0)
+            .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+            .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
+    })
 }
 
 fn chat_activity_label(busy: bool, has_text: bool, tick: u64) -> String {
-    if !busy { return "Enter to send, Shift+Enter for newline".to_owned(); }
-    let frame = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][(tick % 10) as usize];
-    format!("{frame} {}", if has_text { "Generating... Stop to cancel" } else { "Waiting for first token... Stop to cancel" })
+    if !busy {
+        return "Enter to send, Shift+Enter for newline".to_owned();
+    }
+    let frame =
+        ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][(tick % 10) as usize];
+    format!(
+        "{frame} {}",
+        if has_text {
+            "Generating... Stop to cancel"
+        } else {
+            "Waiting for first token... Stop to cancel"
+        }
+    )
 }
 
-fn conversation_body(text: &str, user: bool, config: &LapceConfig) -> Vec<MarkdownContent> {
+fn conversation_body(
+    text: &str,
+    user: bool,
+    config: &LapceConfig,
+) -> Vec<MarkdownContent> {
     if user {
         crate::markdown::from_plaintext(text, 1.5, config)
     } else {
@@ -3268,7 +3412,14 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
         tick_generation.set(run);
         let busy = activity_busy.get();
         tick_active.set(busy);
-        if busy { chat_busy_tick(activity_tick, tick_active.clone(), tick_generation.clone(), run); }
+        if busy {
+            chat_busy_tick(
+                activity_tick,
+                tick_active.clone(),
+                tick_generation.clone(),
+                run,
+            );
+        }
     });
     let focus = tab.common.focus;
     // Drives the composer card's focus ring; fed by the composer
@@ -5217,7 +5368,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                 |(key, _)| *key,
                                 move |(_, block)| match block {
                                     ChatBodyBlock::Code { language, source } => chat_code_card(source, language, config, code_keyboard_focus).into_any(),
-                                    ChatBodyBlock::Prose(source) => v_stack(conversation_body(&source, role == "You", &config.get_untracked()).into_iter().map(|content| match content {
+                                    ChatBodyBlock::Prose(source) => floem::views::v_stack_from_iter(conversation_body(&source, role == "You", &config.get_untracked()).into_iter().map(|content| match content {
                                         MarkdownContent::Text { layout, links } => crate::markdown::linked_text(layout, links)
                                             .style(|s| s.width_full().min_width(0.0).max_width_full().padding_right(12.0)
                                                 .text_overflow(floem::style::TextOverflow::Wrap)).into_any(),
@@ -7232,14 +7383,24 @@ mod chat_code_block_tests {
         let body = "Before\n\n```php\n<?php echo 'café';\n```\n\nAfter";
         let blocks = chat_body_blocks(body, false);
         assert!(blocks.iter().any(|block| matches!(block, ChatBodyBlock::Code { language, source } if language == "php" && source == "<?php echo 'café';\n")));
-        assert_eq!(chat_body_blocks(body, true), vec![ChatBodyBlock::Prose(body.into())]);
-        assert!(chat_body_blocks("```rust\nfn main() {}", false).iter().any(|b| matches!(b, ChatBodyBlock::Code { .. })));
+        assert_eq!(
+            chat_body_blocks(body, true),
+            vec![ChatBodyBlock::Prose(body.into())]
+        );
+        assert!(
+            chat_body_blocks("```rust\nfn main() {}", false)
+                .iter()
+                .any(|b| matches!(b, ChatBodyBlock::Code { .. }))
+        );
     }
     #[test]
     fn activity_distinguishes_first_token_from_generation_and_stops() {
         assert!(chat_activity_label(true, false, 0).contains("first token"));
         assert!(chat_activity_label(true, true, 1).contains("Generating"));
-        assert_ne!(chat_activity_label(true, true, 0), chat_activity_label(true, true, 1));
+        assert_ne!(
+            chat_activity_label(true, true, 0),
+            chat_activity_label(true, true, 1)
+        );
         assert!(chat_activity_label(false, true, 1).contains("Enter to send"));
     }
     #[test]
@@ -7250,12 +7411,24 @@ mod chat_code_block_tests {
         assert!(code_copy_stops_key(&letter, Modifiers::SHIFT));
         assert!(!code_copy_stops_key(&letter, Modifiers::CONTROL));
         assert!(!code_copy_stops_key(&letter, Modifiers::ALT));
-        assert!(!code_copy_stops_key(&Key::Named(NamedKey::Enter), Modifiers::SHIFT));
+        assert!(!code_copy_stops_key(
+            &Key::Named(NamedKey::Enter),
+            Modifiers::SHIFT
+        ));
         let before = chat_body_blocks("```php\necho 1;\n```\n\nTail", false);
         let after = chat_body_blocks("```php\necho 1;\n```\n\nTail grows", false);
-        assert_eq!(chat_block_key(0, &before[0], 1), chat_block_key(0, &after[0], 1));
-        assert_ne!(chat_block_key(1, &before[1], 1), chat_block_key(1, &after[1], 1));
-        assert_ne!(chat_block_key(0, &before[0], 1), chat_block_key(0, &before[0], 2));
+        assert_eq!(
+            chat_block_key(0, &before[0], 1),
+            chat_block_key(0, &after[0], 1)
+        );
+        assert_ne!(
+            chat_block_key(1, &before[1], 1),
+            chat_block_key(1, &after[1], 1)
+        );
+        assert_ne!(
+            chat_block_key(0, &before[0], 1),
+            chat_block_key(0, &before[0], 2)
+        );
     }
     #[test]
     fn code_blocks_inside_lists_and_indented_after_lists() {

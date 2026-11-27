@@ -1317,28 +1317,38 @@ mod cancellation_tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
-            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
             let mut request = Vec::new();
             let header_end = loop {
                 let mut byte = [0; 1];
                 socket.read_exact(&mut byte).unwrap();
                 request.push(byte[0]);
                 assert!(request.len() <= 65536);
-                if request.ends_with(b"\r\n\r\n") { break request.len(); }
+                if request.ends_with(b"\r\n\r\n") {
+                    break request.len();
+                }
             };
             let headers = std::str::from_utf8(&request).unwrap();
-            let length = headers.lines().find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().unwrap())
-            }).unwrap();
+            let length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().unwrap())
+                })
+                .unwrap();
             assert!(length <= 65536);
             request.resize(header_end + length, 0);
             socket.read_exact(&mut request[header_end..]).unwrap();
-            let body: serde_json::Value = serde_json::from_slice(&request[header_end..]).unwrap();
+            let body: serde_json::Value =
+                serde_json::from_slice(&request[header_end..]).unwrap();
             assert_eq!(body["stream"], true);
             socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").unwrap();
             for part in ["first", " café"] {
-                let payload = serde_json::json!({"choices":[{"delta":{"content":part}}]});
+                let payload =
+                    serde_json::json!({"choices":[{"delta":{"content":part}}]});
                 write!(socket, "data: {payload}\n\n").unwrap();
                 socket.flush().unwrap();
                 // No next chunk or DONE exists until the UI-facing callback
@@ -1347,12 +1357,22 @@ mod cancellation_tests {
             }
             socket.write_all(b"data: [DONE]\n\n").unwrap();
         });
-        let mut updates = Vec::new();
-        ollama(&endpoint, "fixture-model", &[], Arc::new(AtomicBool::new(false)), |update| {
-            if let Update::Delta(text) = &update { tx.send(text.clone()).unwrap(); }
-            updates.push(update);
-        }).unwrap();
+        let updates = std::cell::RefCell::new(Vec::new());
+        ollama(
+            &endpoint,
+            "fixture-model",
+            &[],
+            Arc::new(AtomicBool::new(false)),
+            |update| {
+                if let Update::Delta(text) = &update {
+                    tx.send(text.clone()).unwrap();
+                }
+                updates.borrow_mut().push(update);
+            },
+        )
+        .unwrap();
         server.join().unwrap();
+        let updates = updates.into_inner();
         assert_eq!(updates.len(), 3);
         assert!(matches!(&updates[0], Update::Delta(text) if text == "first"));
         assert!(matches!(&updates[1], Update::Delta(text) if text == " café"));
