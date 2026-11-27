@@ -545,11 +545,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         for control, x in [('lens', 278), ('action', 337)]:
             run('mousemove', str(x), '94', 'click', '1'); time.sleep(1)
             shot('00-debug-gutter-' + control + '-menu')
-            menu_text = subprocess.run(['tesseract', str(out / ('00-debug-gutter-' + control + '-menu.png')), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout.lower()
+            Image.open(out / ('00-debug-gutter-' + control + '-menu.png')).crop((350, 103, 755, 141)).resize((1215, 114)).save(out / 'gutter-menu-ocr.png')
+            menu_text = subprocess.run(['tesseract', str(out / 'gutter-menu-ocr.png'), 'stdout', '--psm', '6'], text=True, capture_output=True, check=True).stdout.lower()
             menu_text = ' '.join(menu_text.split())
             if 'synthetic gutter ' + control not in menu_text:
                 raise RuntimeError('Gutter ' + control + ' did not open its existing menu')
-            if 'click the editor gutter' not in menu_text:
+            empty_text = breakpoint_text('00-debug-gutter-' + control + '-menu', 249)
+            if 'click the editor gutter' not in ' '.join(empty_text.split()):
                 raise RuntimeError('Gutter ' + control + ' unexpectedly changed breakpoint state')
             run('key', 'Escape'); time.sleep(1)
         run('key', 'ctrl+s'); time.sleep(1)
