@@ -633,7 +633,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         # Recreate for the existing pointer gutter add/remove regression.
         run('mousemove', str(400 + breakpoint_probe[0]), str(breakpoint_probe[1]), 'click', '1'); time.sleep(1)
         shot('00-debug-breakpoint-gutter-recreated')
-        if 'multi' not in breakpoint_text('00-debug-breakpoint-gutter-recreated', 400):
+        Image.open(out / '00-debug-breakpoint-gutter-recreated.png').crop((55, 655, 398, 690)).resize((1029, 105)).save(out / 'breakpoint-recreated-row-ocr.png')
+        recreated_row = subprocess.run(['tesseract', str(out / 'breakpoint-recreated-row-ocr.png'), 'stdout', '--psm', '7'], text=True, capture_output=True, check=True).stdout.lower()
+        if 'multi' not in recreated_row:
             raise RuntimeError('Gutter recreation did not produce breakpoint row')
         # Same location removes it; restored-empty assertion follows.
         run('mousemove', str(400 + breakpoint_probe[0]), str(breakpoint_probe[1]), 'click', '1'); time.sleep(1)
