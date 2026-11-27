@@ -84,6 +84,20 @@ def click_word(path, value, near_y=None):
     candidates = [w for w in words(path) if w['text'].lower() == value.lower()]
     if near_y is not None:
         candidates = [w for w in candidates if abs(int(w['top']) - near_y) < 24]
+    if not candidates and value == 'Copy' and near_y is not None:
+        # A 1px border confuses page segmentation. Verify a tight single-line
+        # crop of the header's right-aligned button, never click unverified UI.
+        # This hosted profile keeps the chat panel flush with the right edge.
+        from PIL import Image
+        geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
+        values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+        right = int(values['X']) + int(values['WIDTH'])
+        crop = out / (path.stem + '-copy-target.png')
+        Image.open(path).crop((right - 70, near_y - 4, right - 18, near_y + 17)).resize((312, 126)).save(crop)
+        found = subprocess.run(['tesseract', str(crop), 'stdout', '--psm', '7', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.strip().lower()
+        if found == 'copy':
+            run('mousemove', str(right - 44), str(near_y + 7), 'click', '1')
+            return
     if not candidates:
         raise RuntimeError('Missing click target: ' + value)
     w = candidates[0]
