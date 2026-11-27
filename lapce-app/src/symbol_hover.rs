@@ -62,7 +62,12 @@ fn known_name(word: &str) -> bool {
 }
 
 /// Markdown hover for the pack symbol named at byte `col` of `line`.
-pub fn help(path: &Path, line: &str, col: usize) -> Option<String> {
+pub fn help_with_profile(
+    path: &Path,
+    line: &str,
+    col: usize,
+    profile: &lapce_core::project_profile::ProjectProfile,
+) -> Option<String> {
     if line.len() > 8192 {
         return None;
     }
@@ -89,8 +94,7 @@ pub fn help(path: &Path, line: &str, col: usize) -> Option<String> {
         if !lapce_core::web_templates::php_completion_context(&php_source) {
             return None;
         }
-        let profile = lapce_core::project_profile::detect(path);
-        lapce_core::web_metadata::php_symbols(&profile)
+        lapce_core::web_metadata::php_symbols(profile)
             .find(|s| s.name == word)
     }?;
     let mut md = String::new();
@@ -105,6 +109,12 @@ pub fn help(path: &Path, line: &str, col: usize) -> Option<String> {
         found.doc_url, found.doc_url
     ));
     Some(md)
+}
+
+// Standalone fuzz/tests may discover a profile, never interactive hover.
+#[cfg(test)]
+pub fn help(path: &Path, line: &str, col: usize) -> Option<String> {
+    help_with_profile(path, line, col, &lapce_core::project_profile::detect(path))
 }
 
 #[cfg(test)]

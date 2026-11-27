@@ -1228,6 +1228,38 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             if fixture.read_text() != text:
                 raise RuntimeError('Scope capture changed source without acceptance')
 
+        # P0 regression: rapidly type the first 2-3 characters in a Laravel
+        # controller, then verify the UI still handles keys and saves exact text.
+        composer_data = json.loads(composer_file.read_text())
+        composer_data.setdefault('require', {})['laravel/framework'] = '^12.0'
+        composer_file.write_text(json.dumps(composer_data))
+        (project / 'routes').mkdir(exist_ok=True)
+        controller_dir = project / 'app/Http/Controllers'
+        controller_dir.mkdir(parents=True, exist_ok=True)
+        stall_fixture = controller_dir / 'TypingStallController.php'
+        controller_before = '<?php\nnamespace App\\Http\\Controllers;\nuse Illuminate\\Http\\Request;\nclass TypingStallController { public function index(Request $request) {\n'
+        stall_fixture.write_text(controller_before)
+        run('key', 'Escape', 'ctrl+p'); time.sleep(0.6)
+        run('type', '--clearmodifiers', stall_fixture.name); run('key', 'Return'); time.sleep(1.5)
+        run('key', 'ctrl+End')
+        stall_checks = []
+        for prefix in ['req', '$request->inp', '$this->', 'response', 'Route::ge']:
+            run('key', 'Escape', 'Home', 'shift+End')
+            started = time.monotonic()
+            run('type', '--clearmodifiers', '--delay', '15', prefix)
+            run('key', 'Escape', 'ctrl+s')
+            deadline = started + 2
+            expected = controller_before + prefix
+            while stall_fixture.read_text() != expected and time.monotonic() < deadline:
+                time.sleep(0.05)
+            elapsed = time.monotonic() - started
+            if stall_fixture.read_text() != expected:
+                shot('61a-controller-stall-failure')
+                raise RuntimeError('Controller typing did not save exact text within 2 seconds: ' + prefix)
+            stall_checks.append({'prefix': prefix, 'saved_seconds': elapsed})
+        shot('61a-controller-typing-responsive')
+        (out / 'controller-typing-latency.log').write_text(json.dumps(stall_checks, indent=2))
+
         # UI-046: respect completion width preference without silent720px floor.
         completion_settings = settings_file.read_text()
         width_fixture = project / '52-native-this.php'

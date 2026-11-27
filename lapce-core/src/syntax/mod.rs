@@ -1429,6 +1429,36 @@ mod cancellation_entry_tests {
         current.cancel_flag.store(1,std::sync::atomic::Ordering::Release);assert!(!current.accept_fold_refresh(&fresh));
     }
     #[test]
+    fn completion_profile_is_ready_on_open_and_refreshes_after_marker_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("controller.php");
+        std::fs::write(&file, "<?php ").unwrap();
+        std::fs::write(root.path().join("composer.json"), "{}").unwrap();
+        let mut syntax = Syntax::init(&file);
+        assert!(!syntax.project.laravel);
+        assert!(syntax.project.packages.is_empty());
+        std::fs::write(root.path().join("composer.json"),
+            r#"{"require":{"laravel/framework":"^12.0"}}"#).unwrap();
+        assert!(Syntax::init(&file).project.laravel);
+        for (rev, marker, contents) in [
+            (1, "composer.json", r#"{"require":{"laravel/framework":"^12.0"}}"#),
+            (2, "composer.lock", r#"{"packages":[{"name":"laravel/framework","version":"v12.0.0"}]}"#),
+            (3, "artisan", ""),
+        ] {
+            std::fs::write(root.path().join("composer.json"), "{}").unwrap();
+            let _ = std::fs::remove_file(root.path().join("composer.lock"));
+            std::fs::write(root.path().join(marker), contents).unwrap();
+            syntax.parse(rev, Rope::from(format!("<?php $x={rev};")), None);
+            assert!(syntax.project.laravel, "{marker}");
+        }
+        std::fs::write(root.path().join("composer.json"), "{}").unwrap();
+        std::fs::remove_file(root.path().join("artisan")).unwrap();
+        syntax.parse(4, Rope::from("<?php $x=4;"), None);
+        assert!(!syntax.project.laravel);
+        assert!(syntax.project.packages.is_empty());
+    }
+
+    #[test]
     fn cancelled_parse_does_not_refresh_profile_or_publish_snapshot() {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("composer.json"), "{}").unwrap();

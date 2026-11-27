@@ -3789,7 +3789,7 @@ impl EditorData {
             alpine_props,
             json_items,
             yaml_items,
-        ) = doc.buffer.with_untracked(|buffer| {
+        ) = doc.syntax.with_untracked(|syntax| doc.buffer.with_untracked(|buffer| {
             let end_offset = buffer.next_code_boundary(offset);
             let len = buffer.len();
             // Leave the word being typed out so it does not suggest itself.
@@ -3810,7 +3810,10 @@ impl EditorData {
             if lang == Some("php") && !is_blade {
                 words.extend(php_variable_items(&text));
             }
-            let project = lapce_core::project_profile::detect(path);
+            // The syntax worker refreshes this snapshot when project markers
+            // change. Never scan directories or read composer.lock on the UI
+            // thread just because the user started a completion session.
+            let project = &syntax.project;
             let before_cursor = buffer.slice_to_cow(0..offset);
             let keywords = lang
                 .map(|l| profile_items(l, &project, &before_cursor))
@@ -3918,7 +3921,7 @@ impl EditorData {
                 json_items,
                 yaml_items,
             )
-        });
+        }));
         let wrap = |item, source| ScoredCompletionItem {
             item,
             plugin_id: lapce_rpc::plugin::PluginId(0),
@@ -6607,7 +6610,12 @@ impl EditorData {
                     offset - buffer.offset_of_line(line),
                 )
             });
-            if let Some(md) = crate::symbol_hover::help(&path, &line_text, col) {
+            let help = doc.syntax.with_untracked(|syntax| {
+                crate::symbol_hover::help_with_profile(
+                    &path, &line_text, col, &syntax.project,
+                )
+            });
+            if let Some(md) = help {
                 let content =
                     parse_markdown(&md, 1.8, &self.common.config.get_untracked());
                 let hover_data = self.common.hover.clone();
@@ -8041,5 +8049,55 @@ mod definition_identity_tests {
             start,
             &location(&source, 4, 8)
         ));
+    }
+}
+
+#[cfg(test)]
+mod completion_ui_thread_guards {
+    #[test]
+    #[ignore]
+    fn completion_profile_vendor_baseline() {
+        use std::{hint::black_box, path::Path, time::Instant};
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../scripts/fixtures/laravel");
+        assert!(root.join("vendor/laravel/framework").is_dir());
+        let lock_bytes = std::fs::metadata(root.join("composer.lock")).unwrap().len();
+        assert!(lock_bytes > 100_000);
+        let file = root.join("app/Http/Controllers/Controller.php");
+        let cold_start = Instant::now();
+        let profile = lapce_core::project_profile::detect(&file);
+        let cold_detect_us = cold_start.elapsed().as_micros();
+        assert!(profile.laravel);
+        let iterations = 100;
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let found = lapce_core::project_profile::detect(black_box(&file));
+            assert_eq!(found, profile);
+            black_box(found);
+        }
+        let detect_us = start.elapsed().as_micros();
+        let start = Instant::now();
+        for _ in 0..iterations {
+            black_box(&profile);
+        }
+        let snapshot_us = start.elapsed().as_micros();
+        println!("profile_only iterations={iterations} lock_bytes={lock_bytes} packages={} cold_detect_us={cold_detect_us} detect_us={detect_us} detect_us_per_call={:.2} borrowed_snapshot_us={snapshot_us}; not end-to-end completion latency", profile.packages.len(), detect_us as f64 / iterations as f64);
+    }
+
+    #[test]
+    fn local_completion_uses_worker_profile_without_filesystem_discovery() {
+        // Architectural regression guard: discovery belongs to the syntax
+        // worker, where cancellation can discard superseded work.
+        let source = include_str!("editor.rs");
+        let body = source
+            .split("    fn local_completion_items_for(")
+            .nth(1)
+            .unwrap()
+            .split("    fn update_completion(")
+            .next()
+            .unwrap();
+        assert!(!body.contains("project_profile::detect("));
+        assert!(!body.contains("std::fs::"));
+        assert!(body.contains("let project = &syntax.project;"));
     }
 }
