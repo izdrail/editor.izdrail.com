@@ -544,10 +544,18 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'shift+Tab'); time.sleep(0.3)
         if breakpoint_focus('remove') != remove_id:
             raise RuntimeError('Reverse traversal lost breakpoint remove identity')
+        shot('00-debug-breakpoint-remove-light')
+        run('key', 'shift+Tab'); time.sleep(0.3)
+        shot('00-debug-breakpoint-row-light')
+        run('key', 'Tab'); time.sleep(0.3)
         run('key', 'Tab'); time.sleep(0.3)
         if breakpoint_focus('toggle') != toggle_id:
             raise RuntimeError('Breakpoint toggle focus identity changed')
         (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        run('key', 'shift+Tab', 'shift+Tab'); time.sleep(0.3)
+        shot('00-debug-breakpoint-row-native-dark')
+        run('key', 'Tab', 'Tab'); time.sleep(0.3)
+        shot('00-debug-breakpoint-toggle-native-dark')
         toggle_sync_before = debug_events().count('event=breakpoint:toggle:sync')
         remove_sync_baseline = debug_events().count('event=breakpoint:remove:sync')
         toggle_before = breakpoint_activations('toggle')

@@ -973,6 +973,8 @@ fn keyboard_breakpoint_action(
     role: &'static str,
     action: impl Fn() + 'static,
 ) -> impl View {
+    // Wrap rather than replace the checkbox/icon own resting border.
+    let view = container(view);
     let id = view.id();
     let activation = Rc::new(RefCell::new(DebugConfigurationActivation::default()));
     let lost = activation.clone();
@@ -1057,11 +1059,12 @@ fn keyboard_breakpoint_action(
             }
         })
         .style(move |s| {
-            s.focus_visible(|s| {
-                s.background(
-                    config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
-                )
-            })
+            s.border(1.0)
+                .border_color(Color::TRANSPARENT)
+                .apply_if(role == "jump", |s| s.width_pct(100.0).min_width(0.0))
+                .focus_visible(|s| {
+                    s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))
+                })
         })
 }
 
