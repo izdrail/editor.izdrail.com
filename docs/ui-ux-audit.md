@@ -423,3 +423,17 @@ in e17c85d dark/light captures. Proposed fix constrains label width to its
 panel, permits shrinking, and uses existing framework text wrapping. No
 breakpoint handlers or debugger behavior changed. Narrow/wide dark/light
 pixels and empty/populated state verification pending; UX-007 remains open.
+
+UI-043 medium/P0: bounded gutter clicks in 45940025999 leave empty breakpoint
+state unchanged. Source audit identifies full-size paint layers consuming
+pointer hits before clickable breakpoint rows. Pass-through paint wrappers
+and explicit interactive row/lens/action targets are source-reviewed. Existing
+wheel handler moves to outer gutter container, same action, one handler.
+PointerEventsProp is inherited (vendor/floem/src/style.rs:1699); each explicit
+child auto value overrides its inherited none value. Outer gutter is a flex
+child with intrinsic line-number/spacer width and full height, not width_full.
+Wheel-only event listener does not handle down/up. Runtime breakpoint add/remove,
+hover, wheel and lens/action non-toggle regression gates pending. Empty wrap
+UI-042 is visually correct in both themes at 180/400px, but populated-state gate
+remains open. UI-041 Space/unowned-release trace and pixels pass in 45936980206;
+overall run failed at the independent gutter populated-row assertion.

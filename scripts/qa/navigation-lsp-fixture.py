@@ -29,7 +29,7 @@ while True:
     with log.open('a') as stream:
         stream.write(json.dumps({'method': method, 'params': params}) + '\n')
     if method == 'initialize':
-        send(message['id'], {'capabilities': {'textDocumentSync': 1, 'definitionProvider': True, 'referencesProvider': True}})
+        send(message['id'], {'capabilities': {'textDocumentSync': 1, 'definitionProvider': True, 'referencesProvider': True, 'codeActionProvider': True, 'codeLensProvider': {'resolveProvider': False}}})
     elif method in ('textDocument/didOpen', 'textDocument/didChange'):
         document = params['textDocument']
         if Path(unquote(urlparse(document['uri']).path)).name == 'diagnostics.py':
@@ -55,6 +55,12 @@ while True:
         if source.name == 'lsp_delayed.py':
             time.sleep(2)
         send(message['id'], {'uri': source.with_name('lsp_target.py').as_uri(), 'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': 0, 'character': 5}}})
+    elif method == 'textDocument/codeLens':
+        source = Path(unquote(urlparse(params['textDocument']['uri']).path))
+        send(message['id'], [{'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': 0, 'character': 1}}, 'command': {'title': 'Synthetic gutter lens', 'command': 'qa.noop'}}] if source.name == 'gutter_fixture.py' else [])
+    elif method == 'textDocument/codeAction':
+        source = Path(unquote(urlparse(params['textDocument']['uri']).path))
+        send(message['id'], [{'title': 'Synthetic gutter action', 'command': 'qa.noop'}] if source.name == 'gutter_fixture.py' else [])
     elif method == 'textDocument/references':
         send(message['id'], [])
     elif method == 'exit':

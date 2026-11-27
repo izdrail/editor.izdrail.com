@@ -1550,7 +1550,8 @@ fn editor_gutter_breakpoint_view(
     })
     .style(move |s| {
         let config = config.get();
-        s.width(config.ui.icon_size() as f32 + icon_padding * 2.0)
+        s.pointer_events_auto()
+            .width(config.ui.icon_size() as f32 + icon_padding * 2.0)
             .height(config.editor.line_height() as f32)
             .justify_center()
             .items_center()
@@ -1661,6 +1662,7 @@ fn editor_gutter_breakpoints(
     )
     .style(move |s| {
         s.absolute()
+            .pointer_events_none()
             .size_pct(100.0, 100.0)
             .background(config.get().color(LapceColor::EDITOR_BACKGROUND))
     })
@@ -1686,7 +1688,8 @@ fn editor_gutter_code_lens_view(
     ))
     .style(move |s| {
         let config = config.get();
-        s.padding(4.0)
+        s.pointer_events_auto()
+            .padding(4.0)
             .border_radius(6.0)
             .hover(|s| {
                 s.cursor(CursorStyle::Pointer)
@@ -1901,7 +1904,8 @@ fn editor_gutter_code_actions(
         })
         .style(move |s| {
             let config = config.get();
-            s.padding(4.0)
+            s.pointer_events_auto()
+                .padding(4.0)
                 .border_radius(6.0)
                 .hover(|s| {
                     s.cursor(CursorStyle::Pointer).background(
@@ -1980,11 +1984,6 @@ fn editor_gutter(
                     .on_resize(move |rect| {
                         gutter_rect.set(rect);
                     })
-                    .on_event_stop(EventListener::PointerWheel, move |event| {
-                        if let Event::PointerWheel(pointer_event) = event {
-                            scroll_delta.set(pointer_event.delta);
-                        }
-                    })
                     .style(|s| s.size_pct(100.0, 100.0)),
                 editor_gutter_code_lens(
                     window_tab_data.clone(),
@@ -1998,8 +1997,15 @@ fn editor_gutter(
             ))
             .style(|s| s.size_pct(100.0, 100.0)),
         )
-        .style(move |s| s.absolute().size_pct(100.0, 100.0)),
+        .style(move |s| {
+            s.absolute().size_pct(100.0, 100.0).pointer_events_none()
+        }),
     ))
+    .on_event_stop(EventListener::PointerWheel, move |event| {
+        if let Event::PointerWheel(pointer_event) = event {
+            scroll_delta.set(pointer_event.delta);
+        }
+    })
     .style(|s| s.height_pct(100.0))
     .debug_name("Editor Gutter")
 }

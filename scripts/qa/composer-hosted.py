@@ -525,6 +525,35 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Breakpoints layout interaction changed source bytes')
         if terminal_events().count('event=create:tab') != creates_before_debug:
             raise RuntimeError('Breakpoints layout interaction created a terminal/process')
+        gutter_file = project / 'gutter_fixture.py'
+        gutter_original = ''.join(f'# Synthetic gutter line {i}\n' for i in range(1, 101))
+        gutter_file.write_text(gutter_original)
+        run('mousemove', '600', '220', 'click', '1')
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'gutter_fixture.py'); run('key', 'Return'); time.sleep(4)
+        run('key', 'ctrl+Home'); time.sleep(2)
+        for region, wheel_x in [('breakpoint', 260), ('line-number', 294), ('action', 321)]:
+            run('key', 'ctrl+Home'); time.sleep(1)
+            shot('00-debug-gutter-before-wheel-' + region)
+            run('mousemove', str(wheel_x), '94', 'click', '5'); time.sleep(1)
+            shot('00-debug-gutter-after-wheel-' + region)
+            wheel_before = Image.open(out / ('00-debug-gutter-before-wheel-' + region + '.png')).crop((255, 90, 335, 200)).tobytes()
+            wheel_after = Image.open(out / ('00-debug-gutter-after-wheel-' + region + '.png')).crop((255, 90, 335, 200)).tobytes()
+            if wheel_before == wheel_after:
+                raise RuntimeError('Wheel over gutter ' + region + ' did not change visible line numbers')
+        run('key', 'ctrl+Home'); time.sleep(2)
+        for control, x in [('lens', 290), ('action', 321)]:
+            run('mousemove', str(x), '94', 'click', '1'); time.sleep(1)
+            shot('00-debug-gutter-' + control + '-menu')
+            menu_text = subprocess.run(['tesseract', str(out / ('00-debug-gutter-' + control + '-menu.png')), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout.lower()
+            if 'synthetic gutter ' + control not in menu_text:
+                raise RuntimeError('Gutter ' + control + ' did not open its existing menu')
+            if 'click the editor gutter' not in menu_text:
+                raise RuntimeError('Gutter ' + control + ' unexpectedly changed breakpoint state')
+            run('key', 'Escape'); time.sleep(1)
+        run('key', 'ctrl+s'); time.sleep(1)
+        if gutter_file.read_text() != gutter_original:
+            raise RuntimeError('Gutter controls changed disposable source bytes')
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'
