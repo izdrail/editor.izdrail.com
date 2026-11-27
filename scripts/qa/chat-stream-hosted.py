@@ -125,6 +125,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('No editor window')
         run('windowsize', window, '1443', '900'); run('windowfocus', '--sync', window)
         time.sleep(5)
+        run('key', 'ctrl+p'); time.sleep(1); run('type', '--clearmodifiers', 'example.php'); run('key', 'Return'); time.sleep(2)
+        opened = shot('00a-editor-file-open')
+        # Editor tab is left of the chat OCR strip, so inspect its own crop.
+        from PIL import Image
+        Image.open(opened).crop((220, 25, 850, 110)).resize((1260, 170)).save(out / 'editor-tab-ocr.png')
+        tab_text = subprocess.run(['tesseract', str(out / 'editor-tab-ocr.png'), 'stdout', '--psm', '11', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.lower()
+        if 'example.php' not in tab_text:
+            raise RuntimeError('Palette did not open example.php')
+        run('key', 'Escape'); shot('00b-picker-dismissed-source-unchanged')
         run('key', 'F1'); time.sleep(1); run('type', '--clearmodifiers', 'toggle ai chat'); run('key', 'Return'); time.sleep(2)
         # Existing composer focus route: panel at right, draft above mode row.
         initial = shot('00-initial')
@@ -159,9 +168,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         if writes_before != 1:
             raise RuntimeError('Mouse Copy did not write exactly once')
         # Focused Copy must consume held Enter and activate only on release.
-        # Mouse click focused the keyboard-navigable label. Tab away/back makes
-        # focus-visible explicit, and the screenshot is the manual focus gate.
-        run('key', 'Tab'); run('key', 'shift+Tab'); shot('05d-copy-keyboard-focus')
+        # Mouse Copy focuses its keyboard-navigable label. Do not Tab away:
+        # the composer owns a custom traversal ring which does not include
+        # transcript controls. Test the retained Copy focus through real keys.
+        shot('05d-copy-keyboard-focus')
         subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_COPY_SENTINEL', text=True, env=env, check=True, timeout=5)
         run('keydown', 'Return'); time.sleep(.3); shot('06-copy-held')
         if clipboard() != 'CHAT_COPY_SENTINEL':
@@ -173,6 +183,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Focus lost across tail update, or Enter copied more than once')
         if clipboard() != expected:
             raise RuntimeError('Keyboard Copy changed source bytes')
+        # Matched-release write proves the preceding mouse click retained label
+        # focus. This is not a keyboard-navigation focus-ring claim.
+        shot('06b-copy-release-retained-focus')
         (config / 'settings.toml').write_text(settings.replace('Lapce Dark', 'Lapce Light'))
         time.sleep(3); shot('07-complete-light')
         run('windowsize', window, '850', '700'); time.sleep(2); shot('08-narrow-light')
