@@ -2359,8 +2359,15 @@ fn chat_body_blocks(body: &str, user: bool) -> Vec<ChatBodyBlock> {
     blocks
 }
 
-fn chat_code_scopes(source: &str, language: &str, backend: &str) -> Vec<(std::ops::Range<usize>, String)> {
-    let Some(language) = lapce_core::language::LapceLanguage::from_name(language) else { return Vec::new(); };
+fn chat_code_scopes(
+    source: &str,
+    language: &str,
+    backend: &str,
+) -> Vec<(std::ops::Range<usize>, String)> {
+    let Some(language) = lapce_core::language::LapceLanguage::from_name(language)
+    else {
+        return Vec::new();
+    };
     let text = lapce_xi_rope::Rope::from(source);
     let mut syntax = lapce_core::syntax::Syntax::from_language(language);
     syntax.lexer_backend = Some(backend.to_owned());
@@ -2371,7 +2378,9 @@ fn chat_code_scopes(source: &str, language: &str, backend: &str) -> Vec<(std::op
             lapce_core::lexilla::line_styles(snapshot, &text, line)
         } else if let Some(snapshot) = &syntax.textmate {
             lapce_core::textmate::line_styles(snapshot, &text, line)
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         let offset = text.offset_of_line(line);
         for style in styles {
             if let Some(scope) = style.style.fg_color {
@@ -2395,8 +2404,12 @@ fn chat_code_layout(
         .font_size(config.editor.font_size() as f32)
         .color(config.color(LapceColor::EDITOR_FOREGROUND));
     let mut spans = AttrsList::new(attrs.clone());
-    for (range, scope) in chat_code_scopes(source, language, config.editor.lexer.as_str()) {
-        if range.start >= range.end { continue; }
+    for (range, scope) in
+        chat_code_scopes(source, language, config.editor.lexer.as_str())
+    {
+        if range.start >= range.end {
+            continue;
+        }
         if let Some(color) = config.style_color(&scope) {
             spans.add_span(range, attrs.clone().color(color));
         }
@@ -7465,15 +7478,20 @@ mod chat_code_block_tests {
         let source = "<?php\npublic function example(): string { return 'café'; }\n";
         for backend in ["logos", "lexilla"] {
             let scopes = chat_code_scopes(source, "php", backend);
-            assert!(scopes.iter().any(|(range, scope)| scope == "keyword" && &source[range.clone()] == "public"));
+            assert!(scopes.iter().any(|(range, scope)| scope == "keyword"
+                && &source[range.clone()] == "public"));
             assert!(scopes.iter().any(|(_, scope)| scope == "string"));
-            assert!(scopes.iter().all(|(range, _)| range.end <= source.len() && source.is_char_boundary(range.start) && source.is_char_boundary(range.end)));
+            assert!(scopes.iter().all(|(range, _)| range.end <= source.len()
+                && source.is_char_boundary(range.start)
+                && source.is_char_boundary(range.end)));
         }
-        let json = "{\"answer\": 42, \"ok\": true}";
+        let json = "{\"answer\": 42, \"label\": \"yes\", \"ok\": true}";
         let scopes = chat_code_scopes(json, "json", "logos");
         assert!(!scopes.is_empty(), "JSON paint snapshot must be available");
-        assert!(scopes.iter().any(|(_, scope)| scope == "string"));
-        assert!(chat_code_scopes(source, "unknown-fixture-language", "logos").is_empty());
+        assert!(scopes.iter().any(|(range, scope)| scope == "string" && &json[range.clone()] == "\"yes\""));
+        assert!(
+            chat_code_scopes(source, "unknown-fixture-language", "logos").is_empty()
+        );
     }
     #[test]
     fn code_copy_requires_matching_unmodified_release() {
