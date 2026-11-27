@@ -532,7 +532,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'gutter_fixture.py'); run('key', 'Return'); time.sleep(4)
         run('key', 'ctrl+Home'); time.sleep(2)
-        for region, wheel_x in [('breakpoint', 260), ('line-number', 294), ('action', 321)]:
+        for region, wheel_x in [('breakpoint', 260), ('line-number', 310), ('lens', 278), ('action', 337)]:
             run('key', 'ctrl+Home'); time.sleep(1)
             shot('00-debug-gutter-before-wheel-' + region)
             run('mousemove', str(wheel_x), '94', 'click', '5'); time.sleep(1)
@@ -542,10 +542,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             if wheel_before == wheel_after:
                 raise RuntimeError('Wheel over gutter ' + region + ' did not change visible line numbers')
         run('key', 'ctrl+Home'); time.sleep(2)
-        for control, x in [('lens', 290), ('action', 321)]:
+        for control, x in [('lens', 278), ('action', 337)]:
             run('mousemove', str(x), '94', 'click', '1'); time.sleep(1)
             shot('00-debug-gutter-' + control + '-menu')
             menu_text = subprocess.run(['tesseract', str(out / ('00-debug-gutter-' + control + '-menu.png')), 'stdout', '--psm', '11'], text=True, capture_output=True, check=True).stdout.lower()
+            menu_text = ' '.join(menu_text.split())
             if 'synthetic gutter ' + control not in menu_text:
                 raise RuntimeError('Gutter ' + control + ' did not open its existing menu')
             if 'click the editor gutter' not in menu_text:
