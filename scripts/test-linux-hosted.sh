@@ -52,3 +52,5 @@ df -h .
 cargo test --locked -p lapce-php scope_5k_line_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-scope-benchmark.log
 
 cargo test --locked -p lapce-proxy native_2000_file_index_latency_and_rss -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-index-2000-benchmark.log
+
+cargo test --locked -p lapce-index php_symbol_line_lookup_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-symbol-line-lookup.log

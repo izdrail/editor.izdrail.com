@@ -252,6 +252,9 @@ impl Engine {
             let symbols = if language == "php" {
                 match scanner::scan_laravel(&source, cancel, composer.laravel) {
                     Ok(symbols) => {
+                        // Build once per parsed PHP file. Repeated nth(line)
+                        // scans from byte zero for every symbol in large files.
+                        let source_lines = source.lines().collect::<Vec<_>>();
                         for symbol in &symbols.symbols {
                             if matches!(
                                 symbol.kind,
@@ -266,9 +269,9 @@ impl Engine {
                                 symbol: Some(symbol.qualified.clone()),
                                 line: symbol.line as u64,
                                 col: symbol.column as u64,
-                                body: source
-                                    .lines()
-                                    .nth(symbol.line)
+                                body: source_lines
+                                    .get(symbol.line)
+                                    .copied()
                                     .unwrap_or("")
                                     .to_owned(),
                             });
@@ -405,6 +408,121 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn indexed_lines_nth_parity_sanity_check() {
+        for source in ["", "one", "one\n", "one\r\ntwo\r\n", "café\n\nthree\rfour"]
+        {
+            let lines = source.lines().collect::<Vec<_>>();
+            for line in 0..lines.len() + 3 {
+                assert_eq!(
+                    lines.get(line).copied().unwrap_or(""),
+                    source.lines().nth(line).unwrap_or("")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn symbol_bodies_preserve_line_semantics_after_indexing() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("project");
+        fs::create_dir(&root).unwrap();
+        let source = "<?php\r\nnamespace App;\r\n// UTF-8 café\r\nclass Invoice {\r\n    public function paid() {}\r\n}\r\n";
+        fs::write(root.join("Invoice.php"), source).unwrap();
+        let mut engine = Engine::open(&t.path().join("index")).unwrap();
+        engine
+            .reconcile(&root, &BTreeSet::new(), &AtomicBool::new(false))
+            .unwrap();
+        let symbols = engine.snapshot();
+        let expected = symbols
+            .values()
+            .flat_map(|file| &file.symbols)
+            .filter(|symbol| {
+                !matches!(
+                    symbol.kind,
+                    scanner::Kind::Import | scanner::Kind::Attribute
+                )
+            })
+            .map(|symbol| {
+                (
+                    symbol.qualified.clone(),
+                    source.lines().nth(symbol.line).unwrap_or("").to_owned(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert!(expected.len() >= 2);
+        let searcher = engine.index.reader.searcher();
+        let docs = searcher
+            .search(
+                &tantivy::query::AllQuery,
+                &tantivy::collector::TopDocs::with_limit(100),
+            )
+            .unwrap();
+        let mut checked = 0;
+        for (_, address) in docs {
+            let document: tantivy::TantivyDocument = searcher.doc(address).unwrap();
+            if engine
+                .index
+                .text_value(&document, engine.index.fields.kind)
+                .as_deref()
+                != Some(EntryKind::SymbolDef.as_str())
+            {
+                continue;
+            }
+            let symbol = engine
+                .index
+                .text_value(&document, engine.index.fields.symbol)
+                .unwrap();
+            let body = engine
+                .index
+                .text_value(&document, engine.index.fields.body)
+                .unwrap();
+            assert_eq!(body, expected[&symbol]);
+            checked += 1;
+        }
+        assert_eq!(checked, expected.len());
+    }
+
+    #[test]
+    #[ignore = "hosted line-body extraction measurement, not an indexing SLA"]
+    fn php_symbol_line_lookup_baseline() {
+        use std::{hint::black_box, time::Instant};
+        let source = (0..12000)
+            .map(|i| format!("    public function synthetic_{i}() {{}}\n"))
+            .collect::<String>();
+        let lines = (0..12000).step_by(3).collect::<Vec<_>>();
+        let start = Instant::now();
+        let mut before = 0usize;
+        for _ in 0..3 {
+            for &line in &lines {
+                before +=
+                    black_box(source.lines().nth(black_box(line)).unwrap_or(""))
+                        .len();
+            }
+        }
+        let before_us = start.elapsed().as_micros();
+        let start = Instant::now();
+        let mut after = 0usize;
+        for _ in 0..3 {
+            let indexed = black_box(source.lines().collect::<Vec<_>>());
+            for &line in &lines {
+                after +=
+                    black_box(indexed.get(black_box(line)).copied().unwrap_or(""))
+                        .len();
+            }
+        }
+        let after_us = start.elapsed().as_micros();
+        assert_eq!(before, after);
+        assert!(source.len() < MAX_BYTES as usize);
+        println!(
+            "PHP_LINE_BODY bytes={} lines=12000 lookups={} repetitions=3 repeated_nth_us={} indexed_lines_us={} equal_body_bytes=true (lookup stage only; not full indexing)",
+            source.len(),
+            lines.len(),
+            before_us,
+            after_us
+        );
+    }
+
     #[test]
     fn old_cache_version_reparses_unchanged_source() {
         let t = tempfile::tempdir().unwrap();

@@ -461,3 +461,12 @@ JSON, config, docs, shell and style files, with exact-case Laravel artisan/.env/
 composer defaults. Custom valid SVG wins, missing custom asset falls through to
 embedded category, then generic file. These are not language-brand icons.
 Source reviewed; hosted tests and actual tree/palette dark/light pixels pending.
+
+27 November UI-044/UI-045 bounded result: 5fc39ac / 45985588325 all four hosted
+jobs green. Actual dark/light tree pixels show PHP code, JSON, Markdown book,
+shell/Artisan terminal, .env gear and unknown generic icons. Tabs show code
+icons. Palette query for late-created fixture has no results, so palette icon
+coverage remains unverified. Checkbox ring padding/gap and dark/light visibility
+are correct; native traversal, stable toggle identity, keyboard/pointer once-only
+sync and source-byte guards pass. Remove focus target remains open. No language-
+brand icon claim, no broad Phase1 completion.
