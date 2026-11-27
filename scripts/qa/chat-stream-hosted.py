@@ -46,20 +46,25 @@ def shot(name):
     subprocess.run(['scrot', '-o', str(path)], env=env, check=True, timeout=10)
     return path
 
-def words(path):
+def words(path, psm=6):
     # Whole-screen OCR misdetects small dim text on a mostly empty canvas.
     # Scale only the right-side chat region and map OCR boxes back to pixels.
-    from PIL import Image
+    from PIL import Image, ImageOps, ImageStat
     image = Image.open(path)
     geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
     values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
     left = max(0, int(values['X']) + int(values['WIDTH']) - 360)
     right = min(image.width, int(values['X']) + int(values['WIDTH']))
     scaled = out / (path.stem + '-ocr.png')
-    image.crop((left, 50, right, image.height)).resize(
-        ((right - left) * 3, (image.height - 50) * 3)
-    ).save(scaled)
-    data = subprocess.run(['tesseract', str(scaled), 'stdout', '--psm', '11', '--dpi', '150', 'tsv'], text=True, capture_output=True, check=True, timeout=15).stdout
+    # Invert the known dark-theme captures to dark glyphs on a light canvas.
+    # Preserve normal pixels for light theme; artifacts remain unmodified.
+    crop = image.crop((left, 50, right, image.height)).convert('RGB')
+    invert = ImageStat.Stat(crop.convert('L')).median[0] < 128
+    print(f'OCR shot={path.stem} polarity={"inverted" if invert else "normal"} psm={psm}', flush=True)
+    if invert:
+        crop = ImageOps.invert(crop)
+    crop.resize(((right - left) * 3, (image.height - 50) * 3)).save(scaled)
+    data = subprocess.run(['tesseract', str(scaled), 'stdout', '--psm', str(psm), '--dpi', '150', 'tsv'], text=True, capture_output=True, check=True, timeout=15).stdout
     rows = list(csv.DictReader(io.StringIO(data), delimiter='\t'))
     for row in rows:
         row['left'] = str(left + int(row['left']) // 3)
@@ -84,6 +89,13 @@ def click_word(path, value, near_y=None):
     candidates = [w for w in words(path) if w['text'].lower() == value.lower()]
     if near_y is not None:
         candidates = [w for w in candidates if abs(int(w['top']) - near_y) < 24]
+    if not candidates:
+        candidates = [w for w in words(path, psm=11) if w['text'].lower() == value.lower()
+                      and (near_y is None or abs(int(w['top']) - near_y) < 24)]
+        if candidates:
+            print(f'OCR click-target={value} psm=11', flush=True)
+    else:
+        print(f'OCR click-target={value} psm=6', flush=True)
     if not candidates and value == 'Copy' and near_y is not None:
         # A 1px border confuses page segmentation. Verify a tight single-line
         # crop of the header's right-aligned button, never click unverified UI.
