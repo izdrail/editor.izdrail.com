@@ -648,8 +648,19 @@ impl LapceConfig {
             };
             (svg, color)
         } else {
+            // Bundled file-type assets are embedded, not relative disk paths.
+            // A valid custom icon above always wins; missing assets use these
+            // defaults before the generic file icon.
+            let bundled = DEFAULT_ICON_THEME_ICON_CONFIG
+                .resolve_path_to_icon(paths)
+                .and_then(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_owned)
+                })
+                .map(|name| self.svg_store.write().get_default_svg(&name));
             (
-                self.ui_svg(LapceIcons::FILE),
+                bundled.unwrap_or_else(|| self.ui_svg(LapceIcons::FILE)),
                 Some(self.color(LapceColor::LAPCE_ICON_ACTIVE)),
             )
         }
@@ -1346,5 +1357,50 @@ mod lexer_setting_tests {
             let encoded=serde_json::to_string(&config.editor).unwrap();
             let restored:editor::EditorConfig=serde_json::from_str(&encoded).unwrap();assert_eq!(restored.lexer.as_str(),*value);
         }
+    }
+}
+
+#[cfg(test)]
+mod bundled_file_icon_tests {
+    use super::*;
+
+    #[test]
+    fn bundled_file_mappings_resolve_to_embedded_assets() {
+        let mut store = SvgStore::default();
+        for mapping in [
+            &DEFAULT_ICON_THEME_ICON_CONFIG.filename,
+            &DEFAULT_ICON_THEME_ICON_CONFIG.extension,
+        ] {
+            assert!(!mapping.is_empty());
+            for name in mapping.values() {
+                assert!(store.get_default_svg(name).contains("<svg"), "{name}");
+            }
+        }
+        for (file, expected) in [
+            ("artisan", "terminal.svg"),
+            (".env", "settings-gear.svg"),
+            ("composer.json", "json.svg"),
+            ("view.blade.php", "file-code.svg"),
+            ("README.md", "book.svg"),
+        ] {
+            assert_eq!(
+                DEFAULT_ICON_THEME_ICON_CONFIG
+                    .resolve_path_to_icon(&[Path::new(file)]),
+                Some(PathBuf::from(expected))
+            );
+        }
+        assert!(
+            DEFAULT_ICON_THEME_ICON_CONFIG
+                .resolve_path_to_icon(&[Path::new("unknown.zzz")])
+                .is_none()
+        );
+        assert!(
+            DEFAULT_ICON_THEME_ICON_CONFIG
+                .resolve_path_to_icon(&[
+                    Path::new("artisan"),
+                    Path::new("composer.json")
+                ])
+                .is_none()
+        );
     }
 }

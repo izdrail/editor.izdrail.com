@@ -447,3 +447,17 @@ Known limitation: keyboard Remove clears removed control ownership, but does not
 choose next row or panel focus. No focus-restoration fix claimed; remains part of
 UX-007/Phase1. Runtime compile, native traversal, no-source-mutation, one sync per
 action, dark/light focus visibility and non-bubbling pointer gates pending.
+
+27 November UI-044 behavior gate: 94d4496 / 45962168416 all four jobs green.
+Native forward/reverse traversal, held/release toggle, same view identity across
+active changes, keyboard Remove once, one sync per action, pointer no-row-jump,
+source bytes and process guard pass. Actual dark/light row and Remove rings
+visible. Checkbox ring margin/padding refinement source-reviewed, recapture
+pending together with UI-045. Post-removal focus target remains unimplemented.
+
+UI-045 medium: bundled filename/extension maps were empty and files used generic
+icons without a custom package. Embedded existing category glyphs now map code,
+JSON, config, docs, shell and style files, with exact-case Laravel artisan/.env/
+composer defaults. Custom valid SVG wins, missing custom asset falls through to
+embedded category, then generic file. These are not language-brand icons.
+Source reviewed; hosted tests and actual tree/palette dark/light pixels pending.

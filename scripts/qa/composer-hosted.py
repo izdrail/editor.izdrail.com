@@ -1584,6 +1584,43 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('windowsize', window, original_width, original_height); time.sleep(3)
         (out / 'scm-button-assertions.log').write_text('empty_commit_no_mutation=true\ndeliberate_local_commit_exact_tree=true\nbutton_reverse_traversal=true\nsuggest_empty_diff_two_activations=true\npost_commit_git_unchanged=true\nreal_suggestion_provider_unverified=true\n' + '\n'.join(scm_events()))
 
+        # UI-045: bundled category icons, no external theme installation.
+        icon_files = {
+            'icons-php.php': '<?php // Synthetic icon fixture.\n',
+            'icons-json.json': '{}\n', 'icons-readme.md': '# Synthetic icons\n',
+            'icons-shell.sh': '#!/bin/sh\n', '.env': 'SYNTHETIC=true\n',
+            'composer.json': '{}\n', 'artisan': '<?php // Synthetic artisan fixture.\n',
+            'icons-unknown.zzz': 'Synthetic unknown icon fixture.\n',
+        }
+        for name, body in icon_files.items():
+            (project / name).write_text(body)
+        # Use existing workbench command through the command palette.
+        run('key', 'ctrl+shift+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'Toggle File Explorer Focus'); time.sleep(1)
+        shot('60-icons-explorer-command')
+        run('key', 'Return'); time.sleep(3)
+        shot('60a-default-icons-tree-dark')
+        # Presence is automated; actual glyph/tint acceptance is manual pixels.
+        Image.open(out / '60a-default-icons-tree-dark.png').crop((0, 60, 400, 770)).resize((800, 1420)).save(out / 'default-icons-tree-ocr.png')
+        tree_text = subprocess.run(['tesseract', str(out / 'default-icons-tree-ocr.png'), 'stdout', '--psm', '6'], text=True, capture_output=True, check=True).stdout.lower()
+        if not all(name in tree_text for name in ['artisan', 'composer', 'icons-']):
+            raise RuntimeError('File Explorer not visible or icon fixture tree not loaded')
+        icons_settings = settings_file.read_text()
+        icons_light = icons_settings.replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"')
+        if 'color-theme = "Lapce Light"' not in icons_light:
+            icons_light = icons_light.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)
+        settings_file.write_text(icons_light); time.sleep(3)
+        shot('60b-default-icons-tree-light')
+        settings_file.write_text(icons_settings); time.sleep(3)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'icons-'); time.sleep(2)
+        shot('60c-default-icons-palette-dark')
+        run('key', 'Escape'); time.sleep(0.5)
+        for name, body in icon_files.items():
+            if (project / name).read_text() != body:
+                raise RuntimeError('Default icon fixture source changed')
+        (out / 'default-icons-manual-gate.txt').write_text('Presence/source checks only. Inspect tree and palette category glyphs and dark/light tint before visual acceptance. Synthetic files preserved for diagnostics.\n')
+
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket highlight navigation changed source bytes')
         if app.poll() is not None:

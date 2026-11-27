@@ -894,12 +894,7 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                                         },
                                         config,
                                     )
-                                    .style(
-                                        |s| {
-                                            s.margin_right(6.0)
-                                                .cursor(CursorStyle::Pointer)
-                                        },
-                                    ),
+                                    .style(|s| s.cursor(CursorStyle::Pointer)),
                                     keyboard_focus,
                                     config,
                                     "toggle",
@@ -1061,6 +1056,9 @@ fn keyboard_breakpoint_action(
         .style(move |s| {
             s.border(1.0)
                 .border_color(Color::TRANSPARENT)
+                .apply_if(role == "toggle", |s| {
+                    s.padding(2.0).margin_right(6.0).cursor(CursorStyle::Pointer)
+                })
                 .apply_if(role == "jump", |s| s.width_pct(100.0).min_width(0.0))
                 .focus_visible(|s| {
                     s.border_color(config.get().color(LapceColor::EDITOR_FOCUS))
