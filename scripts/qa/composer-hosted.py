@@ -392,8 +392,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+shift+F7'); time.sleep(2)
         shot('00-debug-panel-initial')
         from PIL import Image
-        Image.open(out / '00-debug-panel-initial.png').resize((3000, 2000)).save(out / 'debug-label-ocr.png')
-        tsv = subprocess.run(['tesseract', str(out / 'debug-label-ocr.png'), 'stdout', '--psm', '11', 'tsv'], text=True, capture_output=True, check=True).stdout
+        Image.open(out / '00-debug-panel-initial.png').crop((0, 75, 249, 180)).resize((996, 420)).save(out / 'debug-label-ocr.png')
+        tsv = subprocess.run(['tesseract', str(out / 'debug-label-ocr.png'), 'stdout', '--psm', '6', 'tsv'], text=True, capture_output=True, check=True).stdout
         import csv, io
         words = list(csv.DictReader(io.StringIO(tsv), delimiter='\t'))
         target = next((w for w in words if w.get('text', '').lower() == 'configuration...'), None)
@@ -401,8 +401,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             target = next((w for w in words if w.get('text', '').lower().startswith('configuration')), None)
         if target is None:
             raise RuntimeError('Cannot find visible debug configuration control')
-        debug_x = int((int(target['left']) + int(target['width']) / 2) / 2)
-        debug_y = int((int(target['top']) + int(target['height']) / 2) / 2)
+        debug_x = int((int(target['left']) + int(target['width']) / 2) / 4)
+        debug_y = int((int(target['top']) + int(target['height']) / 2) / 4) + 75
         run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
         run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
         shot('00-debug-configuration-focus')
