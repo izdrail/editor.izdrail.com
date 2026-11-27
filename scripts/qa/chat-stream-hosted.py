@@ -225,10 +225,21 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         print(f'OCR placeholder psm={w["psm"]}', flush=True)
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Synthetic cancellation'); run('key', 'Return')
-        wait_text('first token', '10-stop-waiting', timeout=12)
-        # The send/Stop control is an icon. Confirm its keyboard focus ring
-        # in the preserved shot before activating the current Stop action.
-        run('key', 'shift+Tab'); shot('10b-stop-keyboard-focus'); run('key', 'Return'); time.sleep(1)
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            running = shot('10-stop-waiting')
+            rows = all_words(running)
+            active_rows = [w for w in rows if w['text'].lower() == 'running' and 85 < int(w['top']) < 180]
+            stop_rows = [w for w in rows if w['text'].lower() == 'stop' and 85 < int(w['top']) < 180]
+            pair = next(((a, b) for a in active_rows for b in stop_rows if abs(int(a['top']) - int(b['top'])) < 24), None)
+            if pair:
+                break
+            time.sleep(.2)
+        else:
+            raise RuntimeError('Running row with adjacent Stop not visible')
+        # Keep the click on the active Runs row, never the bottom status hint.
+        click_word(running, 'Stop', near_y=int(pair[1]['top']))
+        time.sleep(1)
         stopped = shot('11-stopped')
         if 'first token' in text(stopped) or 'generating...' in text(stopped):
             raise RuntimeError('Stop left loading active')

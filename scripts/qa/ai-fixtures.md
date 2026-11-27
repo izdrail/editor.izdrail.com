@@ -100,3 +100,7 @@ The advance-file case copies a completed code card while the request is still
 streaming, then releases a later prose delta and DONE. It tests completed-card
 focus retention, not per-token keyboard focus inside a changing code tail.
 The fixture hold is bounded90s; the chat request total timeout is180s.
+
+Open keyboard gates: keyboard-reached Copy focus ring and separate keyboard
+Stop activation. Mouse-focused Copy Enter release is covered; mouse Runs-row
+Stop is a distinct cancellation test, not evidence for keyboard Stop.
