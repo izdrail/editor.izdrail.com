@@ -410,19 +410,23 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('00-debug-configuration-next')
         run('key', 'shift+Tab'); shot('00-debug-configuration-return')
         creates_before_debug = terminal_events().count('event=create:tab')
+        # Preserve the native keyboard target across a live theme change.
+        # Escape from a palette may restore editor focus, so it is not a
+        # reliable starting point for a canceled-pointer focus seed.
+        debug_settings = (config / 'settings.toml').read_text()
+        (config / 'settings.toml').write_text(debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1))
+        time.sleep(3)
+        shot('00-debug-configuration-light')
+        run('key', 'Tab'); shot('00-debug-configuration-light-next')
+        run('key', 'shift+Tab'); shot('00-debug-configuration-light-return')
+        (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
         run('key', 'ctrl+Return'); shot('00-debug-configuration-modified')
         run('keydown', 'Return'); time.sleep(1.5); shot('00-debug-configuration-held')
         run('keyup', 'Return'); time.sleep(2); shot('00-debug-configuration-palette')
         run('key', 'Escape'); time.sleep(1)
-        # Reacquire the same label for a light-theme focus capture only.
-        debug_settings = (config / 'settings.toml').read_text()
-        (config / 'settings.toml').write_text(debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1))
-        time.sleep(3)
-        run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
-        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
-        run('key', 'shift+Tab', 'Tab'); time.sleep(0.5)
-        shot('00-debug-configuration-light')
-        (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        run('key', 'ctrl+s'); time.sleep(1)
+        if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
+            raise RuntimeError('Debug configuration traversal changed source buffer')
         if terminal_events().count('event=create:tab') != creates_before_debug:
             raise RuntimeError('Debug configuration UI created a terminal/process')
         # All Return keys below target the file palette, never the composer.
