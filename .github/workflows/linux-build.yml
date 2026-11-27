@@ -37,6 +37,18 @@ jobs:
         run: |
           rustup toolchain install 1.98.0 --profile minimal --no-self-update
           rustup default 1.98.0
+      - name: Export changed-file rustfmt review (no source writes)
+        run: |
+          rustup component add rustfmt --toolchain 1.98.0
+          python3 scripts/export-format-review.py
+      - name: Upload rustfmt review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-review
+          path: target/format-review/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Cache test dependencies
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
         with:
