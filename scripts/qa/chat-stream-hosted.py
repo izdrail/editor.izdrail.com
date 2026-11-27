@@ -228,17 +228,29 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             running = shot('10-stop-waiting')
-            rows = all_words(running)
-            active_rows = [w for w in rows if w['text'].lower() == 'running' and 85 < int(w['top']) < 180]
-            stop_rows = [w for w in rows if w['text'].lower() == 'stop' and 85 < int(w['top']) < 180]
-            pair = next(((a, b) for a in active_rows for b in stop_rows if abs(int(a['top']) - int(b['top'])) < 24), None)
-            if pair:
+            # Tight top Runs-row and bordered-pill crops, since whole-panel
+            # light-theme OCR drops the small red Stop label. This case runs
+            # in the restored1443x900 light-theme window, panel flush right.
+            # Row and pill y-bands overlap intentionally: one active Runs row.
+            from PIL import Image
+            geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
+            values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+            right = int(values['X']) + int(values['WIDTH'])
+            image = Image.open(running)
+            row_crop = out / '10-running-row-target.png'
+            pill_crop = out / '10-stop-pill-target.png'
+            image.crop((right - 303, 116, right - 8, 151)).resize((1180, 140)).save(row_crop)
+            image.crop((right - 45, 132, right - 9, 146)).resize((288, 112)).save(pill_crop)
+            row_text = subprocess.run(['tesseract', str(row_crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.lower()
+            pill_text = subprocess.run(['tesseract', str(pill_crop), 'stdout', '--psm', '7', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.lower()
+            import re
+            if re.search(r'\brunning\b', row_text) and re.search(r'\bstop\b', pill_text):
                 break
             time.sleep(.2)
         else:
             raise RuntimeError('Running row with adjacent Stop not visible')
-        # Keep the click on the active Runs row, never the bottom status hint.
-        click_word(running, 'Stop', near_y=int(pair[1]['top']))
+        print('OCR Stop target verified row-psm=6 pill-psm=7', flush=True)
+        run('mousemove', str(right - 27), '139', 'click', '1')
         time.sleep(1)
         stopped = shot('11-stopped')
         if 'first token' in text(stopped) or 'generating...' in text(stopped):
