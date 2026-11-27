@@ -405,7 +405,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         debug_y = int((int(target['top']) + int(target['height']) / 2) / 4) + 75
         run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
         run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        run('key', 'shift+Tab', 'Tab'); time.sleep(0.5)
         shot('00-debug-configuration-focus')
+        run('key', 'Tab'); shot('00-debug-configuration-next')
+        run('key', 'shift+Tab'); shot('00-debug-configuration-return')
         creates_before_debug = terminal_events().count('event=create:tab')
         run('key', 'ctrl+Return'); shot('00-debug-configuration-modified')
         run('keydown', 'Return'); time.sleep(1.5); shot('00-debug-configuration-held')
@@ -417,6 +420,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(3)
         run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
         run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(0.5)
+        run('key', 'shift+Tab', 'Tab'); time.sleep(0.5)
         shot('00-debug-configuration-light')
         (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
         if terminal_events().count('event=create:tab') != creates_before_debug:
