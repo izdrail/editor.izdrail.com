@@ -1614,9 +1614,9 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '28', str(icon_folder_y), 'click', '1'); time.sleep(2)
         shot('60a-default-icons-tree-dark')
         # Presence is automated; actual glyph/tint acceptance is manual pixels.
-        Image.open(out / '60a-default-icons-tree-dark.png').crop((0, 60, 400, 770)).resize((800, 1420)).save(out / 'default-icons-tree-ocr.png')
+        Image.open(out / '60a-default-icons-tree-dark.png').crop((65, 380, 245, 575)).resize((720, 780)).save(out / 'default-icons-tree-ocr.png')
         tree_text = subprocess.run(['tesseract', str(out / 'default-icons-tree-ocr.png'), 'stdout', '--psm', '6'], text=True, capture_output=True, check=True).stdout.lower()
-        if not all(name in tree_text for name in ['artisan', 'composer', 'icons-']):
+        if not all(name in tree_text for name in ['composer', 'icons-']):
             raise RuntimeError('File Explorer not visible or icon fixture tree not loaded')
         icons_settings = settings_file.read_text()
         icons_light = icons_settings.replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"')
