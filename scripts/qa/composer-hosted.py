@@ -461,7 +461,6 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
                 break
         else:
             raise RuntimeError('Native reverse traversal did not reacquire debug configuration identity')
-        run('key', 'shift+Tab', 'Tab'); time.sleep(1)
         shot('00-debug-configuration-space-target')
         before_space = debug_events().count('event=activate:release')
         run('keydown', 'space'); time.sleep(1.5); shot('00-debug-configuration-space-held')
