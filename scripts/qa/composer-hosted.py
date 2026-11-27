@@ -1594,13 +1594,24 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             'composer.json': '{}\n', 'artisan': '<?php // Synthetic artisan fixture.\n',
             'icons-unknown.zzz': 'Synthetic unknown icon fixture.\n',
         }
+        icon_project = project / '000-icons'
+        icon_project.mkdir(exist_ok=True)
         for name, body in icon_files.items():
-            (project / name).write_text(body)
+            (icon_project / name).write_text(body)
         # Use existing workbench command through the command palette.
         run('key', 'ctrl+shift+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'Toggle File Explorer Focus'); time.sleep(1)
         shot('60-icons-explorer-command')
         run('key', 'Return'); time.sleep(3)
+        shot('60-icons-folder-closed')
+        Image.open(out / '60-icons-folder-closed.png').crop((0, 300, 249, 650)).resize((747, 1050)).save(out / 'default-icons-folder-ocr.png')
+        icon_tsv = subprocess.run(['tesseract', str(out / 'default-icons-folder-ocr.png'), 'stdout', '--psm', '6', 'tsv'], text=True, capture_output=True, check=True).stdout
+        icon_words = list(csv.DictReader(io.StringIO(icon_tsv), delimiter='\t'))
+        icon_folder = next((w for w in icon_words if '000-icons' in w.get('text', '').lower()), None)
+        if icon_folder is None:
+            raise RuntimeError('Dedicated default icon fixture folder not visible')
+        icon_folder_y = int((int(icon_folder['top']) + int(icon_folder['height']) / 2) / 3) + 300
+        run('mousemove', '28', str(icon_folder_y), 'click', '1'); time.sleep(2)
         shot('60a-default-icons-tree-dark')
         # Presence is automated; actual glyph/tint acceptance is manual pixels.
         Image.open(out / '60a-default-icons-tree-dark.png').crop((0, 60, 400, 770)).resize((800, 1420)).save(out / 'default-icons-tree-ocr.png')
@@ -1619,7 +1630,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('60c-default-icons-palette-dark')
         run('key', 'Escape'); time.sleep(0.5)
         for name, body in icon_files.items():
-            if (project / name).read_text() != body:
+            if (icon_project / name).read_text() != body:
                 raise RuntimeError('Default icon fixture source changed')
         (out / 'default-icons-manual-gate.txt').write_text('Presence/source checks only. Inspect tree and palette category glyphs and dark/light tint before visual acceptance. Synthetic files preserved for diagnostics.\n')
 
