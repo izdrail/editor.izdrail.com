@@ -132,7 +132,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
     app = None
     try:
         time.sleep(2)
-        app = subprocess.Popen([binary, str(fresh_project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
+        app = subprocess.Popen([binary, str(project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
         for _ in range(35):
             time.sleep(1)
             if app.poll() is not None:
@@ -278,7 +278,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         (fresh_project / 'example.php').write_text(source)
         (fresh_config / 'language-servers.toml').write_text('enabled = false\nauto-install = false\n')
         env.update({'HOME': str(fresh), 'XDG_CONFIG_HOME': str(fresh / '.config'), 'XDG_DATA_HOME': str(fresh / '.local/share')})
-        app = subprocess.Popen([binary, str(project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
+        app = subprocess.Popen([binary, str(fresh_project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
         for _ in range(35):
             time.sleep(1)
             found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', 'lapce'], env=env, text=True, capture_output=True)
