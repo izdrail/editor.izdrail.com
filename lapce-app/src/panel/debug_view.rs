@@ -769,7 +769,11 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
         stack((
             label(|| "Click the editor gutter to add a breakpoint").style(
                 move |s| {
-                    s.padding(10.0)
+                    s.width_pct(100.0)
+                        .max_width_pct(100.0)
+                        .min_width(0.0)
+                        .padding(10.0)
+                        .text_overflow(floem::style::TextOverflow::Wrap)
                         .color(config.get().color(LapceColor::EDITOR_DIM))
                         .apply_if(
                             breakpoints.with(|paths| {

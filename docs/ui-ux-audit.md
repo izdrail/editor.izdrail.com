@@ -406,3 +406,20 @@ add 2px to resting dimensions, avoiding focus-time geometry shifts. Release-only
 activation prevents a held key opening the palette before release. No unowned
 release can activate. Runtime dark/light focus and no-process gate pending.
 Real DAP/session controls remain unverified. IME/dead-key behavior not claimed.
+
+27 November UI-041 bounded runtime acceptance: e17c85d / 45927663562,
+all four hosted jobs green. Native Tab focus and reverse traversal show a
+stable configuration-label ring in dark and light themes. Modified Enter
+leaves palette closed; held Enter opens only after release. Palette is
+canceled without selecting a configuration. Disposable source bytes and
+terminal create count remain unchanged. Space and unowned-release GUI paths
+remain pending; corresponding activation-state unit tests pass. No real DAP
+session is claimed. Terminal ShiftTab-away and empty-body focus-away extension
+also passes: no shell creation, clicked editor receives typing, probe undone
+and saved source verified. Unknown-ID close remains source-audited only.
+
+UI-042 medium/P0: empty Breakpoints guidance clips at the debug sidebar edge
+in e17c85d dark/light captures. Proposed fix constrains label width to its
+panel, permits shrinking, and uses existing framework text wrapping. No
+breakpoint handlers or debugger behavior changed. Narrow/wide dark/light
+pixels and empty/populated state verification pending; UX-007 remains open.

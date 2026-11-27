@@ -473,6 +473,48 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Debug configuration traversal changed source buffer')
         if terminal_events().count('event=create:tab') != creates_before_debug:
             raise RuntimeError('Debug configuration UI created a terminal/process')
+        # UI-042: resize the actual sidebar, preserve the existing handlers.
+        # Record empty guidance in both themes, then add/remove one disposable
+        # local breakpoint via the existing editor gutter without a DAP session.
+        def breakpoint_text(name, width):
+            Image.open(out / (name + '.png')).crop((0, 615, width - 2, 770)).resize((width * 3, 465)).save(out / 'debug-breakpoints-ocr.png')
+            return subprocess.run(['tesseract', str(out / 'debug-breakpoints-ocr.png'), 'stdout', '--psm', '6'], capture_output=True, text=True, check=True).stdout.lower()
+        initial = Image.open(out / '00-debug-panel-initial.png').convert('RGB')
+        # Existing separator is a dark continuous vertical boundary at 249.
+        if sum(initial.getpixel((249, y)) == initial.getpixel((249, 300)) for y in range(200, 600)) < 390:
+            raise RuntimeError('Initial sidebar separator is not at expected 249px')
+        for width, previous in [(400, 249), (180, 400)]:
+            run('mousemove', str(previous), '300', 'mousedown', '1', 'mousemove', str(width), '300', 'mouseup', '1')
+            time.sleep(1)
+            for theme in ['dark', 'light']:
+                themed = debug_settings if theme == 'dark' else debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)
+                if theme == 'light' and themed == debug_settings:
+                    raise RuntimeError('Light theme replacement did not change settings')
+                (config / 'settings.toml').write_text(themed); time.sleep(3)
+                shot(f'00-debug-breakpoints-{width}-{theme}-empty')
+            (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        run('mousemove', '190', '94', 'click', '1'); time.sleep(1)
+        shot('00-debug-breakpoints-180-dark-populated')
+        populated = breakpoint_text('00-debug-breakpoints-180-dark-populated', 180)
+        if 'multi' not in populated or 'click the editor' in populated:
+            raise RuntimeError('Gutter add did not produce visible populated breakpoint row')
+        (config / 'settings.toml').write_text(debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)); time.sleep(3)
+        shot('00-debug-breakpoints-180-light-populated')
+        run('mousemove', '180', '300', 'mousedown', '1', 'mousemove', '400', '300', 'mouseup', '1'); time.sleep(1)
+        shot('00-debug-breakpoints-400-light-populated')
+        (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        shot('00-debug-breakpoints-400-dark-populated')
+        run('mousemove', '410', '94', 'click', '1'); time.sleep(1)
+        shot('00-debug-breakpoints-400-dark-restored')
+        restored = breakpoint_text('00-debug-breakpoints-400-dark-restored', 400)
+        if 'click the editor' not in restored or 'multi' in restored:
+            raise RuntimeError('Breakpoint restore did not remove the only visible row')
+        run('mousemove', '400', '300', 'mousedown', '1', 'mousemove', '249', '300', 'mouseup', '1')
+        run('key', 'ctrl+s'); time.sleep(1)
+        if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
+            raise RuntimeError('Breakpoints layout interaction changed source bytes')
+        if terminal_events().count('event=create:tab') != creates_before_debug:
+            raise RuntimeError('Breakpoints layout interaction created a terminal/process')
         # All Return keys below target the file palette, never the composer.
         core_file = project / 'core_pairs.php'
         core_original = '<?php\n()\n()\n'
