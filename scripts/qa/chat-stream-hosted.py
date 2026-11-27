@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""Synthetic delayed-SSE chat UI proof. PNG inspection remains mandatory."""
+import csv
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+binary = str(Path(sys.argv[1]).resolve())
+out = Path(sys.argv[2]).resolve()
+out.mkdir(parents=True, exist_ok=True)
+home = Path(tempfile.mkdtemp(prefix='gravity-chat-home-', dir='/tmp'))
+project = Path(tempfile.mkdtemp(prefix='gravity-chat-project-', dir='/tmp'))
+source = '<?php\nclass Example { public function name(): string { return "fixture"; } }\n'
+(project / 'example.php').write_text(source)
+config = home / '.config/lapce-nightly'
+config.mkdir(parents=True)
+settings = '[core]\nmodal = false\ncolor-theme = "Lapce Dark"\n[ai-chat]\nenabled = true\nbackend = "ollama"\nendpoint = "http://127.0.0.1:18762"\nmodel = "fixture-model"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n'
+(config / 'settings.toml').write_text(settings)
+(config / 'language-servers.toml').write_text('enabled = false\nauto-install = false\n')
+env = os.environ | {'LAPCE_CHAT_COPY_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':96', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
+for key in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
+    env.pop(key, None)
+
+def wait_fixture():
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(('127.0.0.1', 18762), timeout=.2):
+                return
+        except OSError:
+            time.sleep(.1)
+    raise RuntimeError('Loopback fixture did not accept connections')
+
+def run(*args):
+    subprocess.run(['xdotool', *args], env=env, check=True, timeout=10)
+
+def shot(name):
+    path = out / (name + '.png')
+    subprocess.run(['scrot', '-o', str(path)], env=env, check=True, timeout=10)
+    return path
+
+def words(path):
+    data = subprocess.run(['tesseract', str(path), 'stdout', '--psm', '11', 'tsv'], text=True, capture_output=True, check=True, timeout=15).stdout
+    return list(csv.DictReader(io.StringIO(data), delimiter='\t'))
+
+def text(path):
+    return ' '.join(w['text'] for w in words(path)).lower()
+
+def wait_text(needle, name, timeout=35):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        path = shot(name)
+        if needle.lower() in text(path):
+            return path
+        time.sleep(.4)
+    raise RuntimeError('Missing UI text: ' + needle)
+
+def click_word(path, value, near_y=None):
+    candidates = [w for w in words(path) if w['text'].lower() == value.lower()]
+    if near_y is not None:
+        candidates = [w for w in candidates if abs(int(w['top']) - near_y) < 24]
+    if not candidates:
+        raise RuntimeError('Missing click target: ' + value)
+    w = candidates[0]
+    run('mousemove', str(int(w['left']) + int(w['width']) // 2), str(int(w['top']) + int(w['height']) // 2), 'click', '1')
+
+def clipboard():
+    return subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+
+with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log, (out / 'fixture.log').open('w') as flog:
+    xvfb = subprocess.Popen(['Xvfb', ':96', '-screen', '0', '1500x1000x24'], stdout=xlog, stderr=subprocess.STDOUT)
+    fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--delay', '8', '--token-delay', '3'], stdout=flog, stderr=subprocess.STDOUT)
+    app = None
+    try:
+        time.sleep(2)
+        app = subprocess.Popen([binary, str(project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
+        for _ in range(35):
+            time.sleep(1)
+            if app.poll() is not None:
+                raise RuntimeError('Editor exited during startup')
+            found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', 'lapce'], env=env, text=True, capture_output=True)
+            if found.returncode == 0 and found.stdout.strip():
+                window = found.stdout.splitlines()[0]
+                break
+        else:
+            raise RuntimeError('No editor window')
+        run('windowsize', window, '1443', '900'); run('windowfocus', '--sync', window)
+        time.sleep(5)
+        run('key', 'F1'); time.sleep(1); run('type', '--clearmodifiers', 'toggle ai chat'); run('key', 'Return'); time.sleep(2)
+        # Existing composer focus route: panel at right, draft above mode row.
+        initial = shot('00-initial')
+        placeholders = [w for w in words(initial) if w['text'].lower() == 'anything,']
+        if not placeholders:
+            raise RuntimeError('Composer placeholder not visible, inspect initial pixels')
+        w = placeholders[0]
+        run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
+        run('type', '--clearmodifiers', 'Synthetic chat stream fixture'); run('key', 'Return')
+        waiting = wait_text('first token', '01-waiting', timeout=12)
+        first = wait_text('Synthetic streamed reply', '02-first-delta', timeout=12)
+        if 'done.' in text(first):
+            raise RuntimeError('Only final text painted, no incremental proof')
+        code = wait_text('public function', '03-partial-code', timeout=15)
+        final = wait_text('Done.', '04-complete-dark', timeout=15)
+        rows = words(final)
+        php = next((w for w in rows if w['text'].lower() == 'php'), None)
+        if php is None:
+            raise RuntimeError('PHP card header missing')
+        click_word(final, 'Copy', near_y=int(php['top']))
+        time.sleep(.4)
+        expected = "<?php\nclass Example {\n    public function name(): string { return 'café'; }\n}\n"
+        if clipboard() != expected:
+            raise RuntimeError('Per-code-block Copy changed source bytes')
+        shot('05-copy-exact')
+        # A later delta only changes prose after the completed code block.
+        wait_text('More streamed tail', '05b-tail-focus-retained', timeout=12)
+        time.sleep(4)
+        if 'generating' in text(shot('05c-done')):
+            raise RuntimeError('Loading indicator stayed visible after DONE')
+        writes_before = (out / 'editor.log').read_text().count('CHAT_COPY success=')
+        if writes_before != 1:
+            raise RuntimeError('Mouse Copy did not write exactly once')
+        # Focused Copy must consume held Enter and activate only on release.
+        # Mouse click focused the keyboard-navigable label. Tab away/back makes
+        # focus-visible explicit, and the screenshot is the manual focus gate.
+        run('key', 'Tab'); run('key', 'shift+Tab'); shot('05d-copy-keyboard-focus')
+        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_COPY_SENTINEL', text=True, env=env, check=True, timeout=5)
+        run('keydown', 'Return'); time.sleep(.3); shot('06-copy-held')
+        if clipboard() != 'CHAT_COPY_SENTINEL':
+            raise RuntimeError('Held Enter wrote clipboard before release')
+        if (out / 'editor.log').read_text().count('CHAT_COPY success=') != writes_before:
+            raise RuntimeError('Held Enter copied before release')
+        run('keyup', 'Return'); time.sleep(.4)
+        if (out / 'editor.log').read_text().count('CHAT_COPY success=') != writes_before + 1:
+            raise RuntimeError('Focus lost across tail update, or Enter copied more than once')
+        if clipboard() != expected:
+            raise RuntimeError('Keyboard Copy changed source bytes')
+        (config / 'settings.toml').write_text(settings.replace('Lapce Dark', 'Lapce Light'))
+        time.sleep(3); shot('07-complete-light')
+        run('windowsize', window, '850', '700'); time.sleep(2); shot('08-narrow-light')
+        run('windowsize', window, '1443', '900'); time.sleep(2)
+        # Stop during the next first-token wait, via the composer's keyboard path.
+        current = shot('09-before-stop')
+        replies_before_stop = text(current).count('synthetic streamed reply')
+        placeholders = [w for w in words(current) if w['text'].lower() == 'anything,']
+        if not placeholders:
+            raise RuntimeError('Composer placeholder missing before Stop test')
+        w = placeholders[0]
+        run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
+        run('type', '--clearmodifiers', 'Synthetic cancellation'); run('key', 'Return')
+        wait_text('first token', '10-stop-waiting', timeout=12)
+        # The send/Stop control is an icon. Confirm its keyboard focus ring
+        # in the preserved shot before activating the current Stop action.
+        run('key', 'shift+Tab'); shot('10b-stop-keyboard-focus'); run('key', 'Return'); time.sleep(1)
+        stopped = shot('11-stopped')
+        if 'first token' in text(stopped) or 'generating...' in text(stopped):
+            raise RuntimeError('Stop left loading active')
+        time.sleep(9)
+        stale = shot('12-stale-response-rejected')
+        if text(stale).count('synthetic streamed reply') != replies_before_stop:
+            raise RuntimeError('Stopped request added a stale streamed reply')
+        fixture.terminate(); fixture.wait(timeout=5)
+        fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--long-code', '--token-delay', '0'], stdout=flog, stderr=subprocess.STDOUT)
+        wait_fixture()
+        current = shot('13-before-long-code')
+        placeholders = [w for w in words(current) if w['text'].lower() == 'anything,']
+        if not placeholders:
+            raise RuntimeError('Composer placeholder missing before scroll test')
+        w = placeholders[0]
+        run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
+        run('type', '--clearmodifiers', 'Long synthetic code fixture'); run('key', 'Return'); time.sleep(3)
+        # Bring the current code header into view, not the composer or editor.
+        run('mousemove', '1210', '260'); run('click', '--repeat', '35', '--delay', '30', '4'); time.sleep(1)
+        scrolled = shot('14-long-code-top')
+        php_headers = [w for w in words(scrolled) if w['text'].lower() == 'php']
+        if not php_headers:
+            raise RuntimeError('Long code header not visible after transcript scroll')
+        header_y = int(php_headers[-1]['top'])
+        body_y = min(header_y + 110, 500)
+        run('mousemove', '1240', str(body_y))
+        for _ in range(30):
+            bottom = shot('15-long-code-body-end')
+            if '44:' in text(bottom):
+                break
+            run('click', '5'); time.sleep(.1)
+        else:
+            raise RuntimeError('Last code line not reachable by vertical body scrolling')
+        headers_after = [w for w in words(bottom) if w['text'].lower() == 'php']
+        if not any(abs(int(w['top']) - header_y) < 8 for w in headers_after):
+            raise RuntimeError('Code header moved while scrolling code body')
+        run('click', '--repeat', '30', '--delay', '30', '7'); time.sleep(.4)
+        sideways = shot('15b-long-line-horizontal-end')
+        if 'endh' not in text(sideways):
+            raise RuntimeError('Long-line ending is not reachable by horizontal scroll')
+        # The latest code card has twelve tail paragraphs after it, so the
+        # transcript still has scroll range. Header must be visible first.
+        if not any(w['text'].lower() == 'php' for w in words(sideways)):
+            raise RuntimeError('Code header not visible before transcript-wheel test')
+        # Extra wheel movement at the code body's end must reach transcript.
+        run('click', '--repeat', '20', '--delay', '30', '5'); time.sleep(.6)
+        outer = shot('16-code-end-wheel-transcript')
+        if any(abs(int(w['top']) - header_y) < 8 for w in words(outer) if w['text'].lower() == 'php'):
+            raise RuntimeError('Wheel at code-body end did not move transcript')
+        if (project / 'example.php').read_text() != source:
+            raise RuntimeError('Chat UI changed fixture source')
+        (out / 'result.txt').write_text('Synthetic waiting, partial prose, partial code, completion, exact per-block Copy and theme/width captures completed. Actual pixels need inspection. No real model/provider integration claim.\n')
+    finally:
+        for process in [app, fixture, xvfb]:
+            if process is not None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait(timeout=5)
+        for item in home.rglob('*.log'):
+            if item.is_file():
+                shutil.copyfile(item, out / ('profile-' + '-'.join(item.relative_to(home).parts)))

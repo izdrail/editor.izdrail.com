@@ -2306,6 +2306,185 @@ fn dropdown_row_style(
         })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ChatBodyBlock {
+    Prose(String),
+    Code { language: String, source: String },
+}
+
+/// Offsets come from the Markdown parser, including unfinished fenced blocks
+/// during streaming. Never run or rewrite code while displaying it.
+fn chat_body_blocks(body: &str, user: bool) -> Vec<ChatBodyBlock> {
+    if user { return vec![ChatBodyBlock::Prose(body.to_owned())]; }
+    use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
+    let mut blocks = Vec::new();
+    let mut start = None;
+    let mut language = String::new();
+    let mut code = String::new();
+    let mut previous = 0;
+    for (event, range) in Parser::new(body).into_offset_iter() {
+        match event {
+            Event::Start(Tag::CodeBlock(kind)) => {
+                if range.start > previous { blocks.push(ChatBodyBlock::Prose(body[previous..range.start].to_owned())); }
+                start = Some(range.start);
+                language = match kind { CodeBlockKind::Fenced(info) => info.split_whitespace().next().unwrap_or("").to_owned(), CodeBlockKind::Indented => String::new() };
+                code.clear();
+            }
+            Event::Text(text) if start.is_some() => code.push_str(&text),
+            Event::End(TagEnd::CodeBlock) if start.is_some() => {
+                blocks.push(ChatBodyBlock::Code { language: language.clone(), source: std::mem::take(&mut code) });
+                start = None;
+                previous = range.end;
+            }
+            _ => {}
+        }
+    }
+    if previous < body.len() { blocks.push(ChatBodyBlock::Prose(body[previous..].to_owned())); }
+    blocks
+}
+
+fn chat_code_layout(source: &str, language: &str, config: &LapceConfig) -> floem::text::TextLayout {
+    use floem::text::{Attrs, AttrsList, FamilyOwned, TextLayout};
+    let family = FamilyOwned::parse_list(&config.editor.font_family).collect::<Vec<_>>();
+    let attrs = Attrs::new().family(&family)
+        .font_size(config.editor.font_size() as f32)
+        .color(config.color(LapceColor::EDITOR_FOREGROUND));
+    let mut spans = AttrsList::new(attrs.clone());
+    crate::markdown::highlight_as_code(&mut spans, attrs,
+        lapce_core::language::LapceLanguage::from_name(language), source, 0, config);
+    let mut layout = TextLayout::new();
+    layout.set_text(source, spans, None);
+    layout
+}
+
+#[derive(Default)]
+struct CodeCopyActivation {
+    armed: Option<Key>,
+}
+impl CodeCopyActivation {
+    fn accepts(key: &Key, mods: floem::keyboard::Modifiers) -> bool {
+        mods.is_empty() && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
+    }
+    fn down(&mut self, key: &Key, mods: floem::keyboard::Modifiers, repeat: bool) {
+        if !repeat { self.armed = Self::accepts(key, mods).then(|| key.clone()); }
+    }
+    fn up(&mut self, key: &Key, mods: floem::keyboard::Modifiers) -> bool {
+        self.armed.take().as_ref() == Some(key) && Self::accepts(key, mods)
+    }
+}
+
+fn code_copy_stops_key(key: &Key, mods: floem::keyboard::Modifiers) -> bool {
+    CodeCopyActivation::accepts(key, mods) || (matches!(key, Key::Character(_))
+        && (mods.is_empty() || mods == floem::keyboard::Modifiers::SHIFT))
+}
+
+fn code_copy(source: &str, status: RwSignal<&'static str>, alive: Rc<std::cell::Cell<bool>>, generation: Rc<std::cell::Cell<u64>>) {
+    let next = generation.get().wrapping_add(1);
+    generation.set(next);
+    let success = floem::Clipboard::set_contents(source.to_owned()).is_ok();
+    if std::env::var("LAPCE_CHAT_COPY_TRACE").ok().as_deref() == Some("1") {
+        eprintln!("CHAT_COPY success={success}");
+    }
+    status.set(if success { "Copied" } else { "Copy failed" });
+    floem::action::exec_after(std::time::Duration::from_millis(1800), move |_| {
+        if alive.get() && generation.get() == next { status.set("Copy"); }
+    });
+}
+
+fn chat_block_key(index: usize, block: &ChatBodyBlock, theme: u64) -> (usize, u8, u64, u64) {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    let kind = match block {
+        ChatBodyBlock::Prose(text) => { text.hash(&mut hash); 0 }
+        ChatBodyBlock::Code { source, language } => { source.hash(&mut hash); language.hash(&mut hash); 1 }
+    };
+    (index, kind, hash.finish(), theme)
+}
+
+fn chat_busy_tick(tick: RwSignal<u64>, active: Rc<std::cell::Cell<bool>>, generation: Rc<std::cell::Cell<u64>>, run: u64) {
+    floem::action::exec_after(std::time::Duration::from_millis(120), move |_| {
+        if active.get() && generation.get() == run {
+            tick.update(|value| *value = value.wrapping_add(1));
+            chat_busy_tick(tick, active, generation, run);
+        }
+    });
+}
+
+fn chat_code_card(source: String, language: String, config: ReadSignal<Arc<LapceConfig>>, keyboard_focus: RwSignal<Option<floem::ViewId>>) -> impl View {
+    let copied = floem::reactive::create_rw_signal("Copy");
+    let alive = Rc::new(std::cell::Cell::new(true));
+    let copy_generation = Rc::new(std::cell::Cell::new(0u64));
+    let click_alive = alive.clone();
+    let key_alive = alive.clone();
+    let key_generation = copy_generation.clone();
+    let click_source = source.clone();
+    let key_source = source.clone();
+    let display_language = language.clone();
+    let copy_label = label(move || copied.get());
+    let copy_id = copy_label.id();
+    let activation = Rc::new(RefCell::new(CodeCopyActivation::default()));
+    let lost = activation.clone();
+    let cleanup = activation.clone();
+    let down = activation.clone();
+    v_stack((
+        h_stack((
+            label(move || if display_language.is_empty() { "Code".to_owned() } else { display_language.clone() })
+                .style(|s| s.flex_grow(1.0).min_width(0.0).text_ellipsis()),
+            copy_label.keyboard_navigable()
+                .on_event_stop(EventListener::FocusGained, move |_| keyboard_focus.set(Some(copy_id)))
+                .on_event_stop(EventListener::FocusLost, move |_| {
+                    lost.borrow_mut().armed = None;
+                    if keyboard_focus.get_untracked() == Some(copy_id) { keyboard_focus.set(None); }
+                })
+                .on_cleanup(move || {
+                    alive.set(false);
+                    cleanup.borrow_mut().armed = None;
+                    if keyboard_focus.get_untracked() == Some(copy_id) { keyboard_focus.set(None); }
+                })
+                .on_event(EventListener::KeyDown, move |event| {
+                    if let Event::KeyDown(key) = event {
+                        if keyboard_focus.get_untracked() != Some(copy_id) { return EventPropagation::Continue; }
+                        down.borrow_mut().down(&key.key.logical_key, key.modifiers, key.key.repeat);
+                        if code_copy_stops_key(&key.key.logical_key, key.modifiers) {
+                            return EventPropagation::Stop;
+                        }
+                    }
+                    EventPropagation::Continue
+                })
+                .on_event(EventListener::KeyUp, move |event| {
+                    if let Event::KeyUp(key) = event {
+                        if keyboard_focus.get_untracked() != Some(copy_id) { return EventPropagation::Continue; }
+                        if activation.borrow_mut().up(&key.key.logical_key, key.modifiers) {
+                            code_copy(&key_source, copied, key_alive.clone(), key_generation.clone());
+                            return EventPropagation::Stop;
+                        }
+                    }
+                    EventPropagation::Continue
+                })
+                .on_click_stop(move |event| {
+                    if !matches!(event, Event::KeyDown(_)) {
+                        code_copy(&click_source, copied, click_alive.clone(), copy_generation.clone());
+                    }
+                })
+                .style(move |s| s.padding_horiz(6.0).padding_vert(3.0).cursor(CursorStyle::Pointer)
+                    .border(1.0).border_color(config.get().color(LapceColor::LAPCE_BORDER))
+                    .focus_visible(|s| s.border_color(config.get().color(LapceColor::EDITOR_FOCUS)))),
+        )).style(|s| s.width_full().min_width(0.0).items_center().padding(6.0).gap(8.0)),
+        scroll(crate::markdown::linked_text(chat_code_layout(&source, &language, &config.get_untracked()), Vec::new())
+            .style(|s| s.padding(8.0).flex_shrink(0.0).text_overflow(floem::style::TextOverflow::Clip)))
+            .style(|s| s.width_full().min_width(0.0).max_height(420.0).set(PropagatePointerWheel, true)),
+    )).style(move |s| s.width_full().min_width(0.0).margin_vert(6.0)
+        .border(1.0).border_radius(4.0)
+        .border_color(config.get().color(LapceColor::LAPCE_BORDER))
+        .background(config.get().color(LapceColor::EDITOR_BACKGROUND)))
+}
+
+fn chat_activity_label(busy: bool, has_text: bool, tick: u64) -> String {
+    if !busy { return "Enter to send, Shift+Enter for newline".to_owned(); }
+    let frame = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][(tick % 10) as usize];
+    format!("{frame} {}", if has_text { "Generating... Stop to cancel" } else { "Waiting for first token... Stop to cancel" })
+}
+
 fn conversation_body(text: &str, user: bool, config: &LapceConfig) -> Vec<MarkdownContent> {
     if user {
         crate::markdown::from_plaintext(text, 1.5, config)
@@ -3077,6 +3256,20 @@ fn agent_key_entry(tab: Rc<WindowTabData>) -> impl View {
 
 pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let data = tab.chat.clone();
+    let code_keyboard_focus = tab.common.keyboard_focus;
+    let activity_tick = floem::reactive::create_rw_signal(0u64);
+    let activity_active = Rc::new(std::cell::Cell::new(false));
+    let activity_generation = Rc::new(std::cell::Cell::new(0u64));
+    let tick_active = activity_active.clone();
+    let tick_generation = activity_generation.clone();
+    let activity_busy = data.busy;
+    create_effect(move |_| {
+        let run = tick_generation.get().wrapping_add(1);
+        tick_generation.set(run);
+        let busy = activity_busy.get();
+        tick_active.set(busy);
+        if busy { chat_busy_tick(activity_tick, tick_active.clone(), tick_generation.clone(), run); }
+    });
     let focus = tab.common.focus;
     // Drives the composer card's focus ring; fed by the composer
     // editor's floem focus events below.
@@ -3090,7 +3283,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     let tools_error = data.review.error;
     let tools_mode = data.mode;
     let tools_acp = data.acp;
-    let tools_busy = data.busy;
 
     let click_tab = tab.clone();
     let context_chip_tab = tab.clone();
@@ -4794,7 +4986,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                         let role = turn.role;
                         let has_context = !turn.context.is_empty();
                         let steps = turn.steps;
-                        let render_id = std::sync::atomic::AtomicU64::new(0);
                         let copy_status = floem::reactive::create_rw_signal("Copy");
                         create_effect(move |_| {
                             let _ = body.get();
@@ -5019,26 +5210,19 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             },
                             dyn_stack(
                                 move || {
-                                    conversation_body(&body.get(), role == "You", &config.get())
-                                        .into_iter()
-                                        .enumerate()
+                                    let theme = config.get().id;
+                                    chat_body_blocks(&body.get(), role == "You").into_iter().enumerate()
+                                        .map(|(index, block)| (chat_block_key(index, &block, theme), block)).collect::<Vec<_>>()
                                 },
-                                move |_| {
-                                    render_id.fetch_add(
-                                        1,
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    )
-                                },
-                                move |(_, content)| match content {
-                                    MarkdownContent::Text { layout, links } => {
-                                        crate::markdown::linked_text(layout, links)
-                                            .style(|s| s.width_full().min_width(0.0).max_width_full()
-                                                // Leave space for the transcript's vertical scrollbar.
-                                                .padding_right(12.0)
-                                                .text_overflow(floem::style::TextOverflow::Wrap))
-                                            .into_any()
-                                    }
-                                    _ => empty().into_any(),
+                                |(key, _)| *key,
+                                move |(_, block)| match block {
+                                    ChatBodyBlock::Code { language, source } => chat_code_card(source, language, config, code_keyboard_focus).into_any(),
+                                    ChatBodyBlock::Prose(source) => v_stack(conversation_body(&source, role == "You", &config.get_untracked()).into_iter().map(|content| match content {
+                                        MarkdownContent::Text { layout, links } => crate::markdown::linked_text(layout, links)
+                                            .style(|s| s.width_full().min_width(0.0).max_width_full().padding_right(12.0)
+                                                .text_overflow(floem::style::TextOverflow::Wrap)).into_any(),
+                                        _ => empty().into_any(),
+                                    }).collect::<Vec<_>>()).style(|s| s.flex_col().width_full().min_width(0.0)).into_any(),
                                 },
                             )
                             .style(|s| s.flex_col().width_full().min_width(0.0).max_width_full()),
@@ -5162,18 +5346,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
             }
         }),
         label(move || {
-            if data.busy.get() {
-                let current_config = config.get();
-                let backend = &current_config.ai_chat.backend;
-                if data.acp.get() {
-                    "Agent is working... Use Stop to cancel.".to_string()
-                } else if backend == "local" {
-                    "Generating locally... Reply arrives as a full turn. Use Stop to cancel.".to_string()
-                } else {
-                    "Waiting for the endpoint... Use Stop to cancel.".to_string()
-                }
+            let has_text = data.turns.with(|turns| turns.last().is_some_and(|turn| turn.role == "Assistant" && !turn.text.get().is_empty()));
+            if data.busy.get() && data.acp.get() {
+                "Agent is working... Use Stop to cancel.".to_owned()
+            } else if data.busy.get() && config.get().ai_chat.backend == "local" {
+                "Generating locally... Reply arrives as a full turn. Use Stop to cancel.".to_owned()
             } else {
-                "Enter to send, Shift+Enter for newline".to_string()
+                chat_activity_label(data.busy.get(), has_text, activity_tick.get())
             }
         })
         .style(move |s| {
@@ -5182,7 +5361,6 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                 .max_width_full().min_width(0.0).flex_shrink(0.0)
                 .text_overflow(floem::style::TextOverflow::Wrap)
                 .color(config.get().color(LapceColor::EDITOR_DIM))
-                .apply_if(!tools_busy.get(), |s| s.hide())
         }),
         v_stack((
             label(move || crate::agent_scope_ui::scope_hint(
@@ -5670,6 +5848,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
     )).style(|s| s.width_full().min_width(0.0).flex_shrink(0.0)
         .padding_horiz(8.0).padding_bottom(4.0).gap(4.0)),
     ))
+    .on_cleanup(move || {
+        activity_active.set(false);
+        activity_generation.set(activity_generation.get().wrapping_add(1));
+    })
     .style(move |s| {
         // Absolute and sized to the panel, like the other panels, so the
         // chat can neither overflow its slot nor sit under a sibling.
@@ -7039,5 +7221,67 @@ mod quiet_conversation_tests {
         assert!(project_approval_visible("ollama", false, None, true));
         assert!(!project_approval_visible("local", false, Some(Mode::Ask), true));
         assert!(!project_approval_visible("ollama", true, Some(Mode::Ask), false));
+    }
+}
+
+#[cfg(test)]
+mod chat_code_block_tests {
+    use super::*;
+    #[test]
+    fn code_blocks_preserve_exact_copy_text_and_literal_user_prompts() {
+        let body = "Before\n\n```php\n<?php echo 'café';\n```\n\nAfter";
+        let blocks = chat_body_blocks(body, false);
+        assert!(blocks.iter().any(|block| matches!(block, ChatBodyBlock::Code { language, source } if language == "php" && source == "<?php echo 'café';\n")));
+        assert_eq!(chat_body_blocks(body, true), vec![ChatBodyBlock::Prose(body.into())]);
+        assert!(chat_body_blocks("```rust\nfn main() {}", false).iter().any(|b| matches!(b, ChatBodyBlock::Code { .. })));
+    }
+    #[test]
+    fn activity_distinguishes_first_token_from_generation_and_stops() {
+        assert!(chat_activity_label(true, false, 0).contains("first token"));
+        assert!(chat_activity_label(true, true, 1).contains("Generating"));
+        assert_ne!(chat_activity_label(true, true, 0), chat_activity_label(true, true, 1));
+        assert!(chat_activity_label(false, true, 1).contains("Enter to send"));
+    }
+    #[test]
+    fn code_copy_preserves_modified_shortcuts_and_stable_block_keys() {
+        use floem::keyboard::Modifiers;
+        let letter = Key::Character("c".into());
+        assert!(code_copy_stops_key(&letter, Modifiers::empty()));
+        assert!(code_copy_stops_key(&letter, Modifiers::SHIFT));
+        assert!(!code_copy_stops_key(&letter, Modifiers::CONTROL));
+        assert!(!code_copy_stops_key(&letter, Modifiers::ALT));
+        assert!(!code_copy_stops_key(&Key::Named(NamedKey::Enter), Modifiers::SHIFT));
+        let before = chat_body_blocks("```php\necho 1;\n```\n\nTail", false);
+        let after = chat_body_blocks("```php\necho 1;\n```\n\nTail grows", false);
+        assert_eq!(chat_block_key(0, &before[0], 1), chat_block_key(0, &after[0], 1));
+        assert_ne!(chat_block_key(1, &before[1], 1), chat_block_key(1, &after[1], 1));
+        assert_ne!(chat_block_key(0, &before[0], 1), chat_block_key(0, &before[0], 2));
+    }
+    #[test]
+    fn code_blocks_inside_lists_and_indented_after_lists() {
+        let list = "1. Example\n\n   ```php\n   echo 1;\n   ```\n\n2. Next\n";
+        assert!(chat_body_blocks(list, false).iter().any(|block| matches!(block,
+            ChatBodyBlock::Code { source, language } if source == "echo 1;\n" && language == "php")));
+        let indented = "- Item\n\nParagraph ends the list.\n\n    echo 2;\n";
+        assert!(chat_body_blocks(indented, false).iter().any(|block| matches!(block,
+            ChatBodyBlock::Code { source, language } if source == "echo 2;\n" && language.is_empty())));
+    }
+    #[test]
+    fn code_copy_requires_matching_unmodified_release() {
+        use floem::keyboard::Modifiers;
+        let mut activation = CodeCopyActivation::default();
+        let enter = Key::Named(NamedKey::Enter);
+        let space = Key::Named(NamedKey::Space);
+        assert!(!activation.up(&enter, Modifiers::empty()));
+        activation.down(&enter, Modifiers::empty(), false);
+        assert!(!activation.up(&space, Modifiers::empty()));
+        activation.down(&enter, Modifiers::empty(), false);
+        assert!(activation.up(&enter, Modifiers::empty()));
+        assert!(!activation.up(&enter, Modifiers::empty()));
+        activation.down(&enter, Modifiers::SHIFT, false);
+        assert!(!activation.up(&enter, Modifiers::SHIFT));
+        activation.down(&space, Modifiers::empty(), false);
+        activation.armed = None;
+        assert!(!activation.up(&space, Modifiers::empty()));
     }
 }

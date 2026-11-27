@@ -22,8 +22,12 @@ must show OK. Restart server with `--status 401` to test unauthorized feedback;
 is involved. Server logs no headers, bodies or keys. Do not run masked-key mode
 for this test because an unsaved key deliberately blocks testing.
 
-This server supports the non-streaming connection probe and model discovery,
-not chat SSE/tool calls. It is not yet a fixture for an actual Agent conversation.
+The default server supports the non-streaming connection probe and model discovery.
+With `--chat-stream --delay 3 --token-delay 2`, requests with `stream: true`
+receive five flushed SSE deltas, including a PHP fenced block, then DONE.
+Use the Ollama chat backend and loopback endpoint to verify first-token loading,
+incremental paint, code theme, per-block Copy and Stop. This is synthetic
+transport/UI coverage, not a real-model or tool-call integration test.
 
 ## PHP project entry
 
@@ -75,3 +79,14 @@ real code. --inline is off by default and does not alter editor product behavior
 The server still never logs request bodies or keys. With --status 401 it returns
 that error even for /api/generate. This is transport response fixture coverage,
 not proof that auto-trigger, hint matching or paint passes on the host.
+
+## Chat rendering boundaries
+
+Code cards preserve the parser's code text, including fenced blocks nested in
+list items and indented code. Prose is rendered in slices around cards. That
+means list numbering and reference-link definitions spanning a code card are
+not yet preserved across slices. Do not claim full Markdown layout parity.
+Code bodies scroll with the header outside the scroll; wheel propagation to the transcript at body limits requires GUI verification.
+Long lines are configured for horizontal scrolling and require GUI verification.
+Stable completed blocks retain their view when a later streaming tail changes;
+theme changes deliberately rebuild blocks to recolor them.

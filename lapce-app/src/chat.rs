@@ -1311,6 +1311,55 @@ mod cancellation_tests {
     }
 
     #[test]
+    fn ollama_emits_each_sse_delta_before_server_can_finish() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut request = Vec::new();
+            let header_end = loop {
+                let mut byte = [0; 1];
+                socket.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                assert!(request.len() <= 65536);
+                if request.ends_with(b"\r\n\r\n") { break request.len(); }
+            };
+            let headers = std::str::from_utf8(&request).unwrap();
+            let length = headers.lines().find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().unwrap())
+            }).unwrap();
+            assert!(length <= 65536);
+            request.resize(header_end + length, 0);
+            socket.read_exact(&mut request[header_end..]).unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&request[header_end..]).unwrap();
+            assert_eq!(body["stream"], true);
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").unwrap();
+            for part in ["first", " café"] {
+                let payload = serde_json::json!({"choices":[{"delta":{"content":part}}]});
+                write!(socket, "data: {payload}\n\n").unwrap();
+                socket.flush().unwrap();
+                // No next chunk or DONE exists until the UI-facing callback
+                // sees this delta. A final-only implementation times out.
+                assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), part);
+            }
+            socket.write_all(b"data: [DONE]\n\n").unwrap();
+        });
+        let mut updates = Vec::new();
+        ollama(&endpoint, "fixture-model", &[], Arc::new(AtomicBool::new(false)), |update| {
+            if let Update::Delta(text) = &update { tx.send(text.clone()).unwrap(); }
+            updates.push(update);
+        }).unwrap();
+        server.join().unwrap();
+        assert_eq!(updates.len(), 3);
+        assert!(matches!(&updates[0], Update::Delta(text) if text == "first"));
+        assert!(matches!(&updates[1], Update::Delta(text) if text == " café"));
+        assert!(matches!(&updates[2], Update::Done(_)));
+    }
+
+    #[test]
     fn slash_commands_parse() {
         assert!(parse_slash("plain message").is_none());
         let plan = parse_slash("/plan add a health route").unwrap().unwrap();
