@@ -445,8 +445,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('keyup', 'Return'); shot('00-debug-configuration-post-escape-release')
         if debug_events().count('event=activate:release') != before_enter + 1:
             raise RuntimeError('Post-Escape Return release activated configuration')
-        # Escape can restore editor focus. Reacquire by native reverse traversal,
-        # matching the proven ring pixels rather than typing into the editor.
+        # Escape restores editor routing but may leave Floem's old view ID.
+        # Move actual pointer focus away first, then seed the same control.
+        # No editor key is sent until native focus ownership is observed.
+        run('mousemove', '600', '220', 'click', '1'); time.sleep(0.5)
+        escape_start = len(debug_events())
+        run('mousemove', str(debug_x), str(debug_y), 'mousedown', '1')
+        run('mousemove', '700', '220', 'mouseup', '1'); time.sleep(1)
         for attempt in range(12):
             if target_identity in debug_events()[escape_start:]:
                 break
@@ -456,6 +461,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
                 break
         else:
             raise RuntimeError('Native reverse traversal did not reacquire debug configuration identity')
+        run('key', 'shift+Tab', 'Tab'); time.sleep(1)
         shot('00-debug-configuration-space-target')
         before_space = debug_events().count('event=activate:release')
         run('keydown', 'space'); time.sleep(1.5); shot('00-debug-configuration-space-held')
