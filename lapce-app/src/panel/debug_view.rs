@@ -51,6 +51,7 @@ pub fn debug_panel(
         .keyboard_navigable()
         .on_event_stop(EventListener::FocusGained, move |_| {
             keyboard_focus.set(Some(configure_id));
+            debug_configuration_trace(&format!("focus:{configure_id:?}"));
         })
         .on_event_stop(EventListener::FocusLost, move |_| {
             lost_activation.borrow_mut().armed = None;
@@ -89,6 +90,7 @@ pub fn debug_panel(
         .on_event(EventListener::KeyUp, move |event| {
             if let Event::KeyUp(key) = event {
                 if activation.borrow_mut().up(&key.key.logical_key, key.modifiers) {
+                    debug_configuration_trace("activate:release");
                     workbench_command.send(LapceWorkbenchCommand::PaletteRunAndDebug);
                     return EventPropagation::Stop;
                 }
@@ -921,6 +923,13 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
         .style(|s| s.size_full()),
     )
     .style(|s| s.size_pct(100.0, 100.0))
+}
+
+/// Opt-in control-only diagnostics, never configuration names or user data.
+fn debug_configuration_trace(event: &str) {
+    if std::env::var("LAPCE_DEBUG_UI_TRACE").ok().as_deref() == Some("1") {
+        eprintln!("DEBUG_UI event={event}");
+    }
 }
 
 fn debug_configuration_activation(

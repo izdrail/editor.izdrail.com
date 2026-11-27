@@ -39,7 +39,7 @@ pty_audit.mkdir(exist_ok=True)
 pty_fixture = Path(__file__).with_name('terminal-pty-fixture.py').resolve()
 with (config / 'settings.toml').open('a') as settings:
     settings.write('\n[terminal.default-profile]\nlinux = "qa-pty"\n[terminal.profiles.qa-pty]\ncommand = "python3"\narguments = ' + json.dumps([str(pty_fixture), str(pty_audit)]) + '\n')
-env = os.environ | {'LAPCE_TERMINAL_UI_TRACE': '1', 'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
+env = os.environ | {'LAPCE_DEBUG_UI_TRACE': '1', 'LAPCE_TERMINAL_UI_TRACE': '1', 'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(name, None)
 
@@ -420,10 +420,54 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'Tab'); shot('00-debug-configuration-light-next')
         run('key', 'shift+Tab'); shot('00-debug-configuration-light-return')
         (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        def debug_events():
+            # Rust eprintln! writes through stderr directly; flushing the
+            # Python handle is not required for child visibility.
+            return [line.split('DEBUG_UI ', 1)[1].strip() for line in (out / 'editor.log').read_text().splitlines() if 'DEBUG_UI ' in line]
+        identities = [e for e in debug_events() if e.startswith('event=focus:')]
+        if not identities:
+            raise RuntimeError('Missing debug configuration focus identity')
+        target_identity = identities[-1]
+        before_enter = debug_events().count('event=activate:release')
+        # A release without a matching press must not open anything.
+        run('keyup', 'Return'); shot('00-debug-configuration-unowned-release')
+        if debug_events().count('event=activate:release') != before_enter:
+            raise RuntimeError('Unowned Return release activated configuration')
         run('key', 'ctrl+Return'); shot('00-debug-configuration-modified')
         run('keydown', 'Return'); time.sleep(1.5); shot('00-debug-configuration-held')
+        if debug_events().count('event=activate:release') != before_enter:
+            raise RuntimeError('Held or modified Return activated configuration')
         run('keyup', 'Return'); time.sleep(2); shot('00-debug-configuration-palette')
+        if debug_events().count('event=activate:release') != before_enter + 1:
+            raise RuntimeError('Return release did not activate exactly once')
+        escape_start = len(debug_events())
         run('key', 'Escape'); time.sleep(1)
+        run('keyup', 'Return'); shot('00-debug-configuration-post-escape-release')
+        if debug_events().count('event=activate:release') != before_enter + 1:
+            raise RuntimeError('Post-Escape Return release activated configuration')
+        # Escape can restore editor focus. Reacquire by native reverse traversal,
+        # matching the proven ring pixels rather than typing into the editor.
+        for attempt in range(12):
+            if target_identity in debug_events()[escape_start:]:
+                break
+            start_focus = len(debug_events())
+            run('key', 'shift+Tab'); time.sleep(1)
+            if target_identity in debug_events()[start_focus:]:
+                break
+        else:
+            raise RuntimeError('Native reverse traversal did not reacquire debug configuration identity')
+        shot('00-debug-configuration-space-target')
+        before_space = debug_events().count('event=activate:release')
+        run('keydown', 'space'); time.sleep(1.5); shot('00-debug-configuration-space-held')
+        if debug_events().count('event=activate:release') != before_space:
+            raise RuntimeError('Held Space activated before release')
+        run('keyup', 'space'); shot('00-debug-configuration-space-palette')
+        if debug_events().count('event=activate:release') != before_space + 1:
+            raise RuntimeError('Space release did not activate exactly once')
+        run('key', 'Escape'); time.sleep(1)
+        run('keyup', 'space'); shot('00-debug-configuration-space-unowned-release')
+        if debug_events().count('event=activate:release') != before_space + 1:
+            raise RuntimeError('Unowned Space release activated configuration')
         run('key', 'ctrl+s'); time.sleep(1)
         if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
             raise RuntimeError('Debug configuration traversal changed source buffer')
