@@ -21,7 +21,7 @@ use lapce_rpc::{
 
 use super::{data::PanelSection, position::PanelPosition, view::PanelBuilder};
 use crate::{
-    app::clickable_icon,
+    app::{clickable_icon, clickable_icon_base, tooltip_label},
     command::{InternalCommand, LapceWorkbenchCommand},
     config::{LapceConfig, color::LapceColor, icon::LapceIcons},
     debug::{RunDebugMode, StackTraceData},
@@ -764,6 +764,7 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
     let config = window_tab_data.common.config;
     let workspace = window_tab_data.common.workspace.clone();
     let available_width = create_rw_signal(0.0);
+    let keyboard_focus = window_tab_data.common.keyboard_focus;
     let internal_command = window_tab_data.common.internal_command;
     container(
         stack((
@@ -794,9 +795,7 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                             },
                         )
                     },
-                    move |(path, breakpoint)| {
-                        (path.clone(), breakpoint.line, breakpoint.active)
-                    },
+                    move |(path, breakpoint)| (path.clone(), breakpoint.line),
                     move |(path, breakpoint)| {
                         let remove_debug = debug.clone();
                         let toggle_debug = debug.clone();
@@ -804,6 +803,7 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                         let toggle_common = common.clone();
                         let line = breakpoint.line;
                         let full_path = path.clone();
+                        let checked_path = path.clone();
                         let full_path_for_jump = path.clone();
                         let full_path_for_close = path.clone();
                         let path =
@@ -821,87 +821,34 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                             path.parent().and_then(|s| s.to_str()).unwrap_or("");
                         let folder_empty = folder.is_empty();
 
-                        stack((
-                            clickable_icon(
-                                move || LapceIcons::CLOSE,
-                                move || {
-                                    breakpoints.update(|breakpoints| {
-                                        if let Some(breakpoints) =
-                                            breakpoints.get_mut(&full_path_for_close)
-                                        {
-                                            breakpoints.remove(&line);
-                                        }
-                                    });
-                                    remove_debug.sync_breakpoints(
-                                        &full_path_for_close,
-                                        &remove_common,
-                                    );
-                                },
-                                || false,
-                                || false,
-                                || "Remove",
-                                config,
-                            )
-                            .on_event_stop(EventListener::PointerDown, |_| {}),
-                            checkbox(move || breakpoint.active, config)
-                                .style(|s| {
-                                    s.margin_right(6.0).cursor(CursorStyle::Pointer)
-                                })
-                                .on_click_stop(move |_| {
-                                    breakpoints.update(|breakpoints| {
-                                        if let Some(breakpoints) =
-                                            breakpoints.get_mut(&full_path)
-                                        {
-                                            if let Some(breakpoint) =
-                                                breakpoints.get_mut(&line)
-                                            {
-                                                breakpoint.active =
-                                                    !breakpoint.active;
-                                            }
-                                        }
-                                    });
-                                    toggle_debug.sync_breakpoints(
-                                        &full_path,
-                                        &toggle_common,
-                                    );
-                                }),
-                            text(format!("{file_name}:{}", breakpoint.line + 1))
-                                .style(move |s| {
-                                    let size = config.get().ui.icon_size() as f32;
-                                    s.text_ellipsis().max_width(
-                                        available_width.get() as f32
-                                            - 20.0
-                                            - size
-                                            - 6.0
-                                            - size
-                                            - 8.0,
-                                    )
-                                }),
-                            text(folder).style(move |s| {
-                                s.text_ellipsis()
-                                    .flex_grow(1.0f32)
-                                    .flex_basis(0.0)
-                                    .color(
-                                        config.get().color(LapceColor::EDITOR_DIM),
-                                    )
-                                    .min_width(0.0)
-                                    .margin_left(6.0)
-                                    .apply_if(folder_empty, |s| s.hide())
-                            }),
-                        ))
-                        .style(move |s| {
-                            s.items_center()
-                                .padding_horiz(10.0)
-                                .width_pct(100.0)
-                                .hover(|s| {
-                                    s.background(
-                                        config.get().color(
-                                            LapceColor::PANEL_HOVERED_BACKGROUND,
-                                        ),
-                                    )
-                                })
-                        })
-                        .on_click_stop(move |_| {
+                        let remove = move || {
+                            breakpoints.update(|paths| {
+                                if let Some(lines) =
+                                    paths.get_mut(&full_path_for_close)
+                                {
+                                    lines.remove(&line);
+                                }
+                            });
+                            remove_debug.sync_breakpoints(
+                                &full_path_for_close,
+                                &remove_common,
+                            );
+                            debug_configuration_trace("breakpoint:remove:sync");
+                        };
+                        let toggle = move || {
+                            breakpoints.update(|paths| {
+                                if let Some(lines) = paths.get_mut(&full_path) {
+                                    if let Some(point) = lines.get_mut(&line) {
+                                        point.active = !point.active;
+                                    }
+                                }
+                            });
+                            toggle_debug
+                                .sync_breakpoints(&full_path, &toggle_common);
+                            debug_configuration_trace("breakpoint:toggle:sync");
+                        };
+                        let jump = move || {
+                            debug_configuration_trace("breakpoint:jump:action");
                             internal_command.send(InternalCommand::JumpToLocation {
                                 location: EditorLocation {
                                     path: full_path_for_jump.clone(),
@@ -911,7 +858,95 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                                     same_editor_tab: false,
                                 },
                             });
-                        })
+                        };
+                        keyboard_breakpoint_action(
+                            stack((
+                                tooltip_label(
+                                    config,
+                                    keyboard_breakpoint_action(
+                                        clickable_icon_base(
+                                            || LapceIcons::CLOSE,
+                                            None::<fn()>,
+                                            || false,
+                                            || false,
+                                            config,
+                                        ),
+                                        keyboard_focus,
+                                        config,
+                                        "remove",
+                                        remove,
+                                    ),
+                                    || "Remove",
+                                ),
+                                keyboard_breakpoint_action(
+                                    checkbox(
+                                        move || {
+                                            breakpoints.with(|paths| {
+                                                paths
+                                                    .get(&checked_path)
+                                                    .and_then(|lines| {
+                                                        lines.get(&line)
+                                                    })
+                                                    .is_some_and(|point| {
+                                                        point.active
+                                                    })
+                                            })
+                                        },
+                                        config,
+                                    )
+                                    .style(
+                                        |s| {
+                                            s.margin_right(6.0)
+                                                .cursor(CursorStyle::Pointer)
+                                        },
+                                    ),
+                                    keyboard_focus,
+                                    config,
+                                    "toggle",
+                                    toggle,
+                                ),
+                                text(format!("{file_name}:{}", breakpoint.line + 1))
+                                    .style(move |s| {
+                                        let size =
+                                            config.get().ui.icon_size() as f32;
+                                        s.text_ellipsis().max_width(
+                                            available_width.get() as f32
+                                                - 20.0
+                                                - size
+                                                - 6.0
+                                                - size
+                                                - 8.0,
+                                        )
+                                    }),
+                                text(folder).style(move |s| {
+                                    s.text_ellipsis()
+                                        .flex_grow(1.0f32)
+                                        .flex_basis(0.0)
+                                        .color(
+                                            config
+                                                .get()
+                                                .color(LapceColor::EDITOR_DIM),
+                                        )
+                                        .min_width(0.0)
+                                        .margin_left(6.0)
+                                        .apply_if(folder_empty, |s| s.hide())
+                                }),
+                            ))
+                            .style(move |s| {
+                                s.items_center()
+                                    .padding_horiz(10.0)
+                                    .width_pct(100.0)
+                                    .hover(|s| {
+                                        s.background(config.get().color(
+                                            LapceColor::PANEL_HOVERED_BACKGROUND,
+                                        ))
+                                    })
+                            }),
+                            keyboard_focus,
+                            config,
+                            "jump",
+                            jump,
+                        )
                     },
                 )
                 .style(|s| s.flex_col().line_height(1.6).width_pct(100.0)),
@@ -927,6 +962,107 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
         .style(|s| s.size_full()),
     )
     .style(|s| s.size_pct(100.0, 100.0))
+}
+
+/// Local ownership keeps native breakpoint controls out of editor key handling.
+/// Child controls stop activation before it can reach the navigation row.
+fn keyboard_breakpoint_action(
+    view: impl View + 'static,
+    keyboard_focus: RwSignal<Option<floem::ViewId>>,
+    config: ReadSignal<Arc<LapceConfig>>,
+    role: &'static str,
+    action: impl Fn() + 'static,
+) -> impl View {
+    let id = view.id();
+    let activation = Rc::new(RefCell::new(DebugConfigurationActivation::default()));
+    let lost = activation.clone();
+    let cleanup = activation.clone();
+    let down = activation.clone();
+    let action = Rc::new(action);
+    let pointer_action = action.clone();
+    view.keyboard_navigable()
+        .on_event_stop(EventListener::PointerDown, |_| {})
+        .on_event_stop(EventListener::FocusGained, move |_| {
+            keyboard_focus.set(Some(id));
+            debug_configuration_trace(&format!("breakpoint:{role}:focus:{id:?}"));
+        })
+        .on_event_stop(EventListener::FocusLost, move |_| {
+            lost.borrow_mut().armed = None;
+            if keyboard_focus.get_untracked() == Some(id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_cleanup(move || {
+            cleanup.borrow_mut().armed = None;
+            if keyboard_focus.get_untracked() == Some(id) {
+                keyboard_focus.set(None);
+            }
+        })
+        .on_event(EventListener::KeyDown, move |event| {
+            if let Event::KeyDown(key) = event {
+                if keyboard_focus.get_untracked() != Some(id) {
+                    return EventPropagation::Continue;
+                }
+                down.borrow_mut().down(
+                    &key.key.logical_key,
+                    key.modifiers,
+                    key.key.repeat,
+                );
+                if matches!(
+                    key.key.logical_key,
+                    floem::keyboard::Key::Named(
+                        floem::keyboard::NamedKey::Enter
+                            | floem::keyboard::NamedKey::Space
+                    )
+                ) || (matches!(
+                    key.key.logical_key,
+                    floem::keyboard::Key::Character(_)
+                ) && (key.modifiers.is_empty()
+                    || key.modifiers == floem::keyboard::Modifiers::SHIFT))
+                {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
+        .on_event(EventListener::KeyUp, move |event| {
+            if let Event::KeyUp(key) = event {
+                if keyboard_focus.get_untracked() != Some(id) {
+                    return EventPropagation::Continue;
+                }
+                let activate = activation
+                    .borrow_mut()
+                    .up(&key.key.logical_key, key.modifiers);
+                if activate {
+                    debug_configuration_trace(&format!(
+                        "breakpoint:{role}:activate:release"
+                    ));
+                    action();
+                }
+                if matches!(
+                    key.key.logical_key,
+                    floem::keyboard::Key::Named(
+                        floem::keyboard::NamedKey::Enter
+                            | floem::keyboard::NamedKey::Space
+                    )
+                ) {
+                    return EventPropagation::Stop;
+                }
+            }
+            EventPropagation::Continue
+        })
+        .on_click_stop(move |event| {
+            if !matches!(event, Event::KeyDown(_)) {
+                pointer_action();
+            }
+        })
+        .style(move |s| {
+            s.focus_visible(|s| {
+                s.background(
+                    config.get().color(LapceColor::PANEL_CURRENT_BACKGROUND),
+                )
+            })
+        })
 }
 
 /// Opt-in control-only diagnostics, never configuration names or user data.

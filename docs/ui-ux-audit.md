@@ -439,3 +439,11 @@ executed and empty breakpoint state stays unchanged. No real-provider behavior
 is claimed. be97ae4 first attempt exited with SIGSEGV at startup, not reproduced
 in its retry or this completed green run. Breakpoint row/checkbox/remove-button
 keyboard inventory, broad DAP workflow and Phase1 remain open.
+
+UI-044 medium (source reviewed, runtime pending): Breakpoints row and checkbox
+were pointer-only, Remove lacked local keyboard ownership. Local matched-release
+controls preserve action handlers and stable row identity across active toggles.
+Known limitation: keyboard Remove clears removed control ownership, but does not
+choose next row or panel focus. No focus-restoration fix claimed; remains part of
+UX-007/Phase1. Runtime compile, native traversal, no-source-mutation, one sync per
+action, dark/light focus visibility and non-bubbling pointer gates pending.

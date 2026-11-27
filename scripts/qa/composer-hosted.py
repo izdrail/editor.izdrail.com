@@ -514,6 +514,120 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('00-debug-breakpoints-400-light-populated')
         (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
         shot('00-debug-breakpoints-400-dark-populated')
+        # UI-044: focus a populated navigation row without firing the jump.
+        # Probe only synthetic saved bytes, never a DAP configuration.
+        def breakpoint_focus(role):
+            matches = [e for e in debug_events() if e.startswith('event=breakpoint:' + role + ':focus:')]
+            return matches[-1] if matches else None
+        def breakpoint_activations(role):
+            return debug_events().count('event=breakpoint:' + role + ':activate:release')
+        run('mousemove', '180', '666', 'mousedown', '1', 'mousemove', '700', '220', 'mouseup', '1')
+        time.sleep(0.5)
+        if not breakpoint_focus('jump'):
+            raise RuntimeError('Breakpoint row focus seed failed')
+        shot('00-debug-breakpoint-row-focus')
+        # Follow native traversal, requiring a fresh focus trace per step.
+        def breakpoint_tab_to(role):
+            for _ in range(6):
+                before = len(debug_events())
+                run('key', 'Tab'); time.sleep(0.3)
+                if any(e.startswith('event=breakpoint:' + role + ':focus:') for e in debug_events()[before:]):
+                    return breakpoint_focus(role)
+            raise RuntimeError('Native Tab did not reach breakpoint ' + role)
+        remove_id = breakpoint_tab_to('remove')
+        shot('00-debug-breakpoint-remove-focus')
+        toggle_id = breakpoint_tab_to('toggle')
+        shot('00-debug-breakpoint-toggle-focus')
+        # A theme update must not recreate the focused control.
+        (config / 'settings.toml').write_text(debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)); time.sleep(3)
+        shot('00-debug-breakpoint-toggle-light')
+        run('key', 'shift+Tab'); time.sleep(0.3)
+        if breakpoint_focus('remove') != remove_id:
+            raise RuntimeError('Reverse traversal lost breakpoint remove identity')
+        run('key', 'Tab'); time.sleep(0.3)
+        if breakpoint_focus('toggle') != toggle_id:
+            raise RuntimeError('Breakpoint toggle focus identity changed')
+        (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
+        toggle_sync_before = debug_events().count('event=breakpoint:toggle:sync')
+        remove_sync_baseline = debug_events().count('event=breakpoint:remove:sync')
+        toggle_before = breakpoint_activations('toggle')
+        jump_before = breakpoint_activations('jump')
+        run('keyup', 'Return'); run('key', 'ctrl+Return'); time.sleep(0.3)
+        if breakpoint_activations('toggle') != toggle_before:
+            raise RuntimeError('Unowned or modified breakpoint key activated')
+        run('keydown', 'space'); time.sleep(0.5)
+        shot('00-debug-breakpoint-toggle-held')
+        if breakpoint_activations('toggle') != toggle_before:
+            raise RuntimeError('Held Space toggled breakpoint before release')
+        run('keyup', 'space'); time.sleep(0.5)
+        shot('00-debug-breakpoint-disabled')
+        run('keyup', 'space'); time.sleep(0.3)
+        if breakpoint_activations('toggle') != toggle_before + 1 or breakpoint_activations('jump') != jump_before:
+            raise RuntimeError('Toggle release did not activate exactly once without jump')
+        run('keydown', 'Return'); time.sleep(0.5)
+        if breakpoint_activations('toggle') != toggle_before + 1:
+            raise RuntimeError('Held Enter toggled before release')
+        run('keyup', 'Return'); time.sleep(0.5)
+        shot('00-debug-breakpoint-enabled')
+        if breakpoint_activations('toggle') != toggle_before + 2 or breakpoint_focus('toggle') != toggle_id:
+            raise RuntimeError('Toggle did not retain its identity')
+        run('key', 'shift+Tab'); time.sleep(0.3)
+        run('key', 'shift+Tab'); time.sleep(0.3)
+        row_before = breakpoint_activations('jump')
+        run('key', 'Return'); time.sleep(1)
+        shot('00-debug-breakpoint-row-jumped')
+        run('keyup', 'Return'); time.sleep(0.3)
+        if breakpoint_activations('jump') != row_before + 1:
+            raise RuntimeError('Breakpoint row Enter did not navigate once or left armed state')
+        Image.open(out / '00-debug-breakpoint-row-jumped.png').crop((405, 35, 1138, 130)).resize((1466, 190)).save(out / 'breakpoint-jump-ocr.png')
+        jump_text = subprocess.run(['tesseract', str(out / 'breakpoint-jump-ocr.png'), 'stdout', '--psm', '6'], text=True, capture_output=True, check=True).stdout.lower()
+        if 'multi_647_00' not in jump_text:
+            raise RuntimeError('Breakpoint jump target tab title not visible')
+        run('key', 'ctrl+s'); time.sleep(0.3)
+        if (project / 'multi_647_00.php').read_text() != '<?php // Synthetic mention navigation fixture.\n':
+            raise RuntimeError('Breakpoint keyboard controls changed source bytes')
+        # Remove is destructive to this view identity. No implicit editor
+        # typing is sent after removal; unowned releases must remain inert.
+        run('mousemove', '180', '666', 'mousedown', '1', 'mousemove', '700', '220', 'mouseup', '1')
+        time.sleep(0.5)
+        if not debug_events()[-1].startswith('event=breakpoint:jump:focus:'):
+            raise RuntimeError('Second breakpoint row focus seed failed')
+        breakpoint_tab_to('remove')
+        remove_before = breakpoint_activations('remove')
+        jump_before = breakpoint_activations('jump')
+        run('keydown', 'space'); time.sleep(0.5)
+        if breakpoint_activations('remove') != remove_before:
+            raise RuntimeError('Held Remove activated early')
+        run('keyup', 'space'); time.sleep(1)
+        run('keyup', 'space'); time.sleep(0.3)
+        shot('00-debug-breakpoint-keyboard-removed')
+        if breakpoint_activations('remove') != remove_before + 1 or breakpoint_activations('jump') != jump_before:
+            raise RuntimeError('Keyboard Remove did not fire once without jump')
+        if 'click the editor' not in breakpoint_text('00-debug-breakpoint-keyboard-removed', 400):
+            raise RuntimeError('Keyboard Remove did not restore empty guidance')
+        if debug_events().count('event=breakpoint:toggle:sync') != toggle_sync_before + 2 or debug_events().count('event=breakpoint:remove:sync') != remove_sync_baseline + 1:
+            raise RuntimeError('Breakpoint sync count differs from action count')
+        # Pointer checkbox and Remove must not bubble into row navigation.
+        run('mousemove', str(400 + breakpoint_probe[0]), str(breakpoint_probe[1]), 'click', '1'); time.sleep(1)
+        jump_action_before = debug_events().count('event=breakpoint:jump:action')
+        sync_before = debug_events().count('event=breakpoint:toggle:sync')
+        run('mousemove', '39', '666', 'click', '1'); time.sleep(0.5)
+        shot('00-debug-breakpoint-pointer-disabled')
+        if debug_events().count('event=breakpoint:toggle:sync') != sync_before + 1 or debug_events().count('event=breakpoint:jump:action') != jump_action_before:
+            raise RuntimeError('Pointer checkbox failed or bubbled into row')
+        remove_sync_before = debug_events().count('event=breakpoint:remove:sync')
+        run('mousemove', '21', '666', 'click', '1'); time.sleep(0.5)
+        shot('00-debug-breakpoint-pointer-removed')
+        if debug_events().count('event=breakpoint:remove:sync') != remove_sync_before + 1 or debug_events().count('event=breakpoint:jump:action') != jump_action_before:
+            raise RuntimeError('Pointer Remove failed')
+        if 'click the editor' not in breakpoint_text('00-debug-breakpoint-pointer-removed', 400):
+            raise RuntimeError('Pointer Remove did not restore empty guidance')
+        # Recreate for the existing pointer gutter add/remove regression.
+        run('mousemove', str(400 + breakpoint_probe[0]), str(breakpoint_probe[1]), 'click', '1'); time.sleep(1)
+        shot('00-debug-breakpoint-gutter-recreated')
+        if 'multi' not in breakpoint_text('00-debug-breakpoint-gutter-recreated', 400):
+            raise RuntimeError('Gutter recreation did not produce breakpoint row')
+        # Same location removes it; restored-empty assertion follows.
         run('mousemove', str(400 + breakpoint_probe[0]), str(breakpoint_probe[1]), 'click', '1'); time.sleep(1)
         shot('00-debug-breakpoints-400-dark-restored')
         restored = breakpoint_text('00-debug-breakpoints-400-dark-restored', 400)
