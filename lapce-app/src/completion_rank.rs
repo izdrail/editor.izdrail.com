@@ -198,15 +198,21 @@ pub struct ProjectScanState {
     next: u64,
 }
 impl ProjectScanState {
-    pub fn busy(&self) -> bool { self.running.is_some() }
+    pub fn busy(&self) -> bool {
+        self.running.is_some()
+    }
     pub fn begin(&mut self) -> Option<u64> {
-        if self.busy() { return None; }
+        if self.busy() {
+            return None;
+        }
         self.next = self.next.wrapping_add(1);
         self.running = Some(self.next);
         self.running
     }
     pub fn finish(&mut self, token: u64) -> bool {
-        if self.running != Some(token) { return false; }
+        if self.running != Some(token) {
+            return false;
+        }
         self.running = None;
         true
     }
@@ -228,7 +234,9 @@ mod project_scan_state_tests {
     }
 }
 
-pub(crate) fn project_offset(offset: usize, len: usize) -> usize { offset.min(len) }
+pub(crate) fn project_offset(offset: usize, len: usize) -> usize {
+    offset.min(len)
+}
 
 #[cfg(test)]
 mod project_offset_tests {

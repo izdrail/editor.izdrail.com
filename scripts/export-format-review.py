@@ -20,8 +20,8 @@ for name in changed:
         continue
     original = path.read_text()
     result = subprocess.run(
-        ['rustfmt', '--edition', '2024', '--emit', 'stdout', '--config', 'skip_children=true', name],
-        text=True, capture_output=True,
+        ['rustfmt', '--edition', '2024', '--emit', 'stdout', '--config', 'skip_children=true'],
+        input=original, text=True, capture_output=True,
     )
     entry = {'file': name, 'returncode': result.returncode}
     if result.returncode:

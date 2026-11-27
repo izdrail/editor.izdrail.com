@@ -359,7 +359,11 @@ impl CompletionData {
         self.filtered_items = items;
     }
 
-    pub fn set_project_context(&mut self, kind: Option<crate::project_completion::Kind>, tag_only: bool) {
+    pub fn set_project_context(
+        &mut self,
+        kind: Option<crate::project_completion::Kind>,
+        tag_only: bool,
+    ) {
         if self.project_kind != kind || self.project_only != tag_only {
             self.project_items.clear();
         }
@@ -930,7 +934,11 @@ mod blend_tests {
         let mut completion = CompletionData::new(scope, config.read_only());
         completion.status = CompletionStatus::Started;
         completion.input = "r".into();
-        completion.local_items.push_back(item("routeSnippet", CompletionSource::Snippet, 0));
+        completion.local_items.push_back(item(
+            "routeSnippet",
+            CompletionSource::Snippet,
+            0,
+        ));
         let mut project = item("routeName", CompletionSource::Project, 0);
         project.show_on_empty = true;
         completion.project_items.push_back(project);
@@ -945,7 +953,10 @@ mod blend_tests {
         assert_eq!(completion.filtered_items.len(), 1);
         completion.update_input("routeN".into());
         assert_eq!(completion.filtered_items.len(), 1);
-        assert_eq!(completion.filtered_items[0].source, CompletionSource::Project);
+        assert_eq!(
+            completion.filtered_items[0].source,
+            CompletionSource::Project
+        );
         assert_eq!(completion.all_items().len(), 1);
         assert_eq!(completion.all_items()[0].item.label, "routeName");
         completion.cancel();
@@ -958,11 +969,22 @@ mod blend_tests {
         let scope = Scope::new();
         let config = scope.create_rw_signal(Arc::new(LapceConfig::default()));
         let mut completion = CompletionData::new(scope, config.read_only());
-        completion.set_project_context(Some(crate::project_completion::Kind::Route), false);
-        completion.project_items.push_back(item("native.example", CompletionSource::Project, 0));
-        completion.set_project_context(Some(crate::project_completion::Kind::Route), false);
+        completion.set_project_context(
+            Some(crate::project_completion::Kind::Route),
+            false,
+        );
+        completion.project_items.push_back(item(
+            "native.example",
+            CompletionSource::Project,
+            0,
+        ));
+        completion.set_project_context(
+            Some(crate::project_completion::Kind::Route),
+            false,
+        );
         assert_eq!(completion.project_items.len(), 1);
-        completion.set_project_context(Some(crate::project_completion::Kind::View), false);
+        completion
+            .set_project_context(Some(crate::project_completion::Kind::View), false);
         assert!(completion.project_items.is_empty());
     }
 
@@ -1576,11 +1598,18 @@ mod native_region_tests {
 
 /// Late project scans never reopen a dismissed or replaced session.
 pub(crate) fn project_result_current(
-    active: bool, expected_session: usize, session: usize,
-    expected_revision: u64, revision: u64,
-    expected_input: &str, input: &str,
+    active: bool,
+    expected_session: usize,
+    session: usize,
+    expected_revision: u64,
+    revision: u64,
+    expected_input: &str,
+    input: &str,
 ) -> bool {
-    active && expected_session == session && expected_revision == revision && expected_input == input
+    active
+        && expected_session == session
+        && expected_revision == revision
+        && expected_input == input
 }
 
 #[cfg(test)]
@@ -1588,10 +1617,10 @@ mod project_guard_tests {
     use super::project_result_current as current;
     #[test]
     fn rejects_old_input_revision_session_and_cancel() {
-        assert!(current(true,1,1,2,2,"ab","ab"));
-        assert!(!current(false,1,1,2,2,"ab","ab"));
-        assert!(!current(true,1,2,2,2,"ab","ab"));
-        assert!(!current(true,1,1,2,3,"ab","ab"));
-        assert!(!current(true,1,1,2,2,"ab","abc"));
+        assert!(current(true, 1, 1, 2, 2, "ab", "ab"));
+        assert!(!current(false, 1, 1, 2, 2, "ab", "ab"));
+        assert!(!current(true, 1, 2, 2, 2, "ab", "ab"));
+        assert!(!current(true, 1, 1, 2, 3, "ab", "ab"));
+        assert!(!current(true, 1, 1, 2, 2, "ab", "abc"));
     }
 }

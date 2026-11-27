@@ -3788,137 +3788,142 @@ impl EditorData {
             alpine_props,
             json_items,
             yaml_items,
-        ) = doc.syntax.with_untracked(|syntax| doc.buffer.with_untracked(|buffer| {
-            let end_offset = buffer.next_code_boundary(offset);
-            let len = buffer.len();
-            // Leave the word being typed out so it does not suggest itself.
-            let mut text = String::new();
-            text.push_str(&buffer.slice_to_cow(
-                start_offset.saturating_sub(MAX_SCAN_BYTES / 2)..start_offset,
-            ));
-            text.push(' ');
-            text.push_str(
-                &buffer.slice_to_cow(
+        ) = doc.syntax.with_untracked(|syntax| {
+            doc.buffer.with_untracked(|buffer| {
+                let end_offset = buffer.next_code_boundary(offset);
+                let len = buffer.len();
+                // Leave the word being typed out so it does not suggest itself.
+                let mut text = String::new();
+                text.push_str(&buffer.slice_to_cow(
+                    start_offset.saturating_sub(MAX_SCAN_BYTES / 2)..start_offset,
+                ));
+                text.push(' ');
+                text.push_str(&buffer.slice_to_cow(
                     end_offset..len.min(end_offset + MAX_SCAN_BYTES / 2),
-                ),
-            );
-            let lang = lapce_proxy::buffer::language_id_from_path(path);
-            let is_blade =
-                crate::builtin_snippets::snippet_language(path, "php") == "blade";
-            let mut words = word_items(&buffer_words(&text));
-            if lang == Some("php") && !is_blade {
-                words.extend(php_variable_items(&text));
-            }
-            // The syntax worker refreshes this snapshot when project markers
-            // change. Never scan directories or read composer.lock on the UI
-            // thread just because the user started a completion session.
-            let project = &syntax.project;
-            let before_cursor = buffer.slice_to_cow(0..offset);
-            let keywords = lang
-                .map(|l| profile_items(l, &project, &before_cursor))
-                .unwrap_or_default();
-            if lang == Some("php") {
-                if let Some(items) = crate::laravel_completion::facade_items(
-                    &before_cursor,
-                    project.laravel,
-                ) {
-                    return (
-                        Vec::new(),
-                        Vec::new(),
-                        items,
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    );
+                ));
+                let lang = lapce_proxy::buffer::language_id_from_path(path);
+                let is_blade =
+                    crate::builtin_snippets::snippet_language(path, "php")
+                        == "blade";
+                let mut words = word_items(&buffer_words(&text));
+                if lang == Some("php") && !is_blade {
+                    words.extend(php_variable_items(&text));
                 }
-            }
-            // theme.json / block.json schema keys and values.
-            let json_items =
-                crate::project_completion::json_schema_items(path, &before_cursor);
-            // Symfony config/services/routes YAML schema keys and values.
-            let yaml_items = crate::project_completion::symfony_yaml_schema_items(
-                self.common.workspace.path.as_deref(),
-                path,
-                &before_cursor,
-            );
-
-            let line = buffer.line_of_offset(start_offset);
-            let line_text = buffer.line_content(line);
-            let indent = leading_indent(&line_text).to_string();
-            // Text of the current line up to the cursor, for
-            // project-aware contexts like `route('...')`.
-            let line_before = buffer
-                .slice_to_cow(buffer.offset_of_line(line)..offset)
-                .to_string();
-            // `.blade.php` is PHP for imported snippets but has its own bundled pack.
-            let snippet_lang =
-                lang.map(|l| crate::builtin_snippets::snippet_language(path, l));
-            // Snippet bodies for Blade start with `@` or `<`; replace the one typed.
-            let range_start = if start_offset > 0
-                && crate::builtin_snippets::replaces_leading_char(
-                    snippet_lang.unwrap_or(""),
-                    buffer
-                        .slice_to_cow(start_offset - 1..start_offset)
-                        .chars()
-                        .next(),
-                ) {
-                start_offset - 1
-            } else {
-                start_offset
-            };
-            let range = lsp_types::Range {
-                start: buffer.offset_to_position(range_start),
-                end: buffer.offset_to_position(offset),
-            };
-            let snippets = match lang {
-                Some(lang) => {
-                    let loaded = lapce_core::textmate::loaded();
-                    let mut all = loaded.snippets_for(lang);
-                    all.extend(crate::builtin_snippets::for_context(
-                        snippet_lang.unwrap_or(lang),
-                        &project,
-                    ));
-                    let mut items = snippet_items(&all, &indent, range);
-                    if lang == "php" && !is_blade {
-                        // The accepted lexer identifies a PHP-only buffer;
-                        // a snippet inside it does not need another open tag.
-                        crate::completion_sources::php_snippet_open_tag(
-                            &mut items,
-                            lapce_core::lexilla::is_pure_php(&before_cursor),
+                // The syntax worker refreshes this snapshot when project markers
+                // change. Never scan directories or read composer.lock on the UI
+                // thread just because the user started a completion session.
+                let project = &syntax.project;
+                let before_cursor = buffer.slice_to_cow(0..offset);
+                let keywords = lang
+                    .map(|l| profile_items(l, &project, &before_cursor))
+                    .unwrap_or_default();
+                if lang == Some("php") {
+                    if let Some(items) = crate::laravel_completion::facade_items(
+                        &before_cursor,
+                        project.laravel,
+                    ) {
+                        return (
+                            Vec::new(),
+                            Vec::new(),
+                            items,
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
                         );
                     }
-                    items
                 }
-                None => Vec::new(),
-            };
-            // Blade views: variables the view defines above the
-            // cursor (assignments, loop variables, @props, @inject).
-            let blade_vars = if is_blade {
-                crate::project_completion::blade_variables(
+                // theme.json / block.json schema keys and values.
+                let json_items = crate::project_completion::json_schema_items(
+                    path,
                     &before_cursor,
-                    &line_before,
+                );
+                // Symfony config/services/routes YAML schema keys and values.
+                let yaml_items =
+                    crate::project_completion::symfony_yaml_schema_items(
+                        self.common.workspace.path.as_deref(),
+                        path,
+                        &before_cursor,
+                    );
+
+                let line = buffer.line_of_offset(start_offset);
+                let line_text = buffer.line_content(line);
+                let indent = leading_indent(&line_text).to_string();
+                // Text of the current line up to the cursor, for
+                // project-aware contexts like `route('...')`.
+                let line_before = buffer
+                    .slice_to_cow(buffer.offset_of_line(line)..offset)
+                    .to_string();
+                // `.blade.php` is PHP for imported snippets but has its own bundled pack.
+                let snippet_lang =
+                    lang.map(|l| crate::builtin_snippets::snippet_language(path, l));
+                // Snippet bodies for Blade start with `@` or `<`; replace the one typed.
+                let range_start = if start_offset > 0
+                    && crate::builtin_snippets::replaces_leading_char(
+                        snippet_lang.unwrap_or(""),
+                        buffer
+                            .slice_to_cow(start_offset - 1..start_offset)
+                            .chars()
+                            .next(),
+                    ) {
+                    start_offset - 1
+                } else {
+                    start_offset
+                };
+                let range = lsp_types::Range {
+                    start: buffer.offset_to_position(range_start),
+                    end: buffer.offset_to_position(offset),
+                };
+                let snippets = match lang {
+                    Some(lang) => {
+                        let loaded = lapce_core::textmate::loaded();
+                        let mut all = loaded.snippets_for(lang);
+                        all.extend(crate::builtin_snippets::for_context(
+                            snippet_lang.unwrap_or(lang),
+                            &project,
+                        ));
+                        let mut items = snippet_items(&all, &indent, range);
+                        if lang == "php" && !is_blade {
+                            // The accepted lexer identifies a PHP-only buffer;
+                            // a snippet inside it does not need another open tag.
+                            crate::completion_sources::php_snippet_open_tag(
+                                &mut items,
+                                lapce_core::lexilla::is_pure_php(&before_cursor),
+                            );
+                        }
+                        items
+                    }
+                    None => Vec::new(),
+                };
+                // Blade views: variables the view defines above the
+                // cursor (assignments, loop variables, @props, @inject).
+                let blade_vars = if is_blade {
+                    crate::project_completion::blade_variables(
+                        &before_cursor,
+                        &line_before,
+                    )
+                } else {
+                    Vec::new()
+                };
+                // Alpine: properties of the nearest enclosing x-data,
+                // inside an Alpine expression attribute value.
+                let alpine_props =
+                    crate::project_completion::alpine_data_property_items(
+                        &before_cursor,
+                        &line_before,
+                        self.common.workspace.path.as_deref(),
+                    );
+                (
+                    words,
+                    snippets,
+                    keywords,
+                    blade_vars,
+                    alpine_props,
+                    json_items,
+                    yaml_items,
                 )
-            } else {
-                Vec::new()
-            };
-            // Alpine: properties of the nearest enclosing x-data,
-            // inside an Alpine expression attribute value.
-            let alpine_props = crate::project_completion::alpine_data_property_items(
-                &before_cursor,
-                &line_before,
-                self.common.workspace.path.as_deref(),
-            );
-            (
-                words,
-                snippets,
-                keywords,
-                blade_vars,
-                alpine_props,
-                json_items,
-                yaml_items,
-            )
-        }));
+            })
+        });
         let wrap = |item, source| ScoredCompletionItem {
             item,
             plugin_id: lapce_rpc::plugin::PluginId(0),
@@ -4329,18 +4334,29 @@ impl EditorData {
         }
     }
 
-    fn request_project_completion(&self, doc: &Doc, path: &std::path::Path, offset: usize) {
+    fn request_project_completion(
+        &self,
+        doc: &Doc,
+        path: &std::path::Path,
+        offset: usize,
+    ) {
         let editor_id = self.id();
-        let Some(root) = self.common.workspace.path.clone() else { return };
+        let Some(root) = self.common.workspace.path.clone() else {
+            return;
+        };
         let line = doc.buffer.with_untracked(|buffer| {
-            let offset = crate::completion_rank::project_offset(offset, buffer.len());
+            let offset =
+                crate::completion_rank::project_offset(offset, buffer.len());
             let start = buffer.offset_of_line(buffer.line_of_offset(offset));
             buffer.slice_to_cow(start..offset).into_owned()
         });
         let completion = self.common.completion;
-        completion.update(|c| c.project_generation = c.project_generation.wrapping_add(1));
+        completion
+            .update(|c| c.project_generation = c.project_generation.wrapping_add(1));
         let generation = completion.with_untracked(|c| c.project_generation);
-        let kind = (line.len() <= 4096).then(|| crate::project_completion::context(&line)).flatten();
+        let kind = (line.len() <= 4096)
+            .then(|| crate::project_completion::context(&line))
+            .flatten();
         if kind.is_none() {
             self.common.completion.update(|c| {
                 c.project_items.clear();
@@ -4350,34 +4366,49 @@ impl EditorData {
             });
             return;
         }
-        let tag_only = crate::builtin_snippets::snippet_language(path, "php") == "blade"
-            && matches!(crate::project_completion::context(&line), Some(
-                crate::project_completion::Kind::ComponentTag | crate::project_completion::Kind::LivewireTag
-            ));
+        let tag_only = crate::builtin_snippets::snippet_language(path, "php")
+            == "blade"
+            && matches!(
+                crate::project_completion::context(&line),
+                Some(
+                    crate::project_completion::Kind::ComponentTag
+                        | crate::project_completion::Kind::LivewireTag
+                )
+            );
         completion.update(|c| {
             c.set_project_context(kind, tag_only);
         });
         // At most one scan and one live retry per completion window. Every
         // keystroke supersedes the prior retry, including editor switches.
         if completion.with_untracked(|c| c.project_scan.busy()) {
-            let exhausted = completion.try_update(|c| {
-                c.project_wait_since.get_or_insert_with(std::time::Instant::now)
-                    .elapsed() > Duration::from_secs(10)
-            }).unwrap_or(true);
-            if exhausted { return; }
+            let exhausted = completion
+                .try_update(|c| {
+                    c.project_wait_since
+                        .get_or_insert_with(std::time::Instant::now)
+                        .elapsed()
+                        > Duration::from_secs(10)
+                })
+                .unwrap_or(true);
+            if exhausted {
+                return;
+            }
             let editor = self.clone();
             let doc = doc.clone();
             let path = path.to_owned();
             exec_after(Duration::from_millis(50), move |_| {
-                if completion.with_untracked(|c| c.status != CompletionStatus::Inactive
-                    && c.project_generation == generation && c.latest_editor_id == Some(editor_id)) {
+                if completion.with_untracked(|c| {
+                    c.status != CompletionStatus::Inactive
+                        && c.project_generation == generation
+                        && c.latest_editor_id == Some(editor_id)
+                }) {
                     editor.request_project_completion(&doc, &path, offset);
                 }
             });
             return;
         }
         completion.update(|c| c.project_wait_since = None);
-        let (session, input) = completion.with_untracked(|c| (c.request_id, c.input.clone()));
+        let (session, input) =
+            completion.with_untracked(|c| (c.request_id, c.input.clone()));
         let debounce_input = input.clone();
         let rev = doc.rev();
         let source = doc.clone();
@@ -4388,44 +4419,83 @@ impl EditorData {
         // Debounce on the UI event loop, but run every filesystem-backed
         // catalog lookup on a worker. No UI signal is accessed by the worker.
         exec_after(Duration::from_millis(35), move |_| {
-            if completion.with_untracked(|c| c.status == CompletionStatus::Inactive
-                || c.request_id != session || c.input != debounce_input
-                || c.project_generation != generation) { return; }
-            if completion.with_untracked(|c| c.project_scan.busy()) { return; }
-            let Some(scan_token) = completion.try_update(|c| c.project_scan.begin()).flatten() else { return; };
-            let send = create_ext_action(scope, move |items: Vec<CompletionItem>| {
-                if !completion.try_update(|c| c.project_scan.finish(scan_token)).unwrap_or(false) { return; }
-                let current = completion.with_untracked(|c| {
-                    crate::completion::project_result_current(
-                        c.status != CompletionStatus::Inactive, session, c.request_id,
-                        rev, source.rev(), &input, &c.input,
-                    ) && c.latest_editor_id == Some(editor_id)
-                        && !c.source_guard.as_ref().is_some_and(|g| !g.current())
-                        && editor.doc().buffer_id == origin_id
-                });
-                if !current { return; }
-                completion.update(|c| {
+            if completion.with_untracked(|c| {
+                c.status == CompletionStatus::Inactive
+                    || c.request_id != session
+                    || c.input != debounce_input
+                    || c.project_generation != generation
+            }) {
+                return;
+            }
+            if completion.with_untracked(|c| c.project_scan.busy()) {
+                return;
+            }
+            let Some(scan_token) =
+                completion.try_update(|c| c.project_scan.begin()).flatten()
+            else {
+                return;
+            };
+            let send = create_ext_action(
+                scope,
+                move |items: Vec<CompletionItem>| {
+                    if !completion
+                        .try_update(|c| c.project_scan.finish(scan_token))
+                        .unwrap_or(false)
+                    {
+                        return;
+                    }
+                    let current = completion.with_untracked(|c| {
+                        crate::completion::project_result_current(
+                            c.status != CompletionStatus::Inactive,
+                            session,
+                            c.request_id,
+                            rev,
+                            source.rev(),
+                            &input,
+                            &c.input,
+                        ) && c.latest_editor_id == Some(editor_id)
+                            && !c.source_guard.as_ref().is_some_and(|g| !g.current())
+                            && editor.doc().buffer_id == origin_id
+                    });
+                    if !current {
+                        return;
+                    }
+                    completion.update(|c| {
                     c.project_items = items.into_iter().map(|item| crate::completion::ScoredCompletionItem {
                         item, plugin_id: PluginId(0), source: crate::completion_sources::CompletionSource::Project,
                         score: 0, label_score: 0, indices: Vec::new(), show_on_empty: true,
                     }).collect();
                     c.filter_items();
                 });
-            });
+                },
+            );
             rayon::spawn(move || {
                 // Explicit, bounded synthetic acceptance hook. Never set by settings.
-                if path.file_name().is_some_and(|name| name == "SlowScanController.php") {
-                    if let Ok(delay) = std::env::var("GRAVITY_QA_PROJECT_SCAN_DELAY_MS") {
+                if path
+                    .file_name()
+                    .is_some_and(|name| name == "SlowScanController.php")
+                {
+                    if let Ok(delay) =
+                        std::env::var("GRAVITY_QA_PROJECT_SCAN_DELAY_MS")
+                    {
                         if let Ok(delay) = delay.parse::<u64>() {
-                            eprintln!("QA_PROJECT_SCAN sleeping_ms={}", delay.min(5000));
-                            std::thread::sleep(Duration::from_millis(delay.min(5000)));
+                            eprintln!(
+                                "QA_PROJECT_SCAN sleeping_ms={}",
+                                delay.min(5000)
+                            );
+                            std::thread::sleep(Duration::from_millis(
+                                delay.min(5000),
+                            ));
                         }
                     }
                 }
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    crate::project_completion::items(&root, Some(&path), &line)
-                }));
-                if result.is_err() { eprintln!("Project completion scan panicked; discarded"); }
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        crate::project_completion::items(&root, Some(&path), &line)
+                    }));
+                if result.is_err() {
+                    eprintln!("Project completion scan panicked; discarded");
+                }
                 send(result.unwrap_or_default());
             });
         });
@@ -4597,7 +4667,13 @@ impl EditorData {
             completion.input_items.clear();
             completion.local_items = locals;
             completion.request_id += 1;
-            completion.request(self.id(), &self.common.proxy, path.clone(), input, position);
+            completion.request(
+                self.id(),
+                &self.common.proxy,
+                path.clone(),
+                input,
+                position,
+            );
             completion.filter_items();
         });
         self.request_project_completion(&source, &path, offset);
@@ -6675,7 +6751,10 @@ impl EditorData {
             });
             let help = doc.syntax.with_untracked(|syntax| {
                 crate::symbol_hover::help_with_profile(
-                    &path, &line_text, col, &syntax.project,
+                    &path,
+                    &line_text,
+                    col,
+                    &syntax.project,
                 )
             });
             if let Some(md) = help {
@@ -8124,7 +8203,8 @@ mod completion_ui_thread_guards {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../scripts/fixtures/laravel");
         assert!(root.join("vendor/laravel/framework").is_dir());
-        let lock_bytes = std::fs::metadata(root.join("composer.lock")).unwrap().len();
+        let lock_bytes =
+            std::fs::metadata(root.join("composer.lock")).unwrap().len();
         assert!(lock_bytes > 100_000);
         let file = root.join("app/Http/Controllers/Controller.php");
         let cold_start = Instant::now();
@@ -8144,7 +8224,11 @@ mod completion_ui_thread_guards {
             black_box(&profile);
         }
         let snapshot_us = start.elapsed().as_micros();
-        println!("profile_only iterations={iterations} lock_bytes={lock_bytes} packages={} cold_detect_us={cold_detect_us} detect_us={detect_us} detect_us_per_call={:.2} borrowed_snapshot_us={snapshot_us}; not end-to-end completion latency", profile.packages.len(), detect_us as f64 / iterations as f64);
+        println!(
+            "profile_only iterations={iterations} lock_bytes={lock_bytes} packages={} cold_detect_us={cold_detect_us} detect_us={detect_us} detect_us_per_call={:.2} borrowed_snapshot_us={snapshot_us}; not end-to-end completion latency",
+            profile.packages.len(),
+            detect_us as f64 / iterations as f64
+        );
     }
 
     #[test]
