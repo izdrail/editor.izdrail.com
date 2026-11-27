@@ -309,21 +309,40 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         header_y = int(php_headers[-1]['top'])
         body_y = min(header_y + 110, 500)
         run('mousemove', '1240', str(body_y))
-        for _ in range(30):
-            bottom = shot('15-long-code-body-end')
+        first_lines = None
+        for step in range(30):
+            bottom = shot(f'15-code-wheel-{step:02d}')
+            step_headers = [w for w in words(bottom) if w['text'].lower() == 'php']
+            step_y = int(step_headers[-1]['top']) if step_headers else None
+            print(f'CODE_WHEEL step={step} wheel_x=1240 wheel_y={body_y} initial_header={header_y} current_header={step_y}', flush=True)
             from PIL import Image
-            last_crop = out / '15-last-line-ocr.png'
+            last_crop = out / f'15-last-line-{step:02d}-ocr.png'
             Image.open(bottom).crop((1140, max(header_y + 20, 140), 1435, 675)).resize((1180, (675 - max(header_y + 20, 140)) * 4)).save(last_crop)
             last_text = subprocess.run(['tesseract', str(last_crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout
             import re
-            if re.search(r'line\s+44\b', last_text, re.IGNORECASE):
+            line_numbers = re.findall(r'line\s+(\d+)\b', last_text, re.IGNORECASE)
+            at_end = bool(re.search(r'line\s+44\b', last_text, re.IGNORECASE))
+            if step == 0:
+                first_lines = line_numbers
+            if step == 1 and (not line_numbers or line_numbers == first_lines):
+                raise RuntimeError('First interior wheel did not change visible code lines')
+            if not at_end and (step_y is None or abs(step_y - header_y) >= 8):
+                raise RuntimeError('Code header moved before last line was visible')
+            if at_end:
+                if step < 2:
+                    raise RuntimeError('Last code line visible before enough body wheels')
+                if step_y is None:
+                    raise RuntimeError('Code header missing when last line first visible')
+                print(f'CODE_END header_shift={step_y - header_y}', flush=True)
                 break
             run('click', '5'); time.sleep(.1)
         else:
             raise RuntimeError('Last code line not reachable by vertical body scrolling')
         headers_after = [w for w in words(bottom) if w['text'].lower() == 'php']
-        if not any(abs(int(w['top']) - header_y) < 8 for w in headers_after):
-            raise RuntimeError('Code header moved while scrolling code body')
+        if not headers_after:
+            raise RuntimeError('Code header disappeared before at-end wheel test')
+        shutil.copyfile(bottom, out / '15-long-code-body-end.png')
+        shutil.copyfile(last_crop, out / '15-last-line-ocr.png')
         run('click', '--repeat', '30', '--delay', '30', '7'); time.sleep(.4)
         sideways = shot('15b-long-line-horizontal-end')
         if 'endh' not in text(sideways):
@@ -332,11 +351,20 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         # transcript still has scroll range. Header must be visible first.
         if not any(w['text'].lower() == 'php' for w in words(sideways)):
             raise RuntimeError('Code header not visible before transcript-wheel test')
+        # Baseline against this current screenshot, not the pre-scroll header.
+        before_words = words(sideways)
+        end_headers = [w for w in before_words if w['text'].lower() == 'php']
+        before_tails = [(w['text'].lower(), int(w['top'])) for w in before_words if w['text'].lower() == 'tail']
+        end_header_y = int(end_headers[-1]['top'])
         # Extra wheel movement at the code body's end must reach transcript.
         run('click', '--repeat', '20', '--delay', '30', '5'); time.sleep(.6)
         outer = shot('16-code-end-wheel-transcript')
-        if any(abs(int(w['top']) - header_y) < 8 for w in words(outer) if w['text'].lower() == 'php'):
-            raise RuntimeError('Wheel at code-body end did not move transcript')
+        after_words = words(outer)
+        moved_headers = [w for w in after_words if w['text'].lower() == 'php'
+                         and int(w['top']) < end_header_y - 8]
+        after_tails = [(w['text'].lower(), int(w['top'])) for w in after_words if w['text'].lower() == 'tail']
+        if not moved_headers and not (before_tails and after_tails and before_tails != after_tails):
+            raise RuntimeError('No positive transcript movement after code-body end wheel')
         if (project / 'example.php').read_text() != source:
             raise RuntimeError('Chat UI changed fixture source')
         (out / 'result.txt').write_text('Synthetic waiting, partial prose, partial code, completion, exact per-block Copy and theme/width captures completed. Actual pixels need inspection. No real model/provider integration claim.\n')
