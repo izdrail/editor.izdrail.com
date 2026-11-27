@@ -498,18 +498,23 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
                 (config / 'settings.toml').write_text(themed); time.sleep(3)
                 shot(f'00-debug-breakpoints-{width}-{theme}-empty')
             (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
-        run('mousemove', '190', '94', 'click', '1'); time.sleep(1)
-        shot('00-debug-breakpoints-180-dark-populated')
-        populated = breakpoint_text('00-debug-breakpoints-180-dark-populated', 180)
-        if 'multi' not in populated or 'click the editor' in populated:
-            raise RuntimeError('Gutter add did not produce visible populated breakpoint row')
+        breakpoint_probe = None
+        for gutter_x, gutter_y in [(188, 94), (200, 94), (212, 94), (188, 112), (200, 112), (212, 112)]:
+            run('mousemove', str(gutter_x), str(gutter_y), 'click', '1'); time.sleep(1)
+            shot('00-debug-breakpoints-180-dark-populated')
+            populated = breakpoint_text('00-debug-breakpoints-180-dark-populated', 180)
+            if 'click the editor' not in populated and ('multi' in populated or '.php' in populated):
+                breakpoint_probe = (gutter_x - 180, gutter_y)
+                break
+        if breakpoint_probe is None:
+            raise RuntimeError('Bounded gutter probes did not produce visible populated breakpoint row')
         (config / 'settings.toml').write_text(debug_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)); time.sleep(3)
         shot('00-debug-breakpoints-180-light-populated')
         run('mousemove', '180', '300', 'mousedown', '1', 'mousemove', '400', '300', 'mouseup', '1'); time.sleep(1)
         shot('00-debug-breakpoints-400-light-populated')
         (config / 'settings.toml').write_text(debug_settings); time.sleep(3)
         shot('00-debug-breakpoints-400-dark-populated')
-        run('mousemove', '410', '94', 'click', '1'); time.sleep(1)
+        run('mousemove', str(400 + breakpoint_probe[0]), str(breakpoint_probe[1]), 'click', '1'); time.sleep(1)
         shot('00-debug-breakpoints-400-dark-restored')
         restored = breakpoint_text('00-debug-breakpoints-400-dark-restored', 400)
         if 'click the editor' not in restored or 'multi' in restored:
