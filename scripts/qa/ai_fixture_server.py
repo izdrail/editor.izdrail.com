@@ -3,6 +3,7 @@
 import argparse
 import json
 import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -50,8 +51,19 @@ class Handler(BaseHTTPRequestHandler):
             if self.server.long_code:
                 code = "\n".join(f"// Synthetic line {index:02}: " + "long_column_" * 20 + " ENDH" for index in range(45))
                 parts = ["Long synthetic code fixture.\n\n```php\n<?php\n" + code + "\n```\n\n" + "\n\n".join(f"Tail paragraph {index}." for index in range(12))]
+            # Normal chat fixture closes its PHP card in part3, then part4
+            # changes only trailing prose. Long-code mode is a separate case.
+            if self.server.advance_file and not self.server.long_code:
+                assert len(parts) >= 5 and parts[3].startswith("}\n```")
             try:
-                for part in parts:
+                for index, part in enumerate(parts):
+                    if index == 4 and self.server.advance_file:
+                        deadline = time.monotonic() + 90
+                        while not Path(self.server.advance_file).exists():
+                            if time.monotonic() >= deadline:
+                                print('FIXTURE_ADVANCE_TIMEOUT', flush=True)
+                                return
+                            time.sleep(.05)
                     data = {'choices': [{'delta': {'content': part}}]}
                     self.wfile.write(('data: ' + json.dumps(data) + '\n\n').encode())
                     self.wfile.flush()
@@ -74,6 +86,7 @@ def main():
     parser.add_argument('--chat-stream', action='store_true', help='Enable synthetic OpenAI chat SSE')
     parser.add_argument('--token-delay', type=float, default=2, help='Seconds between synthetic chat deltas')
     parser.add_argument('--long-code', action='store_true', help='Large synthetic scroll fixture, requires --chat-stream')
+    parser.add_argument('--advance-file', help='Synthetic chat: hold final tail until this file exists, bounded90s')
     args = parser.parse_args()
     if not 0 <= args.token_delay <= 25:
         parser.error('token-delay must be 0..25 seconds')
@@ -83,6 +96,7 @@ def main():
     server.status, server.delay, server.inline = args.status, args.delay, args.inline
     server.chat_stream, server.token_delay = args.chat_stream, args.token_delay
     server.long_code = args.long_code
+    server.advance_file = args.advance_file
     print(f'Fixture listening on http://127.0.0.1:{args.port} status={args.status}', flush=True)
     server.serve_forever()
 

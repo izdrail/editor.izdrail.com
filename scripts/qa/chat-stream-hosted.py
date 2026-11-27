@@ -17,6 +17,7 @@ out = Path(sys.argv[2]).resolve()
 out.mkdir(parents=True, exist_ok=True)
 home = Path(tempfile.mkdtemp(prefix='gravity-chat-home-', dir='/tmp'))
 project = Path(tempfile.mkdtemp(prefix='gravity-chat-project-', dir='/tmp'))
+advance_file = home / 'advance-stream'
 source = '<?php\nclass Example { public function name(): string { return "fixture"; } }\n'
 (project / 'example.php').write_text(source)
 config = home / '.config/lapce-nightly'
@@ -127,7 +128,7 @@ def clipboard():
 
 with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log, (out / 'fixture.log').open('w') as flog:
     xvfb = subprocess.Popen(['Xvfb', ':96', '-screen', '0', '1500x1000x24'], stdout=xlog, stderr=subprocess.STDOUT)
-    fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--delay', '8', '--token-delay', '3'], stdout=flog, stderr=subprocess.STDOUT)
+    fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--delay', '8', '--token-delay', '3', '--advance-file', str(advance_file)], stdout=flog, stderr=subprocess.STDOUT)
     app = None
     try:
         time.sleep(2)
@@ -175,10 +176,14 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('PHP card header missing')
         click_word(final, 'Copy', near_y=int(php['top']))
         time.sleep(.4)
+        shot('04b-after-copy-click')
         expected = "<?php\nclass Example {\n    public function name(): string { return 'café'; }\n}\n"
         if clipboard() != expected:
             raise RuntimeError('Per-code-block Copy changed source bytes')
         shot('05-copy-exact')
+        # Explicitly release tail/DONE only after Copy. OCR latency cannot
+        # move the target between screenshot and click while the fixture waits.
+        advance_file.touch()
         # A later delta only changes prose after the completed code block.
         wait_text('More streamed tail', '05b-tail-focus-retained', timeout=12)
         time.sleep(4)

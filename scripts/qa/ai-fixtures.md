@@ -95,3 +95,8 @@ Hosted chat OCR unions psm6 and psm11 readings of the same pixels. This is
 stricter for must-not-appear checks: either reading can fail the assertion.
 Before/after stale-reply counts use the same union and retain inequality checks;
 counts are supporting diagnostics, not a replacement for pixel inspection.
+
+The advance-file case copies a completed code card while the request is still
+streaming, then releases a later prose delta and DONE. It tests completed-card
+focus retention, not per-token keyboard focus inside a changing code tail.
+The fixture hold is bounded90s; the chat request total timeout is180s.
