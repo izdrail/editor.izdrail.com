@@ -29,6 +29,8 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 4
       - name: Install Ubuntu test dependencies
         run: |
           sudo apt-get update -qq
