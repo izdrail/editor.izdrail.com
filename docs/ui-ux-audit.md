@@ -403,37 +403,39 @@ failure and task cancellation remain unverified. UX-006/Phase1 remain open.
 UI-041 medium/P0: Run / Debug configuration label was pointer-only. Native
 focus ownership, matching press/release activation and reserved 1px focus ring
 add 2px to resting dimensions, avoiding focus-time geometry shifts. Release-only
-activation prevents a held key opening the palette before release. No unowned
-release can activate. Runtime dark/light focus and no-process gate pending.
-Real DAP/session controls remain unverified. IME/dead-key behavior not claimed.
+activation prevents a held key opening the palette before release. Bounded
+keyboard/ring gate accepted in e17c85d / 45927663562. Extension in 051fd7d /
+45951120894 (all four hosted jobs green) verifies Space held/release, unowned
+Return/Space releases before and after palette cancellation, and unchanged
+source bytes. No configuration selected or real DAP session started. Native
+dark/light focus, Tab away and reverse return have actual pixel evidence.
+IME/dead-key behavior and real DAP/session controls remain unverified.
 
-27 November UI-041 bounded runtime acceptance: e17c85d / 45927663562,
-all four hosted jobs green. Native Tab focus and reverse traversal show a
-stable configuration-label ring in dark and light themes. Modified Enter
-leaves palette closed; held Enter opens only after release. Palette is
-canceled without selecting a configuration. Disposable source bytes and
-terminal create count remain unchanged. Space and unowned-release GUI paths
-remain pending; corresponding activation-state unit tests pass. No real DAP
-session is claimed. Terminal ShiftTab-away and empty-body focus-away extension
-also passes: no shell creation, clicked editor receives typing, probe undone
+Terminal ShiftTab-away and empty-body focus-away extension passes in the same
+051fd7d run: no shell creation, clicked editor receives typing, probe undone
 and saved source verified. Unknown-ID close remains source-audited only.
 
-UI-042 medium/P0: empty Breakpoints guidance clips at the debug sidebar edge
-in e17c85d dark/light captures. Proposed fix constrains label width to its
-panel, permits shrinking, and uses existing framework text wrapping. No
-breakpoint handlers or debugger behavior changed. Narrow/wide dark/light
-pixels and empty/populated state verification pending; UX-007 remains open.
+UI-042 medium/P0: empty Breakpoints guidance clipped at the debug sidebar edge
+in e17c85d dark/light captures. Fixed by constrained width, shrinking, and
+existing framework text wrapping. 051fd7d / 45951120894, all four hosted jobs
+green: actual 180/400px dark/light empty guidance stays within the panel;
+populated row replaces guidance and removal restores it. No breakpoint
+handlers changed by the wrapping fix. UX-007 remains open.
 
-UI-043 medium/P0: bounded gutter clicks in 45940025999 leave empty breakpoint
-state unchanged. Source audit identifies full-size paint layers consuming
-pointer hits before clickable breakpoint rows. Pass-through paint wrappers
-and explicit interactive row/lens/action targets are source-reviewed. Existing
-wheel handler moves to outer gutter container, same action, one handler.
-PointerEventsProp is inherited (vendor/floem/src/style.rs:1699); each explicit
-child auto value overrides its inherited none value. Outer gutter is a flex
-child with intrinsic line-number/spacer width and full height, not width_full.
-Wheel-only event listener does not handle down/up. Runtime breakpoint add/remove,
-hover, wheel and lens/action non-toggle regression gates pending. Empty wrap
-UI-042 is visually correct in both themes at 180/400px, but populated-state gate
-remains open. UI-041 Space/unowned-release trace and pixels pass in 45936980206;
-overall run failed at the independent gutter populated-row assertion.
+UI-043 medium/P0: bounded gutter clicks in 45940025999 left empty breakpoint
+state unchanged. Full-size paint layers consumed pointer hits before clickable
+breakpoint rows. Pass-through paint wrappers and explicit interactive row/lens/
+action targets fixed it. Existing wheel handler moves to outer gutter container,
+same action, one handler. PointerEventsProp is inherited
+(vendor/floem/src/style.rs:1699); explicit child auto overrides inherited none.
+Outer gutter has intrinsic line-number/spacer width and full height, not
+width_full. Its wheel-only listener does not handle down/up.
+051fd7d / 45951120894, all four hosted jobs green: actual gutter click adds one
+visible breakpoint row, second click restores empty guidance; saved source
+bytes unchanged. One wheel event over breakpoint, line-number, lens and action
+regions changes visible line numbers. This is not an exact scroll-distance
+assertion. Deterministic local LSP lens/action menus each open, no command is
+executed and empty breakpoint state stays unchanged. No real-provider behavior
+is claimed. be97ae4 first attempt exited with SIGSEGV at startup, not reproduced
+in its retry or this completed green run. Breakpoint row/checkbox/remove-button
+keyboard inventory, broad DAP workflow and Phase1 remain open.
