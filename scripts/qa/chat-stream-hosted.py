@@ -71,10 +71,16 @@ def words(path, psm=6):
         row['top'] = str(50 + int(row['top']) // 3)
         row['width'] = str(max(1, int(row['width']) // 3))
         row['height'] = str(max(1, int(row['height']) // 3))
+        row['psm'] = str(psm)
     return rows
 
+def all_words(path):
+    # Sparse composer hints and dense transcript rows need different OCR
+    # segmentation. Both must read the same pixels; neither invents a target.
+    return words(path, psm=6) + words(path, psm=11)
+
 def text(path):
-    return ' '.join(w['text'] for w in words(path)).lower()
+    return ' '.join(w['text'] for w in all_words(path)).lower()
 
 def wait_text(needle, name, timeout=35):
     deadline = time.monotonic() + timeout
@@ -113,6 +119,7 @@ def click_word(path, value, near_y=None):
     if not candidates:
         raise RuntimeError('Missing click target: ' + value)
     w = candidates[0]
+    print(f'OCR click={value} psm={w.get("psm", "crop7")}', flush=True)
     run('mousemove', str(int(w['left']) + int(w['width']) // 2), str(int(w['top']) + int(w['height']) // 2), 'click', '1')
 
 def clipboard():
@@ -149,10 +156,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'F1'); time.sleep(1); run('type', '--clearmodifiers', 'toggle ai chat'); run('key', 'Return'); time.sleep(2)
         # Existing composer focus route: panel at right, draft above mode row.
         initial = shot('00-initial')
-        placeholders = [w for w in words(initial) if w['text'].lower() == 'anything,']
+        placeholders = [w for w in all_words(initial) if w['text'].lower().strip('.,:;') == 'anything' and int(w['top']) > 550]
         if not placeholders:
             raise RuntimeError('Composer placeholder not in right-panel OCR strip, inspect initial pixels/crop')
-        w = placeholders[0]
+        w = max(placeholders, key=lambda row: int(row['top']))
+        print(f'OCR placeholder psm={w["psm"]}', flush=True)
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Synthetic chat stream fixture'); run('key', 'Return')
         waiting = wait_text('first token', '01-waiting', timeout=12)
@@ -205,10 +213,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         # Stop during the next first-token wait, via the composer's keyboard path.
         current = shot('09-before-stop')
         replies_before_stop = text(current).count('synthetic streamed reply')
-        placeholders = [w for w in words(current) if w['text'].lower() == 'anything,']
+        placeholders = [w for w in all_words(current) if w['text'].lower().strip('.,:;') == 'anything' and int(w['top']) > 550]
         if not placeholders:
             raise RuntimeError('Composer placeholder missing before Stop test')
-        w = placeholders[0]
+        w = max(placeholders, key=lambda row: int(row['top']))
+        print(f'OCR placeholder psm={w["psm"]}', flush=True)
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Synthetic cancellation'); run('key', 'Return')
         wait_text('first token', '10-stop-waiting', timeout=12)
@@ -226,10 +235,11 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--long-code', '--token-delay', '0'], stdout=flog, stderr=subprocess.STDOUT)
         wait_fixture()
         current = shot('13-before-long-code')
-        placeholders = [w for w in words(current) if w['text'].lower() == 'anything,']
+        placeholders = [w for w in all_words(current) if w['text'].lower().strip('.,:;') == 'anything' and int(w['top']) > 550]
         if not placeholders:
             raise RuntimeError('Composer placeholder missing before scroll test')
-        w = placeholders[0]
+        w = max(placeholders, key=lambda row: int(row['top']))
+        print(f'OCR placeholder psm={w["psm"]}', flush=True)
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Long synthetic code fixture'); run('key', 'Return'); time.sleep(3)
         # Bring the current code header into view, not the composer or editor.

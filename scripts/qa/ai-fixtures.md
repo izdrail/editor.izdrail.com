@@ -90,3 +90,8 @@ Code bodies scroll with the header outside the scroll; wheel propagation to the 
 Long lines are configured for horizontal scrolling and require GUI verification.
 Stable completed blocks retain their view when a later streaming tail changes;
 theme changes deliberately rebuild blocks to recolor them.
+
+Hosted chat OCR unions psm6 and psm11 readings of the same pixels. This is
+stricter for must-not-appear checks: either reading can fail the assertion.
+Before/after stale-reply counts use the same union and retain inequality checks;
+counts are supporting diagnostics, not a replacement for pixel inspection.
