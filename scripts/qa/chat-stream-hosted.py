@@ -47,8 +47,26 @@ def shot(name):
     return path
 
 def words(path):
-    data = subprocess.run(['tesseract', str(path), 'stdout', '--psm', '11', 'tsv'], text=True, capture_output=True, check=True, timeout=15).stdout
-    return list(csv.DictReader(io.StringIO(data), delimiter='\t'))
+    # Whole-screen OCR misdetects small dim text on a mostly empty canvas.
+    # Scale only the right-side chat region and map OCR boxes back to pixels.
+    from PIL import Image
+    image = Image.open(path)
+    geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
+    values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+    left = max(0, int(values['X']) + int(values['WIDTH']) - 360)
+    right = min(image.width, int(values['X']) + int(values['WIDTH']))
+    scaled = out / (path.stem + '-ocr.png')
+    image.crop((left, 50, right, image.height)).resize(
+        ((right - left) * 3, (image.height - 50) * 3)
+    ).save(scaled)
+    data = subprocess.run(['tesseract', str(scaled), 'stdout', '--psm', '11', '--dpi', '150', 'tsv'], text=True, capture_output=True, check=True, timeout=15).stdout
+    rows = list(csv.DictReader(io.StringIO(data), delimiter='\t'))
+    for row in rows:
+        row['left'] = str(left + int(row['left']) // 3)
+        row['top'] = str(50 + int(row['top']) // 3)
+        row['width'] = str(max(1, int(row['width']) // 3))
+        row['height'] = str(max(1, int(row['height']) // 3))
+    return rows
 
 def text(path):
     return ' '.join(w['text'] for w in words(path)).lower()
@@ -98,7 +116,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         initial = shot('00-initial')
         placeholders = [w for w in words(initial) if w['text'].lower() == 'anything,']
         if not placeholders:
-            raise RuntimeError('Composer placeholder not visible, inspect initial pixels')
+            raise RuntimeError('Composer placeholder not in right-panel OCR strip, inspect initial pixels/crop')
         w = placeholders[0]
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Synthetic chat stream fixture'); run('key', 'Return')
