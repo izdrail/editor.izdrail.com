@@ -455,7 +455,7 @@ mod tests {
         let docs = searcher
             .search(
                 &tantivy::query::AllQuery,
-                &tantivy::collector::TopDocs::with_limit(100),
+                &tantivy::collector::TopDocs::with_limit(100).order_by_score(),
             )
             .unwrap();
         let mut checked = 0;
