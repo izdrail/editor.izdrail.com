@@ -39,7 +39,7 @@ pty_audit.mkdir(exist_ok=True)
 pty_fixture = Path(__file__).with_name('terminal-pty-fixture.py').resolve()
 with (config / 'settings.toml').open('a') as settings:
     settings.write('\n[terminal.default-profile]\nlinux = "qa-pty"\n[terminal.profiles.qa-pty]\ncommand = "python3"\narguments = ' + json.dumps([str(pty_fixture), str(pty_audit)]) + '\n')
-env = os.environ | {'LAPCE_DEBUG_UI_TRACE': '1', 'LAPCE_TERMINAL_UI_TRACE': '1', 'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
+env = os.environ | {'GRAVITY_QA_PROJECT_SCAN_DELAY_MS': '4000', 'LAPCE_DEBUG_UI_TRACE': '1', 'LAPCE_TERMINAL_UI_TRACE': '1', 'LAPCE_SCM_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':97', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for name in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(name, None)
 
@@ -1259,6 +1259,93 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             stall_checks.append({'prefix': prefix, 'saved_seconds': elapsed})
         shot('61a-controller-typing-responsive')
         (out / 'controller-typing-latency.log').write_text(json.dumps(stall_checks, indent=2))
+
+        # Explicit QA-only env+filename gate permits release-binary acceptance:
+        # debug_assertions is false in the binary shipped by this workflow.
+        slow_original_settings = settings_file.read_text()
+        if '[editor]\n' in slow_original_settings:
+            slow_settings = slow_original_settings.replace('[editor]\n', '[editor]\nauto-closing-matching-pairs = false\n', 1)
+        else:
+            slow_settings = slow_original_settings + '\n[editor]\nauto-closing-matching-pairs = false\n'
+        assert slow_settings != slow_original_settings
+        settings_file.write_text(slow_settings)
+        time.sleep(2)
+        slow_fixture = controller_dir / 'SlowScanController.php'
+        (project / 'routes').mkdir(exist_ok=True)
+        slow_before = "<?php\nnamespace App\\Http\\Controllers;\nroute('native"
+        slow_fixture.write_text(slow_before)
+        run('key', 'Escape', 'ctrl+p'); time.sleep(0.6)
+        run('type', '--clearmodifiers', slow_fixture.name); run('key', 'Return'); time.sleep(1.5)
+        def slow_markers():
+            return (out / 'editor.log').read_text().count('QA_PROJECT_SCAN sleeping_ms=4000')
+        def await_slow_start(before):
+            deadline = time.monotonic() + 2
+            while slow_markers() <= before and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if slow_markers() <= before:
+                raise RuntimeError('Synthetic slow project worker did not start')
+        # No typing: a late result must appear, rather than being dropped.
+        before = slow_markers()
+        run('key', 'ctrl+End', 'ctrl+space'); await_slow_start(before)
+        shot('61b-slow-worker-before-result')
+        from PIL import Image
+        ocr = out / '61b-slow-result-ocr.png'
+        Image.open(out / '61b-slow-worker-before-result.png').crop((219, 76, 1000, 412)).resize((1562, 672)).save(ocr)
+        rendered = subprocess.run(['tesseract', str(ocr), 'stdout', '--psm', '11'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+        if 'native.example' in rendered:
+            raise RuntimeError('Slow-worker negative control already showed project result')
+        time.sleep(4.5); shot('61b-slow-worker-no-typing')
+        Image.open(out / '61b-slow-worker-no-typing.png').crop((219, 76, 1000, 412)).resize((1562, 672)).save(ocr)
+        rendered = subprocess.run(['tesseract', str(ocr), 'stdout', '--psm', '11'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+        if 'native.example' not in rendered:
+            raise RuntimeError('No-typing slow project result never appeared')
+        # One character while scan runs, save before it can finish, then dismiss.
+        run('key', 'Escape'); before = slow_markers()
+        run('key', 'ctrl+space'); await_slow_start(before)
+        started = time.monotonic()
+        run('type', '--clearmodifiers', '.')
+        run('key', 'ctrl+s')
+        expected = slow_before + '.'
+        while slow_fixture.read_text() != expected and time.monotonic() - started < 2:
+            time.sleep(0.05)
+        if slow_fixture.read_text() != expected:
+            raise RuntimeError('Typing stalled behind a sleeping project worker')
+        elapsed = time.monotonic() - started
+        run('key', 'Escape'); time.sleep(4.5)
+        shot('61b-slow-worker-typing-responsive')
+        Image.open(out / '61b-slow-worker-typing-responsive.png').crop((219, 76, 1000, 412)).resize((1562, 672)).save(ocr)
+        rendered = subprocess.run(['tesseract', str(ocr), 'stdout', '--psm', '11'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+        stale_discard_checked = 'native.example' not in rendered
+        if not stale_discard_checked or slow_fixture.read_text() != expected:
+            raise RuntimeError('Stale project result reopened dismissed popup or changed source')
+        (out / 'slow-worker-typing.log').write_text(json.dumps({'worker_delay_ms': 4000, 'typing_save_seconds': elapsed, 'exact_text': True, 'no_typing_result_visible': True, 'stale_discard_checked': stale_discard_checked}))
+
+        # Keep session open across one typed character: coalesced latest result
+        # must appear after the old worker and the replacement worker finish.
+        run('key', 'Home', 'shift+End'); run('type', '--clearmodifiers', "route('native")
+        run('key', 'Escape'); before = slow_markers()
+        run('key', 'ctrl+space'); await_slow_start(before)
+        run('type', '--clearmodifiers', '.')
+        deadline = time.monotonic() + 6
+        while slow_markers() < before + 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if slow_markers() < before + 2:
+            raise RuntimeError('Coalesced second project worker never started')
+        deadline = time.monotonic() + 7
+        while time.monotonic() < deadline:
+            shot('61c-slow-worker-coalesced-result')
+            Image.open(out / '61c-slow-worker-coalesced-result.png').crop((219, 76, 1000, 412)).resize((1562, 672)).save(ocr)
+            rendered = subprocess.run(['tesseract', str(ocr), 'stdout', '--psm', '11'], env=env, text=True, capture_output=True, check=True, timeout=20).stdout.lower()
+            if 'native.example' in rendered:
+                break
+        else:
+            raise RuntimeError('Coalesced one-character slow result never appeared')
+        run('key', 'Escape', 'ctrl+s'); time.sleep(0.3)
+        if slow_fixture.read_text() != slow_before + '.':
+            raise RuntimeError('Coalesced test changed source or typed outside route argument')
+
+        settings_file.write_text(slow_original_settings)
+        time.sleep(2)
 
         # UI-046: respect completion width preference without silent720px floor.
         completion_settings = settings_file.read_text()

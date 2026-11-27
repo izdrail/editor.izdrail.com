@@ -3784,7 +3784,6 @@ impl EditorData {
             words,
             snippets,
             keywords,
-            line_before,
             blade_vars,
             alpine_props,
             json_items,
@@ -3827,7 +3826,6 @@ impl EditorData {
                         Vec::new(),
                         Vec::new(),
                         items,
-                        String::new(),
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
@@ -3915,7 +3913,6 @@ impl EditorData {
                 words,
                 snippets,
                 keywords,
-                line_before,
                 blade_vars,
                 alpine_props,
                 json_items,
@@ -3931,41 +3928,6 @@ impl EditorData {
             indices: Vec::new(),
             show_on_empty: false,
         };
-        let project = self
-            .common
-            .workspace
-            .path
-            .as_deref()
-            .map(|root| {
-                crate::project_completion::items(root, Some(path), &line_before)
-            })
-            .unwrap_or_default();
-        // Inside a `<x-...` / `<livewire:...` tag name, only the project's
-        // component tags are relevant: no snippets, keywords or words, and
-        // show them even before a letter is typed.
-        let tag_only = crate::builtin_snippets::snippet_language(path, "php")
-            == "blade"
-            && matches!(
-                crate::project_completion::context(&line_before),
-                Some(
-                    crate::project_completion::Kind::ComponentTag
-                        | crate::project_completion::Kind::LivewireTag
-                )
-            );
-        if tag_only {
-            return project
-                .into_iter()
-                .map(|item| ScoredCompletionItem {
-                    item,
-                    plugin_id: lapce_rpc::plugin::PluginId(0),
-                    source: CompletionSource::Project,
-                    score: 0,
-                    label_score: 0,
-                    indices: Vec::new(),
-                    show_on_empty: true,
-                })
-                .collect();
-        }
         snippets
             .into_iter()
             .map(|i| wrap(i, CompletionSource::Snippet))
@@ -3986,13 +3948,6 @@ impl EditorData {
                     },
                 );
                 w.show_on_empty = member;
-                w
-            }))
-            .chain(project.into_iter().map(|i| {
-                // Project items exist only because the line is a known
-                // quoted context, so offer them on the bare quote too.
-                let mut w = wrap(i, CompletionSource::Project);
-                w.show_on_empty = true;
                 w
             }))
             .chain(
@@ -4317,6 +4272,7 @@ impl EditorData {
                 .get_untracked()
                 .update_document_completion(self, cursor_offset);
 
+            self.request_project_completion(&doc, &path, offset);
             if let Some((request, _)) = php_request {
                 self.request_php_completion(&doc, &path, request);
             }
@@ -4333,6 +4289,9 @@ impl EditorData {
             completion.input_items.clear();
             completion.local_items = local_items;
             completion.native_items.clear();
+            completion.project_items.clear();
+            completion.project_only = false;
+            completion.project_kind = None;
             completion.php_context = php_request
                 .as_ref()
                 .and_then(|(request, _)| request.context.clone());
@@ -4364,9 +4323,112 @@ impl EditorData {
             // LSP server, so no response would ever refresh the list.
             completion.filter_items();
         });
+        self.request_project_completion(&doc, &path, offset);
         if let Some((request, _)) = php_request {
             self.request_php_completion(&doc, &path, request);
         }
+    }
+
+    fn request_project_completion(&self, doc: &Doc, path: &std::path::Path, offset: usize) {
+        let editor_id = self.id();
+        let Some(root) = self.common.workspace.path.clone() else { return };
+        let line = doc.buffer.with_untracked(|buffer| {
+            let offset = crate::completion_rank::project_offset(offset, buffer.len());
+            let start = buffer.offset_of_line(buffer.line_of_offset(offset));
+            buffer.slice_to_cow(start..offset).into_owned()
+        });
+        let completion = self.common.completion;
+        completion.update(|c| c.project_generation = c.project_generation.wrapping_add(1));
+        let generation = completion.with_untracked(|c| c.project_generation);
+        let kind = (line.len() <= 4096).then(|| crate::project_completion::context(&line)).flatten();
+        if kind.is_none() {
+            self.common.completion.update(|c| {
+                c.project_items.clear();
+                c.project_only = false;
+                c.project_kind = None;
+                c.filter_items();
+            });
+            return;
+        }
+        let tag_only = crate::builtin_snippets::snippet_language(path, "php") == "blade"
+            && matches!(crate::project_completion::context(&line), Some(
+                crate::project_completion::Kind::ComponentTag | crate::project_completion::Kind::LivewireTag
+            ));
+        completion.update(|c| {
+            c.set_project_context(kind, tag_only);
+        });
+        // At most one scan and one live retry per completion window. Every
+        // keystroke supersedes the prior retry, including editor switches.
+        if completion.with_untracked(|c| c.project_scan.busy()) {
+            let exhausted = completion.try_update(|c| {
+                c.project_wait_since.get_or_insert_with(std::time::Instant::now)
+                    .elapsed() > Duration::from_secs(10)
+            }).unwrap_or(true);
+            if exhausted { return; }
+            let editor = self.clone();
+            let doc = doc.clone();
+            let path = path.to_owned();
+            exec_after(Duration::from_millis(50), move |_| {
+                if completion.with_untracked(|c| c.status != CompletionStatus::Inactive
+                    && c.project_generation == generation && c.latest_editor_id == Some(editor_id)) {
+                    editor.request_project_completion(&doc, &path, offset);
+                }
+            });
+            return;
+        }
+        completion.update(|c| c.project_wait_since = None);
+        let (session, input) = completion.with_untracked(|c| (c.request_id, c.input.clone()));
+        let debounce_input = input.clone();
+        let rev = doc.rev();
+        let source = doc.clone();
+        let origin_id = self.doc().buffer_id;
+        let editor = self.clone();
+        let path = path.to_owned();
+        let scope = self.common.scope;
+        // Debounce on the UI event loop, but run every filesystem-backed
+        // catalog lookup on a worker. No UI signal is accessed by the worker.
+        exec_after(Duration::from_millis(35), move |_| {
+            if completion.with_untracked(|c| c.status == CompletionStatus::Inactive
+                || c.request_id != session || c.input != debounce_input
+                || c.project_generation != generation) { return; }
+            if completion.with_untracked(|c| c.project_scan.busy()) { return; }
+            let Some(scan_token) = completion.try_update(|c| c.project_scan.begin()).flatten() else { return; };
+            let send = create_ext_action(scope, move |items: Vec<CompletionItem>| {
+                if !completion.try_update(|c| c.project_scan.finish(scan_token)).unwrap_or(false) { return; }
+                let current = completion.with_untracked(|c| {
+                    crate::completion::project_result_current(
+                        c.status != CompletionStatus::Inactive, session, c.request_id,
+                        rev, source.rev(), &input, &c.input,
+                    ) && c.latest_editor_id == Some(editor_id)
+                        && !c.source_guard.as_ref().is_some_and(|g| !g.current())
+                        && editor.doc().buffer_id == origin_id
+                });
+                if !current { return; }
+                completion.update(|c| {
+                    c.project_items = items.into_iter().map(|item| crate::completion::ScoredCompletionItem {
+                        item, plugin_id: PluginId(0), source: crate::completion_sources::CompletionSource::Project,
+                        score: 0, label_score: 0, indices: Vec::new(), show_on_empty: true,
+                    }).collect();
+                    c.filter_items();
+                });
+            });
+            rayon::spawn(move || {
+                // Explicit, bounded synthetic acceptance hook. Never set by settings.
+                if path.file_name().is_some_and(|name| name == "SlowScanController.php") {
+                    if let Ok(delay) = std::env::var("GRAVITY_QA_PROJECT_SCAN_DELAY_MS") {
+                        if let Ok(delay) = delay.parse::<u64>() {
+                            eprintln!("QA_PROJECT_SCAN sleeping_ms={}", delay.min(5000));
+                            std::thread::sleep(Duration::from_millis(delay.min(5000)));
+                        }
+                    }
+                }
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::project_completion::items(&root, Some(&path), &line)
+                }));
+                if result.is_err() { eprintln!("Project completion scan panicked; discarded"); }
+                send(result.unwrap_or_default());
+            });
+        });
     }
 
     fn request_php_completion(
@@ -4535,9 +4597,10 @@ impl EditorData {
             completion.input_items.clear();
             completion.local_items = locals;
             completion.request_id += 1;
-            completion.request(self.id(), &self.common.proxy, path, input, position);
+            completion.request(self.id(), &self.common.proxy, path.clone(), input, position);
             completion.filter_items();
         });
+        self.request_project_completion(&source, &path, offset);
         self.common
             .completion
             .get_untracked()

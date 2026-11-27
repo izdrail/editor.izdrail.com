@@ -189,3 +189,53 @@ mod tests {
         assert!(!has_prefix_ignore_case("renderBlade", "rdb"));
     }
 }
+
+/// One physical project scan per window. Invalidating a request never marks a
+/// still-running worker free; only its matching completion token can do that.
+#[derive(Clone, Debug, Default)]
+pub struct ProjectScanState {
+    running: Option<u64>,
+    next: u64,
+}
+impl ProjectScanState {
+    pub fn busy(&self) -> bool { self.running.is_some() }
+    pub fn begin(&mut self) -> Option<u64> {
+        if self.busy() { return None; }
+        self.next = self.next.wrapping_add(1);
+        self.running = Some(self.next);
+        self.running
+    }
+    pub fn finish(&mut self, token: u64) -> bool {
+        if self.running != Some(token) { return false; }
+        self.running = None;
+        true
+    }
+}
+#[cfg(test)]
+mod project_scan_state_tests {
+    use super::ProjectScanState;
+    #[test]
+    fn one_worker_and_stale_token_cannot_release_next_worker() {
+        let mut state = ProjectScanState::default();
+        let a = state.begin().unwrap();
+        assert!(state.begin().is_none()); // editor B must wait for A
+        assert!(state.finish(a)); // also used after caught worker panic
+        let b = state.begin().unwrap();
+        assert!(!state.finish(a));
+        assert!(state.busy());
+        assert!(state.finish(b));
+        assert!(!state.busy());
+    }
+}
+
+pub(crate) fn project_offset(offset: usize, len: usize) -> usize { offset.min(len) }
+
+#[cfg(test)]
+mod project_offset_tests {
+    #[test]
+    fn shortened_buffer_cannot_reuse_out_of_range_offset() {
+        assert_eq!(super::project_offset(300, 2), 2);
+        assert_eq!(super::project_offset(0, 0), 0);
+        assert_eq!(super::project_offset(1, 20), 1);
+    }
+}

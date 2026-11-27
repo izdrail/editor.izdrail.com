@@ -69,6 +69,12 @@ pub struct CompletionData {
     /// Snippets and buffer words, gathered once when the session starts.
     pub local_items: im::Vector<ScoredCompletionItem>,
     pub native_items: im::Vector<ScoredCompletionItem>,
+    pub project_items: im::Vector<ScoredCompletionItem>,
+    pub project_only: bool,
+    pub project_kind: Option<crate::project_completion::Kind>,
+    pub project_scan: crate::completion_rank::ProjectScanState,
+    pub project_generation: u64,
+    pub project_wait_since: Option<std::time::Instant>,
     pub native_state: Option<String>,
     pub native_generation: u64,
     pub php_context: Option<lapce_php::CursorContext>,
@@ -101,6 +107,12 @@ impl CompletionData {
             input_items: im::HashMap::new(),
             local_items: im::Vector::new(),
             native_items: im::Vector::new(),
+            project_items: im::Vector::new(),
+            project_only: false,
+            project_kind: None,
+            project_scan: Default::default(),
+            project_generation: 0,
+            project_wait_since: None,
             native_state: None,
             native_generation: 0,
             php_context: None,
@@ -185,6 +197,11 @@ impl CompletionData {
         self.input_items.clear();
         self.local_items.clear();
         self.native_items.clear();
+        self.project_items.clear();
+        self.project_only = false;
+        self.project_kind = None;
+        self.project_generation = self.project_generation.wrapping_add(1);
+        self.project_wait_since = None;
         self.native_generation += 1;
         self.native_state = None;
         self.php_context = None;
@@ -220,9 +237,13 @@ impl CompletionData {
     /// Blade snippets always keep their label (see
     /// `dedupe_keeping_blade_snippets`).
     fn all_items(&self) -> im::Vector<ScoredCompletionItem> {
+        if self.project_only {
+            return self.project_items.clone();
+        }
         let blade = keeps_blade_snippets(&self.path);
         let mut items = self.lsp_items();
         items.extend(self.native_items.clone());
+        items.extend(self.project_items.clone());
         if self.input.is_empty() {
             let locals = empty_input_locals(&self.local_items);
             if locals.is_empty() {
@@ -336,6 +357,15 @@ impl CompletionData {
         items.sort_by(|a, b| compare(&rank_of(a), &rank_of(b)));
         self.sort_php(&mut items);
         self.filtered_items = items;
+    }
+
+    pub fn set_project_context(&mut self, kind: Option<crate::project_completion::Kind>, tag_only: bool) {
+        if self.project_kind != kind || self.project_only != tag_only {
+            self.project_items.clear();
+        }
+        self.project_kind = kind;
+        self.project_only = tag_only;
+        self.filter_items();
     }
 
     pub fn receive_native(&mut self, request_id: usize, items: Vec<CompletionItem>) {
@@ -891,6 +921,49 @@ mod blend_tests {
             indices: Vec::new(),
             show_on_empty: false,
         }
+    }
+
+    #[test]
+    fn project_rows_do_not_replace_snippets_and_tag_mode_stays_exclusive() {
+        let scope = Scope::new();
+        let config = scope.create_rw_signal(Arc::new(LapceConfig::default()));
+        let mut completion = CompletionData::new(scope, config.read_only());
+        completion.status = CompletionStatus::Started;
+        completion.input = "r".into();
+        completion.local_items.push_back(item("routeSnippet", CompletionSource::Snippet, 0));
+        let mut project = item("routeName", CompletionSource::Project, 0);
+        project.show_on_empty = true;
+        completion.project_items.push_back(project);
+        assert_eq!(completion.all_items().len(), 2);
+        completion.update_input("ro".into());
+        assert_eq!(completion.project_items.len(), 1);
+        assert_eq!(completion.filtered_items.len(), 2);
+        completion.update_input(String::new());
+        assert_eq!(completion.filtered_items.len(), 1);
+        completion.project_only = true;
+        completion.filter_items();
+        assert_eq!(completion.filtered_items.len(), 1);
+        completion.update_input("routeN".into());
+        assert_eq!(completion.filtered_items.len(), 1);
+        assert_eq!(completion.filtered_items[0].source, CompletionSource::Project);
+        assert_eq!(completion.all_items().len(), 1);
+        assert_eq!(completion.all_items()[0].item.label, "routeName");
+        completion.cancel();
+        assert!(completion.project_items.is_empty());
+        assert!(!completion.project_only);
+    }
+
+    #[test]
+    fn project_context_change_clears_rows() {
+        let scope = Scope::new();
+        let config = scope.create_rw_signal(Arc::new(LapceConfig::default()));
+        let mut completion = CompletionData::new(scope, config.read_only());
+        completion.set_project_context(Some(crate::project_completion::Kind::Route), false);
+        completion.project_items.push_back(item("native.example", CompletionSource::Project, 0));
+        completion.set_project_context(Some(crate::project_completion::Kind::Route), false);
+        assert_eq!(completion.project_items.len(), 1);
+        completion.set_project_context(Some(crate::project_completion::Kind::View), false);
+        assert!(completion.project_items.is_empty());
     }
 
     #[test]
@@ -1498,5 +1571,27 @@ mod native_region_tests {
         );
         assert!(crate::php_completion::candidates(&native, vec![]).is_empty());
         assert_eq!(rows[0].item.label, "named.route");
+    }
+}
+
+/// Late project scans never reopen a dismissed or replaced session.
+pub(crate) fn project_result_current(
+    active: bool, expected_session: usize, session: usize,
+    expected_revision: u64, revision: u64,
+    expected_input: &str, input: &str,
+) -> bool {
+    active && expected_session == session && expected_revision == revision && expected_input == input
+}
+
+#[cfg(test)]
+mod project_guard_tests {
+    use super::project_result_current as current;
+    #[test]
+    fn rejects_old_input_revision_session_and_cancel() {
+        assert!(current(true,1,1,2,2,"ab","ab"));
+        assert!(!current(false,1,1,2,2,"ab","ab"));
+        assert!(!current(true,1,2,2,2,"ab","ab"));
+        assert!(!current(true,1,1,2,3,"ab","ab"));
+        assert!(!current(true,1,1,2,2,"ab","abc"));
     }
 }
