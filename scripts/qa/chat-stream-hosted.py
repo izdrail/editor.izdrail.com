@@ -132,7 +132,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
     app = None
     try:
         time.sleep(2)
-        app = subprocess.Popen([binary, str(project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
+        app = subprocess.Popen([binary, str(fresh_project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
         for _ in range(35):
             time.sleep(1)
             if app.poll() is not None:
@@ -262,7 +262,36 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         fixture.terminate(); fixture.wait(timeout=5)
         fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--long-code', '--token-delay', '0'], stdout=flog, stderr=subprocess.STDOUT)
         wait_fixture()
+        # Fresh disposable profile means exactly one code card can exist.
+        old_window = window
+        app.terminate(); app.wait(timeout=5)
+        gone = subprocess.run(['xdotool', 'getwindowname', old_window], env=env, capture_output=True)
+        if gone.returncode == 0:
+            raise RuntimeError('Original editor window remained after process exit')
+        fresh = Path(tempfile.mkdtemp(prefix='gravity-chat-scroll-', dir='/tmp'))
+        fresh_config = fresh / '.config/lapce-nightly'
+        fresh_config.mkdir(parents=True)
+        fresh_settings = settings.replace('Lapce Dark', 'Lapce Light')
+        assert 'color-theme = "Lapce Light"' in fresh_settings
+        (fresh_config / 'settings.toml').write_text(fresh_settings)
+        fresh_project = Path(tempfile.mkdtemp(prefix='gravity-chat-scroll-project-', dir='/tmp'))
+        (fresh_project / 'example.php').write_text(source)
+        (fresh_config / 'language-servers.toml').write_text('enabled = false\nauto-install = false\n')
+        env.update({'HOME': str(fresh), 'XDG_CONFIG_HOME': str(fresh / '.config'), 'XDG_DATA_HOME': str(fresh / '.local/share')})
+        app = subprocess.Popen([binary, str(project), '--wait', '--new'], env=env, stdout=log, stderr=subprocess.STDOUT)
+        for _ in range(35):
+            time.sleep(1)
+            found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', 'lapce'], env=env, text=True, capture_output=True)
+            if found.returncode == 0 and found.stdout.strip():
+                window = found.stdout.splitlines()[0]
+                break
+        else:
+            raise RuntimeError('Fresh scroll-profile window missing')
+        run('windowsize', window, '1443', '900'); run('windowfocus', '--sync', window); time.sleep(4)
+        run('key', 'F1'); time.sleep(1); run('type', '--clearmodifiers', 'toggle ai chat'); run('key', 'Return'); time.sleep(2)
         current = shot('13-before-long-code')
+        if 'synthetic streamed reply' in text(current):
+            raise RuntimeError('Fresh scroll profile retained an old conversation')
         placeholders = [w for w in all_words(current) if w['text'].lower().strip('.,:;') == 'anything' and int(w['top']) > 550]
         if not placeholders:
             raise RuntimeError('Composer placeholder missing before scroll test')
@@ -270,6 +299,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         print(f'OCR placeholder psm={w["psm"]}', flush=True)
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Long synthetic code fixture'); run('key', 'Return'); time.sleep(3)
+        # Remaining crop coordinates assume this restored1443x900 window.
         # Bring the current code header into view, not the composer or editor.
         run('mousemove', '1210', '260'); run('click', '--repeat', '35', '--delay', '30', '4'); time.sleep(1)
         scrolled = shot('14-long-code-top')
@@ -281,7 +311,12 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('mousemove', '1240', str(body_y))
         for _ in range(30):
             bottom = shot('15-long-code-body-end')
-            if '44:' in text(bottom):
+            from PIL import Image
+            last_crop = out / '15-last-line-ocr.png'
+            Image.open(bottom).crop((1140, max(header_y + 20, 140), 1435, 675)).resize((1180, (675 - max(header_y + 20, 140)) * 4)).save(last_crop)
+            last_text = subprocess.run(['tesseract', str(last_crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout
+            import re
+            if re.search(r'line\s+44\b', last_text, re.IGNORECASE):
                 break
             run('click', '5'); time.sleep(.1)
         else:
