@@ -23,7 +23,7 @@ config = home / '.config/lapce-nightly'
 config.mkdir(parents=True, exist_ok=True)
 (config / 'settings.toml').write_text('[core]\nmodal = false\n[ai-chat]\nenabled = true\nbackend = "local"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n')
 # Test-only user binding invokes the existing panel command, not an icon coordinate.
-(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+shift+F9\"\ncommand = \"toggle_source_control_focus\"\n[[keymaps]]\nkey = \"ctrl+shift+F8\"\ncommand = \"new_terminal_tab\"\n')
+(config / 'keymaps.toml').write_text('[[keymaps]]\nkey = \"ctrl+shift+F9\"\ncommand = \"toggle_source_control_focus\"\n[[keymaps]]\nkey = \"ctrl+shift+F8\"\ncommand = \"new_terminal_tab\"\n[[keymaps]]\nkey = \"ctrl+shift+F7\"\ncommand = \"toggle_debug_visual\"\n')
 # Only the deterministic local Python fixture runs. PHP and all package
 # downloads remain disabled; the composer never contacts a language service.
 lsp_log = out / 'navigation-lsp.log'
@@ -389,8 +389,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
 
         (out / 'terminal-second-tab-assertions.log').write_text('enter_space_close_once=true\nmodified_no_close=true\noriginal_pty_unchanged=true\npost_close_tab_no_input=true\noriginal_header_preserved=true\n' + '\n'.join(terminal_events()))
         # UI041: open configuration palette only. Never select a config.
-        run('key', 'F1'); time.sleep(1)
-        run('type', '--clearmodifiers', 'toggle debug'); run('key', 'Return'); time.sleep(2)
+        run('key', 'ctrl+shift+F7'); time.sleep(2)
         shot('00-debug-panel-initial')
         from PIL import Image
         Image.open(out / '00-debug-panel-initial.png').resize((3000, 2000)).save(out / 'debug-label-ocr.png')
