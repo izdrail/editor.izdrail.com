@@ -932,6 +932,42 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         if bracket_file.read_text() != bracket_text:
             raise RuntimeError('Bracket navigation changed source bytes')
         run('key', 'End', 'shift+Left'); shot('14f-shift-arrow-still-selects')
+        # Lexical adjacent matching must skip misleading quoted/comment braces.
+        lexical_file = project / 'lexical_brackets.php'
+        lexical_line = "{ $x = '}'; /* } */ [] }"
+        lexical_text = '<?php\n' + lexical_line + '\n('
+        lexical_file.write_text(lexical_text)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'lexical_brackets.php'); run('key', 'Return'); time.sleep(3)
+        run('key', 'ctrl+Home', 'Down', 'Home'); shot('14g-lexical-opening')
+        run('key', 'ctrl+shift+backslash'); shot('14h-lexical-jump-closing')
+        def assert_lexical_cursor(expected, name):
+            sentinel = 'LEXICAL_CURSOR_' + name
+            subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input=sentinel, env=env, text=True, check=True, timeout=5)
+            run('key', 'shift+End'); time.sleep(.15); run('key', 'ctrl+c'); time.sleep(.3)
+            copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+            shot(name + '-selection')
+            if copied == sentinel or copied != expected:
+                raise RuntimeError('Lexical bracket cursor mismatch: ' + name)
+            run('key', 'Home')
+            for _ in range(len(lexical_line) - len(expected)):
+                run('key', 'Right')
+        assert_lexical_cursor('}', '14h1-lexical-closing')
+        run('key', 'ctrl+shift+backslash')
+        assert_lexical_cursor(lexical_line, '14h2-lexical-opening')
+        # Jump is a no-op on a quoted brace, not a jump to a code brace.
+        run('key', 'Home')
+        for _ in range(lexical_line.index("'}'") + 1):
+            run('key', 'Right')
+        run('key', 'ctrl+shift+backslash'); shot('14i-quoted-brace-no-match')
+        assert_lexical_cursor(lexical_line[lexical_line.index("'}'") + 1:], '14i1-quoted-no-jump')
+        run('key', 'ctrl+End'); shot('14j-unmatched-dark')
+        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
+        time.sleep(3); shot('14k-unmatched-light')
+        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Light"', 'color-theme = "Lapce Dark"'))
+        time.sleep(3)
+        if lexical_file.read_text() != lexical_text:
+            raise RuntimeError('Lexical bracket navigation changed source bytes')
         run('key', 'ctrl+comma'); time.sleep(3); shot('16-settings-dark-wide')
         run('type', '--clearmodifiers', 'zz_no_setting_677')
         shot('16a-settings-no-results')

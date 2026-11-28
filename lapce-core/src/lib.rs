@@ -62,3 +62,5 @@ mod line_ending_save_tests {
 mod smart_editing_tests;
 
 pub mod pairing_context;
+
+pub mod bracket_matching;

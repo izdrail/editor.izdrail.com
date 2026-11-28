@@ -220,6 +220,37 @@ impl DocumentHighlight {
     }
 }
 
+// None preserves the previous tree/raw fallback, including non-adjacent syntax
+// semantics. Some(offset) is an evidence-based no-op, not an error location.
+fn adjacent_navigation_target(result: lapce_core::bracket_matching::AdjacentMatch, offset: usize, has_snapshot: bool) -> Option<usize> {
+    use lapce_core::bracket_matching::AdjacentMatch::*;
+    match result {
+        Matched { other, .. } => Some(other),
+        Ignored | Unmatched { .. } => Some(offset),
+        Unknown if has_snapshot => Some(offset),
+        Unknown | NotAdjacent => None,
+    }
+}
+
+#[cfg(test)]
+mod adjacent_navigation_tests {
+    use super::adjacent_navigation_target;
+    use lapce_core::bracket_matching::AdjacentMatch::*;
+    #[test]
+    fn decision_table_preserves_unsupported_and_nonadjacent_fallback() {
+        for snapshot in [false, true] {
+            assert_eq!(adjacent_navigation_target(Matched { at: 1, other: 7 }, 1, snapshot), Some(7));
+            assert_eq!(adjacent_navigation_target(Ignored, 1, snapshot), Some(1));
+            assert_eq!(adjacent_navigation_target(Unmatched { at: 1 }, 1, snapshot), Some(1));
+            assert_eq!(adjacent_navigation_target(NotAdjacent, 1, snapshot), None);
+        }
+        assert_eq!(adjacent_navigation_target(Unknown, 1, true), Some(1));
+        assert_eq!(adjacent_navigation_target(Unknown, 1, false), None);
+    }
+}
+
+type AdjacentBracketCache = Option<(u64, u64, usize, Option<Arc<lapce_core::bracket_matching::Snapshot>>, lapce_core::bracket_matching::AdjacentMatch)>;
+
 #[derive(Clone)]
 pub struct Doc {
     pub scope: Scope,
@@ -231,6 +262,7 @@ pub struct Doc {
     pub(crate) projection: RwSignal<Option<crate::multibuffer::ProjectionBinding>>,
     pub buffer: RwSignal<Buffer>,
     pub syntax: RwSignal<Syntax>,
+    adjacent_bracket_cache: Rc<RefCell<AdjacentBracketCache>>,
     semantic_styles: RwSignal<Option<Spans<Style>>>,
     /// Inlay hints for the document
     pub inlay_hints: RwSignal<Option<Spans<InlayHint>>>,
@@ -297,6 +329,7 @@ impl Doc {
             projection: cx.create_rw_signal(None),
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(syntax),
+            adjacent_bracket_cache: Rc::new(RefCell::new(None)),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
             parser: Rc::new(RefCell::new(BracketParser::new(
                 String::new(),
@@ -351,6 +384,7 @@ impl Doc {
             projection: cx.create_rw_signal(None),
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(Syntax::plaintext()),
+            adjacent_bracket_cache: Rc::new(RefCell::new(None)),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
             parser: Rc::new(RefCell::new(BracketParser::new(
                 String::new(),
@@ -406,6 +440,7 @@ impl Doc {
             projection: cx.create_rw_signal(None),
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(syntax),
+            adjacent_bracket_cache: Rc::new(RefCell::new(None)),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
             parser: Rc::new(RefCell::new(BracketParser::new(
                 String::new(),
@@ -2253,9 +2288,25 @@ impl Doc {
         self.code_actions
     }
 
-    /// Returns the offsets of the brackets enclosing the given offset.
-    /// Uses a language aware algorithm if syntax support is available for the current language,
-    /// else falls back to a language unaware algorithm.
+    /// Adjacent lexical evidence only, never infer unmatched from stale syntax.
+    pub fn adjacent_bracket_match(&self, offset: usize) -> lapce_core::bracket_matching::AdjacentMatch {
+        self.syntax.with_untracked(|syntax| self.buffer.with_untracked(|buffer| {
+            let mut cache = self.adjacent_bracket_cache.borrow_mut();
+            if let Some((rev, syntax_rev, at, snapshot, result)) = cache.as_ref() {
+                let same_snapshot = match (snapshot, &syntax.lexilla) {
+                    (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                    (None, None) => true,
+                    _ => false,
+                };
+                if *rev == buffer.rev() && *syntax_rev == syntax.rev && *at == offset && same_snapshot { return *result; }
+            }
+            let result = lapce_core::bracket_matching::adjacent_match(buffer.text(), syntax.lexilla.as_deref(), syntax.rev, buffer.rev(), offset);
+            *cache = Some((buffer.rev(), syntax.rev, offset, syntax.lexilla.clone(), result));
+            result
+        }))
+    }
+
+    /// Returns enclosing offsets using syntax, with a structural fallback.
     pub fn find_enclosing_brackets(&self, offset: usize) -> Option<(usize, usize)> {
         let rev = self.rev();
         self.syntax
@@ -2391,6 +2442,8 @@ impl Document for Doc {
     }
 
     fn find_matching_pair(&self, offset: usize) -> usize {
+        if let Some(target) = adjacent_navigation_target(self.adjacent_bracket_match(offset), offset,
+            self.syntax().with_untracked(|syntax| syntax.lexilla.is_some())) { return target; }
         self.syntax().with_untracked(|syntax| {
             if syntax.layers.is_some() && syntax.rev == self.rev() {
                 syntax.find_matching_pair(offset).unwrap_or(offset)

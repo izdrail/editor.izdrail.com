@@ -843,6 +843,7 @@ impl EditorView {
         cx: &mut PaintCx,
         screen_lines: &ScreenLines,
         highlight_line_cols: impl Iterator<Item = (RVLine, usize)>,
+        unmatched: bool,
     ) {
         let editor = &self.editor.editor;
         let config = self.editor.common.config.get_untracked();
@@ -875,8 +876,8 @@ impl EditorView {
 
                 cx.stroke(
                     &rect,
-                    config.color(LapceColor::EDITOR_FOREGROUND),
-                    &Stroke::new(1.0),
+                    config.color(if unmatched { LapceColor::LAPCE_ERROR } else { LapceColor::EDITOR_FOREGROUND }),
+                    &Stroke::new(if unmatched { 2.0 } else { 1.0 }),
                 );
             }
         }
@@ -1046,10 +1047,21 @@ impl EditorView {
             let ed = &e_data.editor;
             let offset = ed.cursor.with_untracked(|cursor| cursor.mode.offset());
 
-            let bracket_offsets = e_data
-                .doc_signal()
-                .with_untracked(|doc| doc.find_enclosing_brackets(offset))
-                .map(|(start, end)| [start, end]);
+            use lapce_core::bracket_matching::AdjacentMatch;
+            let adjacent = e_data.doc_signal().with_untracked(|doc| doc.adjacent_bracket_match(offset));
+            let bracket_offsets = match adjacent {
+                AdjacentMatch::Matched { at, other } => Some([at.min(other), at.max(other)]),
+                AdjacentMatch::Ignored | AdjacentMatch::Unmatched { .. } => None,
+                AdjacentMatch::Unknown => e_data.doc_signal().with_untracked(|doc| {
+                    // Unknown lexical evidence cannot authorize a raw-text
+                    // match. Truly unsupported lexers keep the old fallback.
+                    if doc.syntax().with_untracked(|syntax| syntax.lexilla.is_some()) { None }
+                    else { doc.find_enclosing_brackets(offset).map(|(a, b)| [a, b]) }
+                }),
+                AdjacentMatch::NotAdjacent => e_data.doc_signal()
+                    .with_untracked(|doc| doc.find_enclosing_brackets(offset))
+                    .map(|(start, end)| [start, end]),
+            };
 
             let bracket_line_cols = bracket_offsets.map(|bracket_offsets| {
                 bracket_offsets.map(|offset| {
@@ -1064,7 +1076,12 @@ impl EditorView {
                     cx,
                     screen_lines,
                     bracket_line_cols.into_iter().flatten(),
+                    false,
                 );
+                if let AdjacentMatch::Unmatched { at } = adjacent {
+                    let (line, col) = ed.rvline_col_of_offset(at, CursorAffinity::Forward);
+                    self.paint_char_highlights(cx, screen_lines, std::iter::once((line, col)), true);
+                }
             }
 
             if config.editor.highlight_scope_lines {

@@ -56,3 +56,6 @@ cargo test --locked -p lapce-proxy native_2000_file_index_latency_and_rss -- --i
 cargo test --locked -p lapce-index php_symbol_line_lookup_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/php-symbol-line-lookup.log
 
 cargo test --locked -p lapce-app completion_profile_vendor_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/completion-profile-vendor-benchmark.log
+
+cargo test --locked -p lapce-core --features logos-php bracket_matching -- --test-threads=1 2>&1 | tee target/acceptance-logs/bracket-matching.log
+cargo test --release --locked -p lapce-core lexical_brackets_64k_unmatched_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/bracket-matching-timing.log
