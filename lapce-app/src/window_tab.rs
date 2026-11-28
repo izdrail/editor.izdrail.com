@@ -16,7 +16,7 @@ use floem::{
     action::{TimerToken, open_file, remove_overlay},
     ext_event::{create_ext_action, create_signal_from_channel},
     file::FileDialogOptions,
-    keyboard::Modifiers,
+    keyboard::{Key, Modifiers, NamedKey},
     kurbo::Size,
     peniko::kurbo::{Point, Rect, Vec2},
     prelude::SignalTrack,
