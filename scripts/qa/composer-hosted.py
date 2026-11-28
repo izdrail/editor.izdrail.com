@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Capture synthetic composer states. PNG review is a separate acceptance gate."""
 import os
+import re
 import shutil
 from pathlib import Path
 import subprocess
@@ -962,9 +963,17 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'ctrl+shift+backslash'); shot('14i-quoted-brace-no-match')
         assert_lexical_cursor(lexical_line[lexical_line.index("'}'") + 1:], '14i1-quoted-no-jump')
         run('key', 'ctrl+End'); shot('14j-unmatched-dark')
-        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Dark"', 'color-theme = "Lapce Light"'))
+        # Early settings rely on the dark default, so replacing a nonexistent
+        # explicit dark line would silently leave this capture dark.
+        bracket_dark_settings = settings_file.read_text()
+        # Strip this key in any section; restore the byte-exact prior text below.
+        bracket_light_settings = re.sub(r'(?m)^color-theme\s*=.*\n?', '', bracket_dark_settings)
+        bracket_light_settings = bracket_light_settings.replace('[core]\n', '[core]\ncolor-theme = "Lapce Light"\n', 1)
+        if bracket_light_settings == bracket_dark_settings or 'color-theme = "Lapce Light"' not in bracket_light_settings:
+            raise RuntimeError('Unmatched bracket light-theme fixture did not change settings')
+        settings_file.write_text(bracket_light_settings)
         time.sleep(3); shot('14k-unmatched-light')
-        settings_file.write_text(settings_file.read_text().replace('color-theme = "Lapce Light"', 'color-theme = "Lapce Dark"'))
+        settings_file.write_text(bracket_dark_settings)
         time.sleep(3)
         if lexical_file.read_text() != lexical_text:
             raise RuntimeError('Lexical bracket navigation changed source bytes')
