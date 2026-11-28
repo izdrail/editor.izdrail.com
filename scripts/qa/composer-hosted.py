@@ -988,6 +988,66 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(3)
         if (project / 'blade_delimiter_paint.blade.php').read_text() != blade_paint_text:
             raise RuntimeError('Blade paint capture changed source bytes')
+        # Real native movement/copy on HTML, Blade and Vue. Core snapshot
+        # tests alone do not establish editor focus, cursor routing or painting.
+        def assert_mixed_suffix(line, expected, capture, retry_noop=None):
+            for attempt in range(3):
+                sentinel = 'MIXED_CURSOR_' + capture + '_' + str(attempt)
+                subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input=sentinel, env=env, text=True, check=True, timeout=5)
+                run('key', 'shift+End'); time.sleep(.15); run('key', 'ctrl+c'); time.sleep(.3)
+                copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+                shot(capture + '-attempt-' + str(attempt))
+                if copied != expected and (retry_noop is None or copied != retry_noop or attempt == 2):
+                    raise RuntimeError('Mixed-language editor cursor mismatch: ' + capture)
+                # Fixtures have no leading indentation, so Home is unambiguous
+                # even with smart-home enabled. Never collapse via Left.
+                run('key', 'Home')
+                for _ in range(len(line) - len(copied)):
+                    run('key', 'Right')
+                if copied == expected:
+                    if attempt > 0:
+                        print('WARN mixed bracket lexer settle: ' + capture + ' passed attempt ' + str(attempt + 1), flush=True)
+                    return
+                # Only an exact no-op is retryable while syntax catches up.
+                # Wrong target text, stale clipboard and last-attempt no-op fail.
+                time.sleep(2)
+                run('key', 'ctrl+shift+backslash')
+        for mixed_index, extension in enumerate(['html', 'blade.php', 'vue']):
+            script_line = "<script>function run() { const s = '}'; /* } */ [] }</script>"
+            style_line = "<style>a { content: '}'; /* } */ }</style>"
+            boundary_line = '<script>{</script><script>}</script>'
+            marker = '<div>mixed fixture ' + extension + '</div>'
+            mixed_text = marker + '\n' + script_line + '\n' + style_line + '\n' + boundary_line + '\n'
+            mixed_file = project / ('mixed_bracket_nav.' + extension)
+            mixed_file.write_text(mixed_text)
+            run('key', 'ctrl+p'); time.sleep(1)
+            run('type', '--clearmodifiers', mixed_file.name); run('key', 'Return'); time.sleep(3)
+            prefix = '14n' + str(mixed_index) + '-' + extension.replace('.', '-')
+            run('key', 'ctrl+Home')
+            assert_mixed_suffix(marker, marker, prefix + '-file-marker')
+            # Full screenshot includes the active filename and status language;
+            # Blade must display Blade, not PHP, in manual pixel review.
+            shot(prefix + '-active-file-language')
+            for row, line, label in [(1, script_line, 'script'), (2, style_line, 'style')]:
+                run('key', 'ctrl+Home')
+                for _ in range(row):
+                    run('key', 'Down')
+                run('key', 'Home')
+                for _ in range(line.index('{')):
+                    run('key', 'Right')
+                run('key', 'ctrl+shift+backslash')
+                assert_mixed_suffix(line, line[line.rfind('}'):], prefix + '-' + label + '-closing', retry_noop=line[line.index('{'):])
+                run('key', 'ctrl+shift+backslash')
+                assert_mixed_suffix(line, line[line.index('{'):], prefix + '-' + label + '-opening')
+            # Positive script/style jumps above prove the same accelerator
+            # works before accepting this boundary-specific no-op.
+            run('key', 'ctrl+Home', 'Down', 'Down', 'Down', 'Home')
+            for _ in range(boundary_line.index('{')):
+                run('key', 'Right')
+            run('key', 'ctrl+shift+backslash')
+            assert_mixed_suffix(boundary_line, boundary_line[boundary_line.index('{'):], prefix + '-boundary-no-jump')
+            if mixed_file.read_text() != mixed_text:
+                raise RuntimeError('Mixed bracket navigation changed disk source: ' + extension)
         run('key', 'ctrl+comma'); time.sleep(3); shot('16-settings-dark-wide')
         run('type', '--clearmodifiers', 'zz_no_setting_677')
         shot('16a-settings-no-results')
