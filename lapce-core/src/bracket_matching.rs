@@ -74,6 +74,40 @@ pub fn adjacent_match(text: &Rope, snapshot: Option<&Snapshot>, snapshot_rev: u6
     }
 }
 
+/// Bounded enclosing lookup for a non-adjacent caret. None includes Unknown:
+/// callers with lexical evidence must not fall back to a raw-text answer.
+/// No red unmatched result is produced for an enclosing-scope search.
+pub fn enclosing_pair(text: &Rope, snapshot: Option<&Snapshot>, snapshot_rev: u64,
+    buffer_rev: u64, offset: usize) -> Option<(usize, usize)> {
+    let snapshot = snapshot.filter(|s| snapshot_rev == buffer_rev && s.len() == text.len())?;
+    if offset > text.len() || text.at_or_prev_codepoint_boundary(offset) != Some(offset) { return None; }
+    let embed = snapshot.embed_at(offset.min(text.len().saturating_sub(1)));
+    let mut cursor = Cursor::new(text, offset);
+    let mut stack = Vec::new();
+    while let Some(c) = cursor.prev_codepoint() {
+        let at = cursor.pos();
+        if offset.abs_diff(at) > SCAN_BYTES || snapshot.embed_at(at) != embed { return None; }
+        if partner(c).is_none() { continue; }
+        match snapshot.scope(snapshot.styles()[at]) {
+            Some("comment" | "string") => continue,
+            Some("operator") => (),
+            _ => return None,
+        }
+        if matches!(c, ')' | ']' | '}') {
+            if stack.len() == MAX_DEPTH { return None; }
+            stack.push(c);
+        } else if let Some(closing) = stack.pop() {
+            if partner(c) != Some(closing) { return None; }
+        } else {
+            return match adjacent_match(text, Some(snapshot), snapshot_rev, buffer_rev, at) {
+                AdjacentMatch::Matched { other, .. } if other >= offset => Some((at, other)),
+                _ => None,
+            };
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +247,92 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn lexical_enclosing_ignores_quoted_and_comment_openers() {
+        for (language, source) in [
+            (LapceLanguage::Php,"<?php { $x='('; /* [ */ target(); }"),
+            (LapceLanguage::Rust,r#"fn f() { let x="("; /* [ */ target(); }"#),
+            (LapceLanguage::Python,"x = [ '(' , # [\n target ]"),
+            (LapceLanguage::Javascript,"function f() { let x='('; /* [ */ target(); }"),
+        ] {
+            let text=Rope::from(source);
+            let snapshot=lexilla::highlight(language,&text).unwrap();
+            let offset=source.find("target").unwrap()+2;
+            let start=source.find(if language==LapceLanguage::Python {'['} else {'{'}).unwrap();
+            let end=source.rfind(if language==LapceLanguage::Python {']'} else {'}'}).unwrap();
+            assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,offset),Some((start,end)),"{language:?}");
+            assert_eq!(enclosing_pair(&text,Some(&snapshot),0,1,offset),None);
+        }
+        for source in ["<?php $x='('; /* [ */ target();", "<?php { ( ] target }", "<?php λ target"] {
+            let text=Rope::from(source);
+            let snapshot=lexilla::highlight(LapceLanguage::Php,&text).unwrap();
+            assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,source.find("target").unwrap()+2),None,"{source}");
+            assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,usize::MAX),None);
+        }
+    }
+
+    #[test]
+    fn lexical_enclosing_boundaries_budgets_and_nested_precedence() {
+        for (source,offset,expected) in [
+            ("([target])",4,Some((1,8))),
+            ("{() target}",6,Some((0,10))),
+            ("λ{target}",1,None),
+        ] {
+            let text=Rope::from(source);
+            let snapshot=Snapshot::from_php_styles(source,vec![11;source.len()]).unwrap();
+            assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,offset),expected,"{source}");
+        }
+        let source="{ target }";
+        let text=Rope::from(source);
+        let mut snapshot=Snapshot::from_php_styles(source,vec![11;source.len()]).unwrap();
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,4),Some((0,9)));
+        snapshot.record_embed(2,8,lexilla_rs::Embed::Script);
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,4),None);
+        let source=format!("{{{}target}}"," ".repeat(SCAN_BYTES+1));
+        let text=Rope::from(source.as_str());
+        let snapshot=Snapshot::from_php_styles(&source,vec![11;source.len()]).unwrap();
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,source.find("target").unwrap()+2),None);
+        assert_eq!(enclosing_pair(&text,None,1,1,0),None);
+    }
+
+    #[test]
+    fn lexical_enclosing_embedded_edges_and_string_carets() {
+        let source="<p>{</p><script>{ target }</script><p>}</p>";
+        let text=Rope::from(source);
+        let snapshot=lexilla::highlight(LapceLanguage::Html,&text).unwrap();
+        let at=source.find("{ target").unwrap();
+        let end=source.find(" }</script>").unwrap()+1;
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,at),None);
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,at+1),Some((at,end)));
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,end),Some((at,end)));
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,end+1),None);
+        let empty=Snapshot::from_php_styles("",vec![]).unwrap();
+        assert_eq!(empty.embed_at(0),None);
+        assert_eq!(enclosing_pair(&Rope::from(""),Some(&empty),1,1,0),None);
+        let source="<?php ( { f(')'); /* } */ target; } )";
+        let text=Rope::from(source);
+        let snapshot=lexilla::highlight(LapceLanguage::Php,&text).unwrap();
+        let expected=Some((source.find('{').unwrap(),source.rfind('}').unwrap()));
+        for offset in [source.find("target").unwrap()+2,source.find("/* }").unwrap()+3] {
+            assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,offset),expected,"at {offset}");
+        }
+        let string_at=source.find("')'").unwrap()+1;
+        assert_eq!(enclosing_pair(&text,Some(&snapshot),1,1,string_at),Some((source.find("f(").unwrap()+1,source.find("');").unwrap()+1)));
+    }
+
+    #[test]
+    #[ignore = "hosted release timing evidence"]
+    fn lexical_enclosing_64k_baseline() {
+        let source=format!("{{{}}}"," ".repeat(SCAN_BYTES-2));
+        let text=Rope::from(source.as_str());
+        let snapshot=Snapshot::from_php_styles(&source,vec![11;source.len()]).unwrap();
+        let started=std::time::Instant::now();
+        for _ in 0..100 {
+            assert_eq!(std::hint::black_box(enclosing_pair(&text,Some(&snapshot),1,1,source.len()-1)),Some((0,source.len()-1)));
+        }
+        eprintln!("64KiB enclosing far-end: {:?}/scan; debug_assertions={}; target <2ms report-only",started.elapsed()/100,cfg!(debug_assertions));
     }
 
     #[test]

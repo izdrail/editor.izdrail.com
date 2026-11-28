@@ -249,6 +249,8 @@ mod adjacent_navigation_tests {
     }
 }
 
+type EnclosingBracketCache = Option<(u64, u64, usize, Arc<lapce_core::bracket_matching::Snapshot>, Option<(usize, usize)>)>;
+
 type AdjacentBracketCache = Option<(u64, u64, usize, Option<Arc<lapce_core::bracket_matching::Snapshot>>, lapce_core::bracket_matching::AdjacentMatch)>;
 
 #[derive(Clone)]
@@ -263,6 +265,7 @@ pub struct Doc {
     pub buffer: RwSignal<Buffer>,
     pub syntax: RwSignal<Syntax>,
     adjacent_bracket_cache: Rc<RefCell<AdjacentBracketCache>>,
+    enclosing_bracket_cache: Rc<RefCell<EnclosingBracketCache>>,
     semantic_styles: RwSignal<Option<Spans<Style>>>,
     /// Inlay hints for the document
     pub inlay_hints: RwSignal<Option<Spans<InlayHint>>>,
@@ -330,6 +333,7 @@ impl Doc {
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(syntax),
             adjacent_bracket_cache: Rc::new(RefCell::new(None)),
+            enclosing_bracket_cache: Rc::new(RefCell::new(None)),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
             parser: Rc::new(RefCell::new(BracketParser::new(
                 String::new(),
@@ -385,6 +389,7 @@ impl Doc {
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(Syntax::plaintext()),
             adjacent_bracket_cache: Rc::new(RefCell::new(None)),
+            enclosing_bracket_cache: Rc::new(RefCell::new(None)),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
             parser: Rc::new(RefCell::new(BracketParser::new(
                 String::new(),
@@ -441,6 +446,7 @@ impl Doc {
             buffer: cx.create_rw_signal(Buffer::new("")),
             syntax: cx.create_rw_signal(syntax),
             adjacent_bracket_cache: Rc::new(RefCell::new(None)),
+            enclosing_bracket_cache: Rc::new(RefCell::new(None)),
             line_styles: Rc::new(RefCell::new(HashMap::new())),
             parser: Rc::new(RefCell::new(BracketParser::new(
                 String::new(),
@@ -2308,20 +2314,29 @@ impl Doc {
 
     /// Returns enclosing offsets using syntax, with a structural fallback.
     pub fn find_enclosing_brackets(&self, offset: usize) -> Option<(usize, usize)> {
+        let lexical = self.syntax.with_untracked(|syntax| {
+            let snapshot = syntax.lexilla.as_ref()?;
+            Some(self.buffer.with_untracked(|buffer| {
+                let mut cache = self.enclosing_bracket_cache.borrow_mut();
+                if let Some((rev, syntax_rev, at, old, result)) = cache.as_ref() {
+                    if *rev == buffer.rev() && *syntax_rev == syntax.rev && *at == offset && Arc::ptr_eq(old, snapshot) { return *result; }
+                }
+                let result = lapce_core::bracket_matching::enclosing_pair(buffer.text(), Some(snapshot.as_ref()), syntax.rev, buffer.rev(), offset);
+                *cache = Some((buffer.rev(), syntax.rev, offset, snapshot.clone(), result));
+                result
+            }))
+        });
+        if let Some(Some(pair)) = lexical { return Some(pair); }
         let rev = self.rev();
-        self.syntax
-            .with_untracked(|syntax| {
-                (syntax.layers.is_some() && !syntax.text.is_empty() && syntax.rev == rev)
-                    .then(|| syntax.find_enclosing_pair(offset))
-            })
-            // If syntax.text is empty, either the buffer is empty or we don't have syntax support
-            // for the current language.
-            // Try a language unaware search for enclosing brackets in case it is the latter.
-            .unwrap_or_else(|| {
-                self.buffer.with_untracked(|buffer| {
-                    lapce_core::pairing_context::fallback_bracket_pair(buffer.text(), offset)
-                })
-            })
+        let tree = self.syntax.with_untracked(|syntax| {
+            if syntax.layers.is_some() && syntax.rev == rev { syntax.find_enclosing_pair(offset) }
+            else { None }
+        });
+        if tree.is_some() { return tree; }
+        if lexical.is_some() { return None; }
+        self.buffer.with_untracked(|buffer| {
+            lapce_core::pairing_context::fallback_bracket_pair(buffer.text(), offset)
+        })
     }
 
     pub fn update_highlights(&self, offset: usize) {

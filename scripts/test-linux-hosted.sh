@@ -60,3 +60,8 @@ cargo test --locked -p lapce-app completion_profile_vendor_baseline -- --ignored
 cargo test --locked -p lapce-core bracket_matching -- --test-threads=1 --nocapture 2>&1 | tee target/acceptance-logs/bracket-matching-native.log
 cargo test --locked -p lapce-core --features logos-php bracket_matching -- --test-threads=1 --nocapture 2>&1 | tee target/acceptance-logs/bracket-matching.log
 cargo test --release --locked -p lapce-core lexical_brackets_64k_unmatched_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/bracket-matching-timing.log
+
+cargo test --release --locked -p lapce-core lexical_enclosing_64k_baseline -- --ignored --nocapture 2>&1 | tee target/acceptance-logs/enclosing-matching-timing.log
+
+# Archive the actual public method callers with hosted test evidence.
+git grep -n -F 'find_enclosing_brackets(' -- '*.rs' | tee target/acceptance-logs/enclosing-callers.log

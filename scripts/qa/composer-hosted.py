@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from PIL import Image
 
 binary = str(Path(sys.argv[1]).resolve())
 out = Path(sys.argv[2]).resolve()
@@ -1048,6 +1049,65 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             assert_mixed_suffix(boundary_line, boundary_line[boundary_line.index('{'):], prefix + '-boundary-no-jump')
             if mixed_file.read_text() != mixed_text:
                 raise RuntimeError('Mixed bracket navigation changed disk source: ' + extension)
+        enclosing_text = "<?php\n{ $x = '('; /* [ */ target(); }\n$x = '('; /* [ */ target();\n"
+        (project / 'enclosing_lexical.php').write_text(enclosing_text)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'enclosing_lexical.php'); run('key', 'Return'); time.sleep(3)
+        enclosing_settings = settings_file.read_text()
+        for theme, base in [('dark',bracket_dark_settings),('light',bracket_light_settings)]:
+            for row, line, capture in [(1,enclosing_text.splitlines()[1],'14o-enclosing-code-pair'),(2,enclosing_text.splitlines()[2],'14p-enclosing-no-false-string-pair')]:
+                run('key', 'ctrl+Home')
+                for _ in range(row):
+                    run('key', 'Down')
+                run('key', 'Home')
+                for _ in range(line.index('target')+2):
+                    run('key', 'Right')
+                shots=[]
+                for enabled in [False,True]:
+                    current=re.sub(r'(?m)^highlight-matching-brackets\s*=.*\n?', '', base)
+                    current=re.sub(r'(?m)^highlight-scope-lines\s*=.*\n?', '', current)
+                    current=current.replace('[editor]\n','[editor]\nhighlight-scope-lines = false\nhighlight-matching-brackets = ' + str(enabled).lower() + '\n',1)
+                    if current == base or ('highlight-matching-brackets = ' + str(enabled).lower()) not in current:
+                        raise RuntimeError('Enclosing pixel fixture failed to update [editor] settings')
+                    settings_file.write_text(current); time.sleep(3)
+                    name=capture+'-'+theme+('-on' if enabled else '-off')
+                    shot(name); shots.append(Image.open(out/(name+'.png')).convert('RGB'))
+                    # Native selection/copy also proves the caret survived the
+                    # settings reload; always reset with unindented Home.
+                    sentinel='ENCLOSING_CARET_'+name
+                    subprocess.run(['xclip','-selection','clipboard','-i'],input=sentinel,env=env,text=True,check=True,timeout=5)
+                    run('key','shift+End'); time.sleep(.15); run('key','ctrl+c'); time.sleep(.3)
+                    copied=subprocess.run(['xclip','-selection','clipboard','-o'],env=env,text=True,capture_output=True,check=True,timeout=5).stdout
+                    if copied!=line[line.index('target')+2:]:
+                        raise RuntimeError('Enclosing caret lost during settings reload: '+name)
+                    run('key','Home')
+                    for _ in range(line.index('target')+2):
+                        run('key','Right')
+                # Compare on/off pixels around bracket cells, excluding the
+                # target identifier/caret. This fixture uses the fixed editor
+                # font and window geometry already used by the earlier gates.
+                # Both endpoint cells must change only for the genuine pair.
+                from PIL import ImageChops
+                diff=ImageChops.difference(shots[0],shots[1])
+                x0,y0=338,94+row*18
+                cells=[(x0-2,y0-4,x0+10,y0+15)]
+                if row==1:
+                    end=x0+(len(line)-1)*7.22
+                    cells.append((int(end)-2,y0-4,int(end)+11,y0+15))
+                changed=[sum(max(pixel)>20 for pixel in diff.crop(cell).getdata()) for cell in cells]
+                if row==1 and not all(count>=4 for count in changed):
+                    raise RuntimeError('Enclosing bracket endpoint pixel change missing: '+theme+' '+str(changed))
+                if row==2:
+                    # No pair means no outline pixels anywhere on the code
+                    # row outside the caret area (scope lines disabled).
+                    caret_x=int(x0+(line.index('target')+2)*7.22)
+                    regions=[(330,y0-4,caret_x-4,y0+15),(caret_x+5,y0-4,950,y0+15)]
+                    pixels=sum(max(pixel)>20 for region in regions for pixel in diff.crop(region).getdata())
+                    if pixels>4:
+                        raise RuntimeError('False enclosing highlight pixel change: '+theme+' '+str(pixels))
+        settings_file.write_text(enclosing_settings); time.sleep(3)
+        if (project / 'enclosing_lexical.php').read_text() != enclosing_text:
+            raise RuntimeError('Enclosing lexical capture changed source bytes')
         run('key', 'ctrl+comma'); time.sleep(3); shot('16-settings-dark-wide')
         run('type', '--clearmodifiers', 'zz_no_setting_677')
         shot('16a-settings-no-results')
