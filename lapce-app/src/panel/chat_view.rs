@@ -5176,14 +5176,32 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                             let _ = body.get();
                             copy_status.set("Copy");
                         });
+                        let turn_copy = label(move || copy_status.get().to_string());
+                        let turn_copy_id = turn_copy.id();
                         v_stack((
                             h_stack((
                                 label(move || role.to_string()).style(move |s| {
                                     s.font_size(10.0).font_bold()
                                         .color(config.get().color(LapceColor::EDITOR_DIM))
                                 }),
-                                label(move || copy_status.get().to_string())
+                                turn_copy
                                     .keyboard_navigable()
+                                    // Keep Tab on native controls instead of the
+                                    // editor indentation keymap after leaving a
+                                    // per-block Copy control.
+                                    .on_event_cont(EventListener::FocusGained, move |_| {
+                                        code_keyboard_focus.set(Some(turn_copy_id));
+                                    })
+                                    .on_event_cont(EventListener::FocusLost, move |_| {
+                                        if code_keyboard_focus.get_untracked() == Some(turn_copy_id) {
+                                            code_keyboard_focus.set(None);
+                                        }
+                                    })
+                                    .on_cleanup(move || {
+                                        if code_keyboard_focus.get_untracked() == Some(turn_copy_id) {
+                                            code_keyboard_focus.set(None);
+                                        }
+                                    })
                                     .on_click_stop(move |_| {
                                         let text = body.get_untracked();
                                         if text.is_empty() { return; }
@@ -5200,6 +5218,7 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                         .color(config.get().color(LapceColor::EDITOR_DIM))
                                         .hover(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
                                         .focus(|s| s.background(config.get().color(LapceColor::PANEL_HOVERED_BACKGROUND)))
+                                        .focus_visible(|s| s.outline(1.0).outline_color(config.get().color(LapceColor::EDITOR_FOCUS)))
                                         .apply_if(body.get().is_empty(), |s| s.hide())),
                             )).style(move |s| s.width_full().padding_right(12.0)
                                 .items_center().justify_between()
