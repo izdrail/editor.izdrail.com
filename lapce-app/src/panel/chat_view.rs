@@ -2499,6 +2499,13 @@ fn chat_busy_tick(
     });
 }
 
+// Opt-in diagnostics for synthetic keyboard QA only. No event/text formatting.
+fn chat_copy_focus_trace(stage: &'static str, id: floem::ViewId, focus: Option<floem::ViewId>) {
+    if std::env::var("LAPCE_CHAT_FOCUS_TRACE").ok().as_deref() == Some("1") {
+        eprintln!("CHAT_FOCUS stage={stage} control={id:?} common_focus={focus:?}");
+    }
+}
+
 fn chat_code_card(
     source: String,
     language: String,
@@ -2533,9 +2540,11 @@ fn chat_code_card(
             copy_label
                 .keyboard_navigable()
                 .on_event_stop(EventListener::FocusGained, move |_| {
-                    keyboard_focus.set(Some(copy_id))
+                    keyboard_focus.set(Some(copy_id));
+                    chat_copy_focus_trace("block_gained", copy_id, keyboard_focus.get_untracked());
                 })
                 .on_event_stop(EventListener::FocusLost, move |_| {
+                    chat_copy_focus_trace("block_lost", copy_id, keyboard_focus.get_untracked());
                     lost.borrow_mut().armed = None;
                     if keyboard_focus.get_untracked() == Some(copy_id) {
                         keyboard_focus.set(None);
@@ -2550,6 +2559,9 @@ fn chat_code_card(
                 })
                 .on_event(EventListener::KeyDown, move |event| {
                     if let Event::KeyDown(key) = event {
+                        if key.key.logical_key == Key::Named(NamedKey::Tab) {
+                            chat_copy_focus_trace("block_Tab", copy_id, keyboard_focus.get_untracked());
+                        }
                         if keyboard_focus.get_untracked() != Some(copy_id) {
                             return EventPropagation::Continue;
                         }
@@ -5191,8 +5203,10 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     // per-block Copy control.
                                     .on_event_cont(EventListener::FocusGained, move |_| {
                                         code_keyboard_focus.set(Some(turn_copy_id));
+                                        chat_copy_focus_trace("turn_gained", turn_copy_id, code_keyboard_focus.get_untracked());
                                     })
                                     .on_event_cont(EventListener::FocusLost, move |_| {
+                                        chat_copy_focus_trace("turn_lost", turn_copy_id, code_keyboard_focus.get_untracked());
                                         if code_keyboard_focus.get_untracked() == Some(turn_copy_id) {
                                             code_keyboard_focus.set(None);
                                         }
@@ -5200,6 +5214,13 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                     .on_cleanup(move || {
                                         if code_keyboard_focus.get_untracked() == Some(turn_copy_id) {
                                             code_keyboard_focus.set(None);
+                                        }
+                                    })
+                                    .on_event_cont(EventListener::KeyDown, move |event| {
+                                        if let Event::KeyDown(key) = event {
+                                            if key.key.logical_key == Key::Named(NamedKey::Tab) {
+                                                chat_copy_focus_trace("turn_Tab", turn_copy_id, code_keyboard_focus.get_untracked());
+                                            }
                                         }
                                     })
                                     .on_click_stop(move |_| {

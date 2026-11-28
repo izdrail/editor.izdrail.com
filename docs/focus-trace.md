@@ -20,3 +20,11 @@ explain that ordering, not a claim they were synchronously caused by that key.
 
 This patch changes diagnostics only. It must not be reported as a focus fix.
 Host must verify debug compilation and collect actual key/paint ordering.
+
+## Narrow chat QA trace
+
+`LAPCE_CHAT_FOCUS_TRACE=1` enables release-available diagnostics only for
+Copy focus transitions and window Tab dispatch. It is QA only and off by
+default. Output contains static stages and view IDs, never event or input
+text. Use a disposable synthetic profile. The broader trace above remains
+debug-only and independent. These diagnostics do not change focus behavior.

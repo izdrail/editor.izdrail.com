@@ -25,7 +25,8 @@ config.mkdir(parents=True)
 settings = '[core]\nmodal = false\ncolor-theme = "Lapce Dark"\n[ai-chat]\nenabled = true\nbackend = "ollama"\nendpoint = "http://127.0.0.1:18762"\nmodel = "fixture-model"\nsave-history = false\n[ai-autocomplete]\nenabled = false\nauto-trigger = false\n'
 (config / 'settings.toml').write_text(settings)
 (config / 'language-servers.toml').write_text('enabled = false\nauto-install = false\n')
-env = os.environ | {'LAPCE_CHAT_COPY_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':96', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
+# QA-only focus trace reviewed: static stages and IDs, no input text.
+env = os.environ | {'LAPCE_CHAT_FOCUS_TRACE': '1', 'LAPCE_CHAT_COPY_TRACE': '1', 'HOME': str(home), 'DISPLAY': ':96', 'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_DATA_HOME': str(home / '.local/share')}
 for key in ['LAPCE_LLM_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']:
     env.pop(key, None)
 
@@ -234,6 +235,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
             raise RuntimeError('Draft is not empty before navigation negative control')
         subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_NAV_NEGATIVE', text=True, env=env, check=True, timeout=5)
         negative_writes = (out / 'editor.log').read_text().count('CHAT_COPY success=')
+        log.write(f'KEYBOARD_GATE negative-space timestamp={time.time():.6f}\n'); log.flush()
+        print(f'KEYBOARD_GATE negative-space timestamp={time.time():.6f}', flush=True)
         run('key', 'space'); time.sleep(.3)
         negative_after = shot('06c2-keyboard-copy-negative')
         if (out / 'editor.log').read_text().count('CHAT_COPY success=') != negative_writes:
@@ -246,6 +249,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         if not empty_draft_pixels(negative_after):
             raise RuntimeError('Negative-control Space changed the empty draft')
         # The visible ring at06d is a manual pixel gate.
+        log.write(f'KEYBOARD_GATE forward-tab-to-block timestamp={time.time():.6f}\n'); log.flush()
+        print(f'KEYBOARD_GATE forward-tab-to-block timestamp={time.time():.6f}', flush=True)
         run('key', 'Tab'); time.sleep(.3); shot('06d-keyboard-reached-copy-ring')
         subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_KEYBOARD_NAV_SENTINEL', text=True, env=env, check=True, timeout=5)
         nav_writes = (out / 'editor.log').read_text().count('CHAT_COPY success=')

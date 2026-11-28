@@ -2734,6 +2734,12 @@ impl WindowTabData {
         }
         let focus = self.common.focus.get_untracked();
         if let EventRef::Keyboard(key) = event.into() {
+            if key.key.logical_key == Key::Named(NamedKey::Tab)
+                && std::env::var("LAPCE_CHAT_FOCUS_TRACE").ok().as_deref() == Some("1")
+            {
+                let common_focus = self.common.keyboard_focus.get_untracked();
+                eprintln!("CHAT_FOCUS stage=window_Tab common_focus={common_focus:?}");
+            }
             if crate::text_input::form_input_traversal(&key.key.logical_key, key.modifiers)
                 && (self.common.keyboard_focus.get_untracked().is_some()
                     || focus == Focus::Panel(PanelKind::Search))
