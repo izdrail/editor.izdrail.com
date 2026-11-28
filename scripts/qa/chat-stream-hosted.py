@@ -345,7 +345,21 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shutil.copyfile(last_crop, out / '15-last-line-ocr.png')
         run('click', '--repeat', '30', '--delay', '30', '7'); time.sleep(.4)
         sideways = shot('15b-long-line-horizontal-end')
-        if 'endh' not in text(sideways):
+        # Dense repeated lines confuse whole-panel OCR. Read the actual
+        # right-edge code pixels where the horizontal end markers appear.
+        geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
+        values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+        right = int(values['X']) + int(values['WIDTH'])
+        marker_counts = {}
+        for marker_name, marker_shot in [('before', bottom), ('after', sideways)]:
+            marker_crop = out / f'15b-horizontal-marker-{marker_name}-ocr.png'
+            Image.open(marker_shot).crop((right - 83, step_y + 20, right - 18, 650)).resize((390, (650 - step_y - 20) * 6)).save(marker_crop)
+            marker_text = subprocess.run(['tesseract', str(marker_crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout
+            marker_counts[marker_name] = len(re.findall(r'\bENDH\b', marker_text, re.IGNORECASE))
+        print(f'HORIZONTAL_END markers={marker_counts}', flush=True)
+        if marker_counts['before'] != 0:
+            raise RuntimeError('Horizontal negative control already contained ending markers')
+        if marker_counts['after'] < 2:
             raise RuntimeError('Long-line ending is not reachable by horizontal scroll')
         # The latest code card has twelve tail paragraphs after it, so the
         # transcript still has scroll range. Header must be visible first.
