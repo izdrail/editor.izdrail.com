@@ -143,6 +143,79 @@ mod tests {
     }
 
     #[test]
+    fn lexical_brackets_mixed_web_regions_match_locally_and_stop_at_boundaries() {
+        for language in [LapceLanguage::Html, LapceLanguage::Blade, LapceLanguage::Vue] {
+            #[allow(unused_mut)]
+            let mut backends = vec!["lexilla"];
+            #[cfg(feature = "logos-php")]
+            backends.push("logos");
+            for backend in backends {
+                let profile = crate::project_profile::ProjectProfile::default();
+                let expected_lexer = if language == LapceLanguage::Blade {
+                    if backend == "logos" { "blade-logos" } else { "blade" }
+                } else { "hypertext" };
+                eprintln!("mixed bracket route {language:?}/{backend}: {expected_lexer}");
+                for (source, start, end, kind) in [
+                    ("<script>function run() { const s = '}'; /* } */ [] }</script>", '{', '}', lexilla_rs::Embed::Script),
+                    ("<style>a { content: '}'; /* } */ }</style>", '{', '}', lexilla_rs::Embed::Style),
+                ] {
+                    let text=Rope::from(source);
+                    let snapshot=crate::lexilla::highlight_profile_backend(language,&text,&profile,Some(backend)).unwrap();
+                    assert_eq!(snapshot.lexer(),expected_lexer,"{language:?}/{backend} actual route");
+                    let at=source.find(start).unwrap();
+                    let other=source.rfind(end).unwrap();
+                    assert_eq!(snapshot.embed_at(at),Some(kind),"{language:?}/{backend}");
+                    assert_eq!(adjacent_match(&text,Some(&snapshot),1,1,at),AdjacentMatch::Matched { at, other },"{language:?}/{backend}");
+                    assert_eq!(adjacent_match(&text,Some(&snapshot),1,1,other),AdjacentMatch::Matched { at: other, other: at },"{language:?}/{backend}");
+                    let quoted=source.find("'}'").unwrap()+1;
+                    assert_eq!(adjacent_match(&text,Some(&snapshot),1,1,quoted),AdjacentMatch::Ignored,"{language:?}/{backend}");
+                }
+                for (source, kind) in [
+                    ("<script>{</script><script>}</script>", lexilla_rs::Embed::Script),
+                    ("<style>a {</style><style>}</style>", lexilla_rs::Embed::Style),
+                ] {
+                    let text=Rope::from(source);
+                    let snapshot=crate::lexilla::highlight_profile_backend(language,&text,&profile,Some(backend)).unwrap();
+                    assert_eq!(snapshot.lexer(),expected_lexer,"{language:?}/{backend}: {source}");
+                    for at in [source.find('{').unwrap(),source.rfind('}').unwrap()] {
+                        assert_eq!(snapshot.scope(snapshot.styles()[at]),Some("operator"),"{language:?}/{backend}: {source} at {at}");
+                        assert_eq!(snapshot.embed_at(at),Some(kind),"{language:?}/{backend}: {source} at {at}");
+                        assert_eq!(adjacent_match(&text,Some(&snapshot),1,1,at),AdjacentMatch::Unknown,"{language:?}/{backend} at {at}");
+                    }
+                }
+                let source="<script>(</script><style>)</style>";
+                let text=Rope::from(source);
+                let snapshot=crate::lexilla::highlight_profile_backend(language,&text,&profile,Some(backend)).unwrap();
+                assert_eq!(snapshot.lexer(),expected_lexer,"{language:?}/{backend}: {source}");
+                for (at,kind) in [(source.find('(').unwrap(),lexilla_rs::Embed::Script),(source.find(')').unwrap(),lexilla_rs::Embed::Style)] {
+                    assert_eq!(snapshot.scope(snapshot.styles()[at]),Some("operator"),"{language:?}/{backend}: {source} at {at}");
+                    assert_eq!(snapshot.embed_at(at),Some(kind),"{language:?}/{backend}: {source} at {at}");
+                    assert_eq!(adjacent_match(&text,Some(&snapshot),1,1,at),AdjacentMatch::Unknown,"{language:?}/{backend}: {source} at {at}");
+                }
+                let host_sources: &[&str] = match language {
+                    LapceLanguage::Blade => &["<p>{</p>", "{{ x }}", "{{ x }", "{!! $x !!}", "{{-- x --}}", "@{{ x }}", "@php $x = '{'; @endphp", "@if('(') text @endif"],
+                    LapceLanguage::Vue => &["<p>{</p>", "{{ x }}", "{{ x }", r#"<p v-if="x === '('">text</p>"#],
+                    _ => &["<p>{</p>"],
+                };
+                for source in host_sources {
+                    let text=Rope::from(*source);
+                    let snapshot=crate::lexilla::highlight_profile_backend(language,&text,&profile,Some(backend)).unwrap();
+                    assert_eq!(snapshot.lexer(),expected_lexer,"{language:?}/{backend}: {source}");
+                    let offsets: Vec<_> = if source.starts_with("@if") || source.starts_with("@php") || source.contains("v-if") {
+                        vec![source.find('\'').unwrap()+1]
+                    } else { source.char_indices().filter_map(|(at,c)| matches!(c,'{'|'}').then_some(at)).collect() };
+                    for at in offsets {
+                        if language == LapceLanguage::Vue && source.contains('{') {
+                            assert_ne!(snapshot.scope(snapshot.styles()[at]),Some("operator"),"Vue host scope {backend}: {source} at {at}");
+                        }
+                        assert!(matches!(adjacent_match(&text,Some(&snapshot),1,1,at),AdjacentMatch::Unknown|AdjacentMatch::Ignored),"host delimiter {language:?}/{backend}: {source} at {at}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn lexical_brackets_backward_eof_and_next_precedence() {
         for (source, offset, expected) in [
             ("<?php )", 6, AdjacentMatch::Unmatched { at: 6 }),

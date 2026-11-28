@@ -132,8 +132,20 @@ impl Snapshot {
     /// Experimental Blade imports share the PHP/HTML style ABI, not its routing identity.
     pub fn from_blade_styles(text: &str, styles: Vec<u8>) -> Option<Self> {
         let mut snapshot = Self::from_mixed_php_styles(text, styles)?;
+        snapshot.mark_blade_host_delimiters(text);
         snapshot.lexer = "blade-logos".into();
         Some(snapshot)
+    }
+
+    // Remap only host delimiter braces, not PHP open/close tags which share
+    // IDs19/20 in the experimental token ABI. gravity-lex::style emits PHP
+    // 0..21 and HTML32..36 only; from_mixed_php_styles rejects input37.
+    // ID37 is private to this import, never accepted as tokenizer output.
+    fn mark_blade_host_delimiters(&mut self, text: &str) {
+        self.scopes[37] = Some("keyword");
+        for (byte, style) in text.bytes().zip(self.styles.iter_mut()) {
+            if matches!(*style, 19 | 20) && matches!(byte, b'{' | b'}' | b'!') { *style = 37; }
+        }
     }
 
     /// Framework conventions overlay uses separate IDs, preserving PHP and HTML.
@@ -142,6 +154,9 @@ impl Snapshot {
         let mut snapshot=Self::from_mixed_php_styles("",vec![])?;
         snapshot.styles=styles;
         for (id,scope) in [(40,"type"),(41,"function"),(42,"function"),(43,"type"),(44,"keyword")] {snapshot.scopes[id]=Some(scope);}
+        if blade {
+            snapshot.mark_blade_host_delimiters(text);
+        }
         snapshot.lexer=if blade {"blade-laravel-logos"} else {"laravel-logos"}.into();
         Some(snapshot)
     }
@@ -725,5 +740,31 @@ mod imported_php_tests {
         for id in 0..=21 { assert_eq!(imported.scope(id), native.scope(id), "style {id}"); }
         assert!(Snapshot::from_php_styles("λ", vec![4]).is_none());
         assert!(Snapshot::from_php_styles("x", vec![22]).is_none());
+    }
+}
+
+#[cfg(test)]
+mod blade_host_delimiter_tests {
+    use super::Snapshot;
+    #[test]
+    fn imported_blade_delimiters_are_host_keywords_not_structural_operators() {
+        for snapshot in [
+            Snapshot::from_blade_styles("{}()<?",vec![19,20,11,11,19,20]).unwrap(),
+            Snapshot::from_laravel_styles("{}()<?",vec![19,20,11,11,19,20],true).unwrap(),
+        ] {
+            assert_eq!(&snapshot.styles()[..2],&[37,37]);
+            assert_eq!(snapshot.scope(37),Some("keyword"));
+            assert_eq!(snapshot.scope(11),Some("operator"));
+            assert_eq!(snapshot.scope(snapshot.styles()[4]),Some("operator"));
+            assert_eq!(snapshot.scope(snapshot.styles()[5]),Some("operator"));
+        }
+        let echo=Snapshot::from_blade_styles("{{ x }}",vec![19,19,0,17,0,20,20]).unwrap();
+        assert_eq!(echo.styles(),&[37,37,0,17,0,37,37]);
+        let raw=Snapshot::from_blade_styles("{!! x !!}",vec![19,19,19,0,17,0,20,20,20]).unwrap();
+        assert_eq!(raw.styles(),&[37,37,37,0,17,0,37,37,37]);
+        assert!(Snapshot::from_mixed_php_styles("{",vec![37]).is_none());
+        let php=Snapshot::from_laravel_styles("<?",vec![19,20],false).unwrap();
+        assert_eq!(php.scope(19),Some("operator"));
+        assert_eq!(php.scope(20),Some("operator"));
     }
 }

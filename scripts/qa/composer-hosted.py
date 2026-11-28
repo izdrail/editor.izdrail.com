@@ -977,6 +977,17 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(3)
         if lexical_file.read_text() != lexical_text:
             raise RuntimeError('Lexical bracket navigation changed source bytes')
+        blade_paint_text = "<p>{{ $x }} {!! $x !!}</p>\n<?php $x = '('; ?>\n@php $y = '{'; @endphp\n"
+        (project / 'blade_delimiter_paint.blade.php').write_text(blade_paint_text)
+        run('key', 'ctrl+p'); time.sleep(1)
+        run('type', '--clearmodifiers', 'blade_delimiter_paint.blade.php'); run('key', 'Return'); time.sleep(3)
+        shot('14l-blade-host-tags-dark')
+        settings_file.write_text(bracket_light_settings)
+        time.sleep(3); shot('14m-blade-host-tags-light')
+        settings_file.write_text(bracket_dark_settings)
+        time.sleep(3)
+        if (project / 'blade_delimiter_paint.blade.php').read_text() != blade_paint_text:
+            raise RuntimeError('Blade paint capture changed source bytes')
         run('key', 'ctrl+comma'); time.sleep(3); shot('16-settings-dark-wide')
         run('type', '--clearmodifiers', 'zz_no_setting_677')
         shot('16a-settings-no-results')
