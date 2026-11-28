@@ -1129,10 +1129,10 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(2); shot('49a-composer-alias-new-target')
         # Assert the actual active destination, not merely a plausible tab
         # screenshot. This nonconventional target is unique in the workspace.
-        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='NAV_COPY_SENTINEL', env=env, text=True, check=True, timeout=5)
+        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='NAV_COPY_SENTINEL_1', env=env, text=True, check=True, timeout=5)
         run('key', 'ctrl+a'); time.sleep(.15); run('key', 'ctrl+c'); time.sleep(.3)
         actual = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
-        if actual == 'NAV_COPY_SENTINEL':
+        if actual == 'NAV_COPY_SENTINEL_1':
             raise RuntimeError('Editor copy did not replace navigation clipboard sentinel')
         if actual != '<?php\nnamespace Domain;\nclass Billing {}\n':
             raise RuntimeError('Composer-alias Ctrl-click did not activate exact Billing target')
@@ -1147,21 +1147,21 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('49b-composer-alias-unsaved-source')
         run('mousemove', '395', '130', 'keydown', 'ctrl', 'click', '1', 'keyup', 'ctrl')
         time.sleep(2); shot('49c-composer-alias-unsaved-target')
-        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='NAV_COPY_SENTINEL', env=env, text=True, check=True, timeout=5)
+        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='NAV_COPY_SENTINEL_2', env=env, text=True, check=True, timeout=5)
         run('key', 'ctrl+a'); time.sleep(.15); run('key', 'ctrl+c'); time.sleep(.3)
         actual = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
-        if actual == 'NAV_COPY_SENTINEL':
+        if actual == 'NAV_COPY_SENTINEL_2':
             raise RuntimeError('Editor copy did not replace navigation clipboard sentinel')
         if actual != '<?php\nnamespace Domain;\nclass Billing {}\n':
             raise RuntimeError('Edited Composer-alias Ctrl-click activated wrong target')
         run('key', 'Right', 'ctrl+p'); time.sleep(1)
         run('type', '--clearmodifiers', 'alias_usage.php'); run('key', 'Return'); time.sleep(2)
         shot('49d-composer-alias-unsaved-restored')
-        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='NAV_COPY_SENTINEL', env=env, text=True, check=True, timeout=5)
+        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='NAV_COPY_SENTINEL_3', env=env, text=True, check=True, timeout=5)
         run('key', 'ctrl+a'); time.sleep(.15); run('key', 'ctrl+c'); time.sleep(.3)
         actual = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
         alias_source = '<?php\nuse Domain\\Billing as Invoice;\nnew Invoice();\n'
-        if actual == 'NAV_COPY_SENTINEL':
+        if actual == 'NAV_COPY_SENTINEL_3':
             raise RuntimeError('Editor copy did not replace navigation clipboard sentinel')
         if actual != alias_source + '// unsaved alias navigation sentinel':
             raise RuntimeError('Composer-alias navigation lost unsaved source buffer')
