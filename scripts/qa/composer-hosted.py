@@ -900,12 +900,37 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         run('key', 'End', 'Left'); shot('14b-bracket-closing-highlight')
         run('key', 'Right'); shot('14c-bracket-after-closing-highlight')
         run('key', 'ctrl+shift+backslash'); shot('14d-bracket-jump-from-adjacent')
+        if bracket_text.splitlines()[1] != '{[()]}':
+            raise RuntimeError('Bracket fixture must have no trailing spaces')
+        def assert_bracket_suffix(expected, name):
+            # Escape dismisses any palette; copy must prove editor focus and
+            # the command landing before resetting the cursor for probe two.
+            run('key', 'Escape')
+            # First select one character to reject a pre-existing selection,
+            # then select to EOL to prove the exact target within this fixture.
+            for key, wanted, probe in [('shift+Right', expected[0], 'char'), ('shift+End', expected, 'suffix')]:
+                sentinel = 'BRACKET_CURSOR_' + name + '_' + probe
+                subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input=sentinel, env=env, text=True, check=True, timeout=5)
+                run('key', key); time.sleep(.15); run('key', 'ctrl+c'); time.sleep(.3)
+                copied = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], env=env, text=True, capture_output=True, check=True, timeout=5).stdout
+                shot(name + '-' + probe + '-selection')
+                if copied == sentinel or copied != wanted:
+                    raise RuntimeError('Bracket jump cursor mismatch (palette must be closed and editor focused): ' + name + '/' + probe)
+                # Never rely on Left collapsing a selection to its start.
+                run('key', 'Home')
+                for _ in range(6 - len(expected)):
+                    run('key', 'Right')
+        assert_bracket_suffix('{[()]}', '14d1-accelerator-opening')
         # The palette invokes the same existing movement without relying on
         # keyboard-layout translation of the backslash accelerator.
         run('key', 'F1'); time.sleep(1)
         run('type', '--clearmodifiers', 'match pairs'); shot('14e-match-pairs-command')
         run('key', 'Return'); time.sleep(1); shot('14f-match-pairs-command-result')
+        assert_bracket_suffix('}', '14f1-palette-closing')
         run('key', 'ctrl+shift+backslash'); shot('14e-bracket-jump-back')
+        assert_bracket_suffix('{[()]}', '14e1-accelerator-return')
+        if bracket_file.read_text() != bracket_text:
+            raise RuntimeError('Bracket navigation changed source bytes')
         run('key', 'End', 'shift+Left'); shot('14f-shift-arrow-still-selects')
         run('key', 'ctrl+comma'); time.sleep(3); shot('16-settings-dark-wide')
         run('type', '--clearmodifiers', 'zz_no_setting_677')
