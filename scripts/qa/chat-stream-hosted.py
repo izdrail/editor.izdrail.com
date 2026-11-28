@@ -321,13 +321,27 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         w = max(placeholders, key=lambda row: int(row['top']))
         run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
         run('type', '--clearmodifiers', 'Synthetic keyboard cancellation'); run('key', 'Return')
-        wait_text('first token', '12c-keyboard-stop-waiting', timeout=12)
+        # The first-token row is dim and dense third-turn OCR misses it.
+        # Busy Stop help below is the positive state+focus check instead.
+        time.sleep(.5); shot('12c-keyboard-stop-waiting')
         run('key', 'shift+Tab'); time.sleep(.3)
         focused_stop = shot('12d-keyboard-stop-focus-ring')
-        if 'to stop' not in text(focused_stop):
+        from PIL import Image
+        geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
+        values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+        right = int(values['X']) + int(values['WIDTH'])
+        help_crop = out / '12d-keyboard-stop-help-ocr.png'
+        Image.open(focused_stop).crop((right - 303, 835, right - 8, 875)).resize((1180, 160)).save(help_crop)
+        help_text = subprocess.run(['tesseract', str(help_crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.lower()
+        if 'to stop' not in help_text:
             raise RuntimeError('Keyboard Stop focus help missing after Shift+Tab')
         run('key', 'space'); time.sleep(.5)
         keyboard_stopped = shot('12e-keyboard-stopped')
+        stopped_help_crop = out / '12e-keyboard-stopped-help-ocr.png'
+        Image.open(keyboard_stopped).crop((right - 303, 835, right - 8, 875)).resize((1180, 160)).save(stopped_help_crop)
+        stopped_help = subprocess.run(['tesseract', str(stopped_help_crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.lower()
+        if 'to stop' in stopped_help or not ('to send' in stopped_help or 'write a message' in stopped_help):
+            raise RuntimeError('Keyboard Stop footer did not change to idle action help')
         stopped_text = text(keyboard_stopped)
         if 'first token' in stopped_text or 'generating...' in stopped_text:
             raise RuntimeError('Keyboard Stop left loading active')
