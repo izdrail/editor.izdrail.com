@@ -189,6 +189,7 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         time.sleep(4)
         if 'generating' in text(shot('05c-done')):
             raise RuntimeError('Loading indicator stayed visible after DONE')
+        # CHAT_COPY is emitted with Rust eprintln! (unbuffered stderr).
         writes_before = (out / 'editor.log').read_text().count('CHAT_COPY success=')
         if writes_before != 1:
             raise RuntimeError('Mouse Copy did not write exactly once')
@@ -211,6 +212,39 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         # Matched-release write proves the preceding mouse click retained label
         # focus. This is not a keyboard-navigation focus-ring claim.
         shot('06b-copy-release-retained-focus')
+        # The focus ring itself is a manual pixel gate, not an OCR claim.
+        # Leave Copy by keyboard and traverse back through Floem's real Tab
+        # order. This is distinct from mouse-retained focus tested above.
+        run('key', 'shift+Tab'); run('key', 'shift+Tab'); time.sleep(.3)
+        negative_before = shot('06c-before-keyboard-copy')
+        def empty_draft_pixels(path):
+            from PIL import Image
+            geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
+            values = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
+            right = int(values['X']) + int(values['WIDTH'])
+            crop = out / (path.stem + '-draft-ocr.png')
+            Image.open(path).crop((right - 295, 690, right - 12, 755)).resize((1132, 260)).save(crop)
+            draft_text = subprocess.run(['tesseract', str(crop), 'stdout', '--psm', '6', '--dpi', '150'], text=True, capture_output=True, check=True, timeout=10).stdout.lower()
+            return 'ask anything' in draft_text
+        if not empty_draft_pixels(negative_before):
+            raise RuntimeError('Draft is not empty before navigation negative control')
+        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_NAV_NEGATIVE', text=True, env=env, check=True, timeout=5)
+        negative_writes = (out / 'editor.log').read_text().count('CHAT_COPY success=')
+        run('key', 'space'); time.sleep(.3)
+        negative_after = shot('06c2-keyboard-copy-negative')
+        if (out / 'editor.log').read_text().count('CHAT_COPY success=') != negative_writes:
+            raise RuntimeError('Per-block Copy focus leaked through reverse traversal')
+        if not empty_draft_pixels(negative_after):
+            raise RuntimeError('Negative-control Space changed the empty draft')
+        run('key', 'Tab'); run('key', 'Tab'); time.sleep(.3); shot('06d-keyboard-reached-copy-ring')
+        subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_KEYBOARD_NAV_SENTINEL', text=True, env=env, check=True, timeout=5)
+        nav_writes = (out / 'editor.log').read_text().count('CHAT_COPY success=')
+        run('keydown', 'space'); time.sleep(.3); shot('06e-keyboard-copy-space-held')
+        if clipboard() != 'CHAT_KEYBOARD_NAV_SENTINEL':
+            raise RuntimeError('Keyboard-reached Copy activated before Space release')
+        run('keyup', 'space'); time.sleep(.3); shot('06f-keyboard-copy-space-released')
+        if clipboard() != expected or (out / 'editor.log').read_text().count('CHAT_COPY success=') != nav_writes + 1:
+            raise RuntimeError('Tab navigation did not reach per-block Copy exactly once')
         (config / 'settings.toml').write_text(settings.replace('Lapce Dark', 'Lapce Light'))
         time.sleep(3); shot('07-complete-light')
         run('windowsize', window, '850', '700'); time.sleep(2); shot('08-narrow-light')
@@ -259,6 +293,33 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         stale = shot('12-stale-response-rejected')
         if text(stale).count('synthetic streamed reply') != replies_before_stop:
             raise RuntimeError('Stopped request added a stale streamed reply')
+        fixture.terminate(); fixture.wait(timeout=5)
+        fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--delay', '25', '--token-delay', '3', '--advance-file', str(advance_file)], stdout=flog, stderr=subprocess.STDOUT)
+        wait_fixture()
+        # Separate keyboard-only cancellation. Focus the draft to type, then
+        # use its documented Shift+Tab route to the composer Stop action.
+        current = shot('12b-before-keyboard-stop')
+        keyboard_replies = text(current).count('synthetic streamed reply')
+        placeholders = [w for w in all_words(current) if w['text'].lower().strip('.,:;') == 'anything' and int(w['top']) > 550]
+        if not placeholders:
+            raise RuntimeError('Composer placeholder missing before keyboard Stop')
+        w = max(placeholders, key=lambda row: int(row['top']))
+        run('mousemove', str(int(w['left']) + 10), str(int(w['top']) + 6), 'click', '1')
+        run('type', '--clearmodifiers', 'Synthetic keyboard cancellation'); run('key', 'Return')
+        wait_text('first token', '12c-keyboard-stop-waiting', timeout=12)
+        run('key', 'shift+Tab'); time.sleep(.3)
+        focused_stop = shot('12d-keyboard-stop-focus-ring')
+        if 'to stop' not in text(focused_stop):
+            raise RuntimeError('Keyboard Stop focus help missing after Shift+Tab')
+        run('key', 'space'); time.sleep(.5)
+        keyboard_stopped = shot('12e-keyboard-stopped')
+        stopped_text = text(keyboard_stopped)
+        if 'first token' in stopped_text or 'generating...' in stopped_text:
+            raise RuntimeError('Keyboard Stop left loading active')
+        time.sleep(9)
+        keyboard_stale = shot('12f-keyboard-stale-rejected')
+        if text(keyboard_stale).count('synthetic streamed reply') != keyboard_replies:
+            raise RuntimeError('Keyboard-stopped request added stale streamed reply')
         fixture.terminate(); fixture.wait(timeout=5)
         fixture = subprocess.Popen([sys.executable, str(Path(__file__).with_name('ai_fixture_server.py')), '--port', '18762', '--chat-stream', '--long-code', '--token-delay', '0'], stdout=flog, stderr=subprocess.STDOUT)
         wait_fixture()
