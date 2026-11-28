@@ -214,9 +214,13 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         shot('06b-copy-release-retained-focus')
         # The focus ring itself is a manual pixel gate, not an OCR claim.
         # Leave Copy by keyboard and traverse back through Floem's real Tab
-        # order. This is distinct from mouse-retained focus tested above.
-        run('key', 'shift+Tab'); run('key', 'shift+Tab'); time.sleep(.3)
+        # order. The predecessor is whole-turn Copy, so negative Space may
+        # change clipboard, but must not emit a per-block trace or edit draft.
+        # This is distinct from mouse-retained focus tested above.
+        run('key', 'shift+Tab'); time.sleep(.3)
         negative_before = shot('06c-before-keyboard-copy')
+        if 'synthetic streamed reply' not in text(negative_before):
+            raise RuntimeError('Transcript missing after reverse Copy traversal')
         def empty_draft_pixels(path):
             from PIL import Image
             geometry = subprocess.check_output(['xdotool', 'getwindowgeometry', '--shell', window], env=env, text=True)
@@ -234,9 +238,15 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         negative_after = shot('06c2-keyboard-copy-negative')
         if (out / 'editor.log').read_text().count('CHAT_COPY success=') != negative_writes:
             raise RuntimeError('Per-block Copy focus leaked through reverse traversal')
+        whole_turn = clipboard()
+        if whole_turn == 'CHAT_NAV_NEGATIVE' or whole_turn == expected:
+            raise RuntimeError('Negative target did not copy distinct whole-turn bytes')
+        if not (whole_turn.startswith('Synthetic streamed reply.') and '```php' in whole_turn and 'More streamed tail.' in whole_turn):
+            raise RuntimeError('Negative target clipboard is not the expected whole turn')
         if not empty_draft_pixels(negative_after):
             raise RuntimeError('Negative-control Space changed the empty draft')
-        run('key', 'Tab'); run('key', 'Tab'); time.sleep(.3); shot('06d-keyboard-reached-copy-ring')
+        # The visible ring at06d is a manual pixel gate.
+        run('key', 'Tab'); time.sleep(.3); shot('06d-keyboard-reached-copy-ring')
         subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input='CHAT_KEYBOARD_NAV_SENTINEL', text=True, env=env, check=True, timeout=5)
         nav_writes = (out / 'editor.log').read_text().count('CHAT_COPY success=')
         run('keydown', 'space'); time.sleep(.3); shot('06e-keyboard-copy-space-held')
@@ -316,7 +326,8 @@ with (out / 'xvfb.log').open('w') as xlog, (out / 'editor.log').open('w') as log
         stopped_text = text(keyboard_stopped)
         if 'first token' in stopped_text or 'generating...' in stopped_text:
             raise RuntimeError('Keyboard Stop left loading active')
-        time.sleep(9)
+        # Beyond the25s first-delta delay, not merely a pre-response check.
+        time.sleep(27)
         keyboard_stale = shot('12f-keyboard-stale-rejected')
         if text(keyboard_stale).count('synthetic streamed reply') != keyboard_replies:
             raise RuntimeError('Keyboard-stopped request added stale streamed reply')
