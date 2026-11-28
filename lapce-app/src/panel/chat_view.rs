@@ -5216,12 +5216,21 @@ pub fn chat_panel(tab: Rc<WindowTabData>) -> impl View {
                                             code_keyboard_focus.set(None);
                                         }
                                     })
-                                    .on_event_cont(EventListener::KeyDown, move |event| {
+                                    .on_event(EventListener::KeyDown, move |event| {
                                         if let Event::KeyDown(key) = event {
                                             if key.key.logical_key == Key::Named(NamedKey::Tab) {
                                                 chat_copy_focus_trace("turn_Tab", turn_copy_id, code_keyboard_focus.get_untracked());
                                             }
+                                            // Floem invokes Click for focused Enter/Space
+                                            // before this listener. Consume the key so it
+                                            // cannot also reach the editor/root keymap.
+                                            if code_keyboard_focus.get_untracked() == Some(turn_copy_id)
+                                                && code_copy_stops_key(&key.key.logical_key, key.modifiers)
+                                            {
+                                                return EventPropagation::Stop;
+                                            }
                                         }
+                                        EventPropagation::Continue
                                     })
                                     .on_click_stop(move |_| {
                                         let text = body.get_untracked();
